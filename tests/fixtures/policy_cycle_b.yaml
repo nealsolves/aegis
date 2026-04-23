@@ -1,0 +1,23 @@
+policy_version: "1.0"
+description: "Policy B that extends A (creates cycle)"
+extends: "policy_cycle_a.yaml"
+
+roles:
+  - "cycle_b_role"
+
+pre_conditions:
+  required:
+    context_valid:
+      type: boolean
+
+post_conditions:
+  required:
+    - "output_schema_valid"
+
+output_schema:
+  type: "object"
+  properties:
+    result:
+      type: "string"
+  required:
+    - "result"

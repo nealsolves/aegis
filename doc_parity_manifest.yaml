@@ -1,0 +1,82 @@
+# doc_parity_manifest.yaml
+#
+# Single source of truth for values that must stay synchronized
+# across documentation. The parity checker (scripts/check_doc_parity.py)
+# validates that the canonical docs agree on these values.
+#
+# Update this file when any of these values change, then run:
+#   python scripts/check_doc_parity.py
+#
+# CI enforces this on every PR targeting develop.
+
+# --- Current-state values ---
+
+version: "0.3.3"
+test_count: 1484
+coverage_threshold: 90
+audit_schema_version: "1.4"
+
+# --- Documentation parity set ---
+# These docs must stay synchronized with implementation.
+# The parity checker validates consistency across them.
+
+parity_docs:
+  - README.md
+  - PROJECT.md
+  - CHANGELOG.md
+  - docs/AIGC_FRAMEWORK.md
+  - docs/INTEGRATION_GUIDE.md
+  - docs/PUBLIC_INTEGRATION_CONTRACT.md
+  - docs/architecture/ARCHITECTURAL_INVARIANTS.md
+  - docs/architecture/ENFORCEMENT_PIPELINE.md
+
+# --- Runtime onboarding boundary docs ---
+# These current-runtime docs must explicitly fence off planned-only surfaces so
+# readers are not routed toward unsupported APIs or CLI commands.
+
+availability_boundary_docs:
+  - docs/PUBLIC_INTEGRATION_CONTRACT.md
+
+# --- Target-state docs ---
+# These intentionally describe planned or future-state contracts and are not
+# used as current-release parity truth. The parity checker enforces them
+# through a separate target-state contract check.
+
+target_state_docs:
+  - docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md
+
+# --- Canonical gate IDs (from aigc/_internal/enforcement.py) ---
+# Used by the parity checker to detect gate-ID naming drift in docs.
+
+canonical_gate_ids:
+  - guard_evaluation
+  - role_validation
+  - precondition_validation
+  - tool_constraint_validation
+  - schema_validation
+  - postcondition_validation
+  - risk_scoring
+
+# --- Docs excluded from public-API-boundary checks ---
+# These may reference aigc._internal without failing the check,
+# because they are internal engineering docs (not user-facing).
+
+internal_docs:
+  - CLAUDE.md
+  - CHANGELOG.md
+  - CONTRIBUTING.md
+  - implementation_status.md
+  - implementation_plan.md
+  - docs/decisions/*
+  - docs/research/*
+  - docs/audits/*
+  - docs/dev/*
+  - docs/architecture/AIGC_Architecture_Redesign_and_Roadmap.md
+  - docs/architecture/ARCHITECTURAL_INVARIANTS.md
+  - docs/architecture/ENFORCEMENT_PIPELINE.md
+  - docs/GOLDEN_REPLAYS_README.md
+  - docs/GOLDEN_REPLAYS_CHECKLIST.md
+  - docs/GOLDEN_REPLAYS_CI_GUIDE.md
+  - docs/releases/*
+  - docs/demo_app/*
+  - demo-app-streamlit/docs/*

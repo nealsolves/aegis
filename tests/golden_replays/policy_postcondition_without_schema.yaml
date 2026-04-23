@@ -1,0 +1,10 @@
+policy_version: "1.0"
+roles:
+  - planner
+pre_conditions:
+  required:
+    role_declared:
+      type: boolean
+post_conditions:
+  required:
+    - output_schema_valid
