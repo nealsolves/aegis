@@ -220,12 +220,15 @@ def _build_audit(
                 inv = inv_by_cs.get(cs)
             else:
                 inv = None
-            step_summaries.append({
+            step_summary: dict[str, Any] = {
                 "step_id": step.get("step_id"),
                 "participant_id": step.get("participant_id"),
                 "invocation_artifact_checksum": cs,
                 "enforcement_result": inv.get("enforcement_result") if inv else None,
-            })
+            }
+            if step.get("metadata") is not None:
+                step_summary["metadata"] = step["metadata"]
+            step_summaries.append(step_summary)
         sessions.append({
             "session_id": wa.get("session_id"),
             "status": status,

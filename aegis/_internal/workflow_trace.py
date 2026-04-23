@@ -65,14 +65,17 @@ def reconstruct_trace(
         resolved = bool(cs and remaining[cs] > 0)
         if resolved:
             remaining[cs] -= 1
-        steps.append({
+        step_entry: dict[str, Any] = {
             "sequence": i + 1,
             "step_id": step.get("step_id"),
             "participant_id": step.get("participant_id"),
             "invocation_artifact_checksum": cs,
             "resolved": resolved,
             "invocation_summary": _summarize(inv_by_cs[cs]) if resolved else None,
-        })
+        }
+        if step.get("metadata") is not None:
+            step_entry["metadata"] = step["metadata"]
+        steps.append(step_entry)
 
     started = workflow_artifact.get("started_at")
     finalized = workflow_artifact.get("finalized_at")
