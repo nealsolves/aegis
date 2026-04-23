@@ -2300,8 +2300,8 @@ def emit_split_fn_failure_artifact(
     return artifact
 
 
-class AIGC:
-    """Instance-scoped AIGC configuration and enforcement entry point.
+class AEGIS:
+    """Instance-scoped AEGIS configuration and enforcement entry point.
 
     All configuration (sink, enforcement mode, redaction patterns) is
     immutable after construction. Thread-safe: enforce() may be called
@@ -2309,9 +2309,9 @@ class AIGC:
 
     Usage::
 
-        from aegis import AIGC, JsonFileAuditSink
+        from aegis import AEGIS, JsonFileAuditSink
 
-        aegis = AIGC(sink=JsonFileAuditSink("audit.jsonl"))
+        aegis = AEGIS(sink=JsonFileAuditSink("audit.jsonl"))
         artifact = aegis.enforce(invocation)
     """
 
@@ -3514,3 +3514,7 @@ class AIGC:
             custom_gates=self._custom_gates,
             risk_config=self._risk_config,
         )
+
+
+# Backward-compatibility alias for the pre-rebrand public class name.
+AIGC = AEGIS

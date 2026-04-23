@@ -48,7 +48,7 @@ Install and run governance enforcement in under five minutes.
 ### 1.1 Install
 
 ```bash
-pip install aegis-sdk
+pip install aegis
 ```
 
 Or from source (editable, with dev dependencies):

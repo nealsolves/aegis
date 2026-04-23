@@ -70,7 +70,7 @@ class PolicyLoaderBase(abc.ABC):
                 row = db.query("SELECT yaml FROM policies WHERE id = ?", policy_ref)
                 return yaml.safe_load(row["yaml"])
 
-        aegis = AIGC(policy_loader=DatabasePolicyLoader())
+        aegis = AEGIS(policy_loader=DatabasePolicyLoader())
     """
 
     @abc.abstractmethod
@@ -850,7 +850,7 @@ async def load_policy_async(
 class PolicyCache:
     """LRU cache for loaded policies, keyed by (canonical_path, file_mtime).
 
-    Thread-safe via threading.Lock. Cache lives on an AIGC instance to
+    Thread-safe via threading.Lock. Cache lives on an AEGIS instance to
     eliminate global mutable state.
 
     Usage::

@@ -19,22 +19,22 @@ export const helpContent: Record<number, LabHelp> = {
   0: {
     title: 'Architecture Guide',
     overview:
-      'If you are new to AIGC, start here. AIGC is a runtime governance layer that sits between ' +
+      'If you are new to AEGIS, start here. AEGIS is a runtime governance layer that sits between ' +
       'your application and an AI model call. It checks each invocation against policy, emits an ' +
       'audit artifact on pass or fail, and leaves opt-in utilities like signing, chaining, and ' +
       'compliance export outside the core enforcement path.',
     whyItMatters:
-      'Most teams treat AI governance as documentation or prompt advice. AIGC turns it into a ' +
+      'Most teams treat AI governance as documentation or prompt advice. AEGIS turns it into a ' +
       'deterministic control plane: policy is declared up front, enforcement is fail-closed, and ' +
       'evidence is generated every time.',
     whatThisLabShows: [
       'Where the host app, model provider, policy layer, and SDK enforcement core sit at runtime.',
       'Which checks belong to the core fail-closed pipeline and which capabilities are opt-in utilities.',
       'How split enforcement (the default since v0.3.3) and legacy unified mode share the same ordered gates.',
-      'Why AIGC is provider-agnostic: it wraps model calls instead of replacing the model itself.',
+      'Why AEGIS is provider-agnostic: it wraps model calls instead of replacing the model itself.',
     ],
     howToNavigate: [
-      'Read Component View first to see where AIGC sits in the call path.',
+      'Read Component View first to see where AEGIS sits in the call path.',
       'Move to Enforcement Pipeline next to understand the exact gate order.',
       'Use Key Boundaries to separate core enforcement from signing, AuditChain, and compliance export.',
       'Then open Labs 1-7 to study one capability at a time.',
@@ -45,7 +45,7 @@ export const helpContent: Record<number, LabHelp> = {
         instruction:
           'Your app, agent, or orchestrator calls a model through the SDK. The SDK loads the policy, ' +
           'runs the enforcement core, then returns the governance result and audit artifact to your app. ' +
-          'The model provider still does the generation in the middle; AIGC governs the call boundary around it.',
+          'The model provider still does the generation in the middle; AEGIS governs the call boundary around it.',
         tip: 'Since v0.3.3, @governed defaults to split enforcement (Phase A before the model call, Phase B after). Pass pre_call_enforcement=False for legacy unified mode (deprecated).',
       },
       {
@@ -78,7 +78,7 @@ export const helpContent: Record<number, LabHelp> = {
       },
     ],
     takeaway:
-      'AIGC is not another model. It is a deterministic governance wrapper that makes AI invocation rules enforceable and auditable.',
+      'AEGIS is not another model. It is a deterministic governance wrapper that makes AI invocation rules enforceable and auditable.',
     glossary: [
       { term: 'enforce_invocation()', definition: 'The SDK entry point. Accepts policy, input, output, context, model identity, and role, then returns an audit artifact or raises with one attached.' },
       { term: 'enforce_pre_call()', definition: 'The split-mode Phase A entry point. It authorizes the invocation before the model call and returns a PreCallResult token for Phase B.' },
@@ -91,7 +91,7 @@ export const helpContent: Record<number, LabHelp> = {
   1: {
     title: 'Risk Scoring Guide',
     overview:
-      'This lab introduces one of AIGC\'s judgment surfaces: quantified invocation risk. It shows how the SDK ' +
+      'This lab introduces one of AEGIS\'s judgment surfaces: quantified invocation risk. It shows how the SDK ' +
       'turns a fuzzy question like "is this call risky?" into an explicit score, threshold, and enforcement outcome.',
     whyItMatters:
       'Risk scoring gives operators a controlled way to treat borderline AI behavior differently without weakening the ' +
@@ -142,7 +142,7 @@ export const helpContent: Record<number, LabHelp> = {
       },
     ],
     takeaway:
-      'AIGC turns "this feels risky" into a deterministic, inspectable score tied to an explicit enforcement policy.',
+      'AEGIS turns "this feels risky" into a deterministic, inspectable score tied to an explicit enforcement policy.',
     glossary: [
       { term: 'Risk Mode', definition: 'Controls what happens when score exceeds threshold. strict blocks; risk_scored records the exceedance without blocking; warn_only records a warning without blocking.' },
       { term: 'Risk Factor', definition: 'A named signal such as no_output_schema or missing_guards with a configured weight. Triggered factors add to the total score.' },
@@ -154,12 +154,12 @@ export const helpContent: Record<number, LabHelp> = {
   2: {
     title: 'Signing & Verification Guide',
     overview:
-      'This lab shows how AIGC can add cryptographic integrity to audit artifacts. Enforcement still happens first; signing is an ' +
+      'This lab shows how AEGIS can add cryptographic integrity to audit artifacts. Enforcement still happens first; signing is an ' +
       'opt-in step that lets you prove the stored artifact has not changed since it was produced.',
     whyItMatters:
       'Governance evidence is only useful if you can trust the record. Signing makes an audit artifact portable and tamper-evident when it leaves the process that created it.',
     whatThisLabShows: [
-      'AIGC can sign artifacts with HMAC-SHA256 when a signer is configured.',
+      'AEGIS can sign artifacts with HMAC-SHA256 when a signer is configured.',
       'Verification is a separate action from enforcement and requires the original signing key.',
       'A one-field payload change is enough to invalidate the signature.',
     ],
@@ -204,7 +204,7 @@ export const helpContent: Record<number, LabHelp> = {
   3: {
     title: 'Audit Chain Guide',
     overview:
-      'This lab moves from single-record evidence to sequence-level evidence. It shows how AIGC artifacts can be linked so that an auditor can detect tampering across a timeline, not just inside one artifact.',
+      'This lab moves from single-record evidence to sequence-level evidence. It shows how AEGIS artifacts can be linked so that an auditor can detect tampering across a timeline, not just inside one artifact.',
     whyItMatters:
       'Compliance investigations rarely examine one record in isolation. They need to know whether a historical sequence has been edited, removed, or reordered after the fact.',
     whatThisLabShows: [
@@ -242,7 +242,7 @@ export const helpContent: Record<number, LabHelp> = {
       },
     ],
     takeaway:
-      'AIGC can extend one audit artifact into a tamper-evident history of many AI decisions.',
+      'AEGIS can extend one audit artifact into a tamper-evident history of many AI decisions.',
     glossary: [
       { term: 'Hash pointer', definition: 'The previous_audit_checksum field stores the SHA-256 digest of the previous artifact, creating the link between records.' },
       { term: 'Genesis block', definition: 'The first artifact in a chain. It has no previous checksum.' },
@@ -253,9 +253,9 @@ export const helpContent: Record<number, LabHelp> = {
   4: {
     title: 'Policy Composition Guide',
     overview:
-      'This lab shows how AIGC handles policy reuse without hiding the consequences. A base policy and child policy are merged in a controlled way so you can see exactly how inheritance changes allowed behavior.',
+      'This lab shows how AEGIS handles policy reuse without hiding the consequences. A base policy and child policy are merged in a controlled way so you can see exactly how inheritance changes allowed behavior.',
     whyItMatters:
-      'Real programs need shared governance baselines plus local specialization. AIGC makes that composition explicit, reviewable, and testable instead of leaving it to copy-paste policy forks.',
+      'Real programs need shared governance baselines plus local specialization. AEGIS makes that composition explicit, reviewable, and testable instead of leaving it to copy-paste policy forks.',
     whatThisLabShows: [
       'A child policy can declare extends to inherit from a base policy.',
       'intersect, union, and replace produce materially different effective policies.',
@@ -292,7 +292,7 @@ export const helpContent: Record<number, LabHelp> = {
       },
     ],
     takeaway:
-      'AIGC treats policy inheritance as a governed operation with visible consequences, not a hidden merge behind the scenes.',
+      'AEGIS treats policy inheritance as a governed operation with visible consequences, not a hidden merge behind the scenes.',
     glossary: [
       { term: 'extends', definition: 'A field in the child policy YAML that names the base policy to inherit from. Written as extends: "base_policy.yaml" at the top of the child.' },
       { term: 'intersect', definition: 'Keeps only fields present in both base and child. This is the most restrictive strategy.' },
@@ -304,11 +304,11 @@ export const helpContent: Record<number, LabHelp> = {
   5: {
     title: 'Loaders & Versioning Guide',
     overview:
-      'This lab shows the operational side of AIGC policy management. It covers where policies come from, when they are active, and how you can test them before trusting them in production.',
+      'This lab shows the operational side of AEGIS policy management. It covers where policies come from, when they are active, and how you can test them before trusting them in production.',
     whyItMatters:
       'Governance is not just policy syntax. Production systems need controlled policy loading, time-bounded activation, and regression tests that prove the policy behaves as intended.',
     whatThisLabShows: [
-      'AIGC supports the default FilePolicyLoader and custom loaders built on PolicyLoaderBase, including the InMemoryPolicyLoader in this demo.',
+      'AEGIS supports the default FilePolicyLoader and custom loaders built on PolicyLoaderBase, including the InMemoryPolicyLoader in this demo.',
       'effective_date and expiration_date make policy validity explicit instead of relying on deployment timing.',
       'Policy test cases let you validate pass or fail expectations before a policy reaches live traffic.',
     ],
@@ -343,7 +343,7 @@ export const helpContent: Record<number, LabHelp> = {
       },
     ],
     takeaway:
-      'AIGC governance is operationalized: policies are loadable from controlled sources, valid for explicit time windows, and testable before release.',
+      'AEGIS governance is operationalized: policies are loadable from controlled sources, valid for explicit time windows, and testable before release.',
     glossary: [
       { term: 'PolicyLoaderBase', definition: 'Abstract base class for custom policy loaders. Implement load(policy_ref) to source policy from any location.' },
       { term: 'FilePolicyLoader', definition: 'Default loader. Reads a YAML policy from a filesystem path.' },
@@ -357,9 +357,9 @@ export const helpContent: Record<number, LabHelp> = {
   6: {
     title: 'Custom Gates Guide',
     overview:
-      'This lab shows how teams can extend AIGC with domain-specific enforcement logic without forking the SDK. Custom gates plug into fixed phases of the pipeline and still produce auditable results.',
+      'This lab shows how teams can extend AEGIS with domain-specific enforcement logic without forking the SDK. Custom gates plug into fixed phases of the pipeline and still produce auditable results.',
     whyItMatters:
-      'Core governance covers common controls, but production systems often need checks that are specific to one domain, tenant, or workflow. AIGC supports that extension while keeping the execution model explicit.',
+      'Core governance covers common controls, but production systems often need checks that are specific to one domain, tenant, or workflow. AEGIS supports that extension while keeping the execution model explicit.',
     whatThisLabShows: [
       'Custom EnforcementGate plugins can run at pre_authorization, post_authorization, pre_output, or post_output.',
       'A gate returns structured pass or fail data plus metadata instead of making opaque side effects.',
@@ -395,7 +395,7 @@ export const helpContent: Record<number, LabHelp> = {
       },
     ],
     takeaway:
-      'AIGC is extensible without becoming arbitrary: custom logic plugs into declared phases and still leaves evidence.',
+      'AEGIS is extensible without becoming arbitrary: custom logic plugs into declared phases and still leaves evidence.',
     glossary: [
       { term: 'EnforcementGate', definition: 'A plugin class that inserts custom logic at one pipeline phase. Extend EnforcementGate and set insertion_point.' },
       { term: 'insertion_point', definition: 'One of four supported phases: pre_authorization, post_authorization, pre_output, or post_output.' },
@@ -407,9 +407,9 @@ export const helpContent: Record<number, LabHelp> = {
   7: {
     title: 'Compliance Dashboard Guide',
     overview:
-      'This lab turns all prior enforcement activity into an operator-facing evidence surface. It shows how AIGC moves from runtime control to reviewable audit history, filtering, and export.',
+      'This lab turns all prior enforcement activity into an operator-facing evidence surface. It shows how AEGIS moves from runtime control to reviewable audit history, filtering, and export.',
     whyItMatters:
-      'Governance only matters if someone can inspect the record afterward. The compliance dashboard shows what an analyst or auditor can actually do with AIGC evidence once the SDK has produced it.',
+      'Governance only matters if someone can inspect the record afterward. The compliance dashboard shows what an analyst or auditor can actually do with AEGIS evidence once the SDK has produced it.',
     whatThisLabShows: [
       'Every enforcement run in Labs 1-6 can feed a live session audit trail.',
       'Sample mode is an explicit teaching aid, not a silent default data source.',
@@ -419,7 +419,7 @@ export const helpContent: Record<number, LabHelp> = {
       'If the table is empty, either run earlier labs to create live records or click Load Sample Data.',
       'Use ALL, PASS, FAIL, and the policy dropdown together to narrow the dataset.',
       'Expand rows to inspect checksums, risk data, gates_evaluated, chain fields, and signature presence.',
-      'Compare what you see in the dashboard with the aigc compliance export commands shown below the table.',
+      'Compare what you see in the dashboard with the aegis compliance export commands shown below the table.',
     ],
     steps: [
       {
@@ -441,11 +441,11 @@ export const helpContent: Record<number, LabHelp> = {
       {
         title: 'Export for compliance',
         instruction:
-          'Use the JSON or CSV export controls to download the visible records. The matching CLI path is aigc compliance export --input audit.jsonl, with --include-artifacts for full-record reports.',
+          'Use the JSON or CSV export controls to download the visible records. The matching CLI path is aegis compliance export --input audit.jsonl, with --include-artifacts for full-record reports.',
       },
     ],
     takeaway:
-      'AIGC ends with usable evidence: a filterable audit trail that operators can inspect and export, not just internal enforcement logic.',
+      'AEGIS ends with usable evidence: a filterable audit trail that operators can inspect and export, not just internal enforcement logic.',
     glossary: [
       { term: 'Audit artifact', definition: 'The immutable record produced by each enforcement call. It carries the result plus evidence such as checksums, metadata, and optional signature.' },
       { term: 'Enforcement result', definition: 'The final governance decision: PASS when allowed, FAIL when blocked.' },
@@ -517,10 +517,10 @@ export const helpContent: Record<number, LabHelp> = {
     title: 'Governed vs. Ungoverned Guide',
     overview:
       'This lab is a side-by-side comparison for new users. It sends the same medical AI ' +
-      'scenario down two paths: governed with AIGC and ungoverned with no checks. That ' +
+      'scenario down two paths: governed with AEGIS and ungoverned with no checks. That ' +
       'makes governance visible without asking you to learn the whole SDK first.',
     whyItMatters:
-      'Teams evaluating AIGC usually ask what governance adds beyond a normal model call. ' +
+      'Teams evaluating AEGIS usually ask what governance adds beyond a normal model call. ' +
       'This lab answers with evidence instead of theory: the governed path produces an ' +
       'actual decision and metadata trail, while the ungoverned path does not.',
     whatThisLabShows: [
@@ -539,7 +539,7 @@ export const helpContent: Record<number, LabHelp> = {
       {
         title: 'Start with a passing baseline',
         instruction:
-          'Choose "Low risk (governed PASS)" and click "Compare". The governed side runs strict AIGC enforcement, while the ungoverned side returns a synthetic PASS record with no governance checks applied.',
+          'Choose "Low risk (governed PASS)" and click "Compare". The governed side runs strict AEGIS enforcement, while the ungoverned side returns a synthetic PASS record with no governance checks applied.',
         tip: 'This baseline helps you see that even when both sides pass, only the governed side produces meaningful governance evidence.',
       },
       {
@@ -562,7 +562,7 @@ export const helpContent: Record<number, LabHelp> = {
     takeaway:
       'Governance changes more than the verdict. It adds the evidence needed to explain, audit, and defend that verdict.',
     glossary: [
-      { term: 'Governed path', definition: 'The side of the comparison that runs the scenario through AIGC enforcement and returns a policy-driven result.' },
+      { term: 'Governed path', definition: 'The side of the comparison that runs the scenario through AEGIS enforcement and returns a policy-driven result.' },
       { term: 'Ungoverned path', definition: 'The side of the comparison that returns output without policy checks. In this lab it is represented by a synthetic PASS record.' },
       { term: 'metadata.mode', definition: 'A metadata field that marks the ungoverned comparison record with mode: "ungoverned".' },
       { term: 'Evidence gap', definition: 'The missing decision data, risk data, and gate history you lose when an AI call is not governed.' },

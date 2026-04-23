@@ -46,10 +46,10 @@ That scope is intentional. A narrower boundary is a more reliable boundary.
 ### Install
 
 ```bash
-pip install aegis-sdk
+pip install aegis
 ```
 
-The import name is `aegis`. The package name on PyPI is `aegis-sdk`. That distinction matters if you're pinning dependencies.
+The import name and PyPI package name are both `aegis`.
 
 ### Five Governance Invariants
 
@@ -734,7 +734,7 @@ The interactive demo is at [nealsolves.github.io/aegis](https://nealsolves.githu
 The SDK is at [github.com/nealsolves/aegis](https://github.com/nealsolves/aegis).
 
 ```bash
-pip install aegis-sdk
+pip install aegis
 ```
 
 ---

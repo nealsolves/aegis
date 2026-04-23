@@ -41,12 +41,12 @@ describe('ArchitecturePage', () => {
 
   it('labels the page as v0.3.3', () => {
     renderPage()
-    expect(screen.getByText('AIGC v0.3.3')).toBeInTheDocument()
+    expect(screen.getByText('AEGIS v0.3.3')).toBeInTheDocument()
   })
 
   it('renders diagram images', () => {
     renderPage()
-    expect(screen.getByAltText('AIGC Component View')).toBeInTheDocument()
-    expect(screen.getByAltText('AIGC Enforcement Pipeline')).toBeInTheDocument()
+    expect(screen.getByAltText('AEGIS Component View')).toBeInTheDocument()
+    expect(screen.getByAltText('AEGIS Enforcement Pipeline')).toBeInTheDocument()
   })
 })

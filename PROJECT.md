@@ -158,7 +158,7 @@ The next patch releases made the SDK practical to install and embed:
 - absolute policy paths were supported for installed-library use
 - packaged wheels started including schema files reliably
 - public API stability guidance was clarified
-- the PyPI distribution name became `aegis-sdk` while the import remained
+- the PyPI distribution name became `aegis`, matching the import path
   `aegis`
 
 These releases mattered less for new features than for making the initial SDK

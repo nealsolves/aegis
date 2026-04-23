@@ -1,5 +1,5 @@
 """
-Policy testing framework for AIGC governance SDK.
+Policy testing framework for the AEGIS governance SDK.
 
 Provides a small but real testing API for policy authors to validate
 their policies against expected governance scenarios without running

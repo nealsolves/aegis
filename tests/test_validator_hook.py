@@ -25,7 +25,7 @@ def test_open_session_does_not_accept_validator_hooks():
     a public API surface in PR-08."""
     import inspect
     import aegis
-    sig = inspect.signature(aegis.AIGC.open_session)
+    sig = inspect.signature(aegis.AEGIS.open_session)
     assert "validator_hooks" not in sig.parameters, (
         "validator_hooks must not be a public open_session() parameter in PR-08"
     )

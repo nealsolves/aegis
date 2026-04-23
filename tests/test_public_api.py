@@ -1,5 +1,5 @@
 import aegis
-from aegis import __version__, AIGC
+from aegis import __version__, AEGIS, AIGC
 from aegis.enforcement import enforce_invocation
 from aegis.errors import (
     AIGCError,
@@ -49,9 +49,18 @@ def test_public_api_imports():
     assert InvocationValidationError.__name__ == "InvocationValidationError"
 
 
-def test_aigc_class_exported():
+def test_aegis_class_exported():
+    assert AEGIS is not None
+    assert callable(AEGIS)
+
+
+def test_aigc_alias_exported():
     assert AIGC is not None
     assert callable(AIGC)
+
+
+def test_aegis_aliases_aigc():
+    assert AEGIS is AIGC
 
 
 def test_all_error_types_exported():

@@ -67,7 +67,7 @@ def set_audit_sink(sink: AuditSink | None) -> None:
     .. deprecated::
         Global sink registration is a compatibility path retained for
         existing code. New integrations should use instance-scoped
-        ``AIGC(sink=...)`` instead, which is thread-safe and avoids
+        ``AEGIS(sink=...)`` instead, which is thread-safe and avoids
         shared mutable state. Global registration will be removed in
         a future major release.
 

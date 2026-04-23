@@ -15,7 +15,7 @@ Pass provenance in the invocation context::
             },
         },
     }
-    aegis = AIGC(custom_gates=[ProvenanceGate()])
+    aegis = AEGIS(custom_gates=[ProvenanceGate()])
 
 Failure codes:
 
@@ -42,8 +42,8 @@ class ProvenanceGate(EnforcementGate):
     Blocks invocations whose runtime context has no provenance or no
     ``source_ids``. Register alongside other custom gates::
 
-        from aegis import AIGC, ProvenanceGate
-        aegis = AIGC(custom_gates=[ProvenanceGate()])
+        from aegis import AEGIS, ProvenanceGate
+        aegis = AEGIS(custom_gates=[ProvenanceGate()])
 
     :param require_source_ids: When True (default) the gate fails unless
         ``invocation["context"]["provenance"]["source_ids"]`` contains at

@@ -1,5 +1,5 @@
 """
-workflow lint — static diagnostics for AIGC governance targets.
+workflow lint — static diagnostics for AEGIS governance targets.
 
 Supported target kinds:
 - ``policy``         — a YAML policy file

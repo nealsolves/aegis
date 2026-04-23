@@ -5,6 +5,7 @@ Stable public API for the Aegis Governance SDK.
 import logging
 
 from aegis.enforcement import (
+    AEGIS,
     AIGC,
     PreCallResult,
     enforce_invocation,
@@ -108,6 +109,7 @@ logging.getLogger("aegis").addHandler(logging.NullHandler())
 __version__ = "0.3.3"
 
 __all__ = [
+    "AEGIS",
     "AIGC",
     "AIGCError",
     "GovernanceSession",

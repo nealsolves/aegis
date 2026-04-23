@@ -54,7 +54,7 @@ describe('helpContent', () => {
     expect(pipelineStep!.instruction).toMatch(/pre_output/i)
   })
 
-  it('architecture framework explains that AIGC is a runtime governance layer', () => {
+  it('architecture framework explains that AEGIS is a runtime governance layer', () => {
     expect(helpContent[0].overview).toMatch(/runtime governance layer/i)
     expect(helpContent[0].takeaway).toMatch(/deterministic governance wrapper/i)
   })
@@ -152,7 +152,7 @@ describe('helpContent', () => {
     ].join(' ')
     expect(content).toMatch(/JSON/i)
     expect(content).toMatch(/CSV/i)
-    expect(content).toMatch(/aigc compliance export/i)
+    expect(content).toMatch(/aegis compliance export/i)
   })
 
   it('labs 8-10 keep the newer guides aligned with the established guide naming and depth', () => {

@@ -1,5 +1,5 @@
 """
-Tamper-evident audit chain for AIGC governance artifacts.
+Tamper-evident audit chain for AEGIS governance artifacts.
 
 Provides hash-chained audit evidence where each artifact links to the
 previous one via a cryptographic hash. This creates an append-only,

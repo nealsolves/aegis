@@ -1,5 +1,5 @@
 """
-Risk scoring engine for AIGC governance enforcement.
+Risk scoring engine for AEGIS governance enforcement.
 
 Provides deterministic risk scoring with three modes:
 - strict: threshold breach fails closed (raises RiskThresholdError)

@@ -19,7 +19,7 @@ def _simulate_model_call(prompt: str) -> dict:
 
 def run_with_invocation_only(policy_file: str = "policy.yaml") -> list[dict]:
     """Govern two model calls independently. Returns list of audit artifacts."""
-    governance = aegis.AIGC()
+    governance = aegis.AEGIS()
     artifacts = []
 
     prompts = ["Analyze the document.", "Summarize the findings."]

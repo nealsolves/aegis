@@ -19,7 +19,7 @@ from aegis._internal.sinks import emit_to_sink
 from aegis._internal.utils import canonical_json_bytes
 
 if TYPE_CHECKING:
-    from aegis._internal.enforcement import AIGC
+    from aegis._internal.enforcement import AEGIS
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +125,7 @@ def _compute_policy_file(
 class GovernanceSession:
     """Context manager for governed multi-step workflow sessions.
 
-    Obtained via ``AIGC.open_session()``. Manages the lifecycle::
+    Obtained via ``AEGIS.open_session()``. Manages the lifecycle::
 
         OPEN → PAUSED | FAILED | COMPLETED | CANCELED → FINALIZED
 
@@ -136,7 +136,7 @@ class GovernanceSession:
 
     def __init__(
         self,
-        aegis: "AIGC",
+        aegis: "AEGIS",
         session_id: str,
         policy_file: str | None,
         metadata: dict | None,
@@ -169,14 +169,14 @@ class GovernanceSession:
         self._approval_records: list[dict[str, Any]] = []
 
         # ValidatorHooks evaluated at each enforce_step_pre_call (internal-only
-        # contract wired from the owning AIGC instance).
+        # contract wired from the owning AEGIS instance).
         self._validator_hooks: list[Any] = list(
             getattr(self._aigc, "_validator_hooks", ())
         )
         # Evidence records for the workflow artifact
         self._validator_hook_evidence: list[dict[str, Any]] = []
 
-        # Workflow budget constraints and policy fields — loaded via AIGC's own cache+loader
+        # Workflow budget constraints and policy fields — loaded via AEGIS's own cache+loader
         # (Fix 1: never call load_policy() directly here, which would bypass any custom loader)
         # Initialize defaults first (for when policy_file is None or load fails)
         self._max_steps: int | None = None
@@ -871,7 +871,7 @@ class GovernanceSession:
 
         # Run validator hooks after invocation-level governance passes
         # (Fix 3: hooks are wired internally — validator_hooks is NOT a parameter of
-        # the public AIGC.open_session(); Fix 4: raise WorkflowHookDeniedError, not
+        # the public AEGIS.open_session(); Fix 4: raise WorkflowHookDeniedError, not
         # WorkflowApprovalRequiredError, so doctor gives the right remediation)
         if self._validator_hooks:
             from aegis._internal.validator_hook import (

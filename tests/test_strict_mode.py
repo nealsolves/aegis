@@ -4,7 +4,7 @@ import warnings
 
 import pytest
 
-from aegis import AIGC
+from aegis import AEGIS
 from aegis._internal.enforcement import _validate_policy_strict
 from aegis._internal.errors import PolicyValidationError
 
@@ -69,12 +69,12 @@ def test_strict_collects_multiple_issues():
     assert len(issues) == 2
 
 
-# --- Integration: strict mode via AIGC.enforce() ---
+# --- Integration: strict mode via AEGIS.enforce() ---
 
 
 def test_strict_rejects_bare_string_preconditions_e2e():
-    """AIGC(strict_mode=True) rejects policy with bare-string preconditions."""
-    aegis = AIGC(strict_mode=True)
+    """AEGIS(strict_mode=True) rejects policy with bare-string preconditions."""
+    aegis = AEGIS(strict_mode=True)
     inv = _make_invocation(BARE_STRING_POLICY)
     with pytest.raises(PolicyValidationError) as exc_info:
         aegis.enforce(inv)
@@ -82,8 +82,8 @@ def test_strict_rejects_bare_string_preconditions_e2e():
 
 
 def test_strict_rejects_no_preconditions_e2e():
-    """AIGC(strict_mode=True) rejects policy without preconditions."""
-    aegis = AIGC(strict_mode=True)
+    """AEGIS(strict_mode=True) rejects policy without preconditions."""
+    aegis = AEGIS(strict_mode=True)
     inv = _make_invocation(NO_PRECONDITIONS_POLICY)
     with pytest.raises(PolicyValidationError) as exc_info:
         aegis.enforce(inv)
@@ -91,8 +91,8 @@ def test_strict_rejects_no_preconditions_e2e():
 
 
 def test_strict_passes_typed_policy_e2e():
-    """AIGC(strict_mode=True) accepts typed precondition policy."""
-    aegis = AIGC(strict_mode=True)
+    """AEGIS(strict_mode=True) accepts typed precondition policy."""
+    aegis = AEGIS(strict_mode=True)
     inv = _make_invocation(TYPED_POLICY)
     audit = aegis.enforce(inv)
     assert audit["enforcement_result"] == "PASS"
@@ -102,8 +102,8 @@ def test_strict_passes_typed_policy_e2e():
 
 
 def test_nonstrict_warns_bare_string():
-    """Non-strict AIGC warns for bare-string preconditions but proceeds."""
-    aegis = AIGC(strict_mode=False)
+    """Non-strict AEGIS warns for bare-string preconditions but proceeds."""
+    aegis = AEGIS(strict_mode=False)
     inv = _make_invocation(BARE_STRING_POLICY)
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
@@ -112,8 +112,8 @@ def test_nonstrict_warns_bare_string():
 
 
 def test_nonstrict_warns_no_preconditions():
-    """Non-strict AIGC warns for missing preconditions."""
-    aegis = AIGC(strict_mode=False)
+    """Non-strict AEGIS warns for missing preconditions."""
+    aegis = AEGIS(strict_mode=False)
     inv = _make_invocation(NO_PRECONDITIONS_POLICY)
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")

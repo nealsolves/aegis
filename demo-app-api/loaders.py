@@ -1,7 +1,7 @@
-"""Custom PolicyLoaderBase subclasses for the AIGC demo API.
+"""Custom PolicyLoaderBase subclasses for the AEGIS demo API.
 
 These loaders demonstrate the pluggable loader architecture that ships in the
-current AIGC SDK. Pass a loader instance to AIGC(policy_loader=...) to control
+current AEGIS SDK. Pass a loader instance to AEGIS(policy_loader=...) to control
 how policies are resolved — no filesystem path required.
 """
 
@@ -19,7 +19,7 @@ class InMemoryPolicyLoader(PolicyLoaderBase):
     Usage::
 
         loader = InMemoryPolicyLoader(yaml_text)
-        aegis = AIGC(policy_loader=loader)
+        aegis = AEGIS(policy_loader=loader)
         artifact = aegis.enforce(invocation)
     """
 

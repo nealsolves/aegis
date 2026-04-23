@@ -127,7 +127,7 @@ class EnforcementGate(abc.ABC):
     """Abstract base class for custom enforcement gates.
 
     Subclass and implement ``evaluate()`` to add custom governance logic.
-    Register instances with the AIGC class or enforcement pipeline.
+    Register instances with the AEGIS class or enforcement pipeline.
 
     Safety contract:
     - Gates receive a read-only view of invocation and policy

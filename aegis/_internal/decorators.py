@@ -94,7 +94,7 @@ def governed(
     pre_call_enforcement: bool = True,
 ) -> Callable:
     """
-    Decorator factory that wraps a function with AIGC governance enforcement.
+    Decorator factory that wraps a function with AEGIS governance enforcement.
 
     Since v0.3.3, *pre_call_enforcement* defaults to ``True`` (split mode).
 

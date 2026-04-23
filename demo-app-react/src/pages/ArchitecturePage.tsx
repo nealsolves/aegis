@@ -6,12 +6,12 @@ export default function ArchitecturePage() {
 
   const base = import.meta.env.BASE_URL
   const componentSvg = theme === 'dark'
-    ? `${base}diagrams/aigc_architecture_component.svg`
-    : `${base}diagrams/aigc_architecture_component_light.svg`
+    ? `${base}diagrams/aegis_architecture_component.svg`
+    : `${base}diagrams/aegis_architecture_component_light.svg`
 
   const pipelineSvg = theme === 'dark'
-    ? `${base}diagrams/aigc_architecture_pipeline.svg`
-    : `${base}diagrams/aigc_architecture_pipeline_light.svg`
+    ? `${base}diagrams/aegis_architecture_pipeline.svg`
+    : `${base}diagrams/aegis_architecture_pipeline_light.svg`
 
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '48px 40px' }}>
@@ -19,7 +19,7 @@ export default function ArchitecturePage() {
         className="font-mono font-light text-xs tracking-widest mb-1"
         style={{ color: 'var(--ibm-cyan-30)', textTransform: 'uppercase' }}
       >
-        AIGC v0.3.3
+        AEGIS v0.3.3
       </div>
       <div
         className="font-mono font-light text-xs mb-14"
@@ -33,7 +33,7 @@ export default function ArchitecturePage() {
         title="Component View"
         description="How the host application, SDK enforcement core, workflow-aware provenance surfaces, and operational utilities connect at runtime."
         src={componentSvg}
-        alt="AIGC Component View"
+        alt="AEGIS Component View"
       />
 
       <DiagramSection
@@ -41,7 +41,7 @@ export default function ArchitecturePage() {
         title="Enforcement Pipeline"
         description="The current runtime boundary for v0.3.3. Phase A runs before the model call by default; Phase B validates after output exists, and the workflow-aware surfaces now include ProvenanceGate at pre_output plus emitted artifact provenance for lineage analysis."
         src={pipelineSvg}
-        alt="AIGC Enforcement Pipeline"
+        alt="AEGIS Enforcement Pipeline"
       />
 
       <div>
@@ -73,7 +73,7 @@ export default function ArchitecturePage() {
             <Code>AuditChain</Code> is not part of the automatic enforcement pipeline. It is an opt-in utility the host applies to artifacts after enforcement.
           </NoteCard>
           <NoteCard label="Lineage Analysis">
-            <Code>AuditLineage</Code> reconstructs parent and child relationships from stored audit trails, and <Code>aigc compliance export --lineage</Code> exposes that analysis offline.
+            <Code>AuditLineage</Code> reconstructs parent and child relationships from stored audit trails, and <Code>aegis compliance export --lineage</Code> exposes that analysis offline.
           </NoteCard>
           <NoteCard label="Pre-Pipeline Failures">
             Pre-pipeline failures produce schema-valid FAIL artifacts with <Code>policy_version: &quot;unknown&quot;</Code>, but bypass the core gate sequence.
@@ -82,7 +82,7 @@ export default function ArchitecturePage() {
             <Code>RiskHistory</Code> is advisory over emitted risk scores. It classifies improving, stable, or degrading trajectories without changing enforcement order.
           </NoteCard>
           <NoteCard label="Async + Instance APIs">
-            <Code>enforce_invocation_async</Code>, <Code>enforce_pre_call_async</Code>, <Code>enforce_post_call_async</Code>, and the matching <Code>AIGC</Code> instance methods ship in the current v0.3.3 runtime.
+            <Code>enforce_invocation_async</Code>, <Code>enforce_pre_call_async</Code>, <Code>enforce_post_call_async</Code>, and the matching <Code>AEGIS</Code> instance methods ship in the current v0.3.3 runtime.
           </NoteCard>
         </div>
       </div>

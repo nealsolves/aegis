@@ -127,16 +127,16 @@ def test_v090_release_truth_rejects_row_level_pr_branch_mismatch(tmp_path, monke
     assert "docs/dev/pr_context.md: PR-01 row maps to" in joined, errors
 
 
-_CANONICAL_PLAN_REL = "docs/plans/AIGC V0.9.0 IMPLEMENTATION_PLAN.md"
+_CANONICAL_PLAN_REL = "docs/plans/AEGIS V0.9.0 IMPLEMENTATION_PLAN.md"
 _HISTORICAL_PLAN_RELS = [
     "docs/plans/0.9.0 plan backup.md",
-    "docs/plans/AIGC V0.9.0 IMPLEMENTATION_PLAN_DRAFT.md",
-    "docs/plans/AIGC V0.9.0 IMPLEMENTATION_PLAN_DRAFT_ORIG.md",
-    "docs/plans/AIGC_v0.9.0_IMPLEMENTATION_PLAN_UPDATED.md",
+    "docs/plans/AEGIS V0.9.0 IMPLEMENTATION_PLAN_DRAFT.md",
+    "docs/plans/AEGIS V0.9.0 IMPLEMENTATION_PLAN_DRAFT_ORIG.md",
+    "docs/plans/AEGIS_v0.9.0_IMPLEMENTATION_PLAN_UPDATED.md",
 ]
 
 _CANONICAL_PLAN_CONTENT = """\
-# AIGC v0.9.0 Implementation Plan
+# AEGIS v0.9.0 Implementation Plan
 
 This document is the canonical implementation plan for the v0.9.0 beta.
 """
@@ -177,7 +177,7 @@ def test_v090_plan_truth_rejects_stale_plan_missing_supersession_banner(
     module = _load_doc_parity_module()
     monkeypatch.setattr(module, "REPO_ROOT", tmp_path)
 
-    no_banner = "# AIGC v0.9.0 Draft\n\nNo supersession notice.\n"
+    no_banner = "# AEGIS v0.9.0 Draft\n\nNo supersession notice.\n"
 
     _seed_plan_truth_repo(
         tmp_path,
@@ -219,12 +219,12 @@ def test_v090_release_truth_rejects_uncoupled_freeze_and_go_statements(tmp_path,
 
 
 _PR02_PLAN_CONTENT = """\
-# AIGC v0.9.0 Implementation Plan
+# AEGIS v0.9.0 Implementation Plan
 
 ### Public surface and migration posture
 
 - `v0.9.0` does not introduce a new module-level `open_session(...)` public API.
-- `GovernanceSession`, `SessionPreCallResult`, and `AIGC.open_session(...)`
+- `GovernanceSession`, `SessionPreCallResult`, and `AEGIS.open_session(...)`
   are frozen as planned-only contract surfaces before runtime work lands.
   PR-02 documents and tests them; it does not ship placeholder runtime stubs.
 
@@ -272,13 +272,13 @@ Rules:
 """
 
 _PR02_HLD_CONTENT = """\
-# AIGC High-Level Design
+# AEGIS High-Level Design
 
 Availability boundary: this document describes the intended `1.0.0` public
 surface. The shipped `0.3.3` package and CLI do not yet export
 `GovernanceSession`, `SessionPreCallResult`, `AgentIdentity`,
 `AgentCapabilityManifest`, `ValidatorHook`, `BedrockTraceAdapter`,
-`A2AAdapter`, or `aegis workflow ...` commands, and `AIGC.open_session(...)`
+`A2AAdapter`, or `aegis workflow ...` commands, and `AEGIS.open_session(...)`
 is not part of the installable runtime yet.
 
 ### 7.1 Session Lifecycle
@@ -307,7 +307,7 @@ Rules:
 
 - `FINALIZED` is a lifecycle state only. It is never serialized as a workflow artifact `status`.
 
-Workflow adoption remains instance-scoped through `AIGC.open_session(...)`.
+Workflow adoption remains instance-scoped through `AEGIS.open_session(...)`.
 The target design does not add a module-level `open_session(...)` convenience.
 
 ### 10.1 Bedrock Adapter
@@ -327,7 +327,7 @@ _PR02_README_CONTENT = """\
 # README
 
 The target-state `1.0.0` architecture expands this invocation-first model with
-planned workflow governance built around `AIGC.open_session(...)`,
+planned workflow governance built around `AEGIS.open_session(...)`,
 `GovernanceSession`, `SessionPreCallResult`, and optional Bedrock/A2A
 normalization adapters. These remain planned-only surfaces today and are not
 part of the shipped `v0.3.3` runtime or CLI.
@@ -337,7 +337,7 @@ _PR02_PUBLIC_CONTRACT_CONTENT = """\
 # Public Contract
 
 Planned-only surfaces described in that target-state document — including
-`AIGC.open_session(...)`, `GovernanceSession`, `SessionPreCallResult`,
+`AEGIS.open_session(...)`, `GovernanceSession`, `SessionPreCallResult`,
 `AgentIdentity`, `AgentCapabilityManifest`, `ValidatorHook`,
 `BedrockTraceAdapter`, `A2AAdapter`, and `aegis workflow ...` commands — are
 not part of the installable `v0.3.3` artifact today. There is no current
@@ -393,8 +393,8 @@ def _seed_pr02_contract_repo(
     release_gates: str = _PR02_RELEASE_GATES_CONTENT,
     implementation_status: str = _PR02_IMPLEMENTATION_STATUS_CONTENT,
 ) -> None:
-    _write_file(root, "docs/plans/AIGC V0.9.0 IMPLEMENTATION_PLAN.md", plan)
-    _write_file(root, "docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md", hld)
+    _write_file(root, "docs/plans/AEGIS V0.9.0 IMPLEMENTATION_PLAN.md", plan)
+    _write_file(root, "docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md", hld)
     _write_file(root, "README.md", readme)
     _write_file(root, "docs/PUBLIC_INTEGRATION_CONTRACT.md", public_contract)
     _write_file(root, "docs/dev/pr_context.md", pr_context)
@@ -534,19 +534,19 @@ def test_v090_pr02_contract_rejects_missing_required_rules(
         (
             "hld",
             _PR02_HLD_CONTENT.replace("- `FINALIZED`\n", ""),
-            "docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md",
+            "docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md",
             "session lifecycle states list",
         ),
         (
             "plan",
             _PR02_PLAN_CONTENT.replace("- `INCOMPLETE`\n", ""),
-            "docs/plans/AIGC V0.9.0 IMPLEMENTATION_PLAN.md",
+            "docs/plans/AEGIS V0.9.0 IMPLEMENTATION_PLAN.md",
             "workflow artifact statuses list",
         ),
         (
             "hld",
             _PR02_HLD_CONTENT.replace("- `INCOMPLETE`\n", ""),
-            "docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md",
+            "docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md",
             "workflow artifact statuses list",
         ),
     ],
@@ -568,7 +568,7 @@ def test_v090_pr02_contract_rejects_other_exact_list_drifts(
 
 
 _PR03_PLAN_CONTENT = """\
-# AIGC v0.9.0 Implementation Plan
+# AEGIS v0.9.0 Implementation Plan
 
 ### Public surface and migration posture
 
@@ -624,14 +624,14 @@ Frozen first-adopter docs order:
 """
 
 _PR03_HLD_CONTENT = """\
-# AIGC High-Level Design
+# AEGIS High-Level Design
 
 Availability boundary: this document describes the intended `1.0.0` public
 surface. The shipped `0.3.3` package and CLI do not yet export
 `GovernanceSession`, `SessionPreCallResult`, `AgentIdentity`,
 `AgentCapabilityManifest`, `ValidatorHook`, `BedrockTraceAdapter`,
 `A2AAdapter`, `aegis policy init`, or `aegis workflow ...` commands, and
-`AIGC.open_session(...)` is not part of the installable runtime yet.
+`AEGIS.open_session(...)` is not part of the installable runtime yet.
 
 ### 13.4 Frozen First-Adopter Contract
 
@@ -751,8 +751,8 @@ def _seed_pr03_contract_repo(
     release_gates: str = _PR03_RELEASE_GATES_CONTENT,
     implementation_status: str = _PR03_IMPLEMENTATION_STATUS_CONTENT,
 ) -> None:
-    _write_file(root, "docs/plans/AIGC V0.9.0 IMPLEMENTATION_PLAN.md", plan)
-    _write_file(root, "docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md", hld)
+    _write_file(root, "docs/plans/AEGIS V0.9.0 IMPLEMENTATION_PLAN.md", plan)
+    _write_file(root, "docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md", hld)
     _write_file(root, "README.md", readme)
     _write_file(root, "docs/PUBLIC_INTEGRATION_CONTRACT.md", public_contract)
     _write_file(root, "docs/dev/pr_context.md", pr_context)
@@ -780,7 +780,7 @@ def test_v090_pr03_contract_rejects_cli_inventory_drift(tmp_path, monkeypatch):
 
     assert any(
         "CLI command inventory list" in error
-        and "docs/plans/AIGC V0.9.0 IMPLEMENTATION_PLAN.md" in error
+        and "docs/plans/AEGIS V0.9.0 IMPLEMENTATION_PLAN.md" in error
         for error in errors
     ), errors
 
@@ -799,7 +799,7 @@ def test_v090_pr03_contract_rejects_docs_order_drift(tmp_path, monkeypatch):
 
     assert any(
         "first-adopter docs order list" in error
-        and "docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md" in error
+        and "docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md" in error
         for error in errors
     ), errors
 
@@ -844,17 +844,17 @@ def test_v090_pr03_contract_rejects_missing_release_gate(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 _PR04_PLAN_CONTENT = """\
-# AIGC v0.9.0 Implementation Plan
+# AEGIS v0.9.0 Implementation Plan
 
-PR-04 implements GovernanceSession, AIGC.open_session(...), and SessionPreCallResult.
+PR-04 implements GovernanceSession, AEGIS.open_session(...), and SessionPreCallResult.
 """
 
 _PR04_HLD_CONTENT = """\
-# AIGC High Level Design
+# AEGIS High Level Design
 
 Availability boundary: The currently shipped package remains v0.3.3.
 The upcoming unreleased v0.9.0-beta line will add GovernanceSession, SessionPreCallResult,
-and AIGC.open_session(...).
+and AEGIS.open_session(...).
 
 ## Planned for v0.9.0-beta (not yet released)
 
@@ -862,7 +862,7 @@ and AIGC.open_session(...).
 | ------- | ------------- |
 | `GovernanceSession` | workflow governance primitive |
 | `SessionPreCallResult` | workflow-scoped split handoff |
-| `AIGC.open_session(...)` | instance-scoped workflow entrypoint |
+| `AEGIS.open_session(...)` | instance-scoped workflow entrypoint |
 
 ## Planned for 1.0.0 (not in v0.9.0-beta)
 
@@ -872,18 +872,18 @@ and AIGC.open_session(...).
 """
 
 _PR04_README_CONTENT = """\
-# AIGC README
+# AEGIS README
 
 The upcoming unreleased v0.9.0-beta line will add workflow governance built
-around `AIGC.open_session(...)`, `GovernanceSession`, and `SessionPreCallResult`.
+around `AEGIS.open_session(...)`, `GovernanceSession`, and `SessionPreCallResult`.
 The currently shipped package remains `v0.3.3`.
 """
 
 _PR04_PUBLIC_CONTRACT_CONTENT = """\
-# AIGC Public Integration Contract
+# AEGIS Public Integration Contract
 
 The following surfaces are planned for the upcoming unreleased v0.9.0-beta line
-and are not part of the installable `v0.3.3` artifact: `AIGC.open_session(...)`,
+and are not part of the installable `v0.3.3` artifact: `AEGIS.open_session(...)`,
 `GovernanceSession`, `SessionPreCallResult`.
 
 The following surfaces remain planned-only: `AgentIdentity`, `AgentCapabilityManifest`,
@@ -895,7 +895,7 @@ _PR04_PR_CONTEXT_CONTENT = """\
 
 Active branch: `feat/v0.9-04-minimal-session-flow`
 
-PR-04 lands GovernanceSession, AIGC.open_session, and SessionPreCallResult.
+PR-04 lands GovernanceSession, AEGIS.open_session, and SessionPreCallResult.
 """
 
 _PR04_RELEASE_GATES_CONTENT = """\
@@ -918,7 +918,7 @@ _PR04_PROJECT_MD_CONTENT = """\
 # PROJECT.md
 
 The currently shipped package remains `v0.3.3`. The upcoming unreleased v0.9.0-beta
-line will add `GovernanceSession`, `SessionPreCallResult`, and `AIGC.open_session(...)`.
+line will add `GovernanceSession`, `SessionPreCallResult`, and `AEGIS.open_session(...)`.
 """
 
 _PR04_ENFORCEMENT_PIPELINE_CONTENT = """\
@@ -944,8 +944,8 @@ def _seed_pr04_contract_repo(
     project_md: str = _PR04_PROJECT_MD_CONTENT,
     enforcement_pipeline: str = _PR04_ENFORCEMENT_PIPELINE_CONTENT,
 ) -> None:
-    _write_file(root, "docs/plans/AIGC V0.9.0 IMPLEMENTATION_PLAN.md", plan)
-    _write_file(root, "docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md", hld)
+    _write_file(root, "docs/plans/AEGIS V0.9.0 IMPLEMENTATION_PLAN.md", plan)
+    _write_file(root, "docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md", hld)
     _write_file(root, "README.md", readme)
     _write_file(root, "docs/PUBLIC_INTEGRATION_CONTRACT.md", public_contract)
     _write_file(root, "docs/dev/pr_context.md", pr_context)
@@ -972,7 +972,7 @@ def test_v090_pr04_contract_rejects_surface_availability_drift(tmp_path, monkeyp
     monkeypatch.setattr(module, "REPO_ROOT", tmp_path)
 
     bad_readme = """\
-# AIGC README
+# AEGIS README
 
 The target-state 1.0.0 architecture expands this invocation-first model with
 planned workflow governance. None of those workflow surfaces are part of the
@@ -1016,7 +1016,7 @@ def test_v090_pr04_contract_rejects_missing_positive_beta_wording(tmp_path, monk
     bad_project_md = """\
 # PROJECT.md
 
-0.3.3 extends AIGC's invocation-governance runtime with provenance, lineage,
+0.3.3 extends AEGIS's invocation-governance runtime with provenance, lineage,
 and risk-trend primitives that future workflow governance will build on.
 """
     _seed_pr04_contract_repo(tmp_path, project_md=bad_project_md)
@@ -1106,7 +1106,7 @@ def _seed_pr05_contract_repo(
     _write_file(root, "implementation_status.md", implementation_status)
     _write_file(root, "docs/PUBLIC_INTEGRATION_CONTRACT.md", public_contract)
     _write_file(root, "README.md", readme)
-    _write_file(root, "docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md", hld)
+    _write_file(root, "docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md", hld)
 
 
 def test_pr05_contract_accepts_valid_docs(tmp_path, monkeypatch):
@@ -1223,7 +1223,7 @@ def _seed_pr09_contract_repo(
     generic: str = _PR09_GENERIC_DOC_CONTENT,
 ) -> None:
     _write_file(root, "docs/dev/pr_context.md", pr_context)
-    _write_file(root, "docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md", hld)
+    _write_file(root, "docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md", hld)
     _write_file(root, "docs/reference/WORKFLOW_CLI.md", cli_ref)
     _write_file(root, "docs/reference/OPERATIONS_RUNBOOK.md", ops_runbook)
     for rel in ["CLAUDE.md", "RELEASE_GATES.md", "implementation_status.md",

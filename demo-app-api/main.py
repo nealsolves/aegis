@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from scenarios import SCENARIOS
 from aegis import (
-    AIGC, AIGCError, HMACSigner, verify_artifact, verify_chain,
+    AEGIS, AIGCError, HMACSigner, verify_artifact, verify_chain,
     validate_policy_dates, PolicyTestCase, PolicyTestSuite,
     PolicyValidationError,
 )
@@ -26,7 +26,7 @@ from loaders import InMemoryPolicyLoader
 import yaml as yaml_lib
 from workflow_routes import router as workflow_router
 
-app = FastAPI(title="AIGC Demo API", version="0.3.3")
+app = FastAPI(title="AEGIS Demo API", version="0.3.3")
 
 app.add_middleware(
     CORSMiddleware,
@@ -119,7 +119,7 @@ def enforce(req: EnforceRequest):
     scenario = SCENARIOS[req.scenario_key]
     policy_path = str(SAMPLE_POLICIES_DIR / scenario["policy"])
 
-    aegis = AIGC(
+    aegis = AEGIS(
         risk_config={"mode": req.mode, "threshold": 0.7, "factors": MEDICAL_FACTORS}
     )
     try:
@@ -155,7 +155,7 @@ def sign_enforce(req: SignEnforceRequest):
     except ValueError:
         raise HTTPException(status_code=422, detail="key must be a valid hex string (64 hex chars)")
     signer = HMACSigner(key=key_bytes)
-    aegis = AIGC(signer=signer)
+    aegis = AEGIS(signer=signer)
 
     try:
         artifact = aegis.enforce(_build_full_invocation(scenario, policy_path))
@@ -223,7 +223,7 @@ def chain_append(req: ChainAppendRequest):
     policy_path = str(SAMPLE_POLICIES_DIR / scenario["policy"])
     chain_id = req.chain_id or str(uuid.uuid4())
 
-    aegis = AIGC()
+    aegis = AEGIS()
     try:
         artifact = aegis.enforce(_build_full_invocation(scenario, policy_path))
     except AIGCError as exc:
@@ -491,7 +491,7 @@ def lab8_query_kb(req: Lab8KBRequest):
     policy_path = str(SAMPLE_POLICIES_DIR / scenario["policy"])
 
     from aegis import ProvenanceGate
-    aegis_instance = AIGC(custom_gates=[ProvenanceGate()])
+    aegis_instance = AEGIS(custom_gates=[ProvenanceGate()])
     invocation = _build_full_invocation(scenario, policy_path)
     source_ids = scenario["context"].get("provenance", {}).get("source_ids", [])
 
@@ -515,7 +515,7 @@ def lab9_compare(req: Lab9CompareRequest):
     policy_path = str(SAMPLE_POLICIES_DIR / scenario["policy"])
 
     # Governed path — strict mode exposes full policy impact (risk threshold enforced)
-    aegis_instance = AIGC(
+    aegis_instance = AEGIS(
         risk_config={"mode": "strict", "threshold": 0.7, "factors": MEDICAL_FACTORS}
     )
     governed_artifact = None
@@ -562,7 +562,7 @@ def lab10_split_trace(req: Lab10SplitRequest):
     scenario = SCENARIOS[req.scenario_key]
     policy_path = str(SAMPLE_POLICIES_DIR / scenario["policy"])
 
-    aegis_instance = AIGC(
+    aegis_instance = AEGIS(
         risk_config={"mode": req.mode, "threshold": 0.7, "factors": MEDICAL_FACTORS}
     )
     pre_invocation = _build_pre_call_invocation(scenario, policy_path)
@@ -655,7 +655,7 @@ def run_gate(req: GateRunRequest):
 
     scenario = SCENARIOS[req.scenario_key]
     policy_path = str(SAMPLE_POLICIES_DIR / scenario["policy"])
-    aegis = AIGC(custom_gates=[gate])
+    aegis = AEGIS(custom_gates=[gate])
 
     invocation = _build_full_invocation(scenario, policy_path)
 

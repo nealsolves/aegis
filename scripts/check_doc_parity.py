@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Documentation parity checker for the AIGC repository.
+"""Documentation parity checker for the AEGIS repository.
 
 Validates that documentation stays synchronized with implementation:
   A. Current-state parity across canonical docs
@@ -43,7 +43,7 @@ _REQUIRED_PARITY_DOCS = [
     "README.md",
     "PROJECT.md",
     "CHANGELOG.md",
-    "docs/AIGC_FRAMEWORK.md",
+    "docs/AEGIS_FRAMEWORK.md",
     "docs/INTEGRATION_GUIDE.md",
     "docs/PUBLIC_INTEGRATION_CONTRACT.md",
     "docs/architecture/ARCHITECTURAL_INVARIANTS.md",
@@ -55,7 +55,7 @@ _REQUIRED_BOUNDARY_DOCS = [
 ]
 
 _REQUIRED_TARGET_STATE_DOCS = [
-    "docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md",
+    "docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md",
 ]
 
 _CURRENT_RUNTIME_SEMVER_RE = re.compile(r"\b(\d+\.\d+\.\d+)\b")
@@ -398,12 +398,28 @@ _MD_LINK_RE = re.compile(
 )
 
 
-def check_link_hygiene() -> list[str]:
-    """Fail on broken local markdown links."""
+def _normalize_local_link_target(target: str) -> str:
+    """Normalize local markdown targets for filesystem existence checks."""
+    target = target.strip()
+    if target.startswith("<") and target.endswith(">"):
+        target = target[1:-1].strip()
+
+    path_text, sep, maybe_line = target.rpartition(":")
+    if sep and maybe_line.isdigit():
+        target = path_text
+
+    return target
+
+
+def check_link_hygiene(manifest: dict) -> list[str]:
+    """Fail on broken local markdown links in non-internal docs."""
     errors: list[str] = []
+    internal_patterns = manifest.get("internal_docs", [])
 
     for path in collect_md_files():
         rel = str(path.relative_to(REPO_ROOT))
+        if is_internal_doc(rel, internal_patterns):
+            continue
         text = path.read_text(encoding="utf-8")
 
         for i, line in enumerate(text.splitlines(), 1):
@@ -422,9 +438,13 @@ def check_link_hygiene() -> list[str]:
                 target_path = target.split("#")[0]
                 if not target_path:
                     continue
+                target_path = _normalize_local_link_target(target_path)
 
-                # Resolve relative to the file's directory
-                resolved = (path.parent / target_path).resolve()
+                target_obj = Path(target_path)
+                if target_obj.is_absolute():
+                    resolved = target_obj
+                else:
+                    resolved = (path.parent / target_obj).resolve()
                 if not resolved.exists():
                     errors.append(
                         f"[link-hygiene] {rel}:{i}: broken link "
@@ -839,13 +859,13 @@ _WRAPPED_FUNCTION_ERROR_MIGRATION_RE = re.compile(
 # Docs that describe live CLI behavior (not historical/archive docs)
 _CLI_BEHAVIOR_DOCS = [
     "README.md",
-    "docs/AIGC_FRAMEWORK.md",
+    "docs/AEGIS_FRAMEWORK.md",
 ]
 
 # Docs that describe live risk-mode semantics
 _RISK_SEMANTICS_DOCS = [
     "README.md",
-    "docs/AIGC_FRAMEWORK.md",
+    "docs/AEGIS_FRAMEWORK.md",
 ]
 
 # Docs that describe the v0.3.2 wrapped-function failure taxonomy.
@@ -910,12 +930,12 @@ def check_semantic_claims() -> list[str]:
 # Check J: v0.9.0 plan truth
 # ---------------------------------------------------------------------------
 
-_V090_CANONICAL_PLAN = "docs/plans/AIGC V0.9.0 IMPLEMENTATION_PLAN.md"
+_V090_CANONICAL_PLAN = "docs/plans/AEGIS V0.9.0 IMPLEMENTATION_PLAN.md"
 _V090_HISTORICAL_PLANS = [
     "docs/plans/0.9.0 plan backup.md",
-    "docs/plans/AIGC V0.9.0 IMPLEMENTATION_PLAN_DRAFT.md",
-    "docs/plans/AIGC V0.9.0 IMPLEMENTATION_PLAN_DRAFT_ORIG.md",
-    "docs/plans/AIGC_v0.9.0_IMPLEMENTATION_PLAN_UPDATED.md",
+    "docs/plans/AEGIS V0.9.0 IMPLEMENTATION_PLAN_DRAFT.md",
+    "docs/plans/AEGIS V0.9.0 IMPLEMENTATION_PLAN_DRAFT_ORIG.md",
+    "docs/plans/AEGIS_v0.9.0_IMPLEMENTATION_PLAN_UPDATED.md",
 ]
 _V090_ALL_EXPECTED_PLANS = [_V090_CANONICAL_PLAN, *_V090_HISTORICAL_PLANS]
 _SUPERSEDED_PLAN_RE = re.compile(r"superseded|historical input only", re.I)
@@ -1161,8 +1181,8 @@ def check_v090_release_truth() -> list[str]:
 # ---------------------------------------------------------------------------
 
 _V090_PR02_ACTIVE_BRANCH = "feat/v0.9-02-contract-freeze"
-_V090_PLAN_REL = "docs/plans/AIGC V0.9.0 IMPLEMENTATION_PLAN.md"
-_V090_HLD_REL = "docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md"
+_V090_PLAN_REL = "docs/plans/AEGIS V0.9.0 IMPLEMENTATION_PLAN.md"
+_V090_HLD_REL = "docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md"
 _V090_PUBLIC_CONTRACT_REL = "docs/PUBLIC_INTEGRATION_CONTRACT.md"
 _V090_PR_CONTEXT_REL = "docs/dev/pr_context.md"
 _V090_EXPECTED_SESSION_STATES = [
@@ -1372,7 +1392,7 @@ def check_v090_pr02_contract() -> list[str]:
         texts[_V090_HLD_REL],
         [
             "`SessionPreCallResult`",
-            "`AIGC.open_session(...)`\nis not part of the installable runtime yet.",
+            "`AEGIS.open_session(...)`\nis not part of the installable runtime yet.",
             "The target design does not add a module-level `open_session(...)` convenience.",
             "| `OPEN` or `PAUSED` finalized without terminal completion | `INCOMPLETE` |",
             "- alias-backed collaborator identity is required for governed participant\n  binding; `collaboratorName` alone is descriptive evidence only",
@@ -1388,7 +1408,7 @@ def check_v090_pr02_contract() -> list[str]:
         "README.md",
         texts["README.md"],
         [
-            "`AIGC.open_session(...)`",
+            "`AEGIS.open_session(...)`",
             "`GovernanceSession`",
             "`SessionPreCallResult`",
             "not\npart of the shipped `v0.3.3` runtime or CLI",
@@ -1400,7 +1420,7 @@ def check_v090_pr02_contract() -> list[str]:
         _V090_PUBLIC_CONTRACT_REL,
         texts[_V090_PUBLIC_CONTRACT_REL],
         [
-            "`AIGC.open_session(...)`",
+            "`AEGIS.open_session(...)`",
             "`SessionPreCallResult`",
             "There is no current\nmodule-level `open_session()` convenience in the shipped package.",
         ],
@@ -1858,7 +1878,7 @@ def check_v090_pr05_contract() -> list[str]:
                 f"{pfx} README.md: planned-only sentence not updated: {forbidden!r}"
             )
 
-    # -- AIGC_HIGH_LEVEL_DESIGN.md: both shipped commands present; planned-only sentence updated --
+    # -- AEGIS_HIGH_LEVEL_DESIGN.md: both shipped commands present; planned-only sentence updated --
     _require_all(
         errors,
         _V090_HLD_REL,
@@ -1915,7 +1935,7 @@ _PR07_QUICKSTART_ANCHORS = [
     "aegis workflow init --profile minimal",
     "python workflow_example.py",
     "Status:  COMPLETED",
-    "AIGC.open_session",
+    "AEGIS.open_session",
     "enforce_step_pre_call",
 ]
 
@@ -1974,7 +1994,7 @@ _PR09_SOURCE_OF_TRUTH_DOCS = [
     "implementation_status.md",
     "README.md",
     "docs/PUBLIC_INTEGRATION_CONTRACT.md",
-    "docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md",
+    "docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md",
 ]
 
 # Stale fragments that must NOT appear once PR-09 has landed
@@ -2026,13 +2046,13 @@ def check_v090_pr09_contract() -> list[str]:
 
     # HLD must list trace/export in the v0.9.0 beta surface table and must NOT
     # list them under the "Planned for 1.0.0 or later" section.
-    hld_path = REPO_ROOT / "docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md"
+    hld_path = REPO_ROOT / "docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md"
     if hld_path.exists():
         hld_text = hld_path.read_text(encoding="utf-8")
         for anchor in _PR09_HLD_BETA_ANCHORS:
             if anchor not in hld_text:
                 errors.append(
-                    f"{pfx} AIGC_HIGH_LEVEL_DESIGN.md: missing shipped surface {anchor!r}"
+                    f"{pfx} AEGIS_HIGH_LEVEL_DESIGN.md: missing shipped surface {anchor!r}"
                 )
         # Isolate the planned-only section to check it does not contain trace/export.
         if _HLD_PLANNED_SECTION_HEADER in hld_text:
@@ -2047,7 +2067,7 @@ def check_v090_pr09_contract() -> list[str]:
             for anchor in _PR09_HLD_BETA_ANCHORS:
                 if anchor in planned_block:
                     errors.append(
-                        f"{pfx} AIGC_HIGH_LEVEL_DESIGN.md: {anchor!r} still listed under "
+                        f"{pfx} AEGIS_HIGH_LEVEL_DESIGN.md: {anchor!r} still listed under "
                         f"{_HLD_PLANNED_SECTION_HEADER!r} — move it to the v0.9.0 beta surface table"
                     )
 
@@ -2111,7 +2131,7 @@ def check_demo_backend_import_boundary(_manifest: dict) -> list[str]:
 
 def main() -> int:
     print("=" * 60)
-    print("AIGC Documentation Parity Checker")
+    print("AEGIS Documentation Parity Checker")
     print("=" * 60)
 
     manifest = load_manifest()
@@ -2120,7 +2140,7 @@ def main() -> int:
         ("A. Current-state parity", lambda: check_current_state_parity(manifest)),
         ("B. Public API boundary", lambda: check_public_api_boundary(manifest)),
         ("C. Schema-example parity", lambda: check_schema_example_parity(manifest)),
-        ("D. Local link hygiene", check_link_hygiene),
+        ("D. Local link hygiene", lambda: check_link_hygiene(manifest)),
         ("E. Archive hygiene", check_archive_hygiene),
         ("F. Gate-ID consistency", lambda: check_gate_id_consistency(manifest)),
         ("G. Parity-set docs exist", lambda: check_parity_docs_exist(manifest)),

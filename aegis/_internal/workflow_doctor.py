@@ -1,5 +1,5 @@
 """
-workflow doctor — runtime/evidence-aware diagnostics for AIGC governance targets.
+workflow doctor — runtime/evidence-aware diagnostics for AEGIS governance targets.
 
 Doctor always starts with lint for the detected target kind, then adds
 time-aware and evidence-aware checks that static lint cannot perform.

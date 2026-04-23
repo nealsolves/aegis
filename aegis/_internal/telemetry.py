@@ -1,5 +1,5 @@
 """
-OpenTelemetry integration for AIGC governance enforcement.
+OpenTelemetry integration for AEGIS governance enforcement.
 
 Provides optional instrumentation that adds spans and attributes around
 enforcement gates. When OpenTelemetry is not installed, all operations

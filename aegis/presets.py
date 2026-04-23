@@ -1,4 +1,4 @@
-"""Public re-exports for AIGC workflow preset builders."""
+"""Public re-exports for AEGIS workflow preset builders."""
 
 from aegis._internal.presets import (
     MinimalPreset,

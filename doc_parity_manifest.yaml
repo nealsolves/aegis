@@ -24,7 +24,7 @@ parity_docs:
   - README.md
   - PROJECT.md
   - CHANGELOG.md
-  - docs/AIGC_FRAMEWORK.md
+  - docs/AEGIS_FRAMEWORK.md
   - docs/INTEGRATION_GUIDE.md
   - docs/PUBLIC_INTEGRATION_CONTRACT.md
   - docs/architecture/ARCHITECTURAL_INVARIANTS.md
@@ -43,9 +43,9 @@ availability_boundary_docs:
 # through a separate target-state contract check.
 
 target_state_docs:
-  - docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md
+  - docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md
 
-# --- Canonical gate IDs (from aigc/_internal/enforcement.py) ---
+# --- Canonical gate IDs (from aegis/_internal/enforcement.py) ---
 # Used by the parity checker to detect gate-ID naming drift in docs.
 
 canonical_gate_ids:
@@ -58,7 +58,7 @@ canonical_gate_ids:
   - risk_scoring
 
 # --- Docs excluded from public-API-boundary checks ---
-# These may reference aigc._internal without failing the check,
+# These may reference aegis._internal without failing the check,
 # because they are internal engineering docs (not user-facing).
 
 internal_docs:
@@ -71,7 +71,7 @@ internal_docs:
   - docs/research/*
   - docs/audits/*
   - docs/dev/*
-  - docs/architecture/AIGC_Architecture_Redesign_and_Roadmap.md
+  - docs/architecture/AEGIS_Architecture_Redesign_and_Roadmap.md
   - docs/architecture/ARCHITECTURAL_INVARIANTS.md
   - docs/architecture/ENFORCEMENT_PIPELINE.md
   - docs/GOLDEN_REPLAYS_README.md
@@ -79,4 +79,5 @@ internal_docs:
   - docs/GOLDEN_REPLAYS_CI_GUIDE.md
   - docs/releases/*
   - docs/demo_app/*
+  - docs/superpowers/*
   - demo-app-streamlit/docs/*

@@ -7,7 +7,7 @@ import { IBM_COLORS } from '@/theme/tokens'
 
 // ── types ────────────────────────────────────────────────────────────────────
 
-/** Shape returned by session.workflow_artifact from the AIGC engine. */
+/** Shape returned by session.workflow_artifact from the AEGIS engine. */
 interface WorkflowArtifact {
   workflow_schema_version: string
   artifact_type: string
@@ -183,7 +183,7 @@ export default function Lab11WorkflowLab() {
       {activeTab === 'start-here' && (
         <div>
           <p className="text-sm mb-3" style={{ color: 'var(--text-secondary)' }}>
-            Run a minimal or standard workflow scenario through the AIGC governance engine.
+            Run a minimal or standard workflow scenario through the AEGIS governance engine.
           </p>
 
           <div className="flex gap-2 mb-4">

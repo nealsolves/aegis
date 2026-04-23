@@ -312,8 +312,9 @@ Still deferred beyond the current beta public surface:
 
 ### Changed
 
-- **PyPI distribution name: `aegis` → `aegis-sdk`** (`pip install aegis-sdk`);
-  import name was unchanged (`import aegis`)
+- **Historical packaging note**: this release temporarily renamed the PyPI
+  distribution from `aegis` to `aegis-sdk`; current releases install with
+  `pip install aegis` and still import as `aegis`
 - `docs/PUBLIC_INTEGRATION_CONTRACT.md`: LLM stub in decorator quickstart
   replaced with a self-contained `_StubLLM` class so the example is
   independently runnable without an external `llm` reference

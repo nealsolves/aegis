@@ -468,7 +468,7 @@ def render_beta(theme: Theme) -> str:
     parts = [
         header(
             theme,
-            "AIGC v0.9.0 BETA",
+            "AEGIS v0.9.0 BETA",
             "Source-only beta surface on local develop. The installable package remains v0.3.3.",
             height,
         ),
@@ -487,7 +487,7 @@ def render_beta(theme: Theme) -> str:
                 80,
                 "note-box",
                 ["Host owns execution, retries, credentials, and business state."],
-                ["Provider and tool calls remain outside AIGC after authorization."],
+                ["Provider and tool calls remain outside AEGIS after authorization."],
             ),
         ]
     )
@@ -496,7 +496,7 @@ def render_beta(theme: Theme) -> str:
     parts.extend(
         [
             rect(*main, "band", rx=24),
-            section_text(84, 262, "AIGC SDK v0.9.0 BETA SURFACE"),
+            section_text(84, 262, "AEGIS SDK v0.9.0 BETA SURFACE"),
             rect(90, 286, 300, 480, "policy-panel", rx=22),
             panel_text(114, 314, "POLICY + LOADING"),
             rect(418, 286, 780, 258, "workflow-panel", rx=22),
@@ -529,7 +529,7 @@ def render_beta(theme: Theme) -> str:
     # Workflow layer
     parts.extend(
         [
-            node(448, 336, 168, 88, "node-workflow", ["AIGC.open_session()"]),
+            node(448, 336, 168, 88, "node-workflow", ["AEGIS.open_session()"]),
             node(642, 336, 174, 88, "node-workflow", ["GovernanceSession"]),
             node(
                 842,
@@ -564,7 +564,7 @@ def render_beta(theme: Theme) -> str:
     parts.extend(
         [
             node(448, 620, 168, 88, "node-kernel", ["enforce_invocation()"]),
-            node(642, 620, 168, 88, "node-kernel", ["AIGC.enforce()"]),
+            node(642, 620, 168, 88, "node-kernel", ["AEGIS.enforce()"]),
             node(842, 620, 188, 88, "node-kernel", ["split APIs"], ["pre_call / post_call"]),
             node(1048, 620, 128, 88, "node-kernel", ["ordered gates"], ["auth -> output -> risk"]),
             text_box(
@@ -664,13 +664,13 @@ def render_beta(theme: Theme) -> str:
             lines_text(
                 60,
                 1160,
-                [("footer-note-lg", "The host still performs provider and tool calls after AIGC authorizes a step or invocation.")],
+                [("footer-note-lg", "The host still performs provider and tool calls after AEGIS authorizes a step or invocation.")],
                 anchor="start",
             ),
             lines_text(
                 60,
                 1188,
-                [("footer-note-lg", "The beta adds workflow evidence. It does not collapse AIGC into a hosted orchestrator.")],
+                [("footer-note-lg", "The beta adds workflow evidence. It does not collapse AEGIS into a hosted orchestrator.")],
                 anchor="start",
             ),
             lines_text(
@@ -696,8 +696,8 @@ def render_full(theme: Theme) -> str:
     parts = [
         header(
             theme,
-            "AIGC v0.9.0 FULL",
-            "Intended full solution design surface. AIGC remains an SDK, not a hosted runtime or orchestrator.",
+            "AEGIS v0.9.0 FULL",
+            "Intended full solution design surface. AEGIS remains an SDK, not a hosted runtime or orchestrator.",
             height,
         ),
         rect(*HOST_BAND, "band", rx=24),
@@ -715,7 +715,7 @@ def render_full(theme: Theme) -> str:
                 594,
                 68,
                 "note-box",
-                ["Host-owned execution remains outside AIGC governance surfaces."],
+                ["Host-owned execution remains outside AEGIS governance surfaces."],
                 ["Adapters normalize host-visible evidence only; they do not replace core enforcement."],
             ),
         ]
@@ -742,7 +742,7 @@ def render_full(theme: Theme) -> str:
     parts.extend(
         [
             rect(60, 370, 1480, 854, "band", rx=24),
-            section_text(84, 394, "AIGC SDK v0.9.0 FULL SURFACE"),
+            section_text(84, 394, "AEGIS SDK v0.9.0 FULL SURFACE"),
             rect(90, 416, 1038, 126, "policy-panel", rx=22),
             panel_text(114, 444, "POLICY + CONTRACTS"),
             rect(90, 566, 1038, 232, "workflow-panel", rx=22),
@@ -769,7 +769,7 @@ def render_full(theme: Theme) -> str:
     # Workflow governance
     parts.extend(
         [
-            node(114, 614, 206, 72, "node-workflow", ["AIGC.open_session(...)"]),
+            node(114, 614, 206, 72, "node-workflow", ["AEGIS.open_session(...)"]),
             node(344, 614, 206, 72, "node-workflow", ["GovernanceSession"]),
             node(574, 614, 206, 72, "node-workflow", ["SessionPreCallResult"]),
             node(114, 710, 206, 64, "node-workflow", ["AgentIdentity"]),
@@ -868,7 +868,7 @@ def render_full(theme: Theme) -> str:
             lines_text(
                 60,
                 1240,
-                [("footer-note", "AIGC remains an SDK, not a hosted runtime or orchestrator.")],
+                [("footer-note", "AEGIS remains an SDK, not a hosted runtime or orchestrator.")],
                 anchor="start",
             ),
             lines_text(

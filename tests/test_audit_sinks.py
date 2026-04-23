@@ -213,32 +213,32 @@ def test_audit_sink_error_has_correct_code():
     assert err.code == "AUDIT_SINK_ERROR"
 
 
-# --- CR-02: Sink isolation in AIGC class ---
+# --- CR-02: Sink isolation in AEGIS class ---
 
 def test_aigc_instance_does_not_mutate_global_sink():
-    """AIGC.enforce() must never touch the global sink state."""
-    from aegis import AIGC
+    """AEGIS.enforce() must never touch the global sink state."""
+    from aegis import AEGIS
 
     assert get_audit_sink() is None  # no prior sink
     received = []
-    aegis = AIGC(sink=CallbackAuditSink(received.append))
+    aegis = AEGIS(sink=CallbackAuditSink(received.append))
     aegis.enforce(VALID_INVOCATION)
 
     assert len(received) == 1
-    # Global sink must remain untouched — AIGC uses per-call sink injection
+    # Global sink must remain untouched — AEGIS uses per-call sink injection
     assert get_audit_sink() is None
 
 
 def test_aigc_instance_does_not_leak_to_global_with_previous():
-    """AIGC.enforce() must not affect a previously set global sink."""
-    from aegis import AIGC
+    """AEGIS.enforce() must not affect a previously set global sink."""
+    from aegis import AEGIS
 
     previous_received = []
     previous_sink = CallbackAuditSink(previous_received.append)
     set_audit_sink(previous_sink)
 
     instance_received = []
-    aegis = AIGC(sink=CallbackAuditSink(instance_received.append))
+    aegis = AEGIS(sink=CallbackAuditSink(instance_received.append))
     aegis.enforce(VALID_INVOCATION)
 
     assert len(instance_received) == 1
@@ -248,13 +248,13 @@ def test_aigc_instance_does_not_leak_to_global_with_previous():
 
 
 def test_aigc_two_instances_isolated():
-    """Two AIGC instances with different sinks must not interfere."""
-    from aegis import AIGC
+    """Two AEGIS instances with different sinks must not interfere."""
+    from aegis import AEGIS
 
     received_a = []
     received_b = []
-    aigc_a = AIGC(sink=CallbackAuditSink(received_a.append))
-    aigc_b = AIGC(sink=CallbackAuditSink(received_b.append))
+    aigc_a = AEGIS(sink=CallbackAuditSink(received_a.append))
+    aigc_b = AEGIS(sink=CallbackAuditSink(received_b.append))
 
     aigc_a.enforce(VALID_INVOCATION)
     aigc_b.enforce(VALID_INVOCATION)
@@ -266,12 +266,12 @@ def test_aigc_two_instances_isolated():
 
 
 def test_aigc_instance_with_none_sink_does_not_interfere():
-    """AIGC(sink=None) must not receive artifacts from another instance."""
-    from aegis import AIGC
+    """AEGIS(sink=None) must not receive artifacts from another instance."""
+    from aegis import AEGIS
 
     received = []
-    aigc_sinked = AIGC(sink=CallbackAuditSink(received.append))
-    aigc_none = AIGC()
+    aigc_sinked = AEGIS(sink=CallbackAuditSink(received.append))
+    aigc_none = AEGIS()
 
     aigc_none.enforce(VALID_INVOCATION)
     aigc_sinked.enforce(VALID_INVOCATION)
@@ -283,29 +283,29 @@ def test_aigc_instance_with_none_sink_does_not_interfere():
 # --- CR-03: on_sink_failure wired into runtime ---
 
 def test_aigc_on_sink_failure_raise_is_effective():
-    """AIGC(on_sink_failure='raise') must actually raise on PASS sink failure."""
-    from aegis import AIGC
+    """AEGIS(on_sink_failure='raise') must actually raise on PASS sink failure."""
+    from aegis import AEGIS
 
-    aegis = AIGC(sink=_BrokenSink(), on_sink_failure="raise")
+    aegis = AEGIS(sink=_BrokenSink(), on_sink_failure="raise")
     with pytest.raises(AuditSinkError, match="sink exploded"):
         aegis.enforce(VALID_INVOCATION)
 
 
 def test_aigc_on_sink_failure_log_does_not_raise():
-    """AIGC(on_sink_failure='log') must not raise on sink failure."""
-    from aegis import AIGC
+    """AEGIS(on_sink_failure='log') must not raise on sink failure."""
+    from aegis import AEGIS
 
-    aegis = AIGC(sink=_BrokenSink(), on_sink_failure="log")
+    aegis = AEGIS(sink=_BrokenSink(), on_sink_failure="log")
     audit = aegis.enforce(VALID_INVOCATION)
     assert audit["enforcement_result"] == "PASS"
 
 
 def test_aigc_does_not_mutate_global_failure_mode():
-    """AIGC.enforce() must never touch the global failure mode."""
-    from aegis import AIGC
+    """AEGIS.enforce() must never touch the global failure mode."""
+    from aegis import AEGIS
 
     assert get_sink_failure_mode() == "log"  # default
-    aegis = AIGC(sink=CallbackAuditSink(lambda a: None), on_sink_failure="raise")
+    aegis = AEGIS(sink=CallbackAuditSink(lambda a: None), on_sink_failure="raise")
     aegis.enforce(VALID_INVOCATION)
     assert get_sink_failure_mode() == "log"  # untouched
 
@@ -341,10 +341,10 @@ def test_sink_cannot_mutate_exception_artifact():
 
 
 def test_aigc_sink_cannot_mutate_artifact():
-    """AIGC instance sink receives a deep copy."""
-    from aegis import AIGC
+    """AEGIS instance sink receives a deep copy."""
+    from aegis import AEGIS
 
-    aegis = AIGC(sink=_MutatingSink())
+    aegis = AEGIS(sink=_MutatingSink())
     audit = aegis.enforce(VALID_INVOCATION)
     assert audit["enforcement_result"] == "PASS"
 
@@ -366,10 +366,10 @@ def test_fail_artifact_preserved_when_sink_raises():
 
 
 def test_fail_artifact_preserved_via_aigc_instance():
-    """AIGC(on_sink_failure='raise') must preserve FAIL artifact on sink error."""
-    from aegis import AIGC
+    """AEGIS(on_sink_failure='raise') must preserve FAIL artifact on sink error."""
+    from aegis import AEGIS
 
-    aegis = AIGC(sink=_BrokenSink(), on_sink_failure="raise")
+    aegis = AEGIS(sink=_BrokenSink(), on_sink_failure="raise")
     bad = {**VALID_INVOCATION, "role": "attacker"}
     with pytest.raises(GovernanceViolationError) as exc_info:
         aegis.enforce(bad)
@@ -409,14 +409,14 @@ def test_pre_pipeline_policy_load_error_has_artifact():
 
 def test_pre_pipeline_aigc_strict_mode_has_artifact():
     """Strict mode PolicyValidationError must carry a FAIL audit artifact."""
-    from aegis import AIGC
+    from aegis import AEGIS
     from aegis._internal.errors import PolicyValidationError
 
     bare_string_inv = {
         **VALID_INVOCATION,
         "policy_file": "tests/fixtures/bare_string_preconditions_policy.yaml",
     }
-    aegis = AIGC(strict_mode=True)
+    aegis = AEGIS(strict_mode=True)
     with pytest.raises(PolicyValidationError) as exc_info:
         aegis.enforce(bare_string_inv)
 
@@ -434,21 +434,21 @@ def test_sink_failure_gate_is_schema_valid():
     assert _map_exception_to_failure_gate(exc) == "sink_emission"
 
 
-# --- CR-06: PolicyCache wired into AIGC ---
+# --- CR-06: PolicyCache wired into AEGIS ---
 
 def test_aigc_has_policy_cache():
-    """AIGC instances must have a per-instance PolicyCache."""
-    from aegis import AIGC
+    """AEGIS instances must have a per-instance PolicyCache."""
+    from aegis import AEGIS
 
-    aegis = AIGC()
+    aegis = AEGIS()
     assert hasattr(aegis, 'policy_cache')
     assert aegis.policy_cache is not None
 
 
 def test_aigc_policy_cache_is_per_instance():
-    """Two AIGC instances must have separate PolicyCache instances."""
-    from aegis import AIGC
+    """Two AEGIS instances must have separate PolicyCache instances."""
+    from aegis import AEGIS
 
-    a = AIGC()
-    b = AIGC()
+    a = AEGIS()
+    b = AEGIS()
     assert a.policy_cache is not b.policy_cache

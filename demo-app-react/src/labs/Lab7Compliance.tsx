@@ -44,8 +44,8 @@ function toRecord(a: Artifact, idx: number): AuditRecord {
   }
 }
 
-const CLI_BASIC    = 'aigc compliance export --input audit.jsonl'
-const CLI_FULL     = 'aigc compliance export --input audit.jsonl --output report.json --include-artifacts'
+const CLI_BASIC    = 'aegis compliance export --input audit.jsonl'
+const CLI_FULL     = 'aegis compliance export --input audit.jsonl --output report.json --include-artifacts'
 
 export default function Lab7Compliance() {
   const { auditHistory } = useAigc()
@@ -142,7 +142,7 @@ export default function Lab7Compliance() {
 
       {/* CLI-equivalent section */}
       <div className="mt-6">
-        <div className="font-mono text-xs mb-2" style={{ color: 'var(--text-secondary)' }}>// CLI equivalent — aigc compliance export</div>
+        <div className="font-mono text-xs mb-2" style={{ color: 'var(--text-secondary)' }}>// CLI equivalent — aegis compliance export</div>
         <CodeBlock code={`# Print compliance report to stdout\n${CLI_BASIC}\n\n# Write report with full artifact records\n${CLI_FULL}`} label="terminal" />
       </div>
     </div>

@@ -258,7 +258,7 @@ class TestWorkflowDoctorCLI:
             "import aegis\n\n"
             "def _request_human_approval(s): return True\n\n"
             "def run():\n"
-            "    g = aegis.AIGC()\n"
+            "    g = aegis.AEGIS()\n"
             "    with g.open_session(policy_file=None) as s:\n"
             "        s.pause()\n"
             "        s.resume()\n"

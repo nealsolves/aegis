@@ -56,7 +56,7 @@ def _request_human_approval(summary):
     return True
 
 def run(policy_file=None):
-    governance = aegis.AIGC()
+    governance = aegis.AEGIS()
     with governance.open_session(policy_file=policy_file) as session:
         session.pause()
         approved = _request_human_approval("step 1 result")
@@ -78,7 +78,7 @@ from aegis import ProvenanceGate
 
 def run(policy_file=None):
     gate = ProvenanceGate(require_source_ids=True)
-    governance = aegis.AIGC(custom_gates=[gate])
+    governance = aegis.AEGIS(custom_gates=[gate])
     with governance.open_session(policy_file=policy_file) as session:
         pre = session.enforce_step_pre_call({
             "context": {"provenance": {"source_ids": ["doc-001"]}},
@@ -102,7 +102,7 @@ def _make_minimal_starter_dir(tmp_path: Path) -> Path:
 import aegis
 
 def run(policy_file=None):
-    governance = aegis.AIGC()
+    governance = aegis.AEGIS()
     with governance.open_session(policy_file=policy_file) as session:
         session.complete()
 """

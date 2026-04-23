@@ -1,4 +1,5 @@
 from aegis._internal.enforcement import (
+    AEGIS,
     AIGC,
     PreCallResult,
     enforce_invocation,
@@ -10,6 +11,7 @@ from aegis._internal.enforcement import (
 )
 
 __all__ = [
+    "AEGIS",
     "AIGC",
     "PreCallResult",
     "enforce_invocation",

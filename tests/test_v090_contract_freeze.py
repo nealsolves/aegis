@@ -68,10 +68,10 @@ def test_v090_pr05_contract_truth_passes_for_repo():
 def test_v090_golden_path_lists_are_frozen_in_plan_and_hld():
     module = _load_doc_parity_module()
 
-    plan_text = (REPO_ROOT / "docs/plans/AIGC V0.9.0 IMPLEMENTATION_PLAN.md").read_text(
+    plan_text = (REPO_ROOT / "docs/plans/AEGIS V0.9.0 IMPLEMENTATION_PLAN.md").read_text(
         encoding="utf-8"
     )
-    hld_text = (REPO_ROOT / "docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md").read_text(
+    hld_text = (REPO_ROOT / "docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md").read_text(
         encoding="utf-8"
     )
 
@@ -117,13 +117,13 @@ def test_v090_public_surface_includes_session_primitives():
     assert hasattr(aegis, "GovernanceSession"), "GovernanceSession must ship in PR-04"
     assert hasattr(aegis, "SessionPreCallResult"), "SessionPreCallResult must ship in PR-04"
 
-    # open_session is an INSTANCE METHOD on AIGC, NOT a module-level export
+    # open_session is an INSTANCE METHOD on AEGIS, NOT a module-level export
     assert not hasattr(aegis, "open_session"), (
         "open_session must not be a module-level export — "
-        "it is instance-scoped via AIGC.open_session()"
+        "it is instance-scoped via AEGIS.open_session()"
     )
-    assert callable(getattr(aegis.AIGC(), "open_session", None)), (
-        "AIGC instances must have open_session as a callable method"
+    assert callable(getattr(aegis.AEGIS(), "open_session", None)), (
+        "AEGIS instances must have open_session as a callable method"
     )
 
     # PR-08+ public additions not shipped in beta yet

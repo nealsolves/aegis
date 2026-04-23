@@ -22,7 +22,7 @@ class AIGCError(Exception):
 
 
 class GovernanceViolationError(AIGCError):
-    """Raised on any violation of AIGC invariant."""
+    """Raised on any violation of an AEGIS invariant."""
 
     def __init__(
         self,

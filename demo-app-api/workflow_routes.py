@@ -1,7 +1,7 @@
 """
 v0.9.0 workflow governance demo routes.
 
-Uses real AIGC.open_session() — no fake backend behavior.
+Uses real AEGIS.open_session() — no fake backend behavior.
 All imports are from the public aegis API only (no aegis._internal).
 """
 from __future__ import annotations
@@ -21,7 +21,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 import aegis.presets as presets
-from aegis import AIGC, JsonFileAuditSink
+from aegis import AEGIS, JsonFileAuditSink
 
 router = APIRouter(prefix="/api/workflow/v090", tags=["workflow-v090"])
 
@@ -152,7 +152,7 @@ class WorkflowRunRequest(BaseModel):
 def run_workflow(req: WorkflowRunRequest):
     if req.scenario == "minimal":
         policy_file = _get_policy_path("minimal")
-        governance = AIGC()
+        governance = AEGIS()
         with governance.open_session(policy_file=policy_file) as session:
             for prompt in ["Analyze the document.", "Summarize the findings."]:
                 pre = session.enforce_step_pre_call({
@@ -170,7 +170,7 @@ def run_workflow(req: WorkflowRunRequest):
 
     elif req.scenario == "standard":
         policy_file = _get_policy_path("standard")
-        governance = AIGC()
+        governance = AEGIS()
         with governance.open_session(policy_file=policy_file) as session:
             pre1 = session.enforce_step_pre_call({
                 "policy_file": policy_file,
@@ -231,7 +231,7 @@ def compare_workflows():
     policy_file = _get_policy_path("minimal")
     prompt = "Summarize the quarterly report."
 
-    governance = AIGC()
+    governance = AEGIS()
     with governance.open_session(policy_file=policy_file) as session:
         pre = session.enforce_step_pre_call({
             "policy_file": policy_file,
@@ -306,7 +306,7 @@ def trace_evidence():
     jsonl_file.close()
     try:
         sink = JsonFileAuditSink(jsonl_path)
-        governance = AIGC(sink=sink)
+        governance = AEGIS(sink=sink)
         prompts = ["Analyze the document.", "Summarize the findings."]
         with governance.open_session(policy_file=policy_file) as session:
             for prompt in prompts:

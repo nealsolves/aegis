@@ -1,6 +1,6 @@
 # AEGIS — Auditable Intelligence Governance Contract
 
-![AEGIS Banner](graphics/AEGIS_banner.png)
+![AEGIS Banner](<graphics/aegis banner.png>)
 
 AEGIS is a Python SDK for deterministic, fail-closed governance of AI model
 invocations. It validates every invocation against a declared policy, enforces
@@ -11,7 +11,7 @@ Governance in AEGIS is runtime enforcement, not documentation and not prompting.
 
 ## At a Glance
 
-- Package: `pip install aegis-sdk`
+- Package: `pip install aegis`
 - Import: `import aegis`
 - Current release: `v0.3.3` on `2026-04-10`
 - Current release scope: invocation governance plus workflow-aware provenance
@@ -91,7 +91,7 @@ release by release.
 | Release | Date | What changed for users |
 | ------- | ---- | ---------------------- |
 | `0.1.0` | 2026-02-16 | Initial SDK: policy loading, role allowlists, preconditions, output schema validation, postconditions, deterministic audit artifacts |
-| `0.1.1` to `0.1.3` | 2026-02-17 to 2026-02-23 | Installation and integration stabilization: context in audit artifacts, absolute policy paths, packaged schemas, public API guidance, `aegis-sdk` PyPI package name |
+| `0.1.1` to `0.1.3` | 2026-02-17 to 2026-02-23 | Installation and integration stabilization: context in audit artifacts, absolute policy paths, packaged schemas, public API guidance, `aegis` PyPI package name |
 | `0.2.0` | 2026-03-06 | SDK ergonomics and operability: instance-scoped `AEGIS`, typed preconditions, exception sanitization, policy caching, sink failure modes, audit schema `v1.2`, `InvocationBuilder`, AST-based guards, policy CLI |
 | `0.3.0` | 2026-03-15 | Governance hardening: risk scoring, artifact signing, audit chain utility, pluggable `PolicyLoader`, policy dates, telemetry, policy testing, compliance export, custom gate isolation and metadata preservation |
 | `0.3.1` | 2026-04-04 | Demo parity release: React demo and FastAPI backend became the maintained hands-on surface for all 7 labs |
@@ -103,7 +103,7 @@ For the full change log, use [CHANGELOG.md](CHANGELOG.md).
 ## Installation
 
 ```bash
-pip install aegis-sdk
+pip install aegis
 ```
 
 Editable install from source:

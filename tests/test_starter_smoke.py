@@ -112,7 +112,7 @@ class TestRegulatedStarterSmoke:
         )
 
         gate = ProvenanceGate(require_source_ids=True)
-        governance = aegis.AIGC(custom_gates=[gate])
+        governance = aegis.AEGIS(custom_gates=[gate])
 
         with pytest.raises(CustomGateViolationError):
             with governance.open_session(
