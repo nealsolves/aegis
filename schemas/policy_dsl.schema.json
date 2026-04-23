@@ -248,7 +248,30 @@
           "properties": {
             "local": {"type": "object", "additionalProperties": true},
             "bedrock": {"type": "object", "additionalProperties": true},
-            "a2a": {"type": "object", "additionalProperties": true}
+            "a2a": {"type": "object", "additionalProperties": true},
+            "openai_agents": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "OpenAI Agents SDK adapter constraints (source-only beta)",
+              "properties": {
+                "require_trace": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "allow_hosted_tools": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "allow_agent_as_tool": {
+                  "type": "boolean",
+                  "default": true
+                },
+                "require_unique_agent_names": {
+                  "type": "boolean",
+                  "default": true
+                }
+              }
+            }
           }
         }
       }

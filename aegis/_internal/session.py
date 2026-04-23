@@ -223,6 +223,11 @@ class GovernanceSession:
         # for the current step. Cleared in enforce_step_post_call on success.
         self._escalation_in_progress: bool = False
 
+        # Adapter-managed step state (keyed by token_id).  Populated by
+        # external adapters (e.g. OpenAIAgentsAdapter) to track dynamic tool
+        # calls and interruption checkpoints for a given pending step.
+        self._adapter_step_states: dict[str, dict[str, Any]] = {}
+
     # ------------------------------------------------------------------
     # Public properties
     # ------------------------------------------------------------------
@@ -520,6 +525,93 @@ class GovernanceSession:
                     "this_session_id": self._session_id,
                 },
             )
+
+    def authorize_step_tool_call(
+        self,
+        session_result: SessionPreCallResult,
+        *,
+        tool_name: str,
+        tool_call_id: str | None = None,
+    ) -> None:
+        """Authorize a dynamic tool call within an open governed step (adapter seam).
+
+        Called by adapters (e.g. ``OpenAIAgentsAdapter``) for each intercepted
+        tool call.  Enforces the session tool-call budget and records summary
+        evidence.  Does NOT enforce per-step tool allow-lists — the adapter is
+        responsible for surface-level filtering before calling this method.
+
+        :param session_result: Token from ``enforce_step_pre_call``.
+        :param tool_name: Name of the tool being authorized.
+        :param tool_call_id: Optional opaque call identifier for evidence.
+        :raises SessionStateError: if the session is not OPEN or PAUSED.
+        :raises WorkflowSessionTokenInvalidError: if the token is not registered.
+        :raises WorkflowToolBudgetExceededError: if the session budget is exhausted.
+        """
+        self._assert_open()
+        self._assert_owns(session_result)
+
+        if session_result._token_id not in self._pending_results:
+            from aegis._internal.errors import WorkflowSessionTokenInvalidError
+            raise WorkflowSessionTokenInvalidError(
+                "Token not registered in this session",
+                details={"token_id": session_result._token_id},
+            )
+
+        # Enforce session-level tool-call budget (real-time)
+        projected = self._total_tool_calls_consumed + 1
+        if (
+            self._max_total_tool_calls is not None
+            and projected > self._max_total_tool_calls
+        ):
+            from aegis._internal.errors import WorkflowToolBudgetExceededError
+            raise WorkflowToolBudgetExceededError(
+                f"Session tool-call budget exceeded (dynamic): "
+                f"max_total_tool_calls={self._max_total_tool_calls}, "
+                f"current={self._total_tool_calls_consumed}",
+                details={
+                    "session_id": self._session_id,
+                    "max_total_tool_calls": self._max_total_tool_calls,
+                    "total_tool_calls_consumed": self._total_tool_calls_consumed,
+                    "tool_name": tool_name,
+                },
+            )
+
+        self._total_tool_calls_consumed += 1
+
+        # Update adapter-managed state (summary evidence only)
+        adapter_state = self._adapter_step_states.get(session_result._token_id)
+        if adapter_state is not None:
+            adapter_state["dynamic_tool_calls_count"] += 1
+            adapter_state["dynamic_tool_calls"].append({
+                "tool_name": tool_name,
+                "tool_call_id": tool_call_id,
+                "authorized_at": int(time.time()),
+            })
+
+    def _discard_pending_step(
+        self,
+        session_result: SessionPreCallResult,
+        *,
+        rollback_authorization: bool = False,
+    ) -> None:
+        """Internal adapter seam: invalidate a pending step without Phase B."""
+        self._assert_open()
+        self._assert_owns(session_result)
+
+        token_id = session_result._token_id
+        if token_id in self._consumed_token_ids:
+            return
+
+        entry = self._pending_results.pop(token_id, None)
+        self._adapter_step_states.pop(token_id, None)
+        if entry is None:
+            return
+
+        object.__setattr__(session_result, "_consumed", True)
+        self._consumed_token_ids.add(token_id)
+
+        if rollback_authorization and self._authorized_step_count > 0:
+            self._authorized_step_count -= 1
 
     def enforce_step_pre_call(
         self,
@@ -950,11 +1042,16 @@ class GovernanceSession:
         self,
         session_result: SessionPreCallResult,
         output: dict[str, Any],
+        *,
+        step_metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Enforce Phase B governance for one workflow step.
 
         :param session_result: Token from enforce_step_pre_call
         :param output: Model output dict
+        :param step_metadata: Optional adapter-supplied metadata stored under
+            ``steps[i]["metadata"]`` in the workflow artifact (additive only;
+            does not alter existing step keys).
         :return: Invocation PASS audit artifact
         """
         self._assert_open()
@@ -1009,11 +1106,14 @@ class GovernanceSession:
 
         # Step record uses REGISTRY values — never trusts token fields after verification
         inv_checksum = _checksum(inv_artifact)
-        self._steps.append({
+        step_record: dict[str, Any] = {
             "step_id": entry["step_id"],
             "participant_id": entry["participant_id"],
             "invocation_artifact_checksum": inv_checksum,
-        })
+        }
+        if step_metadata is not None:
+            step_record["metadata"] = step_metadata
+        self._steps.append(step_record)
         self._step_policy_files.append(entry["effective_policy_file"])
 
         # Advance tracking state for sequence, transitions, and handoffs
