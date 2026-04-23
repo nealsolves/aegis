@@ -1,8 +1,8 @@
-# PR Context — `v0.9.0` PR-09 exports-and-ops
+# PR Context — `v0.9.0` PR-10c openai-agents-adapter
 
-Date: 2026-04-19
-Status: `feat/v0.9-09-exports-and-ops` contains PR-01 through PR-09
-Active branch: `feat/v0.9-09-exports-and-ops`
+Date: 2026-04-23
+Status: `feat/v0.9-10-openai-agents-adapter` contains PR-01 through PR-10c
+Active branch: `feat/v0.9-10-openai-agents-adapter`
 
 ---
 
@@ -34,7 +34,7 @@ no further public-surface work proceeds until the default path is repaired.
 
 ## Current State
 
-- PR-01 through PR-09 are complete on local `develop`.
+- PR-01 through PR-10c are complete on local `develop`.
 - The source-only `v0.9.0` beta path currently ships:
   - `AEGIS.open_session(...)`
   - `GovernanceSession`
@@ -45,6 +45,9 @@ no further public-surface work proceeds until the default path is repaired.
   - `aegis workflow doctor`
   - `aegis workflow trace`
   - `aegis workflow export`
+  - `BedrockTraceAdapter` (optional, `aegis[bedrock]`)
+  - `A2AAdapter` (optional, `aegis[a2a]`)
+  - `OpenAIAgentsAdapter` (optional, `aegis[openai-agents]`)
 - The default adopter path succeeds without Bedrock, A2A, or the OpenAI Agents SDK.
 - `ValidatorHook` is implemented as an internal engine capability in PR-08. It
   is not a public beta surface.
@@ -56,8 +59,11 @@ no further public-surface work proceeds until the default path is repaired.
 - Public examples, docs, starters, presets, and demo code must use public
   `aegis` imports only and must not import from `aegis._internal`.
 - `aegis workflow trace` and `aegis workflow export` shipped in PR-09.
-- `AgentIdentity`, `AgentCapabilityManifest`, `BedrockTraceAdapter`,
-  `A2AAdapter`, and `OpenAIAgentsAdapter` remain later-track surfaces.
+- `BedrockTraceAdapter`, `A2AAdapter`, and `OpenAIAgentsAdapter` are source-only
+  beta surfaces behind optional extras (`aegis[bedrock]`, `aegis[a2a]`,
+  `aegis[openai-agents]`). They are not re-exported from the top-level `aegis`
+  package.
+- `AgentIdentity` and `AgentCapabilityManifest` remain out-of-scope for v0.9.0.
 
 ## Verified PR-07 / PR-08 Outcomes
 
@@ -80,11 +86,38 @@ PR-09 shipped:
 - `aegis workflow export` — operator and audit export modes
 - operator-facing visibility and portability polish
 
-## Next PR
+## PR-10a Outcomes
 
-PR-10a (`feat/v0.9-10-bedrock-adapter`) is the next branch:
+PR-10a shipped:
 
 - `BedrockTraceAdapter` — alias-backed identity, fail-closed on missing trace
-- optional Bedrock adapter track
-- PR-10b follows with `A2AAdapter`
-- PR-10c follows with `OpenAIAgentsAdapter` for the `openai-agents` runtime
+- optional Bedrock adapter (`aegis[bedrock]`)
+
+## PR-10b Outcomes
+
+PR-10b shipped:
+
+- `A2AAdapter` — strict `TASK_STATE_*` validation, gRPC rejection
+- optional A2A adapter (`aegis[a2a]`)
+
+## PR-10c Outcomes
+
+PR-10c shipped:
+
+- `OpenAIAgentsAdapter` — governed binding for `openai-agents`, fail-closed unsupported-surface rules
+- `OpenAIAgentsParticipantBinding`, `OpenAIAgentsPreparedStep`, `OpenAIAgentsPendingApproval`, `OpenAIAgentsTracingProcessor`
+- `GovernanceSession.authorize_step_tool_call` — real-time tool-call budget enforcement and evidence recording
+- `GovernanceSession.enforce_step_post_call` extended with `step_metadata` param
+- `workflow.protocol_constraints.openai_agents` in policy DSL schema
+- `step_metadata` pass-through in `workflow trace` and `workflow export`
+- Reference doc at `docs/reference/external/OPENAI_AGENTS_ADAPTER.md`
+- optional OpenAI Agents SDK extra (`aegis[openai-agents]`)
+
+## Next PR
+
+PR-11 (`feat/v0.9-11-beta-freeze` → `release/v0.9.0`) is the final step:
+
+- Public API snapshot tests
+- Full CI matrix
+- All stop-ship gates
+- Triggers `origin/main` PR
