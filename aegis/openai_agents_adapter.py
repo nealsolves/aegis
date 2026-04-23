@@ -703,7 +703,12 @@ class OpenAIAgentsAdapter:
             try:
                 agent.tools = wrapped
             except (AttributeError, TypeError):
-                pass
+                logger.warning(
+                    "OpenAIAgentsAdapter: could not replace tools on agent %r — "
+                    "governed wrappers were not applied; tool budget enforcement "
+                    "will not fire for this agent",
+                    getattr(agent, "name", agent),
+                )
 
     def pause_step(
         self,
