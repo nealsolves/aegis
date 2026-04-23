@@ -272,7 +272,7 @@ def governed(
     pre_call_enforcement: bool = _UNSET,  # type: ignore[assignment]
 ) -> Callable:
     """
-    Decorator factory that wraps a function with AIGC governance enforcement.
+    Decorator factory that wraps a function with AEGIS governance enforcement.
 
     Since v0.3.3, *pre_call_enforcement* defaults to ``True`` (split mode).
 
@@ -783,7 +783,7 @@ Expected: 8 commits (1 runtime + 7 docs).
 | `CHANGELOG.md` updated | Task 4 |
 | `docs/INTEGRATION_GUIDE.md` updated | Task 6 |
 | `docs/PUBLIC_INTEGRATION_CONTRACT.md` updated | Task 7 |
-| `docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md` updated | Not needed — no `pre_call_enforcement` or split mode mentions in that file |
+| `docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md` updated | Not needed — no `pre_call_enforcement` or split mode mentions in that file |
 | `docs/architecture/ARCHITECTURAL_INVARIANTS.md` updated | Task 8 |
 
 **Placeholder scan:** No TBD, TODO, or "similar to" patterns in this plan.

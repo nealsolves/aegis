@@ -36,7 +36,7 @@ no further public-surface work proceeds until the default path is repaired.
 
 - PR-01 through PR-09 are complete on local `develop`.
 - The source-only `v0.9.0` beta path currently ships:
-  - `AIGC.open_session(...)`
+  - `AEGIS.open_session(...)`
   - `GovernanceSession`
   - `SessionPreCallResult`
   - `aegis workflow init`
@@ -51,7 +51,7 @@ no further public-surface work proceeds until the default path is repaired.
 
 ## Beta Contract Notes
 
-- Workflow adoption is always instance-scoped through `AIGC.open_session(...)`.
+- Workflow adoption is always instance-scoped through `AEGIS.open_session(...)`.
 - Invocation artifacts remain separate from workflow/session artifacts.
 - Public examples, docs, starters, presets, and demo code must use public
   `aegis` imports only and must not import from `aegis._internal`.

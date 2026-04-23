@@ -37,7 +37,7 @@ sequence of artifacts intact and unmodified?"
 ## Decision
 
 Introduce optional hash-chain linking between consecutive audit artifacts
-within an `AIGC` instance. Each artifact optionally includes
+within an `AEGIS` instance. Each artifact optionally includes
 `previous_audit_checksum`, creating a singly-linked chain that makes
 deletions and insertions detectable.
 
@@ -72,13 +72,13 @@ The first artifact in a chain has `previous_audit_checksum: null` and
   bytes (null for the first artifact in a chain).
 - `chain_index`: Monotonically increasing integer within a chain. Enables
   gap detection without reading every artifact.
-- `chain_id`: UUID identifying the `AIGC` instance that produced the chain.
+- `chain_id`: UUID identifying the `AEGIS` instance that produced the chain.
   Enables correlation when multiple instances write to the same sink.
 
 ### Opt-in activation
 
 ```python
-aegis = AIGC(
+aegis = AEGIS(
     sink=JsonFileAuditSink("audit.jsonl"),
     chain_artifacts=True,  # enables hash chaining
 )
@@ -111,7 +111,7 @@ result = verify_chain(artifacts)
 
 ## Options Considered
 
-### Option A: Singly-linked hash chain on AIGC instance (chosen)
+### Option A: Singly-linked hash chain on AEGIS instance (chosen)
 
 Pros:
 
@@ -123,7 +123,7 @@ Pros:
 
 Cons:
 
-- Chain breaks if AIGC instance restarts (new chain starts)
+- Chain breaks if AEGIS instance restarts (new chain starts)
 - Does not prevent reordering within a chain break
 - Single-instance scope — cross-instance chains not supported
 
@@ -175,7 +175,7 @@ Cons:
     (separate concern) adds per-artifact authenticity
   - `previous_audit_checksum` creates a dependency between consecutive
     artifacts — parallel enforcement must serialize chain updates
-  - Mitigation: chain update is protected by `threading.Lock` on the AIGC
+  - Mitigation: chain update is protected by `threading.Lock` on the AEGIS
     instance (already required for counter state)
 
 ---

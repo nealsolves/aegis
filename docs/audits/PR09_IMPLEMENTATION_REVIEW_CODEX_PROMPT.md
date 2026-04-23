@@ -5,7 +5,7 @@ the PR-09 implementation, with the review written to `docs/audits` as
 Markdown.
 
 ```text
-Review the PR-09 implementation in the local AIGC repository.
+Review the PR-09 implementation in the local AEGIS repository.
 
 Repository root:
 /Users/neal/Documents/_Shenanigans/_myProjects/aegis
@@ -46,12 +46,12 @@ Working rules:
 Canonical review sources:
 - docs/dev/pr_context.md
 - RELEASE_GATES.md
-- docs/plans/AIGC V0.9.0 IMPLEMENTATION_PLAN.md
+- docs/plans/AEGIS V0.9.0 IMPLEMENTATION_PLAN.md
 - implementation_status.md
 - CLAUDE.md
-- docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md
+- docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md
 - docs/architecture/ARCHITECTURAL_INVARIANTS.md
-- docs/architecture/AIGC_THREAT_MODEL.md
+- docs/architecture/AEGIS_THREAT_MODEL.md
 - docs/PUBLIC_INTEGRATION_CONTRACT.md
 - docs/reference/WORKFLOW_CLI.md
 - docs/reference/OPERATIONS_RUNBOOK.md
@@ -63,7 +63,7 @@ Expected PR-09 scope:
 - reconstruct workflow timelines from workflow artifacts plus invocation evidence using checksum correlation
 - support operator and audit export modes with integrity metadata and verification guidance
 - surface sink failures and incomplete exports explicitly, without pretending they are enforcement failures
-- keep observability extras optional and avoid turning AIGC into a monitoring platform
+- keep observability extras optional and avoid turning AEGIS into a monitoring platform
 - keep audit export compliance-focused and avoid leaking raw invocation payloads there
 - provide an operator-facing evidence path that uses real artifacts rather than fabricated demo data
 - advance the release packet from "planned for PR-09" to "shipped in PR-09" on the review branch without weakening earlier PR truth checks
@@ -128,7 +128,7 @@ Minimum commands to run:
 - `git diff --stat develop...feat/v0.9-09-exports-and-ops`
 - `git diff --name-only develop...feat/v0.9-09-exports-and-ops`
 - `git diff develop...feat/v0.9-09-exports-and-ops -- aegis/_internal/cli.py aegis/_internal/workflow_trace.py aegis/_internal/workflow_export.py aegis/_internal/workflow_lint.py aegis/schemas/workflow_artifact.schema.json scripts/check_doc_parity.py demo-app-api/workflow_routes.py docs/reference/WORKFLOW_CLI.md docs/reference/OPERATIONS_RUNBOOK.md`
-- `rg -n "workflow trace|workflow export|reserved for PR-09|unshipped until PR-09|planned-only|Deferred To PR-09" README.md CLAUDE.md docs/dev/pr_context.md RELEASE_GATES.md implementation_status.md docs/PUBLIC_INTEGRATION_CONTRACT.md docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md docs/reference/WORKFLOW_CLI.md docs/reference/OPERATIONS_RUNBOOK.md`
+- `rg -n "workflow trace|workflow export|reserved for PR-09|unshipped until PR-09|planned-only|Deferred To PR-09" README.md CLAUDE.md docs/dev/pr_context.md RELEASE_GATES.md implementation_status.md docs/PUBLIC_INTEGRATION_CONTRACT.md docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md docs/reference/WORKFLOW_CLI.md docs/reference/OPERATIONS_RUNBOOK.md`
 - `pytest -q tests/test_workflow_trace.py tests/test_workflow_export.py tests/test_v090_contract_freeze.py tests/test_doc_parity_v090_truth.py tests/test_workflow_doctor.py tests/test_cli.py demo-app-api/tests/test_workflow_routes.py`
 
 Specific review checklist:
@@ -171,7 +171,7 @@ Specific review checklist:
 - Check whether demo route behavior is actually covered by tests; if not, call that out explicitly
 
 6. Release packet and public-surface drift
-- Explicitly inspect `CLAUDE.md`, `docs/dev/pr_context.md`, `RELEASE_GATES.md`, `implementation_status.md`, `docs/PUBLIC_INTEGRATION_CONTRACT.md`, `docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md`, and `README.md`
+- Explicitly inspect `CLAUDE.md`, `docs/dev/pr_context.md`, `RELEASE_GATES.md`, `implementation_status.md`, `docs/PUBLIC_INTEGRATION_CONTRACT.md`, `docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md`, and `README.md`
 - Verify the PR-09 branch updates the release packet so trace/export are no longer described as deferred, reserved, or planned-only
 - Verify the public integration contract and architecture docs do not contradict the branch's actual CLI surface
 - Verify doc-parity and contract-freeze checks still protect the release packet after PR-09 lands

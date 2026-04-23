@@ -13,11 +13,11 @@
   - `git diff --stat develop...feat/v0.9-08-engine-hardening`
   - `git diff --name-only develop...feat/v0.9-08-engine-hardening`
   - `git diff develop...feat/v0.9-08-engine-hardening -- aegis/_internal/session.py aegis/_internal/policy_loader.py aegis/_internal/errors.py aegis/_internal/validator_hook.py aegis/_internal/workflow_doctor.py`
-  - `rg -n "PR-08|engine hardening|validator hook|approval checkpoint|max_steps|max_total_tool_calls|required_sequence|allowed_transitions|participants|handoffs|protocol_constraints|workflow doctor" docs/dev/pr_context.md RELEASE_GATES.md "docs/plans/AIGC V0.9.0 IMPLEMENTATION_PLAN.md" implementation_status.md CLAUDE.md docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md docs/architecture/ARCHITECTURAL_INVARIANTS.md docs/architecture/ENFORCEMENT_PIPELINE.md docs/PUBLIC_INTEGRATION_CONTRACT.md`
+  - `rg -n "PR-08|engine hardening|validator hook|approval checkpoint|max_steps|max_total_tool_calls|required_sequence|allowed_transitions|participants|handoffs|protocol_constraints|workflow doctor" docs/dev/pr_context.md RELEASE_GATES.md "docs/plans/AEGIS V0.9.0 IMPLEMENTATION_PLAN.md" implementation_status.md CLAUDE.md docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md docs/architecture/ARCHITECTURAL_INVARIANTS.md docs/architecture/ENFORCEMENT_PIPELINE.md docs/PUBLIC_INTEGRATION_CONTRACT.md`
   - `diff -u aegis/schemas/policy_dsl.schema.json schemas/policy_dsl.schema.json`
   - `pytest -q tests/test_engine_hardening.py tests/test_approval_checkpoints.py tests/test_budget_accounting.py tests/test_validator_hook.py tests/test_sequence_enforcement.py tests/test_transition_enforcement.py tests/test_participant_enforcement.py tests/test_handoff_enforcement.py tests/test_protocol_enforcement.py tests/test_escalation_enforcement.py tests/test_workflow_doctor.py tests/test_v090_contract_freeze.py tests/test_session_core.py tests/test_workflow_lint.py`
   - `PYTHONPATH=/Users/neal/Documents/_Shenanigans/_myProjects/aegis/.worktrees/feat-v0.9-08-engine-hardening pytest -q tests/test_engine_hardening.py tests/test_approval_checkpoints.py tests/test_budget_accounting.py tests/test_validator_hook.py tests/test_sequence_enforcement.py tests/test_transition_enforcement.py tests/test_participant_enforcement.py tests/test_handoff_enforcement.py tests/test_protocol_enforcement.py tests/test_escalation_enforcement.py tests/test_workflow_doctor.py tests/test_v090_contract_freeze.py tests/test_session_core.py tests/test_workflow_lint.py`
-  - `python -c "import inspect, aegis; print('open_session', inspect.signature(aegis.AIGC.open_session)); print('GovernanceSession', inspect.signature(aegis.GovernanceSession))"`
+  - `python -c "import inspect, aegis; print('open_session', inspect.signature(aegis.AEGIS.open_session)); print('GovernanceSession', inspect.signature(aegis.GovernanceSession))"`
   - Reproduction snippets for denied-checkpoint resume bypass, unknown-hook fail-open, and `required_sequence` reorder under `replace`
 
 ## Findings
@@ -48,16 +48,16 @@
 
 ### F-04 — Medium — `validator_hooks` leaks through the public `GovernanceSession` constructor
 - Location: `aegis/_internal/session.py:134`, `aegis/session.py:3`, `aegis/__init__.py:40`, `docs/PUBLIC_INTEGRATION_CONTRACT.md:28`
-- Issue: `AIGC.open_session()` correctly omits `validator_hooks`, but the publicly exported `aegis.GovernanceSession` constructor still accepts `validator_hooks: list[Any] | None = None`.
+- Issue: `AEGIS.open_session()` correctly omits `validator_hooks`, but the publicly exported `aegis.GovernanceSession` constructor still accepts `validator_hooks: list[Any] | None = None`.
 - Why it matters: The public contract says `ValidatorHook` remains planned-only and must not ship through public package exports or instance API yet. Exposing hook injection on a public constructor is public-surface drift even though the factory method stays clean.
-- Evidence: `aegis/session.py` and `aegis/__init__.py` re-export `GovernanceSession` publicly, and `inspect.signature(aegis.GovernanceSession)` on the review branch prints `(aegis, session_id, policy_file, metadata, validator_hooks=None)`. The same command shows `AIGC.open_session(...)` does not expose the parameter.
+- Evidence: `aegis/session.py` and `aegis/__init__.py` re-export `GovernanceSession` publicly, and `inspect.signature(aegis.GovernanceSession)` on the review branch prints `(aegis, session_id, policy_file, metadata, validator_hooks=None)`. The same command shows `AEGIS.open_session(...)` does not expose the parameter.
 - Recommended fix: Remove `validator_hooks` from the public constructor surface, or make direct construction internal-only while keeping hook wiring entirely behind non-public APIs.
-- Verification gap or confirming test: `tests/test_validator_hook.py:24-31` only checks `AIGC.open_session()` and never inspects the public `aegis.GovernanceSession` signature.
+- Verification gap or confirming test: `tests/test_validator_hook.py:24-31` only checks `AEGIS.open_session()` and never inspects the public `aegis.GovernanceSession` signature.
 
 ## Open Questions / Assumptions
 
 - I treated the prompt’s explicit PR-08 fix requirement "fail-closed normalization for unknown hook decisions" as authoritative. The canonical docs describe validator hooks as fail-closed but do not spell out invalid-decision normalization in the same detail.
-- I treated the exported `aegis.GovernanceSession` constructor as public API because it is re-exported from `aegis` and documented as a public workflow primitive, even though the preferred entrypoint is `AIGC.open_session()`.
+- I treated the exported `aegis.GovernanceSession` constructor as public API because it is re-exported from `aegis` and documented as a public workflow primitive, even though the preferred entrypoint is `AEGIS.open_session()`.
 - I did not find evidence that the frozen first-user reason-code lists now include `WORKFLOW_STEP_BUDGET_EXCEEDED` or `WORKFLOW_HOOK_DENIED`; the branch-specific freeze tests passed once the review worktree was on `PYTHONPATH`.
 
 ## Residual Test Gaps

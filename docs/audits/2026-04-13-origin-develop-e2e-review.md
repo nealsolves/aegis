@@ -1,4 +1,4 @@
-# AIGC `origin/develop` End-to-End Functionality and Doc Alignment Review
+# AEGIS `origin/develop` End-to-End Functionality and Doc Alignment Review
 
 - **Audited commit (`origin/develop`)**: `af0e3fb267fbe4404f33cdf22ebf528480f6aea1`
 - **Audit date**: `2026-04-13`
@@ -8,7 +8,7 @@
 
 - Public SDK API exported from `aegis/__init__.py`
 - Unified and split enforcement flows (sync + async)
-- `AIGC` instance API and `@governed` defaults
+- `AEGIS` instance API and `@governed` defaults
 - `InvocationBuilder`
 - Policy loading/composition/date validation
 - Guards, conditions, role validation, tool constraints, schema validation, postconditions, risk scoring
@@ -34,7 +34,7 @@
 Primary executable verification run during audit:
 
 - `python scripts/check_doc_parity.py`
-- `pytest -q tests/test_public_api.py tests/test_enforcement_pipeline.py tests/test_split_enforcement.py tests/test_split_enforcement_aigc_instance.py tests/test_split_enforcement_edge_cases.py tests/test_async_enforcement.py tests/test_decorators.py tests/test_decorators_split_mode.py tests/test_governed_default_flip.py tests/test_builder.py`
+- `pytest -q tests/test_public_api.py tests/test_enforcement_pipeline.py tests/test_split_enforcement.py tests/test_split_enforcement_aegis_instance.py tests/test_split_enforcement_edge_cases.py tests/test_async_enforcement.py tests/test_decorators.py tests/test_decorators_split_mode.py tests/test_governed_default_flip.py tests/test_builder.py`
 - `pytest -q tests/test_policy_loader.py tests/test_policy_composition.py tests/test_policy_dates.py tests/test_conditions.py tests/test_guards.py tests/test_tools.py tests/test_validation.py tests/test_risk_scoring.py tests/test_custom_gates.py tests/test_custom_gate_failure_mapping.py tests/test_custom_gate_exception_artifacts.py tests/test_custom_gate_metadata.py`
 - `pytest -q tests/test_audit_artifact_contract.py tests/test_audit_artifact_split_metadata.py tests/test_audit_sinks.py tests/test_signing.py tests/test_audit_chain.py tests/test_audit_lineage.py tests/test_audit_provenance.py tests/test_risk_history.py tests/test_cli.py tests/test_cli_lineage.py tests/test_compliance_export.py tests/test_chain_schema_compliance.py tests/test_checksum_determinism.py`
 - `pytest -q tests` (in `demo-app-api/`)
@@ -52,8 +52,8 @@ Primary executable verification run during audit:
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | F-001 | Release framing (`PROJECT.md`) | High | DOC_BUG | The shipped package and changelog indicate `0.3.3` is current. | `PROJECT.md` should not claim `0.3.2` as current. | `aegis/__init__.py:92` (`__version__ = "0.3.3"`); `pyproject.toml:9`; `CHANGELOG.md:10`. | Pre-fix evidence: `PROJECT.md:205-206` said `0.3.2` was current. | Runtime/package metadata and changelog are authoritative release truth; this was stale narrative wording. | Update release-history wording so `0.3.3` is current and `0.3.2` is historical. | Fixed |
 | F-002 | Release framing (`PROJECT.md`) | Medium | DOC_BUG | `0.3.3` features are already present and tested in this commit. | `PROJECT.md` should not mark `0.3.3` as "in progress" if shipped. | `aegis/_internal/enforcement.py` includes lineage/provenance/risk-history integrations; tests `tests/test_audit_lineage.py`, `tests/test_audit_provenance.py`, `tests/test_risk_history.py` pass. | Pre-fix evidence: `PROJECT.md:229` labeled `0.3.3` “in progress”. | Executable surface and release metadata show shipped behavior; this wording was stale and misleading. | Change heading/body language from in-progress to released state. | Fixed |
-| F-003 | Audit artifact contract wording (`AIGC_HIGH_LEVEL_DESIGN.md`) | High | DOC_BUG | FAIL paths also emit audit artifacts and attach them to raised exceptions. | Design doc should state artifact generation for every enforcement attempt (PASS and FAIL). | `aegis/_internal/enforcement.py:968-985`, `1119-1133` (FAIL artifact generation/attachment). | Pre-fix evidence: `docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md:60`, `:735` described “successful enforcement” only. | Runtime behavior is explicit and tested; “successful only” understated the forensic contract. | Replace “successful enforcement” wording with “every enforcement attempt; PASS returned, FAIL attached to exception”. | Fixed |
-| F-004 | Design doc metadata header (`AIGC_HIGH_LEVEL_DESIGN.md`) | Low | DOC_BUG | Document body includes `v0.3.3`/schema `v1.4` content, but header still said `Version: 1.3.0` and older update date. | Header metadata should match the current document state. | `aegis/schemas/audit_artifact.schema.json` supports `schema_version` values including `v1.4`; provenance support in runtime/tests. | Pre-fix evidence: `docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md:5` had stale metadata. | Internal doc inconsistency can create false assumptions about currency/authority. | Update version and last-updated header metadata to current audit date and schema line. | Fixed |
+| F-003 | Audit artifact contract wording (`AEGIS_HIGH_LEVEL_DESIGN.md`) | High | DOC_BUG | FAIL paths also emit audit artifacts and attach them to raised exceptions. | Design doc should state artifact generation for every enforcement attempt (PASS and FAIL). | `aegis/_internal/enforcement.py:968-985`, `1119-1133` (FAIL artifact generation/attachment). | Pre-fix evidence: `docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md:60`, `:735` described “successful enforcement” only. | Runtime behavior is explicit and tested; “successful only” understated the forensic contract. | Replace “successful enforcement” wording with “every enforcement attempt; PASS returned, FAIL attached to exception”. | Fixed |
+| F-004 | Design doc metadata header (`AEGIS_HIGH_LEVEL_DESIGN.md`) | Low | DOC_BUG | Document body includes `v0.3.3`/schema `v1.4` content, but header still said `Version: 1.3.0` and older update date. | Header metadata should match the current document state. | `aegis/schemas/audit_artifact.schema.json` supports `schema_version` values including `v1.4`; provenance support in runtime/tests. | Pre-fix evidence: `docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md:5` had stale metadata. | Internal doc inconsistency can create false assumptions about currency/authority. | Update version and last-updated header metadata to current audit date and schema line. | Fixed |
 | F-005 | Public integration contract example correctness | Medium | DOC_BUG | Example code referenced `PolicyLoadError` and `yaml.safe_load` without importing them. | Public contract examples should be copy-paste runnable as shown. | `aegis/__init__.py` exports `PolicyLoadError`; runtime loader interface expects real parse path. | Pre-fix evidence: `docs/PUBLIC_INTEGRATION_CONTRACT.md:727-739` omitted imports for used symbols. | This was a direct example defect, not runtime behavior defect. | Add `import yaml` and `PolicyLoadError` import in the snippet. | Fixed |
 | F-006 | SDK public API surface | Medium | NO_ISSUE | Exported symbols and wrappers align with docs/test expectations. | Public API should expose stable symbols in `aegis/__init__.py`. | `aegis/__init__.py`; `tests/test_public_api.py` pass. | `README.md`, `docs/USAGE.md`, `docs/PUBLIC_INTEGRATION_CONTRACT.md` API examples align. | Executable tests validate imports/entry points and wrapper behavior. | None. | Verified |
 | F-007 | Unified/split enforcement + `@governed` default | Medium | NO_ISSUE | Split mode is default decorator path; unified still supported with deprecation warning path. | Docs claim split-default in `v0.3.3` and legacy unified opt-in. | `aegis/_internal/enforcement.py` decorator logic; tests `tests/test_decorators_split_mode.py`, `tests/test_governed_default_flip.py`, `tests/test_split_enforcement*.py`. | `README.md` and integration docs migration notes describe default flip. | Behavior and docs are aligned; no contract breach observed. | None. | Verified |
@@ -65,7 +65,7 @@ Primary executable verification run during audit:
 ## Prescriptive remediation plan
 
 1. Fix release-state inconsistencies in `PROJECT.md` (`F-001`, `F-002`) to prevent incorrect release expectations.
-2. Correct artifact contract wording and header metadata in `docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md` (`F-003`, `F-004`).
+2. Correct artifact contract wording and header metadata in `docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md` (`F-003`, `F-004`).
 3. Repair import completeness in `docs/PUBLIC_INTEGRATION_CONTRACT.md` example (`F-005`).
 4. Re-run doc parity checker and focused tests touching affected surfaces.
 5. Update this report with post-fix status and remediation notes.
@@ -74,6 +74,6 @@ Primary executable verification run during audit:
 
 - `F-001` fixed in `PROJECT.md` by changing `0.3.2` language from “current release” to historical framing (`PROJECT.md:205-206`) and clarifying diagram baseline notes (`PROJECT.md:269-272`).
 - `F-002` fixed in `PROJECT.md` by removing “in progress” and adding explicit `0.3.3` release date (`PROJECT.md:229-235`).
-- `F-003` fixed in `docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md` by correcting artifact semantics in design principles and glossary (`:60`, `:735`).
-- `F-004` fixed in `docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md` by updating header metadata to `Version: 1.4.0` and `Last Updated: 2026-04-13` (`:5`).
+- `F-003` fixed in `docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md` by correcting artifact semantics in design principles and glossary (`:60`, `:735`).
+- `F-004` fixed in `docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md` by updating header metadata to `Version: 1.4.0` and `Last Updated: 2026-04-13` (`:5`).
 - `F-005` fixed in `docs/PUBLIC_INTEGRATION_CONTRACT.md` by adding missing imports to the policy-loader snippet (`:728-730`).

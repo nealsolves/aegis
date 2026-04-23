@@ -17,7 +17,7 @@
 | Source of truth | complete | Canonical docs, release packet, and parity checks are aligned |
 | Contract freeze | complete | Lifecycle, artifact separation, and instance-scoped workflow entry are frozen |
 | Golden-path contract | complete | Beta CLI inventory, starter profiles, docs order, and public-import rules are frozen |
-| Minimal session flow | complete | `GovernanceSession`, `AIGC.open_session(...)`, and `SessionPreCallResult` ship on `develop` |
+| Minimal session flow | complete | `GovernanceSession`, `AEGIS.open_session(...)`, and `SessionPreCallResult` ship on `develop` |
 | Starters and migration | complete | `aegis workflow init`, `aegis policy init`, starter scaffolds, presets, and migration docs ship |
 | Diagnostics | complete | `aegis workflow lint` and `aegis workflow doctor` ship with stable first-user codes |
 | Beta proof | complete | Clean-env proof, real failure/diagnosis/fix/rerun flow, and demo parity are in place |
@@ -43,7 +43,7 @@
 | PR | Branch | Status | Notes |
 |----|--------|--------|-------|
 | PR-01 | `feat/v0.9-01-source-of-truth` | complete | Canonical plan, release packet, supersession banners, and CI truth checks |
-| PR-02 | `feat/v0.9-02-contract-freeze` | complete | Freeze lifecycle, `SessionPreCallResult`, `AIGC.open_session(...)`, and evidence separation |
+| PR-02 | `feat/v0.9-02-contract-freeze` | complete | Freeze lifecycle, `SessionPreCallResult`, `AEGIS.open_session(...)`, and evidence separation |
 | PR-03 | `feat/v0.9-03-golden-path-contract` | complete | Freeze beta CLI shape, starter profiles, docs order, and public-import rules |
 | PR-04 | `feat/v0.9-04-minimal-session-flow` | complete | Smallest real governed local workflow path |
 | PR-05 | `feat/v0.9-05-starters-and-migration` | complete | Starters, thin presets, and migration helpers |

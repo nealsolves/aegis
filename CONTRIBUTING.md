@@ -1,6 +1,6 @@
-# Contributing to AIGC
+# Contributing to AEGIS
 
-Thank you for your interest in contributing to AIGC.
+Thank you for your interest in contributing to AEGIS.
 
 ## Development Setup
 

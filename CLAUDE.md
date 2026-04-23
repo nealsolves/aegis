@@ -9,7 +9,7 @@ When working on `demo-app-react`, `demo-app-api`, or demo-related documentation:
 - React + permanent FastAPI backend is the maintained demo architecture
 - `demo-app-streamlit` is deprecated reference material only
 - `v0.3.3` demo work (Labs 8-10) is historical — see `docs/plans/v0.3.3_IMPLEMENTATION_PLAN.md`
-- Active work is `v0.9.0` — see `docs/plans/AIGC V0.9.0 IMPLEMENTATION_PLAN.md` for the canonical plan
+- Active work is `v0.9.0` — see `docs/plans/AEGIS V0.9.0 IMPLEMENTATION_PLAN.md` for the canonical plan
 
 **`v0.9.0` demo requirements** (from the plan):
 
@@ -94,7 +94,7 @@ These components are present in the source-only `v0.9.0` beta line on local
 `develop`. The published package version remains `0.3.3` until the beta train
 is released.
 
-**`AIGC.open_session(...)`** — Public workflow entrypoint. Returns a `GovernanceSession` instance. Workflow adoption is always instance-scoped through this method. There is no module-level `open_session(...)`.
+**`AEGIS.open_session(...)`** — Public workflow entrypoint. Returns a `GovernanceSession` instance. Workflow adoption is always instance-scoped through this method. There is no module-level `open_session(...)`.
 
 **`GovernanceSession`** — Context manager. Enforces deterministic lifecycle states:
 `OPEN → PAUSED | FAILED | COMPLETED | CANCELED → FINALIZED`.
@@ -124,11 +124,11 @@ through the owning `GovernanceSession`.
 
 **First-adopter docs order (v0.9.0):** workflow quickstart, invocation-only-to-workflow migration, troubleshooting, starter index and recipes, workflow CLI guide, public API boundary, supported environments, operations runbook, adapters last.
 
-**Ownership boundary (critical):** AIGC owns policy loading, ordered governance checks, workflow
+**Ownership boundary (critical):** AEGIS owns policy loading, ordered governance checks, workflow
 constraints, evidence correlation, optional adapter normalization, and audit artifacts. The host
 continues to own orchestration, transport, retries, credentials, business state, tool execution,
 and provider SDK usage. Never add hidden orchestration, hosted control planes, or transport
-ownership to AIGC.
+ownership to AEGIS.
 
 **Evidence model:** Invocation artifacts remain one artifact per invocation attempt. Workflow/session evidence is separate. Invocation artifacts gain additive workflow-correlation metadata only. Raw external payloads are not persisted by default.
 
@@ -212,7 +212,7 @@ Never push directly to remote `develop` or `main` — always use PRs for remote 
 
 **Do NOT open or merge a PR from `origin/develop` → `origin/main` until `v0.9.0` is formally declared a GO.**
 
-During active `v0.9.0` development (PR-01 through PR-10c), all remote merges target `origin/develop` only. The `origin/develop` → `origin/main` PR is opened only after all v0.9.0 release gates are satisfied (see `docs/plans/AIGC V0.9.0 IMPLEMENTATION_PLAN.md` — Release Gates section).
+During active `v0.9.0` development (PR-01 through PR-10c), all remote merges target `origin/develop` only. The `origin/develop` → `origin/main` PR is opened only after all v0.9.0 release gates are satisfied (see `docs/plans/AEGIS V0.9.0 IMPLEMENTATION_PLAN.md` — Release Gates section).
 
 The final release sequence is:
 1. All PR-01 through PR-10c work is merged to `origin/develop`
@@ -229,7 +229,7 @@ All `v0.9.0` feature branches follow the naming convention `feat/v0.9-NN-descrip
 | PR-01 | `feat/v0.9-01-source-of-truth` | Canonical plan + supersede stale artifacts + CI plan-truth checks |
 | PR-02 | `feat/v0.9-02-contract-freeze` | Freeze session lifecycle, `SessionPreCallResult`, artifact separation |
 | PR-03 | `feat/v0.9-03-golden-path-contract` | Freeze CLI surface, scaffold profiles, public-import rules, docs order |
-| PR-04 | `feat/v0.9-04-minimal-session-flow` | `GovernanceSession`, `AIGC.open_session(...)`, `SessionPreCallResult`, local 2–3 step workflow |
+| PR-04 | `feat/v0.9-04-minimal-session-flow` | `GovernanceSession`, `AEGIS.open_session(...)`, `SessionPreCallResult`, local 2–3 step workflow |
 | PR-05 | `feat/v0.9-05-starters-and-migration` | `aegis workflow init`, starter scaffolds, migration helpers, thin presets |
 | PR-06 | `feat/v0.9-06-doctor-and-lint` | `aegis workflow lint`, `aegis workflow doctor`, stable reason codes |
 | PR-07 | `feat/v0.9-07-beta-proof` | Quickstart docs, clean-env validation, stop-ship checkpoint — **blocks further work if not green** |

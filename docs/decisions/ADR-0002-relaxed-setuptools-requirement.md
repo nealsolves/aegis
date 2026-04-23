@@ -2,7 +2,7 @@
 
 Date: 2026-02-17
 Status: Accepted
-Owners: AIGC Contributors
+Owners: AEGIS Contributors
 Context: Phase 1 audit findings — packaging reliability
 
 ---

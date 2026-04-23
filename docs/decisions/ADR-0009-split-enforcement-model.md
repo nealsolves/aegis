@@ -8,7 +8,7 @@ Owners: Neal
 
 ## Context
 
-AIGC `v0.3.1` enforces governance in unified post-call mode:
+AEGIS `v0.3.1` enforces governance in unified post-call mode:
 
 - `enforce_invocation()` accepts a complete invocation with `output`
 - `enforce_invocation_async()` mirrors that behavior asynchronously
@@ -36,7 +36,7 @@ The public surface adds:
 - `enforce_pre_call(invocation)`
 - `enforce_post_call(pre_call_result, output)`
 - async variants of both
-- `AIGC.enforce_pre_call()` and `AIGC.enforce_post_call()`
+- `AEGIS.enforce_pre_call()` and `AEGIS.enforce_post_call()`
 - `PreCallResult`
 - `@governed(..., pre_call_enforcement=False)`
 

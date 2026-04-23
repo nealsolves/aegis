@@ -38,7 +38,7 @@ Out of scope:
 - `AuditLineage` consumption of provenance fields (PR-03)
 - `ProvenanceGate` enforcement (PR-05)
 - Any changes to `enforce_invocation()`, `enforce_pre_call()`,
-  `enforce_post_call()`, or `AIGC` enforcement methods — these remain
+  `enforce_post_call()`, or `AEGIS` enforcement methods — these remain
   unchanged; caller-supplied provenance via enforcement entrypoints is
   deferred to PR-05
 
@@ -112,7 +112,7 @@ Added as a top-level property, not in `required`:
 
 - `source_ids`: caller-supplied identifiers of prior invocations that
   contributed to this one (workflow-level links)
-- `derived_from_audit_checksums`: SHA-256 checksums of prior AIGC audit
+- `derived_from_audit_checksums`: SHA-256 checksums of prior AEGIS audit
   artifacts (lineage graph edges; distinct from `source_ids`)
 - `compilation_source_hash`: orchestrator-supplied hash of the raw source
   compilation set — a distinct concept from `derived_from_audit_checksums`,
@@ -236,7 +236,7 @@ will reach sinks unchanged. Enforcement-layer validation is deferred to PR-05.
 | `README.md` | Add `v0.3.3` provenance metadata to what's new / feature highlights |
 | `PROJECT.md` | Add provenance metadata to capabilities list |
 | `CHANGELOG.md` | Add schema v1.4 entry under upcoming `v0.3.3` |
-| `docs/INTEGRATION_GUIDE.md` | Document the emitted `provenance` artifact field contract; note that enforcement entrypoints (`enforce_invocation()`, `enforce_pre_call()`, `enforce_post_call()`, `AIGC` methods) do not accept caller-supplied provenance until PR-05 |
+| `docs/INTEGRATION_GUIDE.md` | Document the emitted `provenance` artifact field contract; note that enforcement entrypoints (`enforce_invocation()`, `enforce_pre_call()`, `enforce_post_call()`, `AEGIS` methods) do not accept caller-supplied provenance until PR-05 |
 | `docs/PUBLIC_INTEGRATION_CONTRACT.md` | Document provenance object shape, field semantics, null/absent/object contract; note that direct `generate_audit_artifact()` callers may supply the `provenance` kwarg, but this is not yet wired into the enforcement path |
 
 ---

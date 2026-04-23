@@ -1,6 +1,6 @@
-# AIGC Public Integration Contract
+# AEGIS Public Integration Contract
 
-This document is the primary onboarding reference for integrating AIGC into your system.
+This document is the primary onboarding reference for integrating AEGIS into your system.
 It contains a minimal hello-world example, a realistic production integration, the available
 extension points, and a troubleshooting/FAQ section.
 
@@ -8,13 +8,13 @@ It describes the current public runtime surface for the shipped `v0.3.3`
 package and CLI plus the source-only `v0.9.0` beta workflow surface that lives
 on local `develop`. The target-state `1.0.0` architecture contract, including
 later adapters and exports, is captured separately in
-[docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md](architecture/AIGC_HIGH_LEVEL_DESIGN.md).
+[docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md](architecture/AEGIS_HIGH_LEVEL_DESIGN.md).
 
 The following surfaces are available in the source-only `v0.9.0` beta line and
-are not part of the installable `v0.3.3` artifact: `AIGC.open_session(...)`,
+are not part of the installable `v0.3.3` artifact: `AEGIS.open_session(...)`,
 `GovernanceSession`, and `SessionPreCallResult`. This is beta, not yet stable.
 There is no module-level `open_session()` convenience — workflow adoption is
-always instance-scoped through `AIGC.open_session(...)`.
+always instance-scoped through `AEGIS.open_session(...)`.
 
 See [docs/reference/WORKFLOW_QUICKSTART.md](reference/WORKFLOW_QUICKSTART.md)
 for the fastest path to a working workflow with these surfaces.
@@ -41,7 +41,7 @@ must use public `aegis` imports only and must not depend on `aegis._internal`.
 
 ---
 
-## 1. Hello AIGC — Minimal Runnable Example
+## 1. Hello AEGIS — Minimal Runnable Example
 
 Install and run governance enforcement in under five minutes.
 
@@ -222,16 +222,16 @@ governance never crashes.
 
 ### 2.3 Application startup
 
-Wire everything together once at startup. The `AIGC` class is the production entry point —
+Wire everything together once at startup. The `AEGIS` class is the production entry point —
 it owns its sink, signer, gates, and policy cache with no global mutable state:
 
 ```python
-from aegis import AIGC, HMACSigner, AuditChain, JsonFileAuditSink
+from aegis import AEGIS, HMACSigner, AuditChain, JsonFileAuditSink
 
 signer = HMACSigner(key=b"your-256-bit-secret-key-here-!!!")
 chain = AuditChain(chain_id="analytics-session-001")
 
-aegis = AIGC(
+aegis = AEGIS(
     sink=JsonFileAuditSink("audit/governance.jsonl"),
     on_sink_failure="log",
     signer=signer,
@@ -239,7 +239,7 @@ aegis = AIGC(
 )
 ```
 
-Configuration is immutable after construction. `AIGC.enforce()` is thread-safe.
+Configuration is immutable after construction. `AEGIS.enforce()` is thread-safe.
 
 - **`sink`**: Every enforcement call (PASS and FAIL) emits an artifact as a JSON line.
 - **`signer`**: HMAC-SHA256 signs every artifact automatically — both PASS and FAIL.
@@ -348,7 +348,7 @@ Pass `pre_call_enforcement=False` for legacy unified mode (deprecated).
 Governance exceptions propagate unchanged.
 
 The decorator uses the global audit sink (via `set_audit_sink`). For per-instance sinks,
-signers, or custom gates, use the `AIGC` class directly as shown in sections 2.3–2.5.
+signers, or custom gates, use the `AEGIS` class directly as shown in sections 2.3–2.5.
 
 ### 2.7 Error handling
 
@@ -356,7 +356,7 @@ Every governance failure raises a typed exception with a FAIL artifact attached:
 
 ```python
 from aegis import (
-    AIGCError,
+    AEGISError,
     GovernanceViolationError,
     PreconditionError,
     SchemaValidationError,
@@ -388,7 +388,7 @@ except SchemaValidationError as exc:
 except GovernanceViolationError as exc:
     # Role not in policy, or other governance violation
     chain.append(exc.audit_artifact)
-except AIGCError as exc:
+except AEGISError as exc:
     # Catch-all for any governance error
     chain.append(exc.audit_artifact)
 ```
@@ -544,7 +544,7 @@ artifact = with_retry(invocation)
 
 ### 3.4 Host tool adapter wrapper
 
-AIGC does not provide a built-in tool execution adapter. The recommended pattern for governing
+AEGIS does not provide a built-in tool execution adapter. The recommended pattern for governing
 tool calls on the host side is to build a thin wrapper that constructs the invocation dict,
 enforces governance, and then executes the tool:
 
@@ -564,7 +564,7 @@ def run_tool_with_governance(tool_name: str, params: dict, base_invocation: dict
 ```
 
 This pattern keeps governance at the SDK boundary and avoids coupling the tool implementation
-to the AIGC API.
+to the AEGIS API.
 
 ### 3.5 InvocationBuilder
 
@@ -616,7 +616,7 @@ class ComplianceTagGate(EnforcementGate):
         return GateResult(passed=True, metadata={"compliance": "sox-compliant"})
 
 
-aegis = AIGC(custom_gates=[ComplianceTagGate()])
+aegis = AEGIS(custom_gates=[ComplianceTagGate()])
 ```
 
 Gate metadata is merged into `metadata.custom_gate_metadata` in the audit artifact.
@@ -630,9 +630,9 @@ The SDK ships `ProvenanceGate` — a workflow-aware built-in gate for source
 presence enforcement. Import and register it like any custom gate:
 
 ```python
-from aegis import AIGC, ProvenanceGate
+from aegis import AEGIS, ProvenanceGate
 
-aegis = AIGC(custom_gates=[ProvenanceGate()])
+aegis = AEGIS(custom_gates=[ProvenanceGate()])
 ```
 
 Available built-in gates:
@@ -672,7 +672,7 @@ Modes:
 - **`risk_scored`**: Score recorded in the audit artifact, no enforcement action
 - **`warn_only`**: Warning logged, no enforcement action
 
-The `AIGC` class accepts `risk_config` as a constructor override; otherwise the policy's
+The `AEGIS` class accepts `risk_config` as a constructor override; otherwise the policy's
 `risk` field is used.
 
 ### 3.8 Artifact signing
@@ -689,8 +689,8 @@ artifact = enforce_invocation(invocation)
 sign_artifact(artifact, signer)           # signs in place
 assert verify_artifact(artifact, signer)  # True
 
-# Automatic signing (AIGC instance)
-aegis = AIGC(signer=signer)
+# Automatic signing (AEGIS instance)
+aegis = AEGIS(signer=signer)
 artifact = aegis.enforce(invocation)       # signed automatically
 assert verify_artifact(artifact, signer)  # True
 ```
@@ -762,7 +762,7 @@ Load policies from sources other than the filesystem:
 ```python
 import yaml
 
-from aegis import AIGC, PolicyLoaderBase, PolicyLoadError
+from aegis import AEGIS, PolicyLoaderBase, PolicyLoadError
 
 
 class DatabasePolicyLoader(PolicyLoaderBase):
@@ -776,12 +776,12 @@ class DatabasePolicyLoader(PolicyLoaderBase):
         return yaml.safe_load(row["yaml"])
 
 
-aegis = AIGC(policy_loader=DatabasePolicyLoader(db))
+aegis = AEGIS(policy_loader=DatabasePolicyLoader(db))
 artifact = aegis.enforce(invocation)
 ```
 
 All loaded policies pass through the same schema validation, date validation, and composition
-resolution regardless of source. The `AIGC` instance caches loaded policies in a per-instance,
+resolution regardless of source. The `AEGIS` instance caches loaded policies in a per-instance,
 thread-safe LRU cache.
 
 ### 3.12 Policy testing framework
@@ -805,12 +805,12 @@ See Section 2.8 for a complete example.
 
 ### 3.13 OpenTelemetry integration
 
-AIGC emits OpenTelemetry spans and events when OTel is installed. The enforcement pipeline
+AEGIS emits OpenTelemetry spans and events when OTel is installed. The enforcement pipeline
 instruments itself automatically — each gate execution and enforcement result is recorded as
 a span event. Governance is never affected by telemetry; if OTel is absent, all instrumentation
 is a no-op.
 
-To activate, install the OTel packages alongside AIGC:
+To activate, install the OTel packages alongside AEGIS:
 
 ```bash
 pip install opentelemetry-api opentelemetry-sdk
@@ -825,14 +825,14 @@ if is_otel_available():
     print("OTel spans will be emitted during enforcement")
 ```
 
-### 3.14 AIGC instance configuration
+### 3.14 AEGIS instance configuration
 
-The `AIGC` class bundles all configuration into an immutable, thread-safe instance:
+The `AEGIS` class bundles all configuration into an immutable, thread-safe instance:
 
 ```python
-from aegis import AIGC
+from aegis import AEGIS
 
-aegis = AIGC(
+aegis = AEGIS(
     sink=my_sink,                    # AuditSink instance
     on_sink_failure="log",           # "log" or "raise"
     strict_mode=True,                # Reject weak policies
@@ -847,7 +847,7 @@ artifact = aegis.enforce(invocation)
 artifact = await aegis.enforce_async(invocation)
 ```
 
-The instance owns its policy cache and never mutates global state. Multiple `AIGC` instances
+The instance owns its policy cache and never mutates global state. Multiple `AEGIS` instances
 can coexist in the same process with different configurations.
 
 ### 3.15 Split enforcement (v0.3.2+)
@@ -876,7 +876,7 @@ public data carrier — do not inspect its internals. It is single-use: calling
 `enforce_post_call` a second time with the same token raises
 `InvocationValidationError`.
 
-**`AIGC` instance methods:**
+**`AEGIS` instance methods:**
 
 ```python
 aegis.enforce_pre_call(invocation)          # sync
@@ -930,7 +930,7 @@ dict with any subset of the following fields:
 - v1.3 artifacts lacking the `provenance` key entirely: valid (key is not in `required`)
 
 **Enforcement entrypoints (v0.3.3+):** `enforce_invocation()`, split-mode
-methods, and `AIGC` enforcement methods automatically forward
+methods, and `AEGIS` enforcement methods automatically forward
 `invocation["context"]["provenance"]` into every emitted audit artifact (PASS
 and FAIL). Scalar values are normalized to `null`. No separate `provenance`
 argument is accepted at the entrypoint level — supply provenance in the
@@ -1188,7 +1188,7 @@ you are using `enforce_invocation` (sync) inside an async context, it will block
 from aegis import enforce_invocation_async
 artifact = await enforce_invocation_async(invocation)
 
-# Or with AIGC instance
+# Or with AEGIS instance
 artifact = await aegis.enforce_async(invocation)
 ```
 

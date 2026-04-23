@@ -1,4 +1,4 @@
-# AIGC Enforcement Pipeline
+# AEGIS Enforcement Pipeline
 
 This document describes how governance enforcement occurs for every AI invocation.
 
@@ -32,7 +32,7 @@ Application
 │
 └─ unified mode (direct API / deprecated opt-out)
 │  ▼
-│  AIGC Enforcement Engine
+│  AEGIS Enforcement Engine
 │  ▼
 │  Policy Load
 │  ▼
@@ -275,8 +275,8 @@ traverse cross-invocation lineage.
 Registration:
 
 ```python
-from aegis import AIGC, ProvenanceGate
-aegis = AIGC(custom_gates=[ProvenanceGate()])
+from aegis import AEGIS, ProvenanceGate
+aegis = AEGIS(custom_gates=[ProvenanceGate()])
 ```
 
 Failure codes:

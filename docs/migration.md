@@ -3,7 +3,7 @@
 # Migrating from Invocation-Only to Workflow Governance
 
 This guide shows the smallest safe diff to add workflow governance to existing
-AIGC-governed code. The migration is **additive** — existing invocation-only code
+AEGIS-governed code. The migration is **additive** — existing invocation-only code
 continues to work without changes.
 
 ## When to migrate
@@ -20,7 +20,7 @@ Single one-off calls are fine with invocation-only governance.
 ### Before (invocation-only)
 
 ```python
-governance = aegis.AIGC()
+governance = aegis.AEGIS()
 
 pre = governance.enforce_pre_call(invocation)
 output = call_model(...)
@@ -30,7 +30,7 @@ artifact = governance.enforce_post_call(pre, output)
 ### After (additive workflow adoption)
 
 ```python
-governance = aegis.AIGC()
+governance = aegis.AEGIS()
 
 with governance.open_session(policy_file="policy.yaml") as session:  # + wrap
     pre = session.enforce_step_pre_call(invocation)                    # enforce_pre_call →

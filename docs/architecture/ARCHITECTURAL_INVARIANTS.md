@@ -1,6 +1,6 @@
-# AIGC Architectural Invariants
+# AEGIS Architectural Invariants
 
-This document defines the non-negotiable engineering invariants of the AIGC Governance SDK.
+This document defines the non-negotiable engineering invariants of the AEGIS Governance SDK.
 
 These invariants exist to prevent architectural drift.
 
@@ -174,12 +174,12 @@ because no core gate has yet evaluated.
 
 Global mutable state is discouraged for new code.
 
-Configuration should exist within an `AIGC` instance.
+Configuration should exist within an `AEGIS` instance.
 
 Example:
 
 ```python
-AIGC(
+AEGIS(
     sink=JsonFileAuditSink("audit.jsonl"),
     on_sink_failure="log",
     strict_mode=True,
@@ -189,7 +189,7 @@ AIGC(
 
 The global `enforce_invocation()` function and `set_audit_sink()` registry
 remain available for backward compatibility. New integrations should prefer
-instance-scoped `AIGC.enforce()`.
+instance-scoped `AEGIS.enforce()`.
 
 ---
 
@@ -236,7 +236,7 @@ The enforcement system must not depend on:
 * Anthropic APIs
 * provider-specific safety layers
 
-AIGC governs invocation boundaries.
+AEGIS governs invocation boundaries.
 
 Not model providers.
 
@@ -289,7 +289,7 @@ hot path unless the host explicitly calls it.
 Every invocation attempt — whether it succeeds or fails, whether it runs in
 unified mode or split mode — must produce exactly one audit artifact. This
 invariant holds across `enforce_invocation`, `enforce_pre_call`/`enforce_post_call`,
-`AIGC.enforce`, and `@governed`.
+`AEGIS.enforce`, and `@governed`.
 
 ---
 

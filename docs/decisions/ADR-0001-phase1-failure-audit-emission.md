@@ -2,7 +2,7 @@
 
 Date: 2026-02-16
 Status: Accepted
-Owners: AIGC SDK Team
+Owners: AEGIS SDK Team
 
 ---
 
@@ -34,7 +34,7 @@ Add **Phase 1.8: Failure Audit Artifact Emission** as the final Phase 1 delivera
 
 ### Implementation
 
-1. **Wrap enforcement pipeline in try/except** to catch all `AIGCError` subclasses
+1. **Wrap enforcement pipeline in try/except** to catch all `AEGISError` subclasses
 2. **Generate FAIL audit artifact** before re-raising exceptions:
    - `enforcement_result: "FAIL"`
    - `failure_gate`: which gate failed (e.g., "role_validation", "precondition_validation")
@@ -154,7 +154,7 @@ Updated `schemas/audit_artifact.schema.json`:
 
 ### Error Taxonomy Impact
 
-- **Updated:** `AIGCError` base class gains `audit_artifact: dict | None` attribute
+- **Updated:** `AEGISError` base class gains `audit_artifact: dict | None` attribute
 - **No changes** to exception hierarchy or error codes
 
 ---

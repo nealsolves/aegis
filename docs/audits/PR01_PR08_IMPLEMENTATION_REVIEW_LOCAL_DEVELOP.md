@@ -22,9 +22,9 @@
 
 ## Source-of-Truth Contract Used
 
-- Branch sequencing and PR goals came primarily from `docs/dev/pr_context.md:14-27` and `docs/plans/AIGC V0.9.0 IMPLEMENTATION_PLAN.md:381-506`.
-- Stop-ship requirements came from `docs/plans/AIGC V0.9.0 IMPLEMENTATION_PLAN.md:574-591`, `docs/dev/pr_context.md:108-134`, and `RELEASE_GATES.md:224-237`.
-- Architecture and boundary rules were cross-checked against `CLAUDE.md:14-22,125-131`, `docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md:600-628,665-700`, `docs/architecture/ARCHITECTURAL_INVARIANTS.md`, `docs/architecture/ENFORCEMENT_PIPELINE.md`, and `docs/PUBLIC_INTEGRATION_CONTRACT.md:12-35`.
+- Branch sequencing and PR goals came primarily from `docs/dev/pr_context.md:14-27` and `docs/plans/AEGIS V0.9.0 IMPLEMENTATION_PLAN.md:381-506`.
+- Stop-ship requirements came from `docs/plans/AEGIS V0.9.0 IMPLEMENTATION_PLAN.md:574-591`, `docs/dev/pr_context.md:108-134`, and `RELEASE_GATES.md:224-237`.
+- Architecture and boundary rules were cross-checked against `CLAUDE.md:14-22,125-131`, `docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md:600-628,665-700`, `docs/architecture/ARCHITECTURAL_INVARIANTS.md`, `docs/architecture/ENFORCEMENT_PIPELINE.md`, and `docs/PUBLIC_INTEGRATION_CONTRACT.md:12-35`.
 - Public-surface, docs-order, and release-packet claims were cross-checked against `README.md`, `PROJECT.md`, `CHANGELOG.md`, `implementation_status.md`, `RELEASE_GATES.md`, and `tests/test_v090_contract_freeze.py`.
 
 ## PR-by-PR Review Matrix
@@ -60,7 +60,7 @@
 
 #### Evidence
 
-- `docs/plans/AIGC V0.9.0 IMPLEMENTATION_PLAN.md` is the active plan. Older variants are clearly marked historical in the first lines of `docs/plans/AIGC V0.9.0 IMPLEMENTATION_PLAN_DRAFT.md`, `docs/plans/AIGC_v0.9.0_IMPLEMENTATION_PLAN_UPDATED.md`, and `docs/plans/0.9.0 plan backup.md`.
+- `docs/plans/AEGIS V0.9.0 IMPLEMENTATION_PLAN.md` is the active plan. Older variants are clearly marked historical in the first lines of `docs/plans/AEGIS V0.9.0 IMPLEMENTATION_PLAN_DRAFT.md`, `docs/plans/AEGIS_v0.9.0_IMPLEMENTATION_PLAN_UPDATED.md`, and `docs/plans/0.9.0 plan backup.md`.
 - `docs/dev/pr_context.md:1-4` says PR-08 is complete and PR-09 is next, but `docs/dev/pr_context.md:31-134` is still a PR-07 stop-ship packet with PR-07 scope, exit gate, and out-of-scope notes.
 - `implementation_status.md:14-26` and `67-74` say PR-01 through PR-08 are complete, but `implementation_status.md:104-119` leaves every PR-07 deliverable unchecked while `122-135` immediately restates them as checked.
 - `RELEASE_GATES.md:122-135` marks the PR-07 checklist green; `RELEASE_GATES.md:143-177` and `224-237` still leave earlier capability gates and beta stop-ship gates unresolved; `RELEASE_GATES.md:181-186` claims a real failure-and-fix proof and no fake backend behavior.
@@ -80,7 +80,7 @@
 
 #### What was expected
 
-- Freeze session lifecycle, `SessionPreCallResult`, `AIGC.open_session(...)`, and invocation-vs-workflow artifact separation.
+- Freeze session lifecycle, `SessionPreCallResult`, `AEGIS.open_session(...)`, and invocation-vs-workflow artifact separation.
 - Keep workflow adoption instance-scoped.
 - Make public contract boundaries explicit and consistent.
 - Fail closed at Bedrock/A2A boundaries without shipping adapter ownership.
@@ -95,7 +95,7 @@
 
 #### Evidence
 
-- `AIGC.open_session(...)` is instance-scoped in `aegis/_internal/enforcement.py:2385-2403`; there is no module-level public `open_session`.
+- `AEGIS.open_session(...)` is instance-scoped in `aegis/_internal/enforcement.py:2385-2403`; there is no module-level public `open_session`.
 - Module-level `enforce_post_call` hard-rejects `SessionPreCallResult` in `aegis/_internal/enforcement.py:1587-1608`.
 - `SessionPreCallResult` is a frozen dataclass carrying only workflow token fields in `aegis/_internal/session.py:64-79`.
 - Workflow artifacts are separate from invocation artifacts and carry only additive correlation via `session_id`, `step_id`, `participant_id`, and `invocation_audit_checksums` in `aegis/_internal/session.py:474-489,834-839`.
@@ -128,8 +128,8 @@
 
 #### Evidence
 
-- The plan freezes `aegis policy init`, `aegis workflow init`, `aegis workflow lint`, `aegis workflow doctor`, `aegis workflow trace`, and `aegis workflow export` in `docs/plans/AIGC V0.9.0 IMPLEMENTATION_PLAN.md:385-392`.
-- The HLD repeats the same frozen CLI inventory in `docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md:667-675`.
+- The plan freezes `aegis policy init`, `aegis workflow init`, `aegis workflow lint`, `aegis workflow doctor`, `aegis workflow trace`, and `aegis workflow export` in `docs/plans/AEGIS V0.9.0 IMPLEMENTATION_PLAN.md:385-392`.
+- The HLD repeats the same frozen CLI inventory in `docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md:667-675`.
 - `CLAUDE.md:14-22,117-123` also treats trace/export and a trace view plus audit/export visibility flow as part of the beta story.
 - Actual CLI registration in `aegis/_internal/cli.py:453-529` only exposes `workflow init`, `workflow lint`, and `workflow doctor`; there is no parser for `workflow trace` or `workflow export`.
 - Running `python -m aegis workflow trace --help` and `python -m aegis workflow export --help` returned invalid-subcommand errors.
@@ -303,14 +303,14 @@
 - Session-time hardening is real in `aegis/_internal/session.py:680-919`: protocol evidence checks, Bedrock alias-backed requirement, A2A `protocolVersion == "1.0"` requirement, gRPC rejection, tool-budget enforcement, and fail-closed validator hook invocation.
 - Workflow artifacts now record `approval_checkpoints` and `validator_hook_evidence` in `aegis/_internal/session.py:474-489`.
 - The hardening test surface is substantial: `tests/test_engine_hardening.py`, `tests/test_approval_checkpoints.py`, `tests/test_budget_accounting.py`, `tests/test_protocol_enforcement.py`, and `tests/test_validator_hook.py`.
-- The actual runtime never populates hooks through a supported path. `GovernanceSession.__init__` hard-sets `self._validator_hooks = []` in `aegis/_internal/session.py:168-171`; `AIGC.__init__` has no `validator_hooks` parameter in `aegis/_internal/enforcement.py:2318-2329`; and `AIGC.open_session()` passes no hook list in `aegis/_internal/enforcement.py:2385-2403`.
+- The actual runtime never populates hooks through a supported path. `GovernanceSession.__init__` hard-sets `self._validator_hooks = []` in `aegis/_internal/session.py:168-171`; `AEGIS.__init__` has no `validator_hooks` parameter in `aegis/_internal/enforcement.py:2318-2329`; and `AEGIS.open_session()` passes no hook list in `aegis/_internal/enforcement.py:2385-2403`.
 - The only observed hook injection path is private-field mutation in tests: `tests/test_validator_hook.py:296-306` constructs `GovernanceSession` directly from `_internal` and sets `session._validator_hooks = list(hooks)`.
 - Eight workflow exceptions raised from public session methods are absent from both the public package root and `aegis.errors`. Local repro showed `hasattr(aegis, name) == False` and `hasattr(aegis.errors, name) == False` for `WorkflowParticipantMismatchError`, `WorkflowSequenceViolationError`, `WorkflowTransitionDeniedError`, `WorkflowRoleViolationError`, `WorkflowProtocolViolationError`, `WorkflowHandoffDeniedError`, `WorkflowStepBudgetExceededError`, and `WorkflowHookDeniedError`; compare `aegis/errors.py:1-47`, `aegis/__init__.py:102-180`, and the corresponding raises in `aegis/_internal/session.py:554-772,877-919`.
 - Failed Phase B cleanup semantics are inconsistent. `tests/test_session_core.py:103-116` intentionally preserves retryability for output-serializability failures, but local repro against schema-validation failure showed the session token remained in `_pending_results` while the inner `PreCallResult` had already been consumed by `aegis/_internal/enforcement.py:1840-1846`, leaving a dead pending token that cannot complete successfully on retry.
 
 #### Gaps
 
-- The public-surface story is inconsistent. `CLAUDE.md:117-123` treats more of the workflow surface as v0.9.0 additions, while `docs/PUBLIC_INTEGRATION_CONTRACT.md:28-32` and `docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md:619-628` still say `ValidatorHook`, adapters, and even workflow CLI commands remain planned-only beyond the beta line.
+- The public-surface story is inconsistent. `CLAUDE.md:117-123` treats more of the workflow surface as v0.9.0 additions, while `docs/PUBLIC_INTEGRATION_CONTRACT.md:28-32` and `docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md:619-628` still say `ValidatorHook`, adapters, and even workflow CLI commands remain planned-only beyond the beta line.
 - `tests/test_validator_hook.py:15-43` explicitly freezes `ValidatorHook` as internal-only and absent from public constructors. That is coherent with the code, but not with all release-story docs.
 - The hook path is effectively dead in product code. PR-08 added dispatch logic in `aegis/_internal/session.py:869-919`, but commit `72430fe` removed the constructor hook parameter and replaced it with `self._validator_hooks = []`, while no alternative runtime injection path was added.
 - Public exception hygiene is incomplete. Public workflow methods can raise the eight PR-08 workflow exceptions above, but callers must either catch broad base classes or import `_internal` names, which violates the release-contract requirement that public surfaces be consumable through public APIs only.
@@ -326,7 +326,7 @@
 1. Install package in a clean environment: PARTIAL. `scripts/validate_v090_beta_proof.py` creates a fresh venv and installs the repo editably, and this passed. But it uses `system_site_packages=True` and `--no-deps --no-build-isolation`, so it is weaker than a fully dependency-isolated first-user install proof.
 2. Run `aegis workflow init`: PASS. The real CLI exists and generated minimal, standard, and regulated starters in both tests and the harness.
 3. Choose minimal or standard starter: PASS. Both are real, run locally, and reached `COMPLETED`.
-4. Drop into a simple host-owned workflow: PASS. The starter/demo flows keep orchestration and model-call simulation in host code, not in AIGC.
+4. Drop into a simple host-owned workflow: PASS. The starter/demo flows keep orchestration and model-call simulation in host code, not in AEGIS.
 5. Reach first PASS: PASS. Minimal and standard starters do this.
 6. Inspect trace/evidence: PARTIAL. Users can inspect workflow artifacts and correlated invocation checksums, and the React lab has an “Evidence View” tab at `demo-app-react/src/labs/Lab11WorkflowLab.tsx:429-464`. But there is no dedicated `workflow trace` surface, no `workflow export`, and the stop-ship packet is contradictory about whether that visibility is required now or later.
 7. Hit one understandable failure: PASS. The regulated provenance requirement produces a real `CustomGateViolationError`.
@@ -342,11 +342,11 @@ Overall assessment:
 ## Architectural Invariant Compliance Review
 
 - Fail-closed behavior is preserved in code. Session tokens are guarded in `aegis/_internal/enforcement.py:1587-1608`; protocol and hook failures raise typed workflow errors in `aegis/_internal/session.py:680-919`; widening composition is rejected in `aegis/_internal/policy_loader.py:299-531`.
-- Deterministic governance boundary and host ownership are preserved. The host still owns orchestration and model-call behavior, while AIGC owns policy loading and governance checks; demo code reflects this split in `demo-app-api/workflow_routes.py:73-75,83-99`.
+- Deterministic governance boundary and host ownership are preserved. The host still owns orchestration and model-call behavior, while AEGIS owns policy loading and governance checks; demo code reflects this split in `demo-app-api/workflow_routes.py:73-75,83-99`.
 - One artifact per invocation attempt with separate workflow evidence is preserved. Workflow artifacts serialize separately and reference invocation checksums rather than collapsing models into one artifact in `aegis/_internal/session.py:474-489`.
 - Public API boundary discipline is mostly preserved in code. Public docs/examples/demos do not import `aegis._internal`, and starter lint enforces that in `aegis/_internal/workflow_lint.py:311-320`.
 - Public exception boundary discipline is not fully preserved. Several workflow-specific exceptions are raised from public session methods but are not re-exported from `aegis` or `aegis.errors`, forcing callers toward broad base-class catches or `_internal` imports.
-- Workflow support does not collapse into platform ownership. No hosted runtime, transport ownership, retry ownership, or credential ownership moved into AIGC.
+- Workflow support does not collapse into platform ownership. No hosted runtime, transport ownership, retry ownership, or credential ownership moved into AEGIS.
 - Split versus unified enforcement discipline is preserved. Session flow builds on invocation governance rather than bypassing it.
 - The main invariant-adjacent concern is demo/proof credibility, not the enforcement core. `demo-app-api/workflow_routes.py:180-199` fabricates a starter directory for doctor, which does not violate the runtime invariants but does violate the release rule that the demo should not fake the beta proof path.
 
@@ -357,10 +357,10 @@ Overall assessment:
 - `implementation_status.md` simultaneously says PR-07 is complete, unchecked, and checked.
 - `RELEASE_GATES.md` claims green PR-07 proof and full-suite pass while repo-local validation disagrees.
 - Docs ahead of implementation:
-- The canonical plan and HLD freeze `workflow trace` and `workflow export` as part of the PR-03 beta CLI contract in `docs/plans/AIGC V0.9.0 IMPLEMENTATION_PLAN.md:385-392` and `docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md:667-675`, but the real CLI does not ship them in `aegis/_internal/cli.py:453-529`.
+- The canonical plan and HLD freeze `workflow trace` and `workflow export` as part of the PR-03 beta CLI contract in `docs/plans/AEGIS V0.9.0 IMPLEMENTATION_PLAN.md:385-392` and `docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md:667-675`, but the real CLI does not ship them in `aegis/_internal/cli.py:453-529`.
 - `CLAUDE.md:19-20` still demands a trace view and audit/export visibility flow for the beta demo.
 - Implementation ahead of docs:
-- Engine hardening and internal `ValidatorHook` logic exist in code in `aegis/_internal/session.py:865-919`, but `docs/PUBLIC_INTEGRATION_CONTRACT.md:28-32` and `docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md:619-628` still call those planned-only beyond the beta line.
+- Engine hardening and internal `ValidatorHook` logic exist in code in `aegis/_internal/session.py:865-919`, but `docs/PUBLIC_INTEGRATION_CONTRACT.md:28-32` and `docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md:619-628` still call those planned-only beyond the beta line.
 - Stale or misleading onboarding:
 - `README.md:52-60`, `PROJECT.md:32-35`, and `docs/reference/WORKFLOW_QUICKSTART.md:7-15` still direct users to the `feat/v0.9-07-beta-proof` branch instead of local `develop`.
 - `docs/reference/WORKFLOW_CLI.md:22-85` documents invalid command shapes such as `aegis policy init` without `--profile` and `aegis workflow init --output` instead of `--output-dir`.
@@ -387,7 +387,7 @@ Overall assessment:
 1. Reconcile the release-truth packet and restore parity green.
 PR: PR-01, PR-03, PR-07
 Why it matters: Beta stop-ship decisions are currently based on contradictory documents, and the repo fails its own truth-check test.
-Likely files to change: `docs/dev/pr_context.md`, `implementation_status.md`, `RELEASE_GATES.md`, `docs/plans/AIGC V0.9.0 IMPLEMENTATION_PLAN.md`, `CLAUDE.md`, `docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md`, `docs/PUBLIC_INTEGRATION_CONTRACT.md`
+Likely files to change: `docs/dev/pr_context.md`, `implementation_status.md`, `RELEASE_GATES.md`, `docs/plans/AEGIS V0.9.0 IMPLEMENTATION_PLAN.md`, `CLAUDE.md`, `docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md`, `docs/PUBLIC_INTEGRATION_CONTRACT.md`
 How to verify: `python scripts/check_doc_parity.py`; `python -m pytest tests/test_v090_contract_freeze.py -q`; manual grep confirms one consistent answer for PR-07/PR-08 status, CLI inventory, stop-ship gates, and shipped/planned surfaces.
 Blocks beta readiness: YES
 
@@ -403,7 +403,7 @@ Blocks beta readiness: YES
 1. Freeze one coherent CLI contract for the beta and update docs/tests accordingly.
 PR: PR-03, PR-07
 Why it matters: App teams cannot trust onboarding when the plan, HLD, collaborator contract, CLI reference, and actual CLI disagree about shipped commands.
-Likely files to change: `docs/plans/AIGC V0.9.0 IMPLEMENTATION_PLAN.md`, `CLAUDE.md`, `docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md`, `docs/reference/WORKFLOW_CLI.md`, `README.md`, `tests/test_v090_contract_freeze.py`
+Likely files to change: `docs/plans/AEGIS V0.9.0 IMPLEMENTATION_PLAN.md`, `CLAUDE.md`, `docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md`, `docs/reference/WORKFLOW_CLI.md`, `README.md`, `tests/test_v090_contract_freeze.py`
 How to verify: `python -m aegis workflow --help`; `python -m aegis workflow trace --help`; `python -m aegis workflow export --help`; every documented CLI example runs exactly as written.
 Blocks beta readiness: YES
 
@@ -417,14 +417,14 @@ Blocks beta readiness: YES unless the public contract is narrowed first
 3. Resolve the `ValidatorHook` and adapter shipped-vs-planned story.
 PR: PR-08
 Why it matters: The code and tests treat hooks as internal, while several source-of-truth docs imply broader beta scope. That is a public contract ambiguity.
-Likely files to change: `CLAUDE.md`, `docs/PUBLIC_INTEGRATION_CONTRACT.md`, `docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md`, `implementation_status.md`, possibly `tests/test_validator_hook.py` if the decision changes
+Likely files to change: `CLAUDE.md`, `docs/PUBLIC_INTEGRATION_CONTRACT.md`, `docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md`, `implementation_status.md`, possibly `tests/test_validator_hook.py` if the decision changes
 How to verify: `rg "ValidatorHook|BedrockTraceAdapter|A2AAdapter" docs README.md PROJECT.md tests`; all surviving references agree on whether each surface is internal-only, beta, or later.
 Blocks beta readiness: YES
 
 4. Decide whether `ValidatorHook` is a real beta capability or dead internal code, then make the runtime match that decision.
 PR: PR-08
 Why it matters: The current session hook loop is unreachable outside tests because no supported runtime path populates `_validator_hooks`.
-Likely files to change: `aegis/_internal/enforcement.py`, `aegis/_internal/session.py`, `tests/test_validator_hook.py`, `docs/PUBLIC_INTEGRATION_CONTRACT.md`, `docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md`
+Likely files to change: `aegis/_internal/enforcement.py`, `aegis/_internal/session.py`, `tests/test_validator_hook.py`, `docs/PUBLIC_INTEGRATION_CONTRACT.md`, `docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md`
 How to verify: Either a supported non-`_internal` configuration path exists and a black-box integration test proves hook invocation through ordinary session creation, or the dead path and related claims/tests are removed and the docs clearly mark hooks as unshipped.
 Blocks beta readiness: YES
 
@@ -438,7 +438,7 @@ Blocks beta readiness: YES
 6. Resolve the trace/evidence visibility stop-ship requirement.
 PR: PR-03, PR-07, PR-09 leakage
 Why it matters: The stop-ship gate currently requires trace/evidence visibility, but the beta contract also says trace/export are PR-09. The user story is undecidable until one of those statements changes.
-Likely files to change: `docs/plans/AIGC V0.9.0 IMPLEMENTATION_PLAN.md`, `CLAUDE.md`, `RELEASE_GATES.md`, `demo-app-react/src/labs/Lab11WorkflowLab.tsx`, optionally future PR-09 code if minimal trace support is pulled forward
+Likely files to change: `docs/plans/AEGIS V0.9.0 IMPLEMENTATION_PLAN.md`, `CLAUDE.md`, `RELEASE_GATES.md`, `demo-app-react/src/labs/Lab11WorkflowLab.tsx`, optionally future PR-09 code if minimal trace support is pulled forward
 How to verify: Either the beta gate no longer requires a trace/export surface before PR-09, or a tested trace/evidence surface exists and is linked from quickstart/demo docs.
 Blocks beta readiness: YES
 
@@ -493,15 +493,15 @@ Blocks beta readiness: NO unless the chosen contract is user-visible and undocum
 
 ## Appendix — Key Files Reviewed
 
-- `docs/plans/AIGC V0.9.0 IMPLEMENTATION_PLAN.md`
-- `docs/plans/AIGC V0.9.0 IMPLEMENTATION_PLAN_DRAFT.md`
-- `docs/plans/AIGC_v0.9.0_IMPLEMENTATION_PLAN_UPDATED.md`
+- `docs/plans/AEGIS V0.9.0 IMPLEMENTATION_PLAN.md`
+- `docs/plans/AEGIS V0.9.0 IMPLEMENTATION_PLAN_DRAFT.md`
+- `docs/plans/AEGIS_v0.9.0_IMPLEMENTATION_PLAN_UPDATED.md`
 - `docs/plans/0.9.0 plan backup.md`
 - `docs/dev/pr_context.md`
 - `implementation_status.md`
 - `RELEASE_GATES.md`
 - `CLAUDE.md`
-- `docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md`
+- `docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md`
 - `docs/architecture/ARCHITECTURAL_INVARIANTS.md`
 - `docs/architecture/ENFORCEMENT_PIPELINE.md`
 - `docs/PUBLIC_INTEGRATION_CONTRACT.md`

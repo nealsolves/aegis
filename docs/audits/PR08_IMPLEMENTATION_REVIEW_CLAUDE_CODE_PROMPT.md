@@ -5,7 +5,7 @@ review of the PR-08 implementation, with the review written to
 `docs/audits` as Markdown.
 
 ```text
-Review the PR-08 implementation in the local AIGC repository.
+Review the PR-08 implementation in the local AEGIS repository.
 
 Repository root:
 /Users/neal/Documents/_Shenanigans/_myProjects/aegis
@@ -35,10 +35,10 @@ Review objective:
 Canonical review sources:
 - docs/dev/pr_context.md
 - RELEASE_GATES.md
-- docs/plans/AIGC V0.9.0 IMPLEMENTATION_PLAN.md
+- docs/plans/AEGIS V0.9.0 IMPLEMENTATION_PLAN.md
 - implementation_status.md
 - CLAUDE.md
-- docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md
+- docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md
 - docs/architecture/ARCHITECTURAL_INVARIANTS.md
 - docs/architecture/ENFORCEMENT_PIPELINE.md
 - docs/PUBLIC_INTEGRATION_CONTRACT.md
@@ -176,7 +176,7 @@ Specific review checklist:
 
 3. Validator-hook contract
 - Verify `ValidatorHook` remains internal-only.
-- Verify `AIGC.open_session()` does not expose `validator_hooks` as a public parameter.
+- Verify `AEGIS.open_session()` does not expose `validator_hooks` as a public parameter.
 - Verify envelope and result dataclasses are immutable and typed.
 - Verify each hook gets its own deadline window.
 - Verify only `execution_failure` is retry-eligible.

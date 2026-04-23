@@ -1,4 +1,4 @@
-# AIGC Operations Runbook (`v0.9.0` Beta)
+# AEGIS Operations Runbook (`v0.9.0` Beta)
 
 This runbook covers the source-only `v0.9.0` beta workflow path on local
 `develop`.

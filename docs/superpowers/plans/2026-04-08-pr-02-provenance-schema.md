@@ -679,7 +679,7 @@ After the `### `0.3.2` — Split enforcement and audit-driven hardening` section
 ```markdown
 ### `0.3.3` — Governed agentic workflows (in progress)
 
-`0.3.3` extends AIGC from invocation governance to workflow governance.
+`0.3.3` extends AEGIS from invocation governance to workflow governance.
 
 What has shipped so far:
 
@@ -739,7 +739,7 @@ When omitted: `artifact["provenance"]` is `null`.
 | Field | Type | Meaning |
 |-------|------|---------|
 | `source_ids` | `string[]` | Caller-defined IDs of prior invocations that contributed to this one |
-| `derived_from_audit_checksums` | `string[]` | SHA-256 checksums of prior AIGC audit artifacts (lineage graph edges) |
+| `derived_from_audit_checksums` | `string[]` | SHA-256 checksums of prior AEGIS audit artifacts (lineage graph edges) |
 | `compilation_source_hash` | `string` | Orchestrator-supplied hash of the raw source compilation set |
 
 All fields are optional within the object. Only supply the fields you have.
@@ -748,7 +748,7 @@ Supply at least one field — an empty provenance object is invalid.
 ### What is NOT available yet
 
 `enforce_invocation()`, `enforce_pre_call()`, `enforce_post_call()`, and
-`AIGC` enforcement methods do not accept caller-supplied provenance in `v0.3.3`.
+`AEGIS` enforcement methods do not accept caller-supplied provenance in `v0.3.3`.
 Provenance-aware enforcement (via `ProvenanceGate`) is added in PR-05.
 
 ---
@@ -784,7 +784,7 @@ dict with any subset of the following fields:
 - `provenance: {}`: invalid; an empty object fails `minProperties: 1`
 
 **Enforcement entrypoints unchanged:** `enforce_invocation()`, split-mode
-methods, and `AIGC` methods do not accept a `provenance` argument. Direct
+methods, and `AEGIS` methods do not accept a `provenance` argument. Direct
 `generate_audit_artifact()` callers may supply it. Enforcement-path provenance
 is deferred to PR-05 (`ProvenanceGate`).
 

@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to AIGC are documented in this file.
+All notable changes to AEGIS are documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -15,7 +15,7 @@ release train reaches PR-11 and a `release/v0.9.0` cut is made.
 
 Beta-only surfaces currently available from source:
 
-- `AIGC.open_session(...)`, `GovernanceSession`, `SessionPreCallResult`
+- `AEGIS.open_session(...)`, `GovernanceSession`, `SessionPreCallResult`
 - `aegis workflow init`, `aegis policy init`, `aegis workflow lint`,
   `aegis workflow doctor`
 - starter scaffolds, migration docs, beta proof harness, and workflow demo lab
@@ -49,8 +49,8 @@ Still deferred beyond the current beta public surface:
   blocks invocations whose runtime context lacks provenance `source_ids`.
   Failure codes: `PROVENANCE_MISSING` and `SOURCE_IDS_MISSING`. Available as
   `from aegis import ProvenanceGate`. Register via
-  `AIGC(custom_gates=[ProvenanceGate()])`. Closes PR-05.
-- `enforce_invocation`, `enforce_pre_call`/`enforce_post_call`, and `AIGC`
+  `AEGIS(custom_gates=[ProvenanceGate()])`. Closes PR-05.
+- `enforce_invocation`, `enforce_pre_call`/`enforce_post_call`, and `AEGIS`
   enforcement methods now forward `invocation["context"]["provenance"]` into
   every emitted audit artifact, enabling `AuditLineage` cross-invocation
   traversal.
@@ -107,7 +107,7 @@ Still deferred beyond the current beta public surface:
 - **Split enforcement API**: `enforce_pre_call()` and `enforce_post_call()` (sync + async) enable two-phase enforcement around the model call.
 - **`PreCallResult`**: Logically immutable handoff token from Phase A to Phase B. One-time use; second use raises `InvocationValidationError`.
 - **`@governed(pre_call_enforcement=True)`**: Opt-in split mode for the decorator — Phase A runs before the wrapped function; Phase A failure blocks execution.
-- **Instance-scoped split methods**: `AIGC.enforce_pre_call()` and `AIGC.enforce_post_call()` (sync + async) with the same contract as module-level functions.
+- **Instance-scoped split methods**: `AEGIS.enforce_pre_call()` and `AEGIS.enforce_post_call()` (sync + async) with the same contract as module-level functions.
 - **Audit schema v1.3**: Additive `metadata` fields: `enforcement_mode`, `pre_call_gates_evaluated`, `post_call_gates_evaluated`, `pre_call_timestamp`, `post_call_timestamp`, plus additive `failure_gate="wrapped_function_error"` for wrapped-function split failures. Prior artifacts remain valid.
 - **Telemetry split spans**: `aegis.enforce_pre_call` and `aegis.enforce_post_call` span names with `aegis.enforcement_mode` attribute.
 
@@ -190,7 +190,7 @@ Still deferred beyond the current beta public surface:
 - **`custom_gate_violation` failure gate** — Audit artifact `failure_gate`
   enum extended with `custom_gate_violation` for accurate forensic
   classification
-- **Pluggable PolicyLoader runtime wiring** — `AIGC(policy_loader=...)`
+- **Pluggable PolicyLoader runtime wiring** — `AEGIS(policy_loader=...)`
   now routes enforcement through the custom loader; non-filesystem policy
   references supported
 - **Pre-pipeline FAIL artifact validity** — Pre-pipeline failure paths
@@ -224,7 +224,7 @@ Still deferred beyond the current beta public surface:
   (Critical)
 - Pre-pipeline FAIL artifacts had `policy_version: null`, violating schema
   contract (Critical)
-- `AIGC(policy_loader=...)` parameter was accepted but not used at runtime
+- `AEGIS(policy_loader=...)` parameter was accepted but not used at runtime
   (High)
 - Custom gate metadata was captured but not merged into audit artifacts
   (High)
@@ -237,7 +237,7 @@ Still deferred beyond the current beta public surface:
 
 ### Added
 
-- **Instance-scoped enforcement** — `AIGC` class with per-instance sink,
+- **Instance-scoped enforcement** — `AEGIS` class with per-instance sink,
   failure mode, strict mode, and redaction patterns; thread-safe (WS-1)
 - **Typed preconditions** — `pre_conditions.required` accepts typed dict format
   with value constraints (`type`, `pattern`, `enum`, `min/max`); bare-string
@@ -253,7 +253,7 @@ Still deferred beyond the current beta public surface:
   validated for JSON serializability before enforcement (WS-6, D-14)
 - **Audit schema bounds** — `maxItems: 1000` on failures, `maxProperties: 100`
   on metadata and context; truncation with logging (WS-7, D-13)
-- **Strict mode** — `AIGC(strict_mode=True)` rejects policies without roles,
+- **Strict mode** — `AEGIS(strict_mode=True)` rejects policies without roles,
   preconditions, or typed preconditions (WS-13)
 - **Internal import deprecation** — `from aegis._internal import X` emits
   `DeprecationWarning`; public imports unaffected (WS-14)
@@ -312,8 +312,8 @@ Still deferred beyond the current beta public surface:
 
 ### Changed
 
-- **PyPI distribution name: `aigc` → `aigc-sdk`** (`pip install aigc-sdk`);
-  import name was unchanged (`import aigc`)
+- **PyPI distribution name: `aegis` → `aegis-sdk`** (`pip install aegis-sdk`);
+  import name was unchanged (`import aegis`)
 - `docs/PUBLIC_INTEGRATION_CONTRACT.md`: LLM stub in decorator quickstart
   replaced with a self-contained `_StubLLM` class so the example is
   independently runnable without an external `llm` reference

@@ -8,7 +8,7 @@ Owners: Neal
 
 ## Context
 
-AIGC `v0.3.3` is the shipped runtime baseline. It governs individual
+AEGIS `v0.3.3` is the shipped runtime baseline. It governs individual
 invocations, supports split enforcement, and includes workflow-aware provenance
 groundwork.
 
@@ -26,14 +26,14 @@ The implementation plan locks the following pressures in tension:
 - invocation-only users must remain supported during the beta transition
 
 PR-01 needs an ADR that names the beta scope explicitly so later PRs do not
-quietly renegotiate what AIGC is.
+quietly renegotiate what AEGIS is.
 
 ## Decision
 
 Adopt `v0.9.0` as a feature-complete beta for workflow governance with a strict
 SDK boundary.
 
-### AIGC owns
+### AEGIS owns
 
 - policy loading and composition
 - ordered governance checks
@@ -47,13 +47,13 @@ SDK boundary.
 - orchestration and control flow
 - model and tool execution
 - transport, retries, and credentials
-- business state and persistence decisions outside AIGC artifacts
+- business state and persistence decisions outside AEGIS artifacts
 - provider SDK usage and remote session management
 - external protocol clients, sockets, queues, and auth flows
 
 ### `v0.9.0` beta scope
 
-- `AIGC.open_session(...)` as the workflow entrypoint
+- `AEGIS.open_session(...)` as the workflow entrypoint
 - `GovernanceSession` and `SessionPreCallResult`
 - workflow evidence separate from invocation evidence
 - starter scaffolds, thin presets, migration helpers, and workflow CLI

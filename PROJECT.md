@@ -1,6 +1,6 @@
-# PROJECT.md — AIGC Repository Guide
+# PROJECT.md — AEGIS Repository Guide
 
-This is the repo-level orientation document for AIGC
+This is the repo-level orientation document for AEGIS
 (Auditable Intelligence Governance Contract). It is written for first-time
 visitors who need to understand the current state, how the runtime is
 organized, and how the project evolved release by release.
@@ -10,7 +10,7 @@ architecture, and release context.
 
 ## Current State
 
-AIGC is a Python SDK that enforces governance at the AI invocation boundary.
+AEGIS is a Python SDK that enforces governance at the AI invocation boundary.
 The current release is `v0.3.3` (`2026-04-10`).
 `v0.3.3` delivers workflow-aware provenance and lineage groundwork: audit
 schema `v1.4`, `AuditLineage`, `ProvenanceGate`, `RiskHistory`, and split
@@ -18,7 +18,7 @@ enforcement as the `@governed` default.
 
 The shipped runtime supports:
 
-- unified enforcement through `enforce_invocation()` and `AIGC.enforce()`
+- unified enforcement through `enforce_invocation()` and `AEGIS.enforce()`
 - split enforcement through `enforce_pre_call()` and `enforce_post_call()`
 - typed fail-closed validation for invocation shape, role, preconditions, tool
   constraints, output schema, postconditions, and optional risk scoring
@@ -30,7 +30,7 @@ The demo surface in this repo is a React frontend plus FastAPI backend that
 walks through the `v0.3.x` capabilities.
 
 The source-only `v0.9.0` beta workflow governance line is available on local
-`develop`. It adds `AIGC.open_session()`, `GovernanceSession`, starter
+`develop`. It adds `AEGIS.open_session()`, `GovernanceSession`, starter
 scaffolds, `aegis workflow init`, `aegis workflow lint`, and
 `aegis workflow doctor`. See
 [docs/reference/WORKFLOW_QUICKSTART.md](docs/reference/WORKFLOW_QUICKSTART.md)
@@ -38,24 +38,24 @@ for the first-adopter path.
 
 ## Architecture Snapshot
 
-![AIGC Runtime Architecture](docs/architecture/diagrams/aigc_architecture_component_light.svg)
+![AEGIS Runtime Architecture](docs/architecture/diagrams/aegis_architecture_component_light.svg)
 
 Current-runtime architecture assets:
 
 - Component view:
-  [docs/architecture/diagrams/aigc_architecture_component_light.svg](docs/architecture/diagrams/aigc_architecture_component_light.svg)
+  [docs/architecture/diagrams/aegis_architecture_component_light.svg](docs/architecture/diagrams/aegis_architecture_component_light.svg)
 - Pipeline view:
-  [docs/architecture/diagrams/aigc_architecture_pipeline_light.svg](docs/architecture/diagrams/aigc_architecture_pipeline_light.svg)
+  [docs/architecture/diagrams/aegis_architecture_pipeline_light.svg](docs/architecture/diagrams/aegis_architecture_pipeline_light.svg)
 
 Target-state / roadmap assets:
 
 - `1.0.0` target-state architecture contract:
-  [docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md](docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md)
+  [docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md](docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md)
 
 ### How to read the diagram
 
 - The host application owns orchestration and model calls.
-- AIGC owns policy loading, ordered governance checks, and audit artifact
+- AEGIS owns policy loading, ordered governance checks, and audit artifact
   generation.
 - Unified mode runs the entire gate sequence in one call.
 - Split mode moves the host model call between authorization-side checks and
@@ -135,7 +135,7 @@ internal phase labels used during development.
 
 Released `2026-02-16`.
 
-This is where AIGC became a usable SDK. The initial release established the
+This is where AEGIS became a usable SDK. The initial release established the
 core enforcement path:
 
 - YAML policy loading with Draft-07 schema validation
@@ -168,9 +168,9 @@ survive real installations and integrations.
 
 Released `2026-03-06`.
 
-`0.2.0` turned AIGC from a narrow runtime into a more production-friendly SDK:
+`0.2.0` turned AEGIS from a narrow runtime into a more production-friendly SDK:
 
-- instance-scoped `AIGC` configuration replaced reliance on global state for
+- instance-scoped `AEGIS` configuration replaced reliance on global state for
   new integrations
 - typed preconditions added stronger runtime contracts
 - exception and audit-message sanitization reduced secret leakage risk
@@ -203,7 +203,7 @@ stronger:
   classification
 
 If `0.1.x` defined the enforcement core and `0.2.0` improved operability,
-`0.3.0` is where AIGC became a much more credible governance substrate.
+`0.3.0` is where AEGIS became a much more credible governance substrate.
 
 ### `0.3.1` — Demo parity and maintained walkthrough surface
 
@@ -234,7 +234,7 @@ What shipped:
 - async parity for split entry points
 - `PreCallResult` as the handoff token from Phase A to Phase B
 - split-mode support in `@governed(pre_call_enforcement=True)`
-- instance-scoped split methods on `AIGC`
+- instance-scoped split methods on `AEGIS`
 - audit schema `v1.3` with additive split-mode metadata fields
 
 What hardened immediately after release:
@@ -253,11 +253,11 @@ while allowing hosts to block before token spend.
 
 Released `2026-04-10`.
 
-`0.3.3` extends AIGC's invocation-governance runtime with provenance,
+`0.3.3` extends AEGIS's invocation-governance runtime with provenance,
 lineage, and risk-trend primitives that future workflow governance will build
 on. The currently shipped package remains `v0.3.3`. The source-only `v0.9.0`
 beta line on local `develop` adds `GovernanceSession`,
-`SessionPreCallResult`, and `AIGC.open_session(...)`.
+`SessionPreCallResult`, and `AEGIS.open_session(...)`.
 
 What shipped:
 
@@ -281,10 +281,10 @@ Use the docs in this order if you are orienting yourself quickly:
 
 | Document | When to use it |
 | -------- | -------------- |
-| [README.md](README.md) | First pass: what AIGC is, the current runtime surface, and how to install and call it |
+| [README.md](README.md) | First pass: what AEGIS is, the current runtime surface, and how to install and call it |
 | [PROJECT.md](PROJECT.md) | Repo map, architecture snapshot, and release history |
 | [docs/USAGE.md](docs/USAGE.md) | Cookbook for common integration patterns and extension recipes |
-| [docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md](docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md) | Target-state `1.0.0` architecture contract and invariants |
+| [docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md](docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md) | Target-state `1.0.0` architecture contract and invariants |
 | [docs/INTEGRATION_GUIDE.md](docs/INTEGRATION_GUIDE.md) | Host integration patterns and split-mode behavior |
 | [policies/policy_dsl_spec.md](policies/policy_dsl_spec.md) | Policy authoring reference |
 | [CHANGELOG.md](CHANGELOG.md) | Detailed release notes and patch-level history |

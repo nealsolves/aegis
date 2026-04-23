@@ -1,0 +1,38 @@
+%%{init: {
+  'theme': 'dark',
+  'themeVariables': {
+    'primaryColor': '#1e2a4a',
+    'primaryTextColor': '#e8e8ed',
+    'primaryBorderColor': '#3a4a7a',
+    'lineColor': '#4a5a8a',
+    'secondaryColor': '#1a1a2e',
+    'tertiaryColor': '#12121e',
+    'fontFamily': 'IBM Plex Sans, sans-serif',
+    'fontSize': '13px'
+  }
+}}%%
+flowchart LR
+    Open(["Open session\nor direct invocation"])
+    SessionPre["Workflow step pre-call\nAEGIS.open_session() -> GovernanceSession"]
+    Load["Validation +\npolicy load"]
+    PreAuth["Custom gates\npre_authorization"]
+    Guards["Guard\nevaluation"]
+    Role["Role\nvalidation"]
+    Preconditions["Precondition\nvalidation"]
+    Tools["Tool constraint\nvalidation"]
+    PostAuth["Custom gates\npost_authorization"]
+    Boundary{{"Host executes provider / tool call\nsplit + session paths only"}}
+    PreOutput["Custom + built-in gates\npre_output"]
+    SchemaV["Output schema\nvalidation"]
+    Postconditions["Postcondition\nvalidation"]
+    PostOutput["Custom gates\npost_output"]
+    Risk["Risk\nscoring"]
+    InvArtifact(["Invocation artifact\nPASS / FAIL"])
+    SessionPost["GovernanceSession.enforce_step_post_call()\nupdates step state / budgets / approvals"]
+    Finalize["Session finalize\nterminal or auto-finalized"]
+    WorkflowArtifact(["Workflow artifact\nCOMPLETED / FAILED / CANCELED / INCOMPLETE"])
+    BetaCli["workflow init / lint / doctor\nbootstrap + diagnose"]
+
+    Open --> SessionPre --> Load --> PreAuth --> Guards --> Role --> Preconditions --> Tools --> PostAuth --> Boundary --> PreOutput --> SchemaV --> Postconditions --> PostOutput --> Risk --> InvArtifact --> SessionPost --> Finalize --> WorkflowArtifact
+    BetaCli -.-> SessionPre
+    BetaCli -.-> WorkflowArtifact

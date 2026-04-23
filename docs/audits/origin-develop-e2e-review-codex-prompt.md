@@ -1,14 +1,14 @@
 # Codex Prompt: `origin/develop` End-to-End Functionality and Doc Alignment Review
 
-Use the prompt below as-is with Codex when you want a full audit of AIGC against
+Use the prompt below as-is with Codex when you want a full audit of AEGIS against
 `origin/develop`, with findings written to `docs/audits` before any fixes are
 applied.
 
 ```text
-Audit the AIGC repository against the code and behavior on `origin/develop`.
+Audit the AEGIS repository against the code and behavior on `origin/develop`.
 
 Objective:
-1. Perform an end-to-end review of AIGC functionality.
+1. Perform an end-to-end review of AEGIS functionality.
 2. Verify document vs code alignment across the SDK, CLI, schemas, tests, and demo surfaces.
 3. If code is correct and documentation is wrong, explicitly make that evaluation and fix the documentation.
 4. If code is wrong relative to the intended public contract, fix the code and update docs as needed.
@@ -28,7 +28,7 @@ Required scope:
 - Public SDK API exported from `aegis/__init__.py`
 - Unified and split enforcement flows
 - Sync and async entry points
-- `AIGC` instance API
+- `AEGIS` instance API
 - `@governed` behavior and defaults
 - `InvocationBuilder`
 - Policy loading, composition, dates, and validation
@@ -43,11 +43,11 @@ Required scope:
 - User-facing docs, especially:
   - `README.md`
   - `PROJECT.md`
-  - `docs/AIGC_FRAMEWORK.md`
+  - `docs/AEGIS_FRAMEWORK.md`
   - `docs/USAGE.md`
   - `docs/INTEGRATION_GUIDE.md`
   - `docs/PUBLIC_INTEGRATION_CONTRACT.md`
-  - `docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md`
+  - `docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md`
   - `docs/architecture/ENFORCEMENT_PIPELINE.md`
   - `doc_parity_manifest.yaml`
 

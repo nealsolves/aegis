@@ -9,11 +9,11 @@ Owners: Neal
 ## Context
 
 `_resolve_policy_path` in `src/policy_loader.py` resolves all policy file paths
-relative to `REPO_ROOT` (the AIGC SDK directory) and rejects any path — including
+relative to `REPO_ROOT` (the AEGIS SDK directory) and rejects any path — including
 absolute paths — that does not reside within that directory.
 
-This was appropriate when AIGC was used exclusively within its own repository.
-However, AIGC is now installed as a library by consumer projects that
+This was appropriate when AEGIS was used exclusively within its own repository.
+However, AEGIS is now installed as a library by consumer projects that
 maintain their own policy files in their own repository directories.  Passing an
 absolute path to a consumer-owned policy file raised `PolicyLoadError: Policy path
 escapes repository root`, making cross-repo integration impossible without copying
@@ -48,7 +48,7 @@ Pros:
 Cons:
 - Shifts responsibility for absolute-path trustworthiness to the caller
 
-### Option B: AIGC_POLICY_ROOT environment variable
+### Option B: AEGIS_POLICY_ROOT environment variable
 
 Pros:
 - Security check remains in place for all paths
@@ -56,9 +56,9 @@ Pros:
 
 Cons:
 - More invasive (env var must be set before module import)
-- Couples consumer project startup sequence to AIGC internals
+- Couples consumer project startup sequence to AEGIS internals
 
-### Option C: Copy consumer policies into AIGC SDK policies/ directory
+### Option C: Copy consumer policies into AEGIS SDK policies/ directory
 
 Pros:
 - No SDK changes required
@@ -96,6 +96,6 @@ Cons:
 
 ## Validation
 
-- Existing AIGC test suite (`python -m pytest`) must pass unchanged.
+- Existing AEGIS test suite (`python -m pytest`) must pass unchanged.
 - Host application integration tests pass with consumer-owned absolute
   policy paths.

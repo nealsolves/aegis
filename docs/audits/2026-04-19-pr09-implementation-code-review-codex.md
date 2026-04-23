@@ -12,7 +12,7 @@
   tests/test_workflow_export.py, tests/test_doc_parity_v090_truth.py, tests/test_cli.py,
   demo-app-api/tests/test_workflow_routes.py, RELEASE_GATES.md, CLAUDE.md,
   docs/dev/pr_context.md, implementation_status.md, docs/PUBLIC_INTEGRATION_CONTRACT.md,
-  docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md, README.md, doc_parity_manifest.yaml
+  docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md, README.md, doc_parity_manifest.yaml
 - **Commands run:**
   - `git status -sb`
   - `git rev-parse develop && git rev-parse feat/v0.9-09-exports-and-ops`

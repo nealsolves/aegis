@@ -13,12 +13,12 @@ enforcement metadata (role, checksums, gate results, etc.) but omitted
 `invocation["context"]` — the caller-supplied session and tenant fields.
 
 When a host application implemented `SQLiteAuditSink`, it needed to populate
-a `session_id` column in the `aigc_audit_log` table.  Because `emit(artifact)`
+a `session_id` column in the `aegis_audit_log` table.  Because `emit(artifact)`
 receives only the artifact (not the raw invocation), and because `session_id`
 was not in the artifact, every audit row had `session_id = NULL`.  Session-level
 correlation of governance events was impossible.
 
-The root cause: the audit artifact was designed around "what did AIGC enforce?"
+The root cause: the audit artifact was designed around "what did AEGIS enforce?"
 rather than "what invocation produced this artifact?" — making artifacts
 non-self-contained for replay and correlation purposes.
 
@@ -73,7 +73,7 @@ Cons:
 
 Cons:
 - Audit rows have `NULL` session_id — correlation across sessions impossible
-- Violates the intent of the `aigc_audit_log` table schema in host applications
+- Violates the intent of the `aegis_audit_log` table schema in host applications
 
 ---
 
@@ -113,4 +113,4 @@ Cons:
 - `test_golden_replay_success` passes because it asserts named fields only and
   the `audit_schema_version` comparison now uses `"1.1"`.
 - Host application integration tests pass with `session_id` correctly
-  populated in every `aigc_audit_log` row.
+  populated in every `aegis_audit_log` row.

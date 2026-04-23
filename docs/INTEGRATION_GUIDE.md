@@ -1,6 +1,6 @@
-# AIGC Integration Guide
+# AEGIS Integration Guide
 
-How to integrate AIGC governance into any system that invokes AI models.
+How to integrate AEGIS governance into any system that invokes AI models.
 
 For a copy-paste quickstart with runnable examples and troubleshooting, see the
 [Public Integration Contract](PUBLIC_INTEGRATION_CONTRACT.md).
@@ -91,7 +91,7 @@ the event loop via `asyncio.to_thread`.
 
 ## 3. Governance Integration Points
 
-A governed system typically enforces AIGC at these boundaries:
+A governed system typically enforces AEGIS at these boundaries:
 
 | Integration Point | What to Govern | Pattern |
 | ----------------- | -------------- | ------- |
@@ -216,7 +216,7 @@ When changing models or providers:
 3. Verify audit artifacts still pass schema validation.
 4. No policy changes are required unless role constraints differ.
 
-AIGC governance is model-independent by design. Provider swaps do not
+AEGIS governance is model-independent by design. Provider swaps do not
 change enforcement guarantees.
 
 ---
@@ -379,7 +379,7 @@ When omitted: `artifact["provenance"]` is `null`.
 | Field | Type | Meaning |
 |-------|------|---------|
 | `source_ids` | `string[]` | Caller-defined IDs of prior invocations that contributed to this one |
-| `derived_from_audit_checksums` | `string[]` | SHA-256 checksums of prior AIGC audit artifacts (lineage graph edges) |
+| `derived_from_audit_checksums` | `string[]` | SHA-256 checksums of prior AEGIS audit artifacts (lineage graph edges) |
 | `compilation_source_hash` | `string` | Orchestrator-supplied hash of the raw source compilation set |
 
 All fields are optional within the object. Only supply the fields you have.
@@ -395,7 +395,7 @@ artifact, so `AuditLineage` can traverse it.
 Pass provenance in the invocation context dict:
 
 ```python
-from aegis import AIGC, ProvenanceGate
+from aegis import AEGIS, ProvenanceGate
 
 invocation = {
     "policy_file": "policies/my_policy.yaml",
@@ -412,7 +412,7 @@ invocation = {
     },
 }
 
-aegis = AIGC(custom_gates=[ProvenanceGate()])
+aegis = AEGIS(custom_gates=[ProvenanceGate()])
 audit = aegis.enforce(invocation)
 # audit["provenance"]["source_ids"] == ["doc-a", "doc-b"]
 ```
@@ -585,7 +585,7 @@ history = RiskHistory("my-agent", stability_band=0.10)
 
 ## 13. Compliance Checklist
 
-An integration is AIGC-compliant when:
+An integration is AEGIS-compliant when:
 
 - [ ] Every model invocation is wrapped in `enforce_invocation()` or `@governed`
 - [ ] Each invocation declares a role from the policy allowlist
@@ -688,9 +688,9 @@ orphans = lineage.orphans()       # reference missing parents
 Block invocations that lack `source_ids` in their provenance context:
 
 ```python
-from aegis import AIGC, ProvenanceGate
+from aegis import AEGIS, ProvenanceGate
 
-sdk = AIGC(custom_gates=[ProvenanceGate()])
+sdk = AEGIS(custom_gates=[ProvenanceGate()])
 audit = sdk.enforce(invocation)  # fails with PROVENANCE_MISSING if source_ids absent
 ```
 

@@ -1,13 +1,13 @@
-# AIGC — Auditable Intelligence Governance Contract
+# AEGIS — Auditable Intelligence Governance Contract
 
-![AIGC Banner](graphics/AIGC_banner.png)
+![AEGIS Banner](graphics/AEGIS_banner.png)
 
-AIGC is a Python SDK for deterministic, fail-closed governance of AI model
+AEGIS is a Python SDK for deterministic, fail-closed governance of AI model
 invocations. It validates every invocation against a declared policy, enforces
 role and schema constraints, evaluates optional custom gates and risk scoring,
 and emits a tamper-evident audit artifact for every pass or fail path.
 
-Governance in AIGC is runtime enforcement, not documentation and not prompting.
+Governance in AEGIS is runtime enforcement, not documentation and not prompting.
 
 ## At a Glance
 
@@ -21,7 +21,7 @@ Governance in AIGC is runtime enforcement, not documentation and not prompting.
 
 ## Why This Repo Exists
 
-Most AI governance guidance stays advisory. AIGC is opinionated about turning
+Most AI governance guidance stays advisory. AEGIS is opinionated about turning
 governance into an executable contract:
 
 - Policies are declarative YAML and validated against JSON Schema.
@@ -32,17 +32,17 @@ governance into an executable contract:
   token spend.
 
 If a model call cannot be justified by policy and evidenced by an audit record,
-AIGC treats it as invalid.
+AEGIS treats it as invalid.
 
 ## Runtime Model
 
-AIGC sits at the invocation boundary between the host application and the model
+AEGIS sits at the invocation boundary between the host application and the model
 provider.
 
 1. The host assembles an invocation and selects a policy.
-2. AIGC loads and resolves the policy, enforces ordered governance gates, and
+2. AEGIS loads and resolves the policy, enforces ordered governance gates, and
    computes audit metadata.
-3. AIGC returns or emits a PASS/FAIL audit artifact that can be stored,
+3. AEGIS returns or emits a PASS/FAIL audit artifact that can be stored,
    exported, chained, or inspected offline.
 
 Since v0.3.3, split enforcement is the default — Phase A runs before the model
@@ -50,13 +50,13 @@ call, Phase B validates output after. Pass `pre_call_enforcement=False` for the
 legacy unified mode (deprecated).
 
 The source-only `v0.9.0` beta line on local `develop` adds workflow governance
-built around `AIGC.open_session(...)`, `GovernanceSession`,
+built around `AEGIS.open_session(...)`, `GovernanceSession`,
 `SessionPreCallResult`, `aegis workflow init`, `aegis policy init`,
 `aegis workflow lint`, `aegis workflow doctor`, `aegis workflow trace`, and
 `aegis workflow export`. No external API keys are required for the default
 adopter path. The currently shipped PyPI package remains `v0.3.3`. Optional
 Bedrock/A2A adapters remain later PRs. The target-state architecture is
-captured in `docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md`.
+captured in `docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md`.
 
 ## Workflow Governance (v0.9.0 Beta)
 
@@ -92,7 +92,7 @@ release by release.
 | ------- | ---- | ---------------------- |
 | `0.1.0` | 2026-02-16 | Initial SDK: policy loading, role allowlists, preconditions, output schema validation, postconditions, deterministic audit artifacts |
 | `0.1.1` to `0.1.3` | 2026-02-17 to 2026-02-23 | Installation and integration stabilization: context in audit artifacts, absolute policy paths, packaged schemas, public API guidance, `aegis-sdk` PyPI package name |
-| `0.2.0` | 2026-03-06 | SDK ergonomics and operability: instance-scoped `AIGC`, typed preconditions, exception sanitization, policy caching, sink failure modes, audit schema `v1.2`, `InvocationBuilder`, AST-based guards, policy CLI |
+| `0.2.0` | 2026-03-06 | SDK ergonomics and operability: instance-scoped `AEGIS`, typed preconditions, exception sanitization, policy caching, sink failure modes, audit schema `v1.2`, `InvocationBuilder`, AST-based guards, policy CLI |
 | `0.3.0` | 2026-03-15 | Governance hardening: risk scoring, artifact signing, audit chain utility, pluggable `PolicyLoader`, policy dates, telemetry, policy testing, compliance export, custom gate isolation and metadata preservation |
 | `0.3.1` | 2026-04-04 | Demo parity release: React demo and FastAPI backend became the maintained hands-on surface for all 7 labs |
 | `0.3.2` | 2026-04-05 | Split enforcement release: `enforce_pre_call()` / `enforce_post_call()`, `PreCallResult`, split decorator mode, audit schema `v1.3`, and post-release security hardening from the 2026-04-05 audit |
@@ -147,9 +147,9 @@ artifact = enforce_invocation(
 For new code that needs isolated configuration, use the instance API:
 
 ```python
-from aegis import AIGC, JsonFileAuditSink
+from aegis import AEGIS, JsonFileAuditSink
 
-engine = AIGC(sink=JsonFileAuditSink("audit.jsonl"))
+engine = AEGIS(sink=JsonFileAuditSink("audit.jsonl"))
 artifact = engine.enforce(invocation)
 ```
 
@@ -231,7 +231,7 @@ If you are new to the repo, start here:
 | Document | Why it matters |
 | -------- | -------------- |
 | [PROJECT.md](PROJECT.md) | Best repo-level orientation: architecture diagram, repo map, and release-by-release narrative |
-| [Architecture Design](docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md) | Target-state `1.0.0` architecture contract and invariants |
+| [Architecture Design](docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md) | Target-state `1.0.0` architecture contract and invariants |
 | [Integration Guide](docs/INTEGRATION_GUIDE.md) | Host integration patterns, split-mode guidance, and compliance checklist |
 | [Policy DSL Spec](policies/policy_dsl_spec.md) | Full policy format reference |
 | [Cookbook](docs/USAGE.md) | Task-oriented recipes for common integration patterns |

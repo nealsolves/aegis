@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AEGIS v0.9.0 Beta Architecture — Light</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+  :root {
+    --page-bg: #f4f6fb;
+    --surface: #ffffff;
+    --surface-soft: #f7f9fc;
+    --surface-ink: #f2f5fb;
+    --border: #c9d2df;
+    --border-strong: #bcc7d6;
+    --text-primary: #1d2230;
+    --text-secondary: #475167;
+    --text-muted: #7f8a9f;
+    --accent: #8ac4ff;
+    --accent-strong: #6faef2;
+    --code-bg: #eef6ff;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'IBM Plex Mono', monospace;
+    background: var(--page-bg);
+    color: var(--text-primary);
+    min-height: 100vh;
+  }
+
+  .page {
+    max-width: 1480px;
+    margin: 0 auto;
+    padding: 44px 48px 72px;
+  }
+
+  .page-title {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--accent-strong);
+    margin-bottom: 10px;
+  }
+
+  .page-subtitle {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-weight: 500;
+    margin-bottom: 54px;
+    letter-spacing: 0.04em;
+  }
+
+  .page-subtitle code,
+  .section-desc code {
+    color: var(--accent-strong);
+    background: var(--code-bg);
+    padding: 2px 8px;
+    border-radius: 8px;
+  }
+
+  .diagram-section {
+    margin-bottom: 72px;
+  }
+
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 28px;
+    margin-bottom: 28px;
+    border-bottom: 2px solid var(--border);
+    padding: 0 14px 24px;
+  }
+
+  .section-number {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+    min-width: 52px;
+  }
+
+  .section-title {
+    font-size: clamp(26px, 2.4vw, 34px);
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: 0.05em;
+  }
+
+  .section-desc {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 0 14px 24px 94px;
+    max-width: 980px;
+    line-height: 1.7;
+    letter-spacing: 0.03em;
+  }
+
+  .diagram-container {
+    background: linear-gradient(180deg, var(--surface) 0%, var(--surface-soft) 100%);
+    border: 2px solid var(--border);
+    border-radius: 18px;
+    padding: 24px;
+    overflow-x: auto;
+    box-shadow: 0 10px 28px rgba(36, 55, 86, 0.05);
+  }
+
+  .diagram-container img,
+  .diagram-container object {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+
+  .notes-section {
+    margin-top: 56px;
+  }
+
+  .notes-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 28px;
+    padding: 0 14px;
+  }
+
+  .note-card {
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: 18px;
+    padding: 30px 28px 32px;
+    min-height: 176px;
+    box-shadow: 0 8px 24px rgba(36, 55, 86, 0.04);
+  }
+
+  .note-card .note-label {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 18px;
+  }
+
+  .note-card p {
+    font-size: 18px;
+    line-height: 1.9;
+    letter-spacing: 0.05em;
+    color: var(--text-primary);
+  }
+
+  .note-card code {
+    font-size: 0.96em;
+    color: var(--accent-strong);
+    background: var(--code-bg);
+    padding: 3px 10px;
+    border-radius: 8px;
+  }
+
+  .watermark {
+    text-align: center;
+    margin-top: 64px;
+    padding-top: 32px;
+    border-top: 2px solid var(--border);
+    font-size: 12px;
+    color: var(--text-muted);
+    font-weight: 500;
+    letter-spacing: 0.08em;
+  }
+
+  @media (max-width: 980px) {
+    .page {
+      padding: 36px 24px 56px;
+    }
+
+    .section-header {
+      gap: 18px;
+      padding: 0 0 18px;
+    }
+
+    .section-number {
+      font-size: 16px;
+      min-width: 34px;
+    }
+
+    .section-desc {
+      margin: 0 0 18px;
+    }
+
+    .notes-grid {
+      grid-template-columns: 1fr;
+      padding: 0;
+    }
+
+    .note-card {
+      min-height: auto;
+    }
+
+    .diagram-container {
+      padding: 14px;
+    }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="page-title">AEGIS v0.9.0 Beta</div>
+  <div class="page-subtitle">Local <code>develop</code> Architecture Diagrams</div>
+
+  <!-- COMPONENT VIEW -->
+  <div class="diagram-section">
+    <div class="section-header">
+      <span class="section-number">01</span>
+      <span class="section-title">Component View</span>
+    </div>
+    <p class="section-desc">
+      How the local <code>develop</code> beta surface fits together: workflow governance wraps the existing invocation kernel, and invocation plus workflow evidence remain separate outputs.
+    </p>
+    <div class="diagram-container">
+      <object type="image/svg+xml" data="aegis_architecture_component_light.svg?v=20260419v090a">
+        <img src="aegis_architecture_component_light.svg?v=20260419v090a" alt="AEGIS Component View"/>
+      </object>
+    </div>
+  </div>
+
+  <!-- PIPELINE VIEW -->
+  <div class="diagram-section">
+    <div class="section-header">
+      <span class="section-number">02</span>
+      <span class="section-title">Enforcement Pipeline</span>
+    </div>
+    <p class="section-desc">
+      The sequential path for workflow-composed enforcement in the beta line: session pre-call, unchanged invocation gate order, step post-call correlation, then workflow finalization.
+    </p>
+    <div class="diagram-container">
+      <object type="image/svg+xml" data="aegis_architecture_pipeline_light.svg?v=20260419v090a">
+        <img src="aegis_architecture_pipeline_light.svg?v=20260419v090a" alt="AEGIS Enforcement Pipeline"/>
+      </object>
+    </div>
+  </div>
+
+  <!-- NOTES -->
+  <div class="notes-section">
+    <div class="section-header">
+      <span class="section-number">03</span>
+      <span class="section-title">Key Boundaries</span>
+    </div>
+    <div class="notes-grid">
+      <div class="note-card">
+        <div class="note-label">Beta Scope</div>
+        <p>These diagrams describe the source-only <code>v0.9.0</code> beta surface on local <code>develop</code>. The installable package remains <code>v0.3.3</code>.</p>
+      </div>
+      <div class="note-card">
+        <div class="note-label">Workflow Layer</div>
+        <p><code>AEGIS.open_session()</code>, <code>GovernanceSession</code>, and <code>SessionPreCallResult</code> are the real beta additions shown here. They wrap the invocation kernel; they do not replace it.</p>
+      </div>
+      <div class="note-card">
+        <div class="note-label">Kernel Invariant</div>
+        <p>The ordered invocation gates stay intact in the beta line. Workflow governance constrains when a step may run, then the same authorization and output-side checks still execute.</p>
+      </div>
+      <div class="note-card">
+        <div class="note-label">Separate Evidence</div>
+        <p>Invocation artifacts remain one per invocation attempt. Workflow artifacts are separate session outputs, with invocation-correlation metadata added rather than replacing the invocation contract.</p>
+      </div>
+      <div class="note-card">
+        <div class="note-label">Beta CLI</div>
+        <p>The diagrams include the shipped beta adoption surface: <code>aegis workflow init</code>, <code>aegis workflow lint</code>, and <code>aegis workflow doctor</code>.</p>
+      </div>
+      <div class="note-card">
+        <div class="note-label">Planned-Only Exclusions</div>
+        <p><code>AgentIdentity</code>, <code>AgentCapabilityManifest</code>, public <code>ValidatorHook</code>, <code>BedrockTraceAdapter</code>, <code>A2AAdapter</code>, and <code>workflow trace/export</code> stay out of these beta diagrams.</p>
+      </div>
+      <div class="note-card">
+        <div class="note-label">Session Token Boundary</div>
+        <p><code>SessionPreCallResult</code> is workflow-bound. It must be completed by the owning <code>GovernanceSession</code>, not by the module-level <code>enforce_post_call()</code> path.</p>
+      </div>
+      <div class="note-card">
+        <div class="note-label">Ownership Boundary</div>
+        <p>The host still owns orchestration, provider SDKs, transport, retries, credentials, and tool execution. AEGIS governs, blocks, and emits evidence.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="watermark">AEGIS v0.9.0 Beta · local develop · github.com/nealsolves/aegis · MIT License</div>
+
+</div>
+</body>
+</html>

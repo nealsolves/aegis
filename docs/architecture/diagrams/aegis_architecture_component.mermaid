@@ -1,0 +1,101 @@
+%%{init: {
+  'theme': 'dark',
+  'themeVariables': {
+    'primaryColor': '#1e2a4a',
+    'primaryTextColor': '#e8e8ed',
+    'primaryBorderColor': '#3a4a7a',
+    'lineColor': '#4a5a8a',
+    'secondaryColor': '#1a1a2e',
+    'tertiaryColor': '#12121e',
+    'fontFamily': 'IBM Plex Sans, sans-serif',
+    'fontSize': '13px'
+  }
+}}%%
+flowchart TB
+    subgraph Host["HOST APPLICATION"]
+        direction LR
+        App["App / Agent / Orchestrator"]
+        Runtime["Provider / Tool / Transport Runtime"]
+        App -->|"host owns execution"| Runtime
+    end
+
+    subgraph SDK["AEGIS SDK v0.9.0 Beta (local develop)"]
+        direction TB
+
+        subgraph Workflow["WORKFLOW GOVERNANCE LAYER"]
+            direction LR
+            W0["AEGIS.open_session()"]
+            W1["GovernanceSession"]
+            W2["SessionPreCallResult\nworkflow-bound split token"]
+            W3["Workflow policy DSL\nsequence · budgets · approvals · participants"]
+            W4["Workflow artifact\nCOMPLETED · FAILED · CANCELED · INCOMPLETE"]
+        end
+
+        subgraph Entry["INVOCATION GOVERNANCE ENTRYPOINTS"]
+            direction LR
+            E1["enforce_invocation()"]
+            E2["AEGIS.enforce()"]
+            E3["split APIs\nenforce_pre_call() / enforce_post_call()\nAEGIS.enforce_pre_call() / enforce_post_call()"]
+        end
+
+        subgraph Policy["POLICY + LOADING"]
+            direction LR
+            PolicyFile["Policy YAML"]
+            Loader["FilePolicyLoader /\nPolicyLoaderBase"]
+            Cache["PolicyCache\nLRU · thread-safe"]
+            Schema["JSON Schemas"]
+        end
+
+        subgraph Core["DETERMINISTIC INVOCATION KERNEL"]
+            direction LR
+            G0["pre_authorization\ncustom gates"]
+            G1["Guard\nEvaluation"]
+            G2["Role\nValidation"]
+            G3["Precondition\nValidation"]
+            G4["Tool Constraint\nValidation"]
+            G5["post_authorization\ncustom gates"]
+            G6["pre_output\ncustom + built-in gates"]
+            G7["Output Schema\nValidation"]
+            G8["Postcondition\nValidation"]
+            G9["post_output\ncustom gates"]
+            G10["Risk Scoring\nstrict · risk_scored · warn_only"]
+        end
+
+        InvArtifact["Invocation artifact\nPASS or FAIL\nworkflow-correlation metadata is additive"]
+        Sign["ArtifactSigner / HMACSigner\noptional"]
+        Sink["AuditSink\nJSONL · callback · custom"]
+    end
+
+    subgraph Ops["BETA OPERATOR + ADOPTION SURFACES"]
+        direction LR
+        Init["aegis workflow init"]
+        Lint["aegis workflow lint"]
+        Doctor["aegis workflow doctor"]
+        Trail["Stored-trail analysis\nAuditLineage / compliance export --lineage"]
+    end
+
+    App -->|"invocation path"| E1
+    App -->|"instance path"| E2
+    App -->|"session path"| W0 --> W1
+    W1 -->|"authorizes step pre-call"| W2
+    W2 -->|"composes with split enforcement"| E3
+    App -->|"host performs call after approval"| Runtime
+
+    E1 --> Loader
+    E2 --> Cache --> Loader
+    E3 --> Loader
+    PolicyFile --> Loader
+    Schema --> Loader
+    Loader --> G0
+    G0 --> G1 --> G2 --> G3 --> G4 --> G5 --> G6 --> G7 --> G8 --> G9 --> G10 --> InvArtifact
+
+    W3 -.-> W1
+    W1 -.->|"tracks steps, checkpoints, budgets"| W4
+    InvArtifact -.->|"correlates invocation checksums"| W4
+    InvArtifact -->|"unsigned"| Sink
+    InvArtifact -->|"sign if configured"| Sign --> Sink
+    W4 --> Sink
+    Sink --> Trail
+    Init -.-> W3
+    Lint -.-> W3
+    Doctor -.-> W4

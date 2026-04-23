@@ -2,7 +2,7 @@
 
 Date: 2026-02-16
 Status: Accepted
-Owners: AIGC SDK Team
+Owners: AEGIS SDK Team
 
 ---
 
@@ -39,7 +39,7 @@ Add three new typed exception classes to `src/errors.py`:
   the policy allowlist or `max_calls` limit.
   Code: `TOOL_CONSTRAINT_VIOLATION`.
 
-Both `ConditionResolutionError` and `GuardEvaluationError` extend `AIGCError`
+Both `ConditionResolutionError` and `GuardEvaluationError` extend `AEGISError`
 directly. `ToolConstraintViolationError` extends `GovernanceViolationError`
 because a tool constraint violation is an explicit policy invariant breach,
 not a resolution ambiguity.
@@ -90,7 +90,7 @@ Cons:
   (`SchemaValidationError`) from non-retryable governance errors
   (`ToolConstraintViolationError`, `GuardEvaluationError`) by type.
 - Adding a new Phase 3 error type follows the same pattern: subclass
-  `AIGCError` or `GovernanceViolationError`, assign a stable code, add tests.
+  `AEGISError` or `GovernanceViolationError`, assign a stable code, add tests.
 
 ---
 

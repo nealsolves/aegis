@@ -1,4 +1,4 @@
-# AIGC Workflow CLI Guide (`v0.9.0` Beta)
+# AEGIS Workflow CLI Guide (`v0.9.0` Beta)
 
 The beta CLI covers six workflow-adoption commands:
 

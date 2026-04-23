@@ -1,4 +1,4 @@
-# AIGC Supported Environments (v0.9.0 Beta)
+# AEGIS Supported Environments (v0.9.0 Beta)
 
 ## Python versions
 

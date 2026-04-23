@@ -2,7 +2,7 @@
 
 Date: 2026-02-16
 Status: Accepted
-Owners: AIGC Contributors
+Owners: AEGIS Contributors
 
 ---
 

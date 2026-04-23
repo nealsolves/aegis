@@ -8,7 +8,7 @@ Owners: Neal
 
 ## Context
 
-AIGC `v0.3.2` governs individual invocations.
+AEGIS `v0.3.2` governs individual invocations.
 
 The supplied post-`v0.3.2` planning materials define `v0.3.3` as the first
 release that makes the SDK workflow-aware:
@@ -27,7 +27,7 @@ to:
 
 - "govern chains of calls (agentic workflows)"
 
-The planning note also states that this is an additive evolution of AIGC, not a
+The planning note also states that this is an additive evolution of AEGIS, not a
 rewrite and not a fork.
 
 ### Constraints
@@ -95,7 +95,7 @@ Pros:
 
 Cons:
 
-- leaves AIGC centered on invocation-only governance
+- leaves AEGIS centered on invocation-only governance
 - delays lineage and provenance enforcement despite being the named `v0.3.3`
   theme
 
@@ -107,7 +107,7 @@ Pros:
 
 Cons:
 
-- contradicts the supplied planning constraint that the new product is AIGC
+- contradicts the supplied planning constraint that the new product is AEGIS
   evolved, not a rewrite and not a fork
 - breaks release continuity from `v0.3.2`
 

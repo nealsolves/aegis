@@ -1,6 +1,6 @@
-# AIGC Interactive Demo
+# AEGIS Interactive Demo
 
-Interactive companion to the [AIGC SDK](https://github.com/nealsolves/aegis) — seven
+Interactive companion to the [AEGIS SDK](https://github.com/nealsolves/aegis) — seven
 hands-on labs for the M2 governance capabilities plus an architecture guide
 covering the enforcement pipeline and decorator defaults (updated for v0.3.3).
 

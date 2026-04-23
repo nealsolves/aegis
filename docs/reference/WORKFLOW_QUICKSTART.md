@@ -1,11 +1,11 @@
-# AIGC Workflow Governance — Quickstart (v0.9.0 Beta)
+# AEGIS Workflow Governance — Quickstart (v0.9.0 Beta)
 
 > This is a source-only beta surface. Install from local `develop`; it is not yet on PyPI.
 
 ## Prerequisites
 
 - Python 3.10 or later
-- AIGC installed in editable mode from local `develop`. Normal source installs
+- AEGIS installed in editable mode from local `develop`. Normal source installs
   require access to PyPI or an internal package mirror:
 
 ```bash
@@ -55,10 +55,10 @@ Session: <uuid>
 
 The starter script exercised the full workflow governance lifecycle in six actions:
 
-1. **`AIGC.open_session`** — Creates a `GovernanceSession` instance bound to the
+1. **`AEGIS.open_session`** — Creates a `GovernanceSession` instance bound to the
    policy file. All subsequent invocations in the workflow run through this
    session. There is no module-level `open_session()`; this is always called on
-   an `AIGC` instance.
+   an `AEGIS` instance.
 
 2. **`enforce_step_pre_call`** (Step 1) — Runs the pre-call side of governance for
    the first step: loads the policy, evaluates guards, validates role and

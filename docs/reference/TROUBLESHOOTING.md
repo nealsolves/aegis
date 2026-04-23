@@ -1,4 +1,4 @@
-# AIGC Workflow Troubleshooting Guide
+# AEGIS Workflow Troubleshooting Guide
 
 This guide covers `aegis workflow doctor`, `aegis workflow lint`, the frozen
 first-user reason codes, and the regulated failure-and-fix walkthrough.

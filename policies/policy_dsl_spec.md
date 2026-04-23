@@ -1,9 +1,9 @@
-# AIGC Extended Policy DSL Specification
+# AEGIS Extended Policy DSL Specification
 
 **Version:** `1.0.0`
 **Status:** Authoritative
 
-This document defines the extended policy DSL used by the AIGC Governance SDK.
+This document defines the extended policy DSL used by the AEGIS Governance SDK.
 It is written for humans, language models, and enforcement agents.
 
 ## Scope

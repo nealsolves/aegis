@@ -1,6 +1,6 @@
-# AIGC Cookbook
+# AEGIS Cookbook
 
-This document is task-oriented. Use it when you already know what AIGC is and
+This document is task-oriented. Use it when you already know what AEGIS is and
 want concrete integration patterns.
 
 Use [README.md](../README.md) for the repo overview and
@@ -13,7 +13,7 @@ contract.
   one-call enforcement.
 - Use `enforce_pre_call()` and `enforce_post_call()` when you need to block
   before token spend.
-- Use `AIGC(...)` when you want instance-scoped configuration for sinks,
+- Use `AEGIS(...)` when you want instance-scoped configuration for sinks,
   signers, policy loaders, strict mode, or custom gates.
 - Use `@governed(...)` when you want to wrap a model call site directly.
 
@@ -48,7 +48,7 @@ around a complete model interaction.
 
 ## Recipe 2: Split enforcement
 
-Use split mode when you want AIGC to authorize before the model call and only
+Use split mode when you want AEGIS to authorize before the model call and only
 validate output after the model responds.
 
 ```python
@@ -84,13 +84,13 @@ Important split-mode rules:
 
 ## Recipe 3: Instance-scoped configuration
 
-Prefer `AIGC(...)` when you want runtime configuration without mutating global
+Prefer `AEGIS(...)` when you want runtime configuration without mutating global
 state.
 
 ```python
-from aegis import AIGC, HMACSigner, JsonFileAuditSink
+from aegis import AEGIS, HMACSigner, JsonFileAuditSink
 
-engine = AIGC(
+engine = AEGIS(
     sink=JsonFileAuditSink("audit.jsonl"),
     on_sink_failure="raise",
     strict_mode=True,
@@ -148,18 +148,18 @@ Built-in sinks cover the common cases.
 ### File sink
 
 ```python
-from aegis import AIGC, JsonFileAuditSink
+from aegis import AEGIS, JsonFileAuditSink
 
-engine = AIGC(sink=JsonFileAuditSink("audit.jsonl"))
+engine = AEGIS(sink=JsonFileAuditSink("audit.jsonl"))
 artifact = engine.enforce(invocation)
 ```
 
 ### Callback sink
 
 ```python
-from aegis import AIGC, CallbackAuditSink
+from aegis import AEGIS, CallbackAuditSink
 
-engine = AIGC(sink=CallbackAuditSink(lambda artifact: db.insert(artifact)))
+engine = AEGIS(sink=CallbackAuditSink(lambda artifact: db.insert(artifact)))
 artifact = engine.enforce(invocation)
 ```
 
@@ -168,7 +168,7 @@ artifact = engine.enforce(invocation)
 ```python
 import json
 
-from aegis import AIGC, AuditSink
+from aegis import AEGIS, AuditSink
 
 
 class SQLiteAuditSink(AuditSink):
@@ -182,7 +182,7 @@ class SQLiteAuditSink(AuditSink):
         )
 
 
-engine = AIGC(sink=SQLiteAuditSink(db_connection), on_sink_failure="raise")
+engine = AEGIS(sink=SQLiteAuditSink(db_connection), on_sink_failure="raise")
 artifact = engine.enforce(invocation)
 ```
 
@@ -206,7 +206,7 @@ Example:
 
 ```python
 from aegis import (
-    AIGC,
+    AEGIS,
     EnforcementGate,
     GateResult,
     INSERTION_POST_AUTHORIZATION,
@@ -237,7 +237,7 @@ class TenantIsolationGate(EnforcementGate):
         return GateResult(passed=True, metadata={"tenant_id": tenant_id})
 
 
-engine = AIGC(custom_gates=[TenantIsolationGate()])
+engine = AEGIS(custom_gates=[TenantIsolationGate()])
 artifact = engine.enforce(invocation)
 ```
 
@@ -256,7 +256,7 @@ If policies live in a database, API, or secrets system, implement
 ```python
 import yaml
 
-from aegis import AIGC, PolicyLoaderBase, PolicyLoadError
+from aegis import AEGIS, PolicyLoaderBase, PolicyLoadError
 
 
 class DatabasePolicyLoader(PolicyLoaderBase):
@@ -276,7 +276,7 @@ class DatabasePolicyLoader(PolicyLoaderBase):
         return yaml.safe_load(row["yaml"])
 
 
-engine = AIGC(policy_loader=DatabasePolicyLoader(db))
+engine = AEGIS(policy_loader=DatabasePolicyLoader(db))
 artifact = engine.enforce(
     {
         **invocation,
@@ -285,7 +285,7 @@ artifact = engine.enforce(
 )
 ```
 
-The loader returns a raw policy dict. AIGC still performs schema validation,
+The loader returns a raw policy dict. AEGIS still performs schema validation,
 composition resolution, and policy-date checks after loading.
 
 ## Recipe 8: Producing a compliance report from stored artifacts
@@ -350,7 +350,7 @@ Practical rules:
 Only import from the top-level `aegis` package:
 
 ```python
-from aegis import AIGC, enforce_invocation, JsonFileAuditSink
+from aegis import AEGIS, enforce_invocation, JsonFileAuditSink
 ```
 
 Do not build production integrations on `aegis._internal.*`. That namespace is
@@ -384,9 +384,9 @@ always holds.
 ## Recipe 12: Risk trend monitoring with `RiskHistory`
 
 ```python
-from aegis import AIGC, RiskHistory
+from aegis import AEGIS, RiskHistory
 
-aegis = AIGC()
+aegis = AEGIS()
 history = RiskHistory("summarizer-workflow")
 
 for invocation in workflow_invocations:

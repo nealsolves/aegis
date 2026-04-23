@@ -10,7 +10,7 @@
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability in AIGC, please report it
+If you discover a security vulnerability in AEGIS, please report it
 responsibly.
 
 **Do not open a public issue.**
@@ -32,7 +32,7 @@ Include:
 
 ## Scope
 
-AIGC is a governance enforcement library. Security concerns include:
+AEGIS is a governance enforcement library. Security concerns include:
 
 - Policy bypass or validation circumvention
 - Audit artifact tampering or omission

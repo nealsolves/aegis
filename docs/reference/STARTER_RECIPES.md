@@ -1,4 +1,4 @@
-# AIGC Workflow Starter Recipes
+# AEGIS Workflow Starter Recipes
 
 Each section below covers one starter profile: how to generate it, what it
 contains, how to run it, what output to expect, and the key customization points.
