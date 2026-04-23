@@ -173,7 +173,7 @@ if result.interruptions:
     pending = adapter.pause_step(prepared, result.interrupted_state, result.interruptions)
     # ... human decision ...
     adapter.record_approval_decision(pending, approve=True, approver_id="alice")
-    session.resume()  # already called by record_approval_decision when approve=True
+    # record_approval_decision already called session.resume() — do not call it again
     # resume run with same prepared step
     final = await Runner.run(
         prepared.wrapped_root_agent, input,

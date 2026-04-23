@@ -386,6 +386,55 @@ def test_wrap_all_tools_uses_object_identity_for_duplicate_names():
 # Missing root_agent evidence rejection
 # ---------------------------------------------------------------------------
 
+def test_prepare_step_rejects_missing_root_agent():
+    """prepare_step raises InvocationValidationError when root_agent is absent."""
+    import aegis.openai_agents_adapter as _mod
+    from aegis import AEGIS
+    from aegis._internal.errors import InvocationValidationError
+    from aegis.openai_agents_adapter import OpenAIAgentsAdapter, OpenAIAgentsParticipantBinding
+
+    a = AEGIS()
+    adapter = OpenAIAgentsAdapter()
+    binding = OpenAIAgentsParticipantBinding("p1", "AgentA", "planner")
+    invocation = copy.deepcopy(_BASE_INV)
+    invocation["protocol"] = "openai_agents"
+    # protocol_evidence present but root_agent missing
+    invocation["context"] = {
+        **_BASE_INV["context"],
+        "protocol_evidence": {"openai_agents": {}},
+    }
+
+    with a.open_session(policy_file=None) as session:
+        with patch.object(_mod, "_SDK_AVAILABLE", True):
+            with pytest.raises(InvocationValidationError, match="root_agent"):
+                adapter.prepare_step(session, invocation, binding=binding)
+
+
+def test_prepare_step_rejects_predeclared_tool_calls():
+    """prepare_step raises InvocationValidationError when tool_calls are predeclared."""
+    import aegis.openai_agents_adapter as _mod
+    from aegis import AEGIS
+    from aegis._internal.errors import InvocationValidationError
+    from aegis.openai_agents_adapter import OpenAIAgentsAdapter, OpenAIAgentsParticipantBinding
+
+    a = AEGIS()
+    adapter = OpenAIAgentsAdapter()
+    root_agent = _make_typed_agent("AgentA", "Agent")
+    binding = OpenAIAgentsParticipantBinding("p1", "AgentA", "planner")
+    invocation = copy.deepcopy(_BASE_INV)
+    invocation["protocol"] = "openai_agents"
+    invocation["tool_calls"] = [{"id": "call-1", "name": "some_tool"}]
+    invocation["context"] = {
+        **_BASE_INV["context"],
+        "protocol_evidence": {"openai_agents": {"root_agent": root_agent}},
+    }
+
+    with a.open_session(policy_file=None) as session:
+        with patch.object(_mod, "_SDK_AVAILABLE", True):
+            with pytest.raises(InvocationValidationError, match="tool_calls"):
+                adapter.prepare_step(session, invocation, binding=binding)
+
+
 def test_prepare_step_requires_sdk():
     """prepare_step fails fast when SDK is not installed."""
     import aegis.openai_agents_adapter as _mod
