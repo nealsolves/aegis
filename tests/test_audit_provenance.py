@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from aigc._internal.audit import generate_audit_artifact, _normalize_provenance
+from aegis._internal.audit import generate_audit_artifact, _normalize_provenance
 
 SCHEMA_PATH = Path(__file__).resolve().parent.parent / "schemas" / "audit_artifact.schema.json"
 CHECKSUM_A = "a" * 64

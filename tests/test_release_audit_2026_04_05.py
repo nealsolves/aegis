@@ -16,7 +16,7 @@ import types
 
 import pytest
 
-from aigc._internal.enforcement import (
+from aegis._internal.enforcement import (
     AIGC,
     PreCallResult,
     enforce_invocation,
@@ -24,8 +24,8 @@ from aigc._internal.enforcement import (
     enforce_pre_call,
     enforce_pre_call_async,
 )
-from aigc._internal.errors import InvocationValidationError
-from aigc._internal.gates import EnforcementGate, GateResult
+from aegis._internal.errors import InvocationValidationError
+from aegis._internal.gates import EnforcementGate, GateResult
 
 GOLDEN_POLICY = "tests/golden_replays/golden_policy_v1.yaml"
 INSERTION_PRE_OUTPUT = "pre_output"
@@ -267,7 +267,7 @@ class TestFinding1PolicyBytesTamperPrevention:
             json.dumps(weak_policy, sort_keys=True).encode(),
         )
         # Output missing 'required_field' must still FAIL (real policy used from evidence)
-        from aigc._internal.errors import SchemaValidationError
+        from aegis._internal.errors import SchemaValidationError
         with pytest.raises(SchemaValidationError):
             enforce_post_call(pre, {"no_required_field": "x"})
 
@@ -329,7 +329,7 @@ class TestFinding2GateManifestTamperPrevention:
 
     def test_module_no_replacement_gate_still_enforced(self):
         """Without replacement, the always-fail gate still blocks Phase B."""
-        from aigc._internal.errors import CustomGateViolationError
+        from aegis._internal.errors import CustomGateViolationError
         pre = enforce_pre_call(
             _pre_call_inv(),
             custom_gates=[_AlwaysFailPreOutputGate()],

@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from aigc._internal.decorators import governed
-from aigc._internal.errors import GovernanceViolationError, SchemaValidationError
+from aegis._internal.decorators import governed
+from aegis._internal.errors import GovernanceViolationError, SchemaValidationError
 
 POLICY = "tests/golden_replays/golden_policy_v1.yaml"
 PROVIDER = "anthropic"

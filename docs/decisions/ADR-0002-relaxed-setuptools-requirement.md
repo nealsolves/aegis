@@ -105,7 +105,7 @@ Verified via:
    python3 -m venv /tmp/test-env
    source /tmp/test-env/bin/activate
    pip install -e .  # SUCCESS with setuptools>=40
-   python -c "from aigc.enforcement import enforce_invocation; print('OK')"
+   python -c "from aegis.enforcement import enforce_invocation; print('OK')"
    ```
 
 2. Full test suite: `python -m pytest --cov=src` => 43 passed, 93% coverage

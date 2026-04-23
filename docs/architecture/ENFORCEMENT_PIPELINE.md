@@ -275,8 +275,8 @@ traverse cross-invocation lineage.
 Registration:
 
 ```python
-from aigc import AIGC, ProvenanceGate
-aigc = AIGC(custom_gates=[ProvenanceGate()])
+from aegis import AIGC, ProvenanceGate
+aegis = AIGC(custom_gates=[ProvenanceGate()])
 ```
 
 Failure codes:

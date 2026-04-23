@@ -1,9 +1,9 @@
 """PR-08 escalation enforcement tests."""
 from __future__ import annotations
 import pytest
-from aigc._internal.enforcement import AIGC
-from aigc._internal.errors import WorkflowApprovalRequiredError
-from aigc._internal.session import GovernanceSession
+from aegis._internal.enforcement import AIGC
+from aegis._internal.errors import WorkflowApprovalRequiredError
+from aegis._internal.session import GovernanceSession
 import uuid
 
 POLICY = "tests/golden_replays/golden_policy_v1.yaml"
@@ -74,7 +74,7 @@ def test_host_can_resume_after_escalation_requirement():
 
 def test_host_can_proceed_after_escalation_and_approval():
     """After escalation triggers, resume() allows the step to complete without re-triggering."""
-    from aigc._internal.errors import SessionStateError  # noqa: F401 (imported for clarity)
+    from aegis._internal.errors import SessionStateError  # noqa: F401 (imported for clarity)
     s = _session({"require_approval_after_steps": 2})
     with s:
         t1 = s.enforce_step_pre_call(dict(_BASE_INV))

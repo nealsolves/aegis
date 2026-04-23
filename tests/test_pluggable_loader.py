@@ -2,13 +2,13 @@
 import pytest
 from typing import Any
 
-from aigc._internal.policy_loader import (
+from aegis._internal.policy_loader import (
     PolicyLoaderBase,
     FilePolicyLoader,
     load_policy,
 )
-from aigc._internal.enforcement import AIGC
-from aigc._internal.errors import PolicyLoadError
+from aegis._internal.enforcement import AIGC
+from aegis._internal.errors import PolicyLoadError
 
 
 # ── Custom loader implementations ────────────────────────────────
@@ -120,5 +120,5 @@ def test_aigc_with_custom_loader():
     """AIGC class accepts a custom policy_loader parameter."""
     # Currently AIGC uses PolicyCache which uses default loader.
     # This test verifies the parameter is accepted.
-    aigc = AIGC(policy_loader=InMemoryPolicyLoader({}))
-    assert aigc._policy_loader is not None
+    aegis = AIGC(policy_loader=InMemoryPolicyLoader({}))
+    assert aegis._policy_loader is not None

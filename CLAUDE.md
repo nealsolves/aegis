@@ -27,7 +27,7 @@ pip install -e .                              # Install in dev mode
 python -m pytest                              # Run all tests
 python -m pytest tests/test_golden_replay_success.py  # Run a single test file
 python -m pytest tests/test_golden_replay_success.py::test_golden_success_produces_audit  # Run a single test
-flake8 aigc                                   # Lint Python source
+flake8 aegis                                   # Lint Python source
 npx markdownlint-cli2 "**/*.md"              # Lint markdown files
 ```
 
@@ -54,39 +54,39 @@ The SDK enforces governance over AI model invocations through a pipeline:
 
 ```
 enforce_invocation(invocation)
-  → load_policy()              [aigc/_internal/policy_loader.py]
-  → run_custom_gates()         [aigc/_internal/gates.py]          # pre_authorization
-  → evaluate_guards()          [aigc/_internal/guards.py]
-  → validate_role()            [aigc/_internal/validator.py]
-  → validate_preconditions()   [aigc/_internal/validator.py]
-  → validate_tool_constraints()[aigc/_internal/tools.py]
-  → run_custom_gates()         [aigc/_internal/gates.py]          # post_authorization
-  → run_custom_gates()         [aigc/_internal/gates.py]          # pre_output
-  → validate_schema()          [aigc/_internal/validator.py]
-  → validate_postconditions()  [aigc/_internal/validator.py]
-  → run_custom_gates()         [aigc/_internal/gates.py]          # post_output
-  → compute_risk_score()       [aigc/_internal/risk_scoring.py]
-  → generate_audit_artifact()  [aigc/_internal/audit.py]
+  → load_policy()              [aegis/_internal/policy_loader.py]
+  → run_custom_gates()         [aegis/_internal/gates.py]          # pre_authorization
+  → evaluate_guards()          [aegis/_internal/guards.py]
+  → validate_role()            [aegis/_internal/validator.py]
+  → validate_preconditions()   [aegis/_internal/validator.py]
+  → validate_tool_constraints()[aegis/_internal/tools.py]
+  → run_custom_gates()         [aegis/_internal/gates.py]          # post_authorization
+  → run_custom_gates()         [aegis/_internal/gates.py]          # pre_output
+  → validate_schema()          [aegis/_internal/validator.py]
+  → validate_postconditions()  [aegis/_internal/validator.py]
+  → run_custom_gates()         [aegis/_internal/gates.py]          # post_output
+  → compute_risk_score()       [aegis/_internal/risk_scoring.py]
+  → generate_audit_artifact()  [aegis/_internal/audit.py]
   → return audit record
 ```
 
-**`aigc/_internal/enforcement.py`** — Orchestrator. `enforce_invocation(invocation)` is the single entry point. An invocation dict must include: `policy_file`, `input`, `output`, `context`, `model_provider`, `model_identifier`, `role`.
+**`aegis/_internal/enforcement.py`** — Orchestrator. `enforce_invocation(invocation)` is the single entry point. An invocation dict must include: `policy_file`, `input`, `output`, `context`, `model_provider`, `model_identifier`, `role`.
 
-**`aigc/_internal/policy_loader.py`** — Loads YAML policy files, resolves `extends` composition, and validates against JSON Schema. Prefers `schemas/policy_dsl.schema.json` (extended DSL), falls back to `schemas/invocation_policy.schema.json` (legacy).
+**`aegis/_internal/policy_loader.py`** — Loads YAML policy files, resolves `extends` composition, and validates against JSON Schema. Prefers `schemas/policy_dsl.schema.json` (extended DSL), falls back to `schemas/invocation_policy.schema.json` (legacy).
 
-**`aigc/_internal/validator.py`** — Precondition, schema, and postcondition validation. Supports typed preconditions (type, pattern, enum, min/max constraints) alongside legacy bare-string format.
+**`aegis/_internal/validator.py`** — Precondition, schema, and postcondition validation. Supports typed preconditions (type, pattern, enum, min/max constraints) alongside legacy bare-string format.
 
-**`aigc/_internal/audit.py`** — Generates audit artifacts with SHA-256 checksums of input/output, timestamps, risk scores, signing, and policy metadata.
+**`aegis/_internal/audit.py`** — Generates audit artifacts with SHA-256 checksums of input/output, timestamps, risk scores, signing, and policy metadata.
 
-**`aigc/_internal/errors.py`** — Custom exception hierarchy with typed error codes.
+**`aegis/_internal/errors.py`** — Custom exception hierarchy with typed error codes.
 
-**`aigc/_internal/guards.py`** — AST-based guard evaluation engine for conditional policy expansion.
+**`aegis/_internal/guards.py`** — AST-based guard evaluation engine for conditional policy expansion.
 
-**`aigc/_internal/risk_scoring.py`** — Factor-based risk scoring with strict/risk_scored/warn_only modes.
+**`aegis/_internal/risk_scoring.py`** — Factor-based risk scoring with strict/risk_scored/warn_only modes.
 
-**`aigc/_internal/signing.py`** — Artifact signing via HMAC-SHA256 with constant-time verification.
+**`aegis/_internal/signing.py`** — Artifact signing via HMAC-SHA256 with constant-time verification.
 
-**`aigc/_internal/gates.py`** — Custom EnforcementGate plugin system with four insertion points.
+**`aegis/_internal/gates.py`** — Custom EnforcementGate plugin system with four insertion points.
 
 ### `v0.9.0` Additions (current beta surface on `develop`)
 
@@ -114,9 +114,9 @@ through the owning `GovernanceSession`.
 - `A2AAdapter` — normalizes parsed Agent Card, request metadata, and task envelopes. Validates `supportedInterfaces[].protocolVersion`. Accepts only normative `TASK_STATE_*` wire values. gRPC is out of scope for `v0.9.0`.
 - `OpenAIAgentsAdapter` — normalizes host-owned `openai-agents` run, interruption, and optional trace evidence. Governed tool support requires adapter-managed wrappers; unsupported runtime surfaces must reject explicitly.
 
-**Starter scaffolds:** `minimal`, `standard`, `regulated-high-assurance` — generated by `aigc workflow init`. These compile to ordinary session + policy + manifest behavior with no hidden runtime layer.
+**Starter scaffolds:** `minimal`, `standard`, `regulated-high-assurance` — generated by `aegis workflow init`. These compile to ordinary session + policy + manifest behavior with no hidden runtime layer.
 
-**CLI commands (v0.9.0 beta):** `aigc workflow init`, `aigc workflow lint`, `aigc workflow doctor`, `aigc workflow trace`, `aigc workflow export`, and `aigc policy init`. All six workflow CLI commands ship as of PR-09.
+**CLI commands (v0.9.0 beta):** `aegis workflow init`, `aegis workflow lint`, `aegis workflow doctor`, `aegis workflow trace`, `aegis workflow export`, and `aegis policy init`. All six workflow CLI commands ship as of PR-09.
 
 **Starter coverage (v0.9.0):** local multi-step review, approval checkpoint, source-required, and tool-budget flows. Hand-authored workflow DSL stays supported as advanced mode and is not required on the default path.
 
@@ -134,7 +134,7 @@ ownership to AIGC.
 
 ## Public API
 
-The `aigc/` top-level package re-exports the stable public API. All implementation lives in `aigc/_internal/`. Never import from `aigc._internal` in host code.
+The `aegis/` top-level package re-exports the stable public API. All implementation lives in `aegis/_internal/`. Never import from `aegis._internal` in host code.
 
 ## Policy System
 
@@ -163,7 +163,7 @@ Only assert **stable** audit fields (`model_provider`, `model_identifier`, `poli
 - context-manager tests — `__exit__` behavior: clean exit → `INCOMPLETE`; exception exit → `FAILED` + re-raise
 - replay-prevention tests — `SessionPreCallResult` is single-use; verify a second completion attempt is rejected
 - invocation-correlation tests — workflow artifact references correlated invocation artifact IDs
-- public-import boundary tests — no example, starter, preset, recipe, or doc snippet may import from `aigc._internal`
+- public-import boundary tests — no example, starter, preset, recipe, or doc snippet may import from `aegis._internal`
 - state-machine tests — ordered sequence, allowed transitions, budget accounting, approval checkpoints
 - restrictive-composition tests — role sets narrow; ambiguous or widening merges must fail validation
 - adapter fixture tests — Bedrock alias-binding, missing-trace rejection; A2A `TASK_STATE_*` acceptance and shorthand rejection
@@ -230,11 +230,11 @@ All `v0.9.0` feature branches follow the naming convention `feat/v0.9-NN-descrip
 | PR-02 | `feat/v0.9-02-contract-freeze` | Freeze session lifecycle, `SessionPreCallResult`, artifact separation |
 | PR-03 | `feat/v0.9-03-golden-path-contract` | Freeze CLI surface, scaffold profiles, public-import rules, docs order |
 | PR-04 | `feat/v0.9-04-minimal-session-flow` | `GovernanceSession`, `AIGC.open_session(...)`, `SessionPreCallResult`, local 2–3 step workflow |
-| PR-05 | `feat/v0.9-05-starters-and-migration` | `aigc workflow init`, starter scaffolds, migration helpers, thin presets |
-| PR-06 | `feat/v0.9-06-doctor-and-lint` | `aigc workflow lint`, `aigc workflow doctor`, stable reason codes |
+| PR-05 | `feat/v0.9-05-starters-and-migration` | `aegis workflow init`, starter scaffolds, migration helpers, thin presets |
+| PR-06 | `feat/v0.9-06-doctor-and-lint` | `aegis workflow lint`, `aegis workflow doctor`, stable reason codes |
 | PR-07 | `feat/v0.9-07-beta-proof` | Quickstart docs, clean-env validation, stop-ship checkpoint — **blocks further work if not green** |
 | PR-08 | `feat/v0.9-08-engine-hardening` | Ordered transitions, composition, approval checkpoints, `ValidatorHook`, budgets |
-| PR-09 | `feat/v0.9-09-exports-and-ops` | `aigc workflow trace`, `aigc workflow export`, operator + audit export modes |
+| PR-09 | `feat/v0.9-09-exports-and-ops` | `aegis workflow trace`, `aegis workflow export`, operator + audit export modes |
 | PR-10a | `feat/v0.9-10-bedrock-adapter` | `BedrockTraceAdapter`, alias-backed identity, fail-closed on missing trace |
 | PR-10b | `feat/v0.9-10-a2a-adapter` | `A2AAdapter`, `TASK_STATE_*` validation, gRPC rejection |
 | PR-10c | `feat/v0.9-10-openai-agents-adapter` | `OpenAIAgentsAdapter`, governed binding for `openai-agents`, fail-closed unsupported-surface rules |

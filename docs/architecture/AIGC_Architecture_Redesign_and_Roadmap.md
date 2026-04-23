@@ -78,7 +78,7 @@ and extends via constrained plugin points that cannot weaken enforcement guarant
 | D-09 | No workflow-level governance primitives | Both (BR 2.9, DR 5.1) | **HIGH** | SDK designed for single invocation boundary. No cross-invocation state. | Agent executing 5 individually-compliant calls can compose policy-violating sequence. Largest architectural gap. | `GovernanceSession` context manager with workflow policy DSL, aggregate tool budgets, step sequencing, workflow audit artifact. |
 | D-10 | Async is thread-pool wrapper with no timeout | BR 2.10 | **HIGH** | `asyncio.to_thread(load_policy, ...)` with no `wait_for`. Default thread pool size. | Network filesystem hang blocks thread indefinitely. Thread pool exhaustion under concurrency. | Wrap in `asyncio.wait_for(timeout=...)`. Configurable thread pool. Long-term: native async I/O with `aiofiles`. |
 | D-11 | `@governed` decorator extracts args by position | BR 2.11 | **MEDIUM** | `args[0]` = input, `args[1]` = context. No `inspect.signature()`. | Reordered parameters → governance runs against wrong data silently. | Use `inspect.signature()` to bind by name. Define a `GovernedCallable` Protocol. Raise `TypeError` if required params missing. |
-| D-12 | Condition resolution silently skips optional conditions | BR 2.12 | **MEDIUM** | Optional conditions without default omitted from resolved dict. Typos produce same error. | Debugging: `GuardEvaluationError` with no hint whether condition is missing vs. misspelled. | Emit `INFO` log for skipped conditions. Add `aigc policy lint` that warns about unreferenced conditions and guards referencing undefined conditions. |
+| D-12 | Condition resolution silently skips optional conditions | BR 2.12 | **MEDIUM** | Optional conditions without default omitted from resolved dict. Typos produce same error. | Debugging: `GuardEvaluationError` with no hint whether condition is missing vs. misspelled. | Emit `INFO` log for skipped conditions. Add `aegis policy lint` that warns about unreferenced conditions and guards referencing undefined conditions. |
 | D-13 | Audit schema allows unbounded `metadata` and `context` | BR 2.13 | **MEDIUM** | Schema defines `metadata` and `context` as `type: object` with no constraints. `failures` has no `maxItems`. | Arbitrary data injection. Multi-megabyte JSONL lines from large failure arrays. | Add `maxProperties` on metadata/context. Add `maxItems: 1000` on failures. Validate JSON serializability at invocation boundary. |
 | D-14 | No input validation for JSON serializability | BR 2.14 | **MEDIUM** | `input`, `output`, `context` not checked for serializability until checksum generation. | `datetime`/`Decimal` in invocation → confusing `TypeError` at checksum time, not at validation time. | Validate serializability in `enforce_invocation()` before pipeline entry. Raise `InvocationValidationError` with clear message. |
 | D-15 | Deep copy on every guard merge | BR 2.15 | **MEDIUM** | `copy.deepcopy(policy)` called per guard. 10 guards = 10 deep copies. | Measurable performance hit on large policies with many guards. | Compile guards at policy-load time into a frozen effective policy. Single copy, then apply compiled guard effects. |
@@ -147,7 +147,7 @@ and extends via constrained plugin points that cannot weaken enforcement guarant
 **Options Considered:**
 1. **LRU cache on `load_policy()` return value.** Cache the dict. Simple, but guards are still parsed per-invocation.
 2. **`PolicyCompiler` producing frozen `CompiledPolicy`.** Compile guards to AST, pre-compute effective policies per guard combination, cache compiled JSON Schema validators. Single object cached.
-3. **External compilation step (CLI).** `aigc policy compile` produces a binary artifact. Load from binary at runtime.
+3. **External compilation step (CLI).** `aegis policy compile` produces a binary artifact. Load from binary at runtime.
 
 **Chosen Option:** Option 2 — `PolicyCompiler` with `CompiledPolicy`.
 
@@ -287,7 +287,7 @@ schema gates (now fails on tool first).
 - (-) Introduces state into a previously stateless system.
 - (-) Session lifecycle management (timeout, cleanup) adds complexity.
 
-**Implications:** New `aigc.session` module. Workflow policy DSL extension in `policy_dsl.schema.json`. Audit schema `1.3` adds `workflow_id`, `step_index`, `parent_audit_id`. `GovernanceSession` is instance-scoped (no global state).
+**Implications:** New `aegis.session` module. Workflow policy DSL extension in `policy_dsl.schema.json`. Audit schema `1.3` adds `workflow_id`, `step_index`, `parent_audit_id`. `GovernanceSession` is instance-scoped (no global state).
 
 **Migration Impact:** NONE — additive capability. Existing single-invocation usage unchanged.
 
@@ -338,9 +338,9 @@ schema gates (now fails on tool first).
 - (-) One more abstraction to maintain.
 - (-) Without the OTel implementation, users must write their own.
 
-**Implications:** `ObservabilityProvider` in `aigc.observability`. Default: `NullObservabilityProvider`.
-Optional extra: `pip install aigc[opentelemetry]`. Emits: `aigc.enforcement.duration` histogram,
-`aigc.enforcement.result` counter (labels: policy, role, result, gate), `aigc.enforcement.gate.duration` per gate.
+**Implications:** `ObservabilityProvider` in `aegis.observability`. Default: `NullObservabilityProvider`.
+Optional extra: `pip install aegis[opentelemetry]`. Emits: `aegis.enforcement.duration` histogram,
+`aegis.enforcement.result` counter (labels: policy, role, result, gate), `aegis.enforcement.gate.duration` per gate.
 
 **Migration Impact:** NONE — additive. No existing behavior changes.
 
@@ -439,12 +439,12 @@ enforce_invocation(invocation: dict)          ← module-level function
 Caller
   │
   ▼
-aigc = AIGC(sink=..., cache_size=..., mode=..., observability=...)   ← instance-scoped config
+aegis = AIGC(sink=..., cache_size=..., mode=..., observability=...)   ← instance-scoped config
   │
   ▼
-aigc.enforce(invocation)                      ← instance method
+aegis.enforce(invocation)                      ← instance method
   │
-  ├─ [OBSERVE] span: aigc.enforcement
+  ├─ [OBSERVE] span: aegis.enforcement
   │
   ├─ validate_invocation_shape(invocation)    ← JSON serializability + required fields
   │
@@ -490,7 +490,7 @@ aigc.enforce(invocation)                      ← instance method
   ├─ emit_to_sink(artifact)                     ← instance-scoped sink, fail-closed
   │    └─ on failure: raise | queue | log (configurable)
   │
-  ├─ [OBSERVE] metrics: aigc.enforcement.result, aigc.enforcement.duration
+  ├─ [OBSERVE] metrics: aegis.enforcement.result, aegis.enforcement.duration
   │
   └─ return audit_artifact
 ```
@@ -637,9 +637,9 @@ aigc.enforce(invocation)                      ← instance method
 | API | Purpose |
 |-----|---------|
 | `AIGC(config)` | Instance-scoped configuration + enforcement |
-| `aigc.enforce(invocation) -> dict` | Instance-level sync enforcement |
-| `aigc.enforce_async(invocation) -> dict` | Instance-level async enforcement |
-| `aigc.session(workflow_policy) -> GovernanceSession` | Workflow governance (M3) |
+| `aegis.enforce(invocation) -> dict` | Instance-level sync enforcement |
+| `aegis.enforce_async(invocation) -> dict` | Instance-level async enforcement |
+| `aegis.session(workflow_policy) -> GovernanceSession` | Workflow governance (M3) |
 | `Invocation.builder()` | Builder pattern for invocation construction |
 | `EnforcementGate` (ABC) | Custom gate plugin interface |
 | `PolicyLoader` (ABC) | Custom policy loader interface |
@@ -749,7 +749,7 @@ Audit artifact gains:
 | 10 | **`Invocation.builder()` pattern** | DX improvement from both docs. Reduces boilerplate. | None | Low | S | Builder validates at `.build()` time. Missing required field → `ValueError`. Type hints for IDE support. | Unit: builder validation. Unit: missing field errors. | Quickstart guide, README |
 | 11 | **Decorator fix: `inspect.signature()` binding** | Fixes D-11. Silent wrong-data extraction. | None | Low | S | Decorator binds by parameter name, not position. Reordered params work correctly. Missing `input_data` → `TypeError`. | Unit: reordered params. Unit: keyword args. Unit: missing params. | Decorator docs |
 | 12 | **Strict mode for minimum viable policy** | Prevents governance theater. DX from integration feedback. | #3 (typed preconditions) | Low | S | `AIGC(strict_mode=True)` rejects policies without roles, without preconditions, with bare-string preconditions. Warning in non-strict mode. | Unit: each rejection case. Unit: warning in non-strict. | Configuration docs, policy authoring guide |
-| 13 | **Internal import deprecation warnings** | Protects public/private boundary. | None | Low | S | `from aigc.enforcement import enforce_invocation` emits `DeprecationWarning`. `from aigc import enforce_invocation` does not. | Unit: warning on internal import. Unit: no warning on public import. | Migration guide |
+| 13 | **Internal import deprecation warnings** | Protects public/private boundary. | None | Low | S | `from aegis.enforcement import enforce_invocation` emits `DeprecationWarning`. `from aegis import enforce_invocation` does not. | Unit: warning on internal import. Unit: no warning on public import. | Migration guide |
 
 ### 6.2 Milestone 1: v0.2.0 (0–3 months)
 
@@ -764,11 +764,11 @@ Audit artifact gains:
 - Strict mode for minimum viable policies
 - Deprecation warnings on internal imports and legacy APIs
 - Enhanced guard expression language (AST-based: `and`, `or`, `not`, comparisons)
-- Policy CLI: `aigc policy lint`, `aigc policy validate`
+- Policy CLI: `aegis policy lint`, `aegis policy validate`
 - Audit schema v1.2 (risk_score placeholder, redacted_fields, signature placeholder)
 
 **Target Metrics:**
-- DX: Time from `pip install aigc` to first governed invocation < 5 minutes (with quickstart).
+- DX: Time from `pip install aegis` to first governed invocation < 5 minutes (with quickstart).
 - Performance: Cached policy enforcement < 1ms for simple policies (benchmark suite).
 - Correctness: 100% golden replay pass rate. Zero precondition bypass in test suite.
 - Coverage: >= 90% line coverage maintained.
@@ -787,10 +787,10 @@ Audit artifact gains:
 - Policy composition with restriction semantics (`_merge: intersect|union|replace`)
 - Pluggable `PolicyLoader` interface (filesystem, remote registry, in-memory)
 - Policy versioning with `effective_date` / `expiration_date`
-- OpenTelemetry integration (`pip install aigc[opentelemetry]`)
-- Policy testing framework (`aigc.testing.PolicyTestCase`)
+- OpenTelemetry integration (`pip install aegis[opentelemetry]`)
+- Policy testing framework (`aegis.testing.PolicyTestCase`)
 - Tamper-evident audit chain (hash linking)
-- Compliance export CLI (`aigc audit export --format csv`)
+- Compliance export CLI (`aegis audit export --format csv`)
 - Custom `EnforcementGate` plugin interface
 
 **Target Metrics:**
@@ -818,7 +818,7 @@ Audit artifact gains:
 - Removal of all deprecated APIs (clean v1.0 surface)
 - Native async I/O (aiofiles) replacing thread-pool wrapper
 - Pre-built policy templates (content moderation, RAG, agent workflow, PII, model routing)
-- Policy template registry CLI (`aigc policy template list/apply`)
+- Policy template registry CLI (`aegis policy template list/apply`)
 
 **Target Metrics:**
 - DX: Multi-step agent governed end-to-end in < 30 lines of user code.

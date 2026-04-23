@@ -278,7 +278,7 @@ Availability boundary: this document describes the intended `1.0.0` public
 surface. The shipped `0.3.3` package and CLI do not yet export
 `GovernanceSession`, `SessionPreCallResult`, `AgentIdentity`,
 `AgentCapabilityManifest`, `ValidatorHook`, `BedrockTraceAdapter`,
-`A2AAdapter`, or `aigc workflow ...` commands, and `AIGC.open_session(...)`
+`A2AAdapter`, or `aegis workflow ...` commands, and `AIGC.open_session(...)`
 is not part of the installable runtime yet.
 
 ### 7.1 Session Lifecycle
@@ -339,7 +339,7 @@ _PR02_PUBLIC_CONTRACT_CONTENT = """\
 Planned-only surfaces described in that target-state document — including
 `AIGC.open_session(...)`, `GovernanceSession`, `SessionPreCallResult`,
 `AgentIdentity`, `AgentCapabilityManifest`, `ValidatorHook`,
-`BedrockTraceAdapter`, `A2AAdapter`, and `aigc workflow ...` commands — are
+`BedrockTraceAdapter`, `A2AAdapter`, and `aegis workflow ...` commands — are
 not part of the installable `v0.3.3` artifact today. There is no current
 module-level `open_session()` convenience in the shipped package.
 """
@@ -572,20 +572,20 @@ _PR03_PLAN_CONTENT = """\
 
 ### Public surface and migration posture
 
-- The frozen golden-path CLI inventory is `aigc policy init`, `aigc workflow init`, `aigc workflow lint`, `aigc workflow doctor`, `aigc workflow trace`, and `aigc workflow export`.
-- Public examples, quickstarts, starter assets, presets, recipes, and demo code must use only public APIs and must never import from `aigc._internal`.
+- The frozen golden-path CLI inventory is `aegis policy init`, `aegis workflow init`, `aegis workflow lint`, `aegis workflow doctor`, `aegis workflow trace`, and `aegis workflow export`.
+- Public examples, quickstarts, starter assets, presets, recipes, and demo code must use only public APIs and must never import from `aegis._internal`.
 - Hand-authored workflow DSL remains supported but is advanced mode.
 
 ### Golden-path contract freeze
 
 Frozen CLI command inventory:
 
-- `aigc policy init`
-- `aigc workflow init`
-- `aigc workflow lint`
-- `aigc workflow doctor`
-- `aigc workflow trace`
-- `aigc workflow export`
+- `aegis policy init`
+- `aegis workflow init`
+- `aegis workflow lint`
+- `aegis workflow doctor`
+- `aegis workflow trace`
+- `aegis workflow export`
 
 Frozen scaffold profiles:
 
@@ -630,19 +630,19 @@ Availability boundary: this document describes the intended `1.0.0` public
 surface. The shipped `0.3.3` package and CLI do not yet export
 `GovernanceSession`, `SessionPreCallResult`, `AgentIdentity`,
 `AgentCapabilityManifest`, `ValidatorHook`, `BedrockTraceAdapter`,
-`A2AAdapter`, `aigc policy init`, or `aigc workflow ...` commands, and
+`A2AAdapter`, `aegis policy init`, or `aegis workflow ...` commands, and
 `AIGC.open_session(...)` is not part of the installable runtime yet.
 
 ### 13.4 Frozen First-Adopter Contract
 
 Frozen CLI command inventory:
 
-- `aigc policy init`
-- `aigc workflow init`
-- `aigc workflow lint`
-- `aigc workflow doctor`
-- `aigc workflow trace`
-- `aigc workflow export`
+- `aegis policy init`
+- `aegis workflow init`
+- `aegis workflow lint`
+- `aegis workflow doctor`
+- `aegis workflow trace`
+- `aegis workflow export`
 
 Frozen scaffold profiles:
 
@@ -660,7 +660,7 @@ Required starter coverage:
 Rules:
 
 - hand-authored workflow DSL remains supported as advanced mode and is not required for the default path
-- public quickstarts, starter packs, presets, demo code, and docs snippets must use public `aigc` imports only and must not depend on `aigc._internal`
+- public quickstarts, starter packs, presets, demo code, and docs snippets must use public `aegis` imports only and must not depend on `aegis._internal`
 
 Frozen first-user diagnostic reason codes:
 
@@ -688,9 +688,9 @@ Frozen first-adopter docs order:
 _PR03_README_CONTENT = """\
 # README
 
-The planned golden-path CLI names — `aigc policy init`, `aigc workflow init`,
-`aigc workflow lint`, `aigc workflow doctor`, `aigc workflow trace`, and
-`aigc workflow export` — are also frozen in the repo docs, but none of those
+The planned golden-path CLI names — `aegis policy init`, `aegis workflow init`,
+`aegis workflow lint`, `aegis workflow doctor`, `aegis workflow trace`, and
+`aegis workflow export` — are also frozen in the repo docs, but none of those
 workflow surfaces are part of the shipped `v0.3.3` runtime or CLI.
 """
 
@@ -698,11 +698,11 @@ _PR03_PUBLIC_CONTRACT_CONTENT = """\
 # Public Contract
 
 Planned-only surfaces described in that target-state document — including
-`aigc policy init` and `aigc workflow ...` commands — are not part of the
+`aegis policy init` and `aegis workflow ...` commands — are not part of the
 installable `v0.3.3` artifact today.
 
 All public examples, starter packs, presets, demo code, and docs snippets
-must use public `aigc` imports only and must not depend on `aigc._internal`.
+must use public `aegis` imports only and must not depend on `aegis._internal`.
 """
 
 _PR03_PR_CONTEXT_CONTENT = """\
@@ -716,7 +716,7 @@ PR type:
 
 Contract Notes
 
-- The frozen golden-path CLI inventory is `aigc policy init`, `aigc workflow init`, `aigc workflow lint`, `aigc workflow doctor`, `aigc workflow trace`, and `aigc workflow export`, but those commands are still absent from the shipped `v0.3.3` CLI in PR-03.
+- The frozen golden-path CLI inventory is `aegis policy init`, `aegis workflow init`, `aegis workflow lint`, `aegis workflow doctor`, `aegis workflow trace`, and `aegis workflow export`, but those commands are still absent from the shipped `v0.3.3` CLI in PR-03.
 - PR-03 is docs, CI, sentinel tests, and public-import hygiene only. Workflow runtime implementation still starts in PR-04.
 """
 
@@ -726,7 +726,7 @@ _PR03_RELEASE_GATES_CONTENT = """\
 ## PR-03 — Golden-Path Contract Freeze Gate
 
 - [ ] staged CLI sentinel tests prove the current shipped CLI still exposes no `workflow` or `policy init` commands while freezing the future command names in docs
-- [ ] public-import boundary tests confirm maintained onboarding examples and demo code use public `aigc` imports only
+- [ ] public-import boundary tests confirm maintained onboarding examples and demo code use public `aegis` imports only
 """
 
 _PR03_IMPLEMENTATION_STATUS_CONTENT = """\
@@ -773,7 +773,7 @@ def test_v090_pr03_contract_rejects_cli_inventory_drift(tmp_path, monkeypatch):
     module = _load_doc_parity_module()
     monkeypatch.setattr(module, "REPO_ROOT", tmp_path)
 
-    bad_plan = _PR03_PLAN_CONTENT.replace("- `aigc policy init`\n", "")
+    bad_plan = _PR03_PLAN_CONTENT.replace("- `aegis policy init`\n", "")
     _seed_pr03_contract_repo(tmp_path, plan=bad_plan)
 
     errors = module.check_v090_pr03_contract()
@@ -808,14 +808,14 @@ def test_v090_pr03_contract_rejects_missing_readme_cli_boundary(tmp_path, monkey
     module = _load_doc_parity_module()
     monkeypatch.setattr(module, "REPO_ROOT", tmp_path)
 
-    bad_readme = _PR03_README_CONTENT.replace("`aigc policy init`, ", "")
+    bad_readme = _PR03_README_CONTENT.replace("`aegis policy init`, ", "")
     _seed_pr03_contract_repo(tmp_path, readme=bad_readme)
 
     errors = module.check_v090_pr03_contract()
 
     assert any(
         "missing planned-only README CLI boundary" in error
-        and "`aigc policy init`" in error
+        and "`aegis policy init`" in error
         for error in errors
     ), errors
 
@@ -887,7 +887,7 @@ and are not part of the installable `v0.3.3` artifact: `AIGC.open_session(...)`,
 `GovernanceSession`, `SessionPreCallResult`.
 
 The following surfaces remain planned-only: `AgentIdentity`, `AgentCapabilityManifest`,
-`aigc policy init`, and `aigc workflow ...` commands.
+`aegis policy init`, and `aegis workflow ...` commands.
 """
 
 _PR04_PR_CONTEXT_CONTENT = """\
@@ -1056,7 +1056,7 @@ _PR05_PR_CONTEXT_CONTENT = """\
 
 Active branch: `feat/v0.9-05-starters-and-migration`
 
-PR-05 ships `aigc workflow init`, `aigc policy init`, starter scaffolds, and migration helpers.
+PR-05 ships `aegis workflow init`, `aegis policy init`, starter scaffolds, and migration helpers.
 """
 
 _PR05_IMPLEMENTATION_STATUS_CONTENT = """\
@@ -1072,23 +1072,23 @@ Starters and migration: in progress.
 _PR05_PUBLIC_CONTRACT_CONTENT = """\
 # Public Integration Contract
 
-Also planned for the upcoming unreleased v0.9.0-beta: `aigc workflow init`,
-`aigc policy init`, `aigc.presets.MinimalPreset`, starter scaffolds.
+Also planned for the upcoming unreleased v0.9.0-beta: `aegis workflow init`,
+`aegis policy init`, `aegis.presets.MinimalPreset`, starter scaffolds.
 """
 
 _PR05_README_CONTENT = """\
 ## Shipped in v0.9.0-beta
 
-`aigc workflow init` and `aigc policy init` are now available.
-Use `aigc workflow lint`, `aigc workflow doctor`, `aigc workflow trace`,
-and `aigc workflow export` (planned for future releases).
+`aegis workflow init` and `aegis policy init` are now available.
+Use `aegis workflow lint`, `aegis workflow doctor`, `aegis workflow trace`,
+and `aegis workflow export` (planned for future releases).
 """
 
 _PR05_HLD_CONTENT = """\
 v0.9.0-beta adds `GovernanceSession`, `SessionPreCallResult`,
-`aigc workflow init`, and `aigc policy init`.
-`ValidatorHook`, `BedrockTraceAdapter`, `A2AAdapter`, `aigc workflow lint`,
-`aigc workflow doctor`, `aigc workflow trace`, and `aigc workflow export`
+`aegis workflow init`, and `aegis policy init`.
+`ValidatorHook`, `BedrockTraceAdapter`, `A2AAdapter`, `aegis workflow lint`,
+`aegis workflow doctor`, `aegis workflow trace`, and `aegis workflow export`
 remain planned-only and are not part of any currently released artifact.
 """
 
@@ -1139,17 +1139,17 @@ def test_pr05_contract_rejects_wrong_active_branch(tmp_path, monkeypatch):
 
 
 def test_pr05_contract_rejects_missing_pr05_surfaces(tmp_path, monkeypatch):
-    """README missing aigc policy init → error returned."""
+    """README missing aegis policy init → error returned."""
     module = _load_doc_parity_module()
     monkeypatch.setattr(module, "REPO_ROOT", tmp_path)
 
-    bad_readme = "# README\n\nOnly `aigc workflow init` is mentioned here.\n"
+    bad_readme = "# README\n\nOnly `aegis workflow init` is mentioned here.\n"
     _seed_pr05_contract_repo(tmp_path, readme=bad_readme)
 
     errors = module.check_v090_pr05_contract()
 
-    assert any("aigc policy init" in e and "README.md" in e for e in errors), (
-        f"Expected README error for missing aigc policy init, got: {errors}"
+    assert any("aegis policy init" in e and "README.md" in e for e in errors), (
+        f"Expected README error for missing aegis policy init, got: {errors}"
     )
 
 
@@ -1166,8 +1166,8 @@ Active branch: `feat/v0.9-09-exports-and-ops`
 
 ## PR-09 Outcomes
 
-- `aigc workflow trace` — timeline reconstruction from workflow and invocation artifacts
-- `aigc workflow export` — operator and audit export modes
+- `aegis workflow trace` — timeline reconstruction from workflow and invocation artifacts
+- `aegis workflow export` — operator and audit export modes
 """
 
 _PR09_HLD_CONTENT = """\
@@ -1175,8 +1175,8 @@ Available in the source-only `v0.9.0` beta line — not part of the `v0.3.3` art
 
 | Surface | Intended role |
 | ------- | ------------- |
-| `aigc workflow lint` / `aigc workflow doctor` | beta diagnostic surface |
-| `aigc workflow trace` / `aigc workflow export` | operator inspection and audit export surface (shipped in PR-09) |
+| `aegis workflow lint` / `aegis workflow doctor` | beta diagnostic surface |
+| `aegis workflow trace` / `aegis workflow export` | operator inspection and audit export surface (shipped in PR-09) |
 
 Planned for 1.0.0 or later (not in the current beta public surface):
 
@@ -1191,11 +1191,11 @@ Planned for 1.0.0 or later (not in the current beta public surface):
 _PR09_CLI_REF_CONTENT = """\
 ## workflow trace
 
-`aigc workflow trace --input <file> [--output <file>]`
+`aegis workflow trace --input <file> [--output <file>]`
 
 ## workflow export
 
-`aigc workflow export --input <file> --mode operator|audit [--output <file>]`
+`aegis workflow export --input <file> --mode operator|audit [--output <file>]`
 
 Options: `--mode operator`, `--mode audit`
 """
@@ -1203,7 +1203,7 @@ Options: `--mode operator`, `--mode audit`
 _PR09_OPS_RUNBOOK_CONTENT = """\
 ## Observability
 
-Use `aigc workflow trace` and `aigc workflow export` for evidence inspection.
+Use `aegis workflow trace` and `aegis workflow export` for evidence inspection.
 """
 
 _PR09_GENERIC_DOC_CONTENT = """\
@@ -1280,13 +1280,13 @@ Available in the source-only `v0.9.0` beta line:
 
 | Surface | Intended role |
 | ------- | ------------- |
-| `aigc workflow lint` / `aigc workflow doctor` | beta diagnostic surface |
+| `aegis workflow lint` / `aegis workflow doctor` | beta diagnostic surface |
 
 Planned for 1.0.0 or later (not in the current beta public surface):
 
 | Planned surface | Intended role in `1.0.0` |
 | --------------- | ------------------------ |
-| `aigc workflow trace` and `aigc workflow export` | operator inspection and export surface |
+| `aegis workflow trace` and `aegis workflow export` | operator inspection and export surface |
 
 ### 13.2 Stability Contract
 """
@@ -1303,7 +1303,7 @@ def test_pr09_contract_rejects_missing_cli_ref_anchor(tmp_path, monkeypatch):
     module = _load_doc_parity_module()
     monkeypatch.setattr(module, "REPO_ROOT", tmp_path)
 
-    bad_cli_ref = "## workflow trace\n\n`aigc workflow trace --input <file>`\n\n## workflow export\n\nOptions: --mode audit\n"
+    bad_cli_ref = "## workflow trace\n\n`aegis workflow trace --input <file>`\n\n## workflow export\n\nOptions: --mode audit\n"
     _seed_pr09_contract_repo(tmp_path, cli_ref=bad_cli_ref)
 
     errors = module.check_v090_pr09_contract()
@@ -1313,14 +1313,14 @@ def test_pr09_contract_rejects_missing_cli_ref_anchor(tmp_path, monkeypatch):
 
 
 def test_pr09_contract_rejects_missing_ops_runbook_command(tmp_path, monkeypatch):
-    """OPERATIONS_RUNBOOK.md missing 'aigc workflow export' → error."""
+    """OPERATIONS_RUNBOOK.md missing 'aegis workflow export' → error."""
     module = _load_doc_parity_module()
     monkeypatch.setattr(module, "REPO_ROOT", tmp_path)
 
-    bad_runbook = "## Observability\n\nUse `aigc workflow trace` for evidence inspection.\n"
+    bad_runbook = "## Observability\n\nUse `aegis workflow trace` for evidence inspection.\n"
     _seed_pr09_contract_repo(tmp_path, ops_runbook=bad_runbook)
 
     errors = module.check_v090_pr09_contract()
-    assert any("aigc workflow export" in e and "OPERATIONS_RUNBOOK.md" in e for e in errors), (
+    assert any("aegis workflow export" in e and "OPERATIONS_RUNBOOK.md" in e for e in errors), (
         f"Expected missing ops runbook command error, got: {errors}"
     )

@@ -1,14 +1,14 @@
 """Tests for the built-in ProvenanceGate enforcement gate."""
 import pytest
 
-from aigc._internal.gates import INSERTION_PRE_OUTPUT
-from aigc._internal.provenance_gate import (
+from aegis._internal.gates import INSERTION_PRE_OUTPUT
+from aegis._internal.provenance_gate import (
     ProvenanceGate,
     PROVENANCE_MISSING,
     SOURCE_IDS_MISSING,
 )
-from aigc._internal.enforcement import AIGC
-from aigc._internal.errors import CustomGateViolationError
+from aegis._internal.enforcement import AIGC
+from aegis._internal.errors import CustomGateViolationError
 
 # ── Invocation fixtures ────────────────────────────────────────────
 
@@ -131,16 +131,16 @@ def test_fails_source_ids_is_string_not_list():
 
 
 def test_aigc_with_provenance_gate_passes():
-    aigc = AIGC(custom_gates=[ProvenanceGate()])
-    audit = aigc.enforce(_inv(provenance={"source_ids": ["step-1"]}))
+    aegis = AIGC(custom_gates=[ProvenanceGate()])
+    audit = aegis.enforce(_inv(provenance={"source_ids": ["step-1"]}))
     assert audit["enforcement_result"] == "PASS"
     assert "custom:provenance_gate" in audit["metadata"]["gates_evaluated"]
 
 
 def test_aigc_with_provenance_gate_fails_no_provenance():
-    aigc = AIGC(custom_gates=[ProvenanceGate()])
+    aegis = AIGC(custom_gates=[ProvenanceGate()])
     with pytest.raises(CustomGateViolationError) as exc_info:
-        aigc.enforce(_inv())
+        aegis.enforce(_inv())
     artifact = exc_info.value.audit_artifact
     assert artifact["failure_gate"] == "custom_gate_violation"
     # FAIL artifacts store failures at top level, not under metadata
@@ -148,9 +148,9 @@ def test_aigc_with_provenance_gate_fails_no_provenance():
 
 
 def test_aigc_with_provenance_gate_fails_source_ids_missing():
-    aigc = AIGC(custom_gates=[ProvenanceGate()])
+    aegis = AIGC(custom_gates=[ProvenanceGate()])
     with pytest.raises(CustomGateViolationError) as exc_info:
-        aigc.enforce(_inv(provenance={"compilation_source_hash": "abc"}))
+        aegis.enforce(_inv(provenance={"compilation_source_hash": "abc"}))
     artifact = exc_info.value.audit_artifact
     assert any(f["code"] == SOURCE_IDS_MISSING for f in artifact["failures"])
 
@@ -160,21 +160,21 @@ def test_aigc_with_provenance_gate_fails_source_ids_missing():
 
 def test_pass_artifact_carries_provenance():
     """PASS artifact must include provenance from invocation context."""
-    aigc = AIGC(custom_gates=[ProvenanceGate()])
-    audit = aigc.enforce(_inv(provenance={"source_ids": ["doc-a"]}))
+    aegis = AIGC(custom_gates=[ProvenanceGate()])
+    audit = aegis.enforce(_inv(provenance={"source_ids": ["doc-a"]}))
     assert audit["provenance"] is not None
     assert audit["provenance"]["source_ids"] == ["doc-a"]
 
 
 def test_fail_artifact_carries_provenance():
     """FAIL artifact must include provenance from invocation context."""
-    aigc = AIGC(custom_gates=[])  # no gate so enforcement passes; need a policy fail
+    aegis = AIGC(custom_gates=[])  # no gate so enforcement passes; need a policy fail
     # Use a bad role to trigger a role_validation FAIL
     bad_inv = _inv(provenance={"source_ids": ["doc-a"]})
     bad_inv = {**bad_inv, "role": "nonexistent_role_xyz"}
-    from aigc._internal.errors import GovernanceViolationError
+    from aegis._internal.errors import GovernanceViolationError
     with pytest.raises(GovernanceViolationError) as exc_info:
-        aigc.enforce(bad_inv)
+        aegis.enforce(bad_inv)
     artifact = exc_info.value.audit_artifact
     assert artifact["provenance"] is not None
     assert artifact["provenance"]["source_ids"] == ["doc-a"]
@@ -187,8 +187,8 @@ def test_scalar_provenance_sanitized_to_none_in_artifact():
     but the artifact propagation step must sanitize it before passing to
     _normalize_provenance() (which calls .items() and would crash on a string).
     """
-    aigc = AIGC(custom_gates=[ProvenanceGate(require_source_ids=False)])
-    audit = aigc.enforce(_inv(provenance="bad-scalar"))
+    aegis = AIGC(custom_gates=[ProvenanceGate(require_source_ids=False)])
+    audit = aegis.enforce(_inv(provenance="bad-scalar"))
     assert audit["enforcement_result"] == "PASS"
     assert audit["provenance"] is None
 
@@ -200,8 +200,8 @@ def test_phase_a_split_fail_artifact_carries_provenance():
     A bad role that passes policy loading but fails role validation triggers
     this path via enforce_pre_call().
     """
-    from aigc import enforce_pre_call
-    from aigc._internal.errors import GovernanceViolationError
+    from aegis import enforce_pre_call
+    from aegis._internal.errors import GovernanceViolationError
     inv = {
         **_BASE,
         "role": "nonexistent_role_xyz",
@@ -222,8 +222,8 @@ def test_pre_pipeline_fail_artifact_carries_provenance():
     A non-existent policy file triggers a PolicyLoadError before the
     enforcement pipeline runs.
     """
-    from aigc import enforce_invocation
-    from aigc import PolicyLoadError
+    from aegis import enforce_invocation
+    from aegis import PolicyLoadError
     inv = {
         **_BASE,
         "policy_file": "nonexistent/path/policy.yaml",
@@ -243,8 +243,8 @@ def test_split_fn_fail_artifact_carries_provenance():
     Exercises emit_split_fn_failure_artifact() at line ~2173.
     Called directly after a successful enforce_pre_call() with provenance.
     """
-    from aigc._internal.enforcement import emit_split_fn_failure_artifact
-    from aigc import enforce_pre_call
+    from aegis._internal.enforcement import emit_split_fn_failure_artifact
+    from aegis import enforce_pre_call
     inv = _inv(provenance={"source_ids": ["doc-a"]})
     pre = enforce_pre_call(inv)
     artifact = emit_split_fn_failure_artifact(pre, RuntimeError("wrapped fn failed"))
@@ -259,8 +259,8 @@ def test_phase_b_fail_artifact_carries_provenance():
     enforce_pre_call succeeds, then enforce_post_call fails schema validation
     because the output is missing the required 'confidence' field.
     """
-    from aigc import enforce_pre_call, enforce_post_call
-    from aigc._internal.errors import SchemaValidationError
+    from aegis import enforce_pre_call, enforce_post_call
+    from aegis._internal.errors import SchemaValidationError
     pre = enforce_pre_call(_inv(provenance={"source_ids": ["doc-a"]}))
     with pytest.raises(SchemaValidationError) as exc_info:
         enforce_post_call(pre, {"result": "ok"})  # missing required 'confidence'
@@ -370,7 +370,7 @@ def test_custom_gate_failure_messages_are_redacted():
     Any gate that echoes user input (PII, secrets) in its failure message must
     not leak that content into the emitted audit artifact.
     """
-    from aigc._internal.gates import EnforcementGate, GateResult, INSERTION_PRE_OUTPUT as IPO
+    from aegis._internal.gates import EnforcementGate, GateResult, INSERTION_PRE_OUTPUT as IPO
 
     class LeakyGate(EnforcementGate):
         @property
@@ -401,11 +401,11 @@ def test_custom_gate_failure_messages_are_redacted():
 
 
 def test_public_import():
-    from aigc import ProvenanceGate as PG  # noqa: F401
+    from aegis import ProvenanceGate as PG  # noqa: F401
     assert PG is ProvenanceGate
 
 
 def test_public_failure_codes_importable():
-    from aigc.provenance_gate import PROVENANCE_MISSING as PM, SOURCE_IDS_MISSING as SIM
+    from aegis.provenance_gate import PROVENANCE_MISSING as PM, SOURCE_IDS_MISSING as SIM
     assert PM == "PROVENANCE_MISSING"
     assert SIM == "SOURCE_IDS_MISSING"

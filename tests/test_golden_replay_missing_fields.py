@@ -9,8 +9,8 @@ import json
 
 import pytest
 
-from aigc._internal.enforcement import enforce_invocation
-from aigc._internal.errors import InvocationValidationError
+from aegis._internal.enforcement import enforce_invocation
+from aegis._internal.errors import InvocationValidationError
 
 
 def test_golden_replay_missing_fields():

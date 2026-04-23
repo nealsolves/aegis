@@ -8,7 +8,7 @@ import pytest
 # ---------------------------------------------------------------------------
 
 def test_workflow_starter_integrity_error_importable():
-    from aigc import WorkflowStarterIntegrityError
+    from aegis import WorkflowStarterIntegrityError
     err = WorkflowStarterIntegrityError("bad starter", details={"profile": "minimal"})
     assert err.code == "WORKFLOW_STARTER_INTEGRITY_ERROR"
     assert "bad starter" in str(err)
@@ -16,7 +16,7 @@ def test_workflow_starter_integrity_error_importable():
 
 
 def test_workflow_starter_integrity_error_is_governance_violation():
-    from aigc import WorkflowStarterIntegrityError, GovernanceViolationError
+    from aegis import WorkflowStarterIntegrityError, GovernanceViolationError
     err = WorkflowStarterIntegrityError("test")
     assert isinstance(err, GovernanceViolationError)
 
@@ -26,7 +26,7 @@ def test_workflow_starter_integrity_error_is_governance_violation():
 # ---------------------------------------------------------------------------
 
 def test_minimal_preset_policy_yaml():
-    from aigc.presets import MinimalPreset
+    from aegis.presets import MinimalPreset
     preset = MinimalPreset(role="ai-assistant")
     yaml_text = preset.policy_yaml
     assert "policy_version" in yaml_text
@@ -35,14 +35,14 @@ def test_minimal_preset_policy_yaml():
 
 
 def test_minimal_preset_session_metadata():
-    from aigc.presets import MinimalPreset
+    from aegis.presets import MinimalPreset
     meta = MinimalPreset().session_metadata
     assert meta["starter_profile"] == "minimal"
     assert "generated_by" in meta
 
 
 def test_standard_preset_policy_yaml():
-    from aigc.presets import StandardPreset
+    from aegis.presets import StandardPreset
     preset = StandardPreset(role="ai-assistant")
     yaml_text = preset.policy_yaml
     assert "policy_version" in yaml_text
@@ -51,7 +51,7 @@ def test_standard_preset_policy_yaml():
 
 
 def test_regulated_preset_policy_yaml():
-    from aigc.presets import RegulatedHighAssurancePreset
+    from aegis.presets import RegulatedHighAssurancePreset
     preset = RegulatedHighAssurancePreset(role="ai-assistant")
     yaml_text = preset.policy_yaml
     assert "policy_version" in yaml_text
@@ -61,7 +61,7 @@ def test_regulated_preset_policy_yaml():
 
 
 def test_preset_write_policy(tmp_path):
-    from aigc.presets import MinimalPreset
+    from aegis.presets import MinimalPreset
     import yaml
     preset = MinimalPreset(role="tester")
     out = tmp_path / "policy.yaml"
@@ -75,7 +75,7 @@ def test_preset_write_policy(tmp_path):
 def test_minimal_preset_special_character_role():
     """A role with YAML-special characters must parse back correctly."""
     import yaml
-    from aigc.presets import MinimalPreset
+    from aegis.presets import MinimalPreset
     preset = MinimalPreset(role="ai:assistant")
     parsed = yaml.safe_load(preset.policy_yaml)
     assert "ai:assistant" in parsed["roles"]
@@ -86,26 +86,26 @@ def test_minimal_preset_special_character_role():
 # ---------------------------------------------------------------------------
 
 def test_render_minimal_starter_returns_expected_files():
-    from aigc._internal.starter_templates import render_minimal_starter
+    from aegis._internal.starter_templates import render_minimal_starter
     files = render_minimal_starter()
     assert set(files.keys()) == {"policy.yaml", "workflow_example.py", "README.md"}
 
 
 def test_render_standard_starter_returns_expected_files():
-    from aigc._internal.starter_templates import render_standard_starter
+    from aegis._internal.starter_templates import render_standard_starter
     files = render_standard_starter()
     assert set(files.keys()) == {"policy.yaml", "workflow_example.py", "README.md"}
 
 
 def test_render_regulated_starter_returns_expected_files():
-    from aigc._internal.starter_templates import render_regulated_starter
+    from aegis._internal.starter_templates import render_regulated_starter
     files = render_regulated_starter()
     assert set(files.keys()) == {"policy.yaml", "workflow_example.py", "README.md"}
 
 
 def test_minimal_starter_policy_is_valid_yaml():
     import yaml
-    from aigc._internal.starter_templates import render_minimal_starter
+    from aegis._internal.starter_templates import render_minimal_starter
     files = render_minimal_starter()
     parsed = yaml.safe_load(files["policy.yaml"])
     assert parsed["policy_version"] == "1.0"
@@ -114,7 +114,7 @@ def test_minimal_starter_policy_is_valid_yaml():
 
 def test_regulated_starter_policy_has_tool_budget():
     import yaml
-    from aigc._internal.starter_templates import render_regulated_starter
+    from aegis._internal.starter_templates import render_regulated_starter
     files = render_regulated_starter()
     parsed = yaml.safe_load(files["policy.yaml"])
     assert "tools" in parsed
@@ -122,9 +122,9 @@ def test_regulated_starter_policy_has_tool_budget():
 
 
 def test_starter_workflow_py_no_internal_imports():
-    """Generated workflow_example.py files must not import from aigc._internal."""
+    """Generated workflow_example.py files must not import from aegis._internal."""
     import ast
-    from aigc._internal.starter_templates import (
+    from aegis._internal.starter_templates import (
         render_minimal_starter,
         render_standard_starter,
         render_regulated_starter,
@@ -147,18 +147,18 @@ def test_starter_workflow_py_no_internal_imports():
 
 
 def test_starter_role_customization():
-    from aigc._internal.starter_templates import render_minimal_starter
+    from aegis._internal.starter_templates import render_minimal_starter
     files = render_minimal_starter(role="summarizer")
     assert "summarizer" in files["policy.yaml"]
 
 
 # ---------------------------------------------------------------------------
-# Task 4: aigc policy init CLI command
+# Task 4: aegis policy init CLI command
 # ---------------------------------------------------------------------------
 
 def test_policy_init_minimal_creates_valid_yaml(tmp_path):
     import yaml
-    from aigc._internal.cli import main
+    from aegis._internal.cli import main
     out = tmp_path / "policy.yaml"
     rc = main(["policy", "init", "--profile", "minimal", "--output", str(out)])
     assert rc == 0
@@ -170,7 +170,7 @@ def test_policy_init_minimal_creates_valid_yaml(tmp_path):
 
 def test_policy_init_standard_creates_yaml(tmp_path):
     import yaml
-    from aigc._internal.cli import main
+    from aegis._internal.cli import main
     out = tmp_path / "policy.yaml"
     rc = main(["policy", "init", "--profile", "standard", "--output", str(out)])
     assert rc == 0
@@ -180,7 +180,7 @@ def test_policy_init_standard_creates_yaml(tmp_path):
 
 def test_policy_init_regulated_creates_yaml_with_tools(tmp_path):
     import yaml
-    from aigc._internal.cli import main
+    from aegis._internal.cli import main
     out = tmp_path / "policy.yaml"
     rc = main(["policy", "init", "--profile", "regulated-high-assurance", "--output", str(out)])
     assert rc == 0
@@ -189,7 +189,7 @@ def test_policy_init_regulated_creates_yaml_with_tools(tmp_path):
 
 
 def test_policy_init_fails_if_output_exists(tmp_path):
-    from aigc._internal.cli import main
+    from aegis._internal.cli import main
     out = tmp_path / "policy.yaml"
     out.write_text("existing content")
     rc = main(["policy", "init", "--profile", "minimal", "--output", str(out)])
@@ -199,7 +199,7 @@ def test_policy_init_fails_if_output_exists(tmp_path):
 
 def test_policy_init_custom_role(tmp_path):
     import yaml
-    from aigc._internal.cli import main
+    from aegis._internal.cli import main
     out = tmp_path / "policy.yaml"
     rc = main(["policy", "init", "--profile", "minimal", "--role", "summarizer", "--output", str(out)])
     assert rc == 0
@@ -208,11 +208,11 @@ def test_policy_init_custom_role(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Task 5: aigc workflow init CLI command
+# Task 5: aegis workflow init CLI command
 # ---------------------------------------------------------------------------
 
 def test_workflow_init_minimal_creates_expected_files(tmp_path):
-    from aigc._internal.cli import main
+    from aegis._internal.cli import main
     out_dir = tmp_path / "governance"
     rc = main(["workflow", "init", "--profile", "minimal", "--output-dir", str(out_dir)])
     assert rc == 0
@@ -222,7 +222,7 @@ def test_workflow_init_minimal_creates_expected_files(tmp_path):
 
 
 def test_workflow_init_standard_creates_expected_files(tmp_path):
-    from aigc._internal.cli import main
+    from aegis._internal.cli import main
     out_dir = tmp_path / "governance"
     rc = main(["workflow", "init", "--profile", "standard", "--output-dir", str(out_dir)])
     assert rc == 0
@@ -231,7 +231,7 @@ def test_workflow_init_standard_creates_expected_files(tmp_path):
 
 
 def test_workflow_init_regulated_creates_expected_files(tmp_path):
-    from aigc._internal.cli import main
+    from aegis._internal.cli import main
     out_dir = tmp_path / "governance"
     rc = main(["workflow", "init", "--profile", "regulated-high-assurance", "--output-dir", str(out_dir)])
     assert rc == 0
@@ -240,7 +240,7 @@ def test_workflow_init_regulated_creates_expected_files(tmp_path):
 
 
 def test_workflow_init_fails_if_any_file_exists(tmp_path):
-    from aigc._internal.cli import main
+    from aegis._internal.cli import main
     out_dir = tmp_path / "governance"
     out_dir.mkdir()
     (out_dir / "policy.yaml").write_text("existing")
@@ -251,7 +251,7 @@ def test_workflow_init_fails_if_any_file_exists(tmp_path):
 
 
 def test_workflow_init_default_output_dir(tmp_path, monkeypatch):
-    from aigc._internal.cli import main
+    from aegis._internal.cli import main
     monkeypatch.chdir(tmp_path)
     rc = main(["workflow", "init", "--profile", "minimal"])
     assert rc == 0
@@ -260,7 +260,7 @@ def test_workflow_init_default_output_dir(tmp_path, monkeypatch):
 
 def test_workflow_init_custom_role(tmp_path):
     import yaml
-    from aigc._internal.cli import main
+    from aegis._internal.cli import main
     out_dir = tmp_path / "governance"
     rc = main(["workflow", "init", "--profile", "minimal", "--role", "reviewer",
                "--output-dir", str(out_dir)])
@@ -271,7 +271,7 @@ def test_workflow_init_custom_role(tmp_path):
 
 def test_workflow_init_generated_py_no_internal_imports(tmp_path):
     import ast
-    from aigc._internal.cli import main
+    from aegis._internal.cli import main
     out_dir = tmp_path / "governance"
     rc = main(["workflow", "init", "--profile", "regulated-high-assurance",
                "--output-dir", str(out_dir)])
@@ -288,7 +288,7 @@ def test_workflow_init_generated_py_no_internal_imports(tmp_path):
 
 
 def test_workflow_no_subcommand_returns_nonzero():
-    """aigc workflow with no subcommand must return 1 (not raise SystemExit)."""
-    from aigc._internal.cli import main
+    """aegis workflow with no subcommand must return 1 (not raise SystemExit)."""
+    from aegis._internal.cli import main
     rc = main(["workflow"])
     assert rc == 1

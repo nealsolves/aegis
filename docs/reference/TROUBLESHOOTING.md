@@ -1,28 +1,28 @@
 # AIGC Workflow Troubleshooting Guide
 
-This guide covers `aigc workflow doctor`, `aigc workflow lint`, the frozen
+This guide covers `aegis workflow doctor`, `aegis workflow lint`, the frozen
 first-user reason codes, and the regulated failure-and-fix walkthrough.
 
-## `aigc workflow doctor`
+## `aegis workflow doctor`
 
 Use doctor when you want runtime or evidence-aware diagnosis:
 
 ```bash
-aigc workflow doctor governance/
-aigc workflow doctor workflow_artifact.json
-aigc workflow doctor audit.json --kind audit_artifact --json
+aegis workflow doctor governance/
+aegis workflow doctor workflow_artifact.json
+aegis workflow doctor audit.json --kind audit_artifact --json
 ```
 
 Doctor exits `0` when no error-severity findings are present and exits `1` when
 at least one error-severity finding is present.
 
-## `aigc workflow lint`
+## `aegis workflow lint`
 
 Use lint for static checks before you run a workflow:
 
 ```bash
-aigc workflow lint policy.yaml
-aigc workflow lint governance/
+aegis workflow lint policy.yaml
+aegis workflow lint governance/
 ```
 
 Lint exits `0` when no error-severity findings are present and exits `1` when
@@ -87,7 +87,7 @@ new attempt.
 Symptom: lint or doctor reports missing/empty starter files, syntax errors, or
 public-boundary violations.
 
-Fix: regenerate the starter with `aigc workflow init --profile <profile>` or
+Fix: regenerate the starter with `aegis workflow init --profile <profile>` or
 repair the specific file called out by the finding.
 
 ## Regulated Failure-And-Fix Flow
@@ -99,7 +99,7 @@ fixes and reruns it.
 ### 1. Generate the starter
 
 ```bash
-aigc workflow init --profile regulated-high-assurance --output-dir regulated-demo
+aegis workflow init --profile regulated-high-assurance --output-dir regulated-demo
 cd regulated-demo
 ```
 
@@ -121,7 +121,7 @@ Expected result: the run fails with `CustomGateViolationError` because
 ### 4. Diagnose that same directory
 
 ```bash
-aigc workflow doctor regulated-demo/ --json
+aegis workflow doctor regulated-demo/ --json
 ```
 
 Expected finding set includes `WORKFLOW_SOURCE_REQUIRED`.

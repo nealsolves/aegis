@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from aigc.audit import checksum
-from aigc.cli import main as cli_main
-from aigc.workflow_trace import reconstruct_trace
+from aegis.audit import checksum
+from aegis.cli import main as cli_main
+from aegis.workflow_trace import reconstruct_trace
 
 
 def _cs(artifact):
@@ -349,7 +349,7 @@ class TestChecksumMultiplicity:
         # Two sessions reference the same checksum; only one artifact is available.
         # With shared_remaining, only the first session resolves the step.
         from collections import Counter
-        from aigc.audit import checksum as _checksum_fn
+        from aegis.audit import checksum as _checksum_fn
         wa2 = {**WORKFLOW_ARTIFACT, "session_id": "sess-xyz"}
         shared = Counter({INV_CHECKSUM: 1})
         trace_a = reconstruct_trace(WORKFLOW_ARTIFACT, [INV_ARTIFACT], shared_remaining=shared)

@@ -2,8 +2,8 @@
 import pytest
 from datetime import date
 
-from aigc._internal.policy_loader import validate_policy_dates, load_policy
-from aigc._internal.errors import PolicyValidationError
+from aegis._internal.policy_loader import validate_policy_dates, load_policy
+from aegis._internal.errors import PolicyValidationError
 
 
 # ── Date validation ──────────────────────────────────────────────

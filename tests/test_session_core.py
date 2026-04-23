@@ -1,7 +1,7 @@
 """
 Internal TDD tests for GovernanceSession and SessionPreCallResult.
 
-All imports from aigc._internal — these tests are implementation-level and
+All imports from aegis._internal — these tests are implementation-level and
 run before public exports are wired.
 """
 
@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import pytest
 
-from aigc._internal.enforcement import AIGC
-from aigc._internal.errors import AuditSinkError, InvocationValidationError, SessionStateError
-from aigc._internal.session import (
+from aegis._internal.enforcement import AIGC
+from aegis._internal.errors import AuditSinkError, InvocationValidationError, SessionStateError
+from aegis._internal.session import (
     STATE_COMPLETED,
     STATE_FINALIZED,
     STATE_OPEN,
@@ -20,7 +20,7 @@ from aigc._internal.session import (
     SessionPreCallResult,
     _compute_policy_file,
 )
-from aigc._internal.sinks import CallbackAuditSink
+from aegis._internal.sinks import CallbackAuditSink
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -44,8 +44,8 @@ def _aigc() -> AIGC:
     return AIGC()
 
 
-def _open_session(aigc: AIGC | None = None, **kwargs) -> GovernanceSession:
-    a = aigc or _aigc()
+def _open_session(aegis: AIGC | None = None, **kwargs) -> GovernanceSession:
+    a = aegis or _aigc()
     return a.open_session(**kwargs)
 
 
@@ -261,7 +261,7 @@ def test_exception_exit_produces_failed():
 
 def test_module_level_guard_rejects_session_token():
     """`enforce_post_call(session_token, output)` raises InvocationValidationError."""
-    from aigc._internal.enforcement import enforce_post_call
+    from aegis._internal.enforcement import enforce_post_call
     a = _aigc()
     with a.open_session() as session:
         token = session.enforce_step_pre_call(dict(_BASE_INV))
@@ -273,7 +273,7 @@ def test_module_level_guard_rejects_session_token():
 
 
 def test_instance_level_guard_rejects_session_token():
-    """`aigc.enforce_post_call(session_token, output)` raises InvocationValidationError."""
+    """`aegis.enforce_post_call(session_token, output)` raises InvocationValidationError."""
     a = _aigc()
     with a.open_session() as session:
         token = session.enforce_step_pre_call(dict(_BASE_INV))

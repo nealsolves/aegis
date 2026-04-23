@@ -63,11 +63,11 @@ Adding a lock is a future enhancement if concurrent environments require it.
 
 ### 3.3 Structured Logging
 
-The `aigc` package root registers `logging.NullHandler()` to suppress
+The `aegis` package root registers `logging.NullHandler()` to suppress
 "No handlers found" warnings in library use. Host applications configure
 log levels and handlers.
 
-Logger namespace: `aigc.enforcement`, `aigc.policy_loader`, `aigc.sinks`.
+Logger namespace: `aegis.enforcement`, `aegis.policy_loader`, `aegis.sinks`.
 
 Log levels:
 - `DEBUG`: each gate passed, policy loaded
@@ -169,7 +169,7 @@ directly.
 - Audit artifact impact: none (same artifact schema)
 - Golden replays impact: new async golden replays use same artifact format
 - Structural impact: new `src/sinks.py`, `src/decorators.py`,
-  `aigc/sinks.py`, `aigc/decorators.py`
+  `aegis/sinks.py`, `aegis/decorators.py`
 - Backward compatibility: all existing sync call sites unchanged;
   `enforce_invocation()` signature unchanged
 

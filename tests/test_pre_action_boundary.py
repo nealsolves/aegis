@@ -5,12 +5,12 @@ tool constraints) always run before output-processing gates (schema,
 postconditions).  If a refactor changes gate order, renames gate IDs,
 or drops gates_evaluated tracking, these tests will fail.
 
-See: PIPELINE_CONTRACT comment in aigc/_internal/enforcement.py
+See: PIPELINE_CONTRACT comment in aegis/_internal/enforcement.py
 """
 
 import pytest
 
-from aigc._internal.enforcement import (
+from aegis._internal.enforcement import (
     AUTHORIZATION_GATES,
     GATE_GUARDS,
     GATE_POSTCONDS,
@@ -23,7 +23,7 @@ from aigc._internal.enforcement import (
     enforce_post_call,
     enforce_pre_call,
 )
-from aigc._internal.errors import ToolConstraintViolationError
+from aegis._internal.errors import ToolConstraintViolationError
 
 
 def _base_invocation(**overrides):

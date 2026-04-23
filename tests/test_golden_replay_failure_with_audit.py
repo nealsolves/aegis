@@ -9,8 +9,8 @@ import json
 
 import pytest
 
-from aigc._internal.enforcement import enforce_invocation
-from aigc._internal.errors import GovernanceViolationError
+from aegis._internal.enforcement import enforce_invocation
+from aegis._internal.errors import GovernanceViolationError
 
 
 def test_golden_replay_failure_with_audit():

@@ -3,7 +3,7 @@
 
 Validates that documentation stays synchronized with implementation:
   A. Current-state parity across canonical docs
-  B. Public API boundary (no aigc._internal in user-facing docs)
+  B. Public API boundary (no aegis._internal in user-facing docs)
   C. Schema-example parity (policy YAML examples vs JSON Schema)
   D. Local link hygiene (broken markdown links)
   E. Archive hygiene (headers, no active->archive references)
@@ -120,7 +120,7 @@ def collect_md_files() -> list[Path]:
         ]
     except (subprocess.CalledProcessError, FileNotFoundError):
         # Fallback: rglob with basic exclusions (e.g. outside a git repo)
-        excluded = {"aigc-env", "node_modules", ".git", ".pytest_cache",
+        excluded = {"aegis-env", "node_modules", ".git", ".pytest_cache",
                     ".venv", "venv", "dist"}
         result = []
         for p in REPO_ROOT.rglob("*.md"):
@@ -252,8 +252,8 @@ def check_current_state_parity(manifest: dict) -> list[str]:
 
 _INTERNAL_IMPORT_RE = re.compile(
     r"""
-    (?:from\s+aigc\._internal|import\s+aigc\._internal)  # import statements
-    | aigc\._internal\.\w+                                 # dotted references
+    (?:from\s+aegis\._internal|import\s+aegis\._internal)  # import statements
+    | aegis\._internal\.\w+                                 # dotted references
     """,
     re.VERBOSE,
 )
@@ -266,7 +266,7 @@ _INTERNAL_DISCLAIMER_RE = re.compile(
 
 
 def check_public_api_boundary(manifest: dict) -> list[str]:
-    """Fail if user-facing docs import/reference aigc._internal."""
+    """Fail if user-facing docs import/reference aegis._internal."""
     errors: list[str] = []
     internal_patterns = manifest.get("internal_docs", [])
 
@@ -287,7 +287,7 @@ def check_public_api_boundary(manifest: dict) -> list[str]:
                 if not _INTERNAL_DISCLAIMER_RE.search(context):
                     errors.append(
                         f"[api-boundary] {rel}:{i}: references "
-                        f"aigc._internal without internal disclaimer"
+                        f"aegis._internal without internal disclaimer"
                     )
 
     return errors
@@ -592,10 +592,10 @@ def check_availability_boundary_docs(manifest: dict) -> list[str]:
 
         text = path.read_text(encoding="utf-8")
 
-        if "GovernanceSession" not in text or "aigc workflow" not in text:
+        if "GovernanceSession" not in text or "aegis workflow" not in text:
             errors.append(
                 f"[boundary-doc] {rel}: must name planned-only workflow "
-                "surfaces such as GovernanceSession and aigc workflow commands"
+                "surfaces such as GovernanceSession and aegis workflow commands"
             )
 
         if not _BOUNDARY_DOC_WARNING_RE.search(text) and not _BETA_RELEASED_RE.search(text):
@@ -704,8 +704,8 @@ def check_implementation_truth(manifest: dict) -> list[str]:
 
     Reads the canonical values directly from:
       - pyproject.toml  (project.version)
-      - aigc/__init__.py  (__version__)
-      - aigc/_internal/audit.py  (AUDIT_SCHEMA_VERSION)
+      - aegis/__init__.py  (__version__)
+      - aegis/_internal/audit.py  (AUDIT_SCHEMA_VERSION)
       - README.md  ("Current release:" line)
       - CHANGELOG.md  (first versioned section header)
 
@@ -733,8 +733,8 @@ def check_implementation_truth(manifest: dict) -> list[str]:
     else:
         errors.append("[impl-truth] pyproject.toml not found")
 
-    # 2. aigc/__init__.py __version__
-    init_path = REPO_ROOT / "aigc" / "__init__.py"
+    # 2. aegis/__init__.py __version__
+    init_path = REPO_ROOT / "aegis" / "__init__.py"
     if init_path.exists():
         text = init_path.read_text(encoding="utf-8")
         m = re.search(r'^__version__\s*=\s*"([^"]+)"', text, re.MULTILINE)
@@ -742,16 +742,16 @@ def check_implementation_truth(manifest: dict) -> list[str]:
             init_version = m.group(1)
             if init_version != manifest_version:
                 errors.append(
-                    f"[impl-truth] aigc/__init__.py __version__ '{init_version}' "
+                    f"[impl-truth] aegis/__init__.py __version__ '{init_version}' "
                     f"!= manifest version '{manifest_version}'"
                 )
         else:
-            errors.append("[impl-truth] aigc/__init__.py: could not parse __version__")
+            errors.append("[impl-truth] aegis/__init__.py: could not parse __version__")
     else:
-        errors.append("[impl-truth] aigc/__init__.py not found")
+        errors.append("[impl-truth] aegis/__init__.py not found")
 
-    # 3. AUDIT_SCHEMA_VERSION in aigc/_internal/audit.py
-    audit_py_path = REPO_ROOT / "aigc" / "_internal" / "audit.py"
+    # 3. AUDIT_SCHEMA_VERSION in aegis/_internal/audit.py
+    audit_py_path = REPO_ROOT / "aegis" / "_internal" / "audit.py"
     if audit_py_path.exists():
         text = audit_py_path.read_text(encoding="utf-8")
         m = re.search(r'^AUDIT_SCHEMA_VERSION\s*=\s*"([^"]+)"', text, re.MULTILINE)
@@ -759,17 +759,17 @@ def check_implementation_truth(manifest: dict) -> list[str]:
             code_audit_ver = m.group(1)
             if code_audit_ver != manifest_audit_ver:
                 errors.append(
-                    f"[impl-truth] aigc/_internal/audit.py AUDIT_SCHEMA_VERSION "
+                    f"[impl-truth] aegis/_internal/audit.py AUDIT_SCHEMA_VERSION "
                     f"'{code_audit_ver}' != manifest audit_schema_version "
                     f"'{manifest_audit_ver}'"
                 )
         else:
             errors.append(
-                "[impl-truth] aigc/_internal/audit.py: could not parse "
+                "[impl-truth] aegis/_internal/audit.py: could not parse "
                 "AUDIT_SCHEMA_VERSION"
             )
     else:
-        errors.append("[impl-truth] aigc/_internal/audit.py not found")
+        errors.append("[impl-truth] aegis/_internal/audit.py not found")
 
     # 4. README.md "Current release:" line
     readme_path = REPO_ROOT / "README.md"
@@ -829,7 +829,7 @@ _RISK_SCORED_BLOCKING_RE = re.compile(
     re.I,
 )
 
-_AUDIT_CMD_RE = re.compile(r"aigc\s+audit\s+(?:export|summary)", re.I)
+_AUDIT_CMD_RE = re.compile(r"aegis\s+audit\s+(?:export|summary)", re.I)
 _WRAPPED_FUNCTION_ERROR_MIGRATION_RE = re.compile(
     r"wrapped_function_error[^\n]{0,160}"
     r"(?:existed before v0\.3\.2|pre-?dates? v0\.3\.2|no schema changes required)",
@@ -859,7 +859,7 @@ def check_semantic_claims() -> list[str]:
     """Check that docs don't contain known false semantic claims.
 
     I1: risk_scored must not be described as blocking on threshold exceedance.
-    I2: aigc audit commands must not appear in active CLI-behavior docs.
+    I2: aegis audit commands must not appear in active CLI-behavior docs.
     I3: wrapped_function_error must not be described as pre-v0.3.2 or
         schema-neutral.
     """
@@ -886,8 +886,8 @@ def check_semantic_claims() -> list[str]:
         for m in _AUDIT_CMD_RE.finditer(text):
             line = text[: m.start()].count("\n") + 1
             errors.append(
-                f"[semantic-I2] {rel}:{line}: references 'aigc audit' which does "
-                f"not exist in the CLI; use 'aigc compliance export' instead"
+                f"[semantic-I2] {rel}:{line}: references 'aegis audit' which does "
+                f"not exist in the CLI; use 'aegis compliance export' instead"
             )
 
     for rel in _WRAPPED_FUNCTION_ERROR_DOCS:
@@ -1455,12 +1455,12 @@ _V090_PR05_PUBLIC_CONTRACT_REL = "docs/PUBLIC_INTEGRATION_CONTRACT.md"
 _V090_PROJECT_MD_REL = "PROJECT.md"
 _V090_ENFORCEMENT_PIPELINE_REL = "docs/architecture/ENFORCEMENT_PIPELINE.md"
 _V090_PR03_EXPECTED_CLI_COMMANDS = [
-    "aigc policy init",
-    "aigc workflow init",
-    "aigc workflow lint",
-    "aigc workflow doctor",
-    "aigc workflow trace",
-    "aigc workflow export",
+    "aegis policy init",
+    "aegis workflow init",
+    "aegis workflow lint",
+    "aegis workflow doctor",
+    "aegis workflow trace",
+    "aegis workflow export",
 ]
 _V090_PR03_EXPECTED_SCAFFOLD_PROFILES = [
     "minimal",
@@ -1572,7 +1572,7 @@ def check_v090_pr03_contract() -> list[str]:
         texts[_V090_PLAN_REL],
         [
             "- Hand-authored workflow DSL remains supported but is advanced mode.",
-            "- Public examples, quickstarts, starter assets, presets, recipes, and demo code must use only public APIs and must never import from `aigc._internal`.",
+            "- Public examples, quickstarts, starter assets, presets, recipes, and demo code must use only public APIs and must never import from `aegis._internal`.",
         ],
         "frozen plan golden-path rules",
         error_prefix="[v0.9.0-pr03]",
@@ -1583,8 +1583,8 @@ def check_v090_pr03_contract() -> list[str]:
         texts[_V090_HLD_REL],
         [
             "- hand-authored workflow DSL remains supported as advanced mode and is not required for the default path",
-            "- public quickstarts, starter packs, presets, demo code, and docs snippets must use public `aigc` imports only and must not depend on `aigc._internal`",
-            "`aigc policy init`",
+            "- public quickstarts, starter packs, presets, demo code, and docs snippets must use public `aegis` imports only and must not depend on `aegis._internal`",
+            "`aegis policy init`",
         ],
         "frozen HLD golden-path rules",
         error_prefix="[v0.9.0-pr03]",
@@ -1594,12 +1594,12 @@ def check_v090_pr03_contract() -> list[str]:
         "README.md",
         texts["README.md"],
         [
-            "`aigc policy init`",
-            "`aigc workflow init`",
-            "`aigc workflow lint`",
-            "`aigc workflow doctor`",
-            "`aigc workflow trace`",
-            "`aigc workflow export`",
+            "`aegis policy init`",
+            "`aegis workflow init`",
+            "`aegis workflow lint`",
+            "`aegis workflow doctor`",
+            "`aegis workflow trace`",
+            "`aegis workflow export`",
             "none of those workflow surfaces are part of the shipped `v0.3.3` runtime or CLI",
         ],
         "planned-only README CLI boundary",
@@ -1610,9 +1610,9 @@ def check_v090_pr03_contract() -> list[str]:
         _V090_PUBLIC_CONTRACT_REL,
         texts[_V090_PUBLIC_CONTRACT_REL],
         [
-            "`aigc policy init`",
-            "`aigc workflow ...` commands",
-            "must use public `aigc` imports only and must not depend on `aigc._internal`",
+            "`aegis policy init`",
+            "`aegis workflow ...` commands",
+            "must use public `aegis` imports only and must not depend on `aegis._internal`",
         ],
         "planned-only public integration boundary",
         error_prefix="[v0.9.0-pr03]",
@@ -1624,7 +1624,7 @@ def check_v090_pr03_contract() -> list[str]:
         [
             f"Active branch: `{_V090_PR03_ACTIVE_BRANCH}`",
             "- docs, CI, sentinel tests, and public-import hygiene only",
-            "- The frozen golden-path CLI inventory is `aigc policy init`,",
+            "- The frozen golden-path CLI inventory is `aegis policy init`,",
             "- PR-03 is docs, CI, sentinel tests, and public-import hygiene only. Workflow\n  runtime implementation still starts in PR-04.",
         ],
         "PR-03 branch and scope",
@@ -1637,7 +1637,7 @@ def check_v090_pr03_contract() -> list[str]:
         [
             "## PR-03 — Golden-Path Contract Freeze Gate",
             "- [ ] staged CLI sentinel tests prove the current shipped CLI still exposes no\n      `workflow` or `policy init` commands while freezing the future command\n      names in docs",
-            "- [ ] public-import boundary tests confirm maintained onboarding examples and\n      demo code use public `aigc` imports only",
+            "- [ ] public-import boundary tests confirm maintained onboarding examples and\n      demo code use public `aegis` imports only",
         ],
         "PR-03 release gate",
         error_prefix="[v0.9.0-pr03]",
@@ -1827,12 +1827,12 @@ def check_v090_pr05_contract() -> list[str]:
         errors,
         _V090_PR05_PUBLIC_CONTRACT_REL,
         texts[_V090_PR05_PUBLIC_CONTRACT_REL],
-        ["aigc workflow init", "aigc policy init", "MinimalPreset"],
+        ["aegis workflow init", "aegis policy init", "MinimalPreset"],
         "PR-05 surfaces in PUBLIC_INTEGRATION_CONTRACT",
         error_prefix=pfx,
     )
     # CLI commands must no longer appear in the "beyond v0.9.0-beta" beyond-listing
-    for forbidden in ["aigc policy init`, and `aigc workflow ...", "aigc workflow ...`\ncommands"]:
+    for forbidden in ["aegis policy init`, and `aegis workflow ...", "aegis workflow ...`\ncommands"]:
         normalized = re.sub(r"\s+", " ", texts[_V090_PR05_PUBLIC_CONTRACT_REL])
         if re.sub(r"\s+", " ", forbidden) in normalized:
             errors.append(
@@ -1845,12 +1845,12 @@ def check_v090_pr05_contract() -> list[str]:
         errors,
         "README.md",
         texts["README.md"],
-        ["aigc workflow init", "aigc policy init"],
+        ["aegis workflow init", "aegis policy init"],
         "PR-05 shipped CLI commands in README (positive assertion required)",
         error_prefix=pfx,
     )
     for forbidden in [
-        "aigc policy init`, `aigc workflow init`",
+        "aegis policy init`, `aegis workflow init`",
     ]:
         normalized_readme = re.sub(r"\s+", " ", texts["README.md"])
         if re.sub(r"\s+", " ", forbidden) in normalized_readme:
@@ -1863,14 +1863,14 @@ def check_v090_pr05_contract() -> list[str]:
         errors,
         _V090_HLD_REL,
         texts[_V090_HLD_REL],
-        ["aigc workflow init", "aigc policy init"],
+        ["aegis workflow init", "aegis policy init"],
         "PR-05 shipped CLI commands in HLD (positive assertion required)",
         error_prefix=pfx,
     )
     # The old planned-only sentence (whitespace-normalized): check it is gone
     normalized_hld = re.sub(r"\s+", " ", texts[_V090_HLD_REL])
     for forbidden in [
-        "`aigc policy init`, and `aigc workflow ...` commands remain planned-only",
+        "`aegis policy init`, and `aegis workflow ...` commands remain planned-only",
     ]:
         if re.sub(r"\s+", " ", forbidden) in normalized_hld:
             errors.append(
@@ -1912,7 +1912,7 @@ _PR07_FIRST_ADOPTER_DOCS = [
 ]
 
 _PR07_QUICKSTART_ANCHORS = [
-    "aigc workflow init --profile minimal",
+    "aegis workflow init --profile minimal",
     "python workflow_example.py",
     "Status:  COMPLETED",
     "AIGC.open_session",
@@ -1965,7 +1965,7 @@ def check_v090_pr07_contract(manifest: dict) -> list[str]:
 # Check O: v0.9.0 PR-09 release-packet truth
 # ---------------------------------------------------------------------------
 
-_PR09_SHIPPED_COMMANDS = ["aigc workflow trace", "aigc workflow export"]
+_PR09_SHIPPED_COMMANDS = ["aegis workflow trace", "aegis workflow export"]
 
 _PR09_SOURCE_OF_TRUTH_DOCS = [
     "CLAUDE.md",
@@ -2084,7 +2084,7 @@ def check_v090_pr09_contract() -> list[str]:
 
 
 def check_demo_backend_import_boundary(_manifest: dict) -> list[str]:
-    """Ensure demo-app-api/workflow_routes.py uses only public aigc imports."""
+    """Ensure demo-app-api/workflow_routes.py uses only public aegis imports."""
     errors: list[str] = []
     pfx = "[demo-boundary]"
     target = REPO_ROOT / "demo-app-api" / "workflow_routes.py"
@@ -2100,7 +2100,7 @@ def check_demo_backend_import_boundary(_manifest: dict) -> list[str]:
         if _INTERNAL_IMPORT_RE.search(line):
             errors.append(
                 f"{pfx} demo-app-api/workflow_routes.py:{i}: "
-                f"contains aigc._internal import"
+                f"contains aegis._internal import"
             )
     return errors
 

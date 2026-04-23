@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from aigc._internal.cli import main, _lint_policy, _validate_policy
+from aegis._internal.cli import main, _lint_policy, _validate_policy
 
 
 POLICIES_DIR = Path(__file__).resolve().parent.parent / "policies"
@@ -109,7 +109,7 @@ class TestCLIMain:
         assert exit_code == 1  # one invalid = overall fail
 
     def test_cli_importable_from_public_api(self):
-        from aigc.cli import main as public_main
+        from aegis.cli import main as public_main
         assert callable(public_main)
 
 
@@ -120,7 +120,7 @@ def _make_starter_dir(tmp_path: Path) -> Path:
     d = tmp_path / "starter"
     d.mkdir()
     (d / "policy.yaml").write_text(MINIMAL_VALID_POLICY, encoding="utf-8")
-    (d / "workflow_example.py").write_text("import aigc\n\ndef run(): pass\n", encoding="utf-8")
+    (d / "workflow_example.py").write_text("import aegis\n\ndef run(): pass\n", encoding="utf-8")
     (d / "README.md").write_text("# Starter\n", encoding="utf-8")
     return d
 
@@ -179,7 +179,7 @@ def _make_audit_artifact(tmp_path: Path, enforcement_result: str = "PASS") -> Pa
 
 
 class TestWorkflowLintCLI:
-    """CLI tests for aigc workflow lint."""
+    """CLI tests for aegis workflow lint."""
 
     def test_valid_policy_exits_0(self, tmp_path):
         p = tmp_path / "policy.yaml"
@@ -234,7 +234,7 @@ class TestWorkflowLintCLI:
 
 
 class TestWorkflowDoctorCLI:
-    """CLI tests for aigc workflow doctor."""
+    """CLI tests for aegis workflow doctor."""
 
     def test_valid_policy_exits_0(self, tmp_path):
         p = tmp_path / "policy.yaml"
@@ -255,10 +255,10 @@ class TestWorkflowDoctorCLI:
         (d / "policy.yaml").write_text(MINIMAL_VALID_POLICY, encoding="utf-8")
         (d / "README.md").write_text("# Starter\n", encoding="utf-8")
         workflow_src = (
-            "import aigc\n\n"
+            "import aegis\n\n"
             "def _request_human_approval(s): return True\n\n"
             "def run():\n"
-            "    g = aigc.AIGC()\n"
+            "    g = aegis.AIGC()\n"
             "    with g.open_session(policy_file=None) as s:\n"
             "        s.pause()\n"
             "        s.resume()\n"

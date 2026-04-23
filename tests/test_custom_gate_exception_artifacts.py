@@ -16,9 +16,9 @@ import tempfile
 
 import pytest
 
-from aigc._internal.enforcement import AIGC
-from aigc._internal.errors import CustomGateViolationError
-from aigc._internal.gates import EnforcementGate, GateResult
+from aegis._internal.enforcement import AIGC
+from aegis._internal.errors import CustomGateViolationError
+from aegis._internal.gates import EnforcementGate, GateResult
 
 
 # ── Fixtures ────────────────────────────────────────────────────
@@ -110,40 +110,40 @@ class TestNonReadOnlyTypeErrorProducesFAILArtifact:
     """C1 regression: non-read-only TypeError must produce FAIL artifact."""
 
     def test_raises_custom_gate_violation_error(self, base_invocation):
-        aigc = AIGC(custom_gates=[NonReadOnlyTypeErrorGate()])
+        aegis = AIGC(custom_gates=[NonReadOnlyTypeErrorGate()])
         with pytest.raises(CustomGateViolationError) as exc_info:
-            aigc.enforce(base_invocation)
+            aegis.enforce(base_invocation)
 
         exc = exc_info.value
         assert isinstance(exc, CustomGateViolationError)
 
     def test_fail_artifact_attached(self, base_invocation):
-        aigc = AIGC(custom_gates=[NonReadOnlyTypeErrorGate()])
+        aegis = AIGC(custom_gates=[NonReadOnlyTypeErrorGate()])
         with pytest.raises(CustomGateViolationError) as exc_info:
-            aigc.enforce(base_invocation)
+            aegis.enforce(base_invocation)
 
         artifact = exc_info.value.audit_artifact
         assert artifact is not None
         assert artifact["enforcement_result"] == "FAIL"
 
     def test_failure_gate_is_deterministic(self, base_invocation):
-        aigc = AIGC(custom_gates=[NonReadOnlyTypeErrorGate()])
+        aegis = AIGC(custom_gates=[NonReadOnlyTypeErrorGate()])
         with pytest.raises(CustomGateViolationError) as exc_info:
-            aigc.enforce(base_invocation)
+            aegis.enforce(base_invocation)
 
         artifact = exc_info.value.audit_artifact
         assert artifact["failure_gate"] == "custom_gate_violation"
 
     def test_artifact_emitted_to_sink(self, base_invocation):
         emitted = []
-        from aigc._internal.sinks import CallbackAuditSink
+        from aegis._internal.sinks import CallbackAuditSink
         sink = CallbackAuditSink(lambda a: emitted.append(a))
-        aigc = AIGC(
+        aegis = AIGC(
             custom_gates=[NonReadOnlyTypeErrorGate()],
             sink=sink,
         )
         with pytest.raises(CustomGateViolationError):
-            aigc.enforce(base_invocation)
+            aegis.enforce(base_invocation)
 
         assert len(emitted) == 1
         assert emitted[0]["enforcement_result"] == "FAIL"
@@ -153,18 +153,18 @@ class TestReadOnlyTypeErrorStillWorks:
     """Existing read-only mutation protection must not regress."""
 
     def test_mutation_produces_fail_artifact(self, base_invocation):
-        aigc = AIGC(custom_gates=[ReadOnlyTypeErrorGate()])
+        aegis = AIGC(custom_gates=[ReadOnlyTypeErrorGate()])
         with pytest.raises(CustomGateViolationError) as exc_info:
-            aigc.enforce(base_invocation)
+            aegis.enforce(base_invocation)
 
         artifact = exc_info.value.audit_artifact
         assert artifact is not None
         assert artifact["enforcement_result"] == "FAIL"
 
     def test_mutation_failure_code(self, base_invocation):
-        aigc = AIGC(custom_gates=[ReadOnlyTypeErrorGate()])
+        aegis = AIGC(custom_gates=[ReadOnlyTypeErrorGate()])
         with pytest.raises(CustomGateViolationError) as exc_info:
-            aigc.enforce(base_invocation)
+            aegis.enforce(base_invocation)
 
         artifact = exc_info.value.audit_artifact
         assert artifact["failure_gate"] == "custom_gate_violation"
@@ -174,9 +174,9 @@ class TestGenericExceptionStillWrapped:
     """Generic exceptions from gates must also produce FAIL artifacts."""
 
     def test_generic_exception_produces_artifact(self, base_invocation):
-        aigc = AIGC(custom_gates=[GenericExceptionGate()])
+        aegis = AIGC(custom_gates=[GenericExceptionGate()])
         with pytest.raises(CustomGateViolationError) as exc_info:
-            aigc.enforce(base_invocation)
+            aegis.enforce(base_invocation)
 
         artifact = exc_info.value.audit_artifact
         assert artifact is not None
@@ -202,7 +202,7 @@ class StringFailureGate(EnforcementGate):
         return "pre_output"
 
     def evaluate(self, invocation, policy, context):
-        from aigc._internal.gates import GateResult
+        from aegis._internal.gates import GateResult
         return GateResult(passed=False, failures=["raw string failure"])
 
 
@@ -222,7 +222,7 @@ class MixedFailureGate(EnforcementGate):
         return "pre_output"
 
     def evaluate(self, invocation, policy, context):
-        from aigc._internal.gates import GateResult
+        from aegis._internal.gates import GateResult
         return GateResult(
             passed=False,
             failures=[
@@ -249,7 +249,7 @@ class PhaseAStringFailureGate(EnforcementGate):
         return "pre_authorization"
 
     def evaluate(self, invocation, policy, context):
-        from aigc._internal.gates import GateResult
+        from aegis._internal.gates import GateResult
         return GateResult(passed=False, failures=["pre-auth string failure"])
 
 
@@ -262,14 +262,14 @@ class TestMalformedGateFailuresNormalized:
     """
 
     def test_string_failure_raises_governance_error_not_crash(self, base_invocation):
-        aigc = AIGC(custom_gates=[StringFailureGate()])
+        aegis = AIGC(custom_gates=[StringFailureGate()])
         with pytest.raises(CustomGateViolationError):
-            aigc.enforce(base_invocation)
+            aegis.enforce(base_invocation)
 
     def test_string_failure_attaches_fail_artifact(self, base_invocation):
-        aigc = AIGC(custom_gates=[StringFailureGate()])
+        aegis = AIGC(custom_gates=[StringFailureGate()])
         with pytest.raises(CustomGateViolationError) as exc_info:
-            aigc.enforce(base_invocation)
+            aegis.enforce(base_invocation)
 
         artifact = exc_info.value.audit_artifact
         assert artifact is not None
@@ -277,9 +277,9 @@ class TestMalformedGateFailuresNormalized:
 
     def test_string_failure_normalized_to_malformed_code(self, base_invocation):
         # Sanitized failures land in the audit artifact, not exc.details.
-        aigc = AIGC(custom_gates=[StringFailureGate()])
+        aegis = AIGC(custom_gates=[StringFailureGate()])
         with pytest.raises(CustomGateViolationError) as exc_info:
-            aigc.enforce(base_invocation)
+            aegis.enforce(base_invocation)
 
         artifact = exc_info.value.audit_artifact
         failures = artifact.get("failures") or []
@@ -287,9 +287,9 @@ class TestMalformedGateFailuresNormalized:
         assert "CUSTOM_GATE_MALFORMED_FAILURE" in codes
 
     def test_string_failure_message_preserved(self, base_invocation):
-        aigc = AIGC(custom_gates=[StringFailureGate()])
+        aegis = AIGC(custom_gates=[StringFailureGate()])
         with pytest.raises(CustomGateViolationError) as exc_info:
-            aigc.enforce(base_invocation)
+            aegis.enforce(base_invocation)
 
         artifact = exc_info.value.audit_artifact
         failures = artifact.get("failures") or []
@@ -299,9 +299,9 @@ class TestMalformedGateFailuresNormalized:
         assert "raw string failure" in malformed[0]["message"]
 
     def test_mixed_failures_dict_entries_preserved(self, base_invocation):
-        aigc = AIGC(custom_gates=[MixedFailureGate()])
+        aegis = AIGC(custom_gates=[MixedFailureGate()])
         with pytest.raises(CustomGateViolationError) as exc_info:
-            aigc.enforce(base_invocation)
+            aegis.enforce(base_invocation)
 
         artifact = exc_info.value.audit_artifact
         failures = artifact.get("failures") or []
@@ -312,11 +312,11 @@ class TestMalformedGateFailuresNormalized:
 
     def test_mixed_failures_artifact_emitted_to_sink(self, base_invocation):
         emitted = []
-        from aigc._internal.sinks import CallbackAuditSink
+        from aegis._internal.sinks import CallbackAuditSink
         sink = CallbackAuditSink(lambda a: emitted.append(a))
-        aigc = AIGC(custom_gates=[MixedFailureGate()], sink=sink)
+        aegis = AIGC(custom_gates=[MixedFailureGate()], sink=sink)
         with pytest.raises(CustomGateViolationError):
-            aigc.enforce(base_invocation)
+            aegis.enforce(base_invocation)
 
         assert len(emitted) == 1
         assert emitted[0]["enforcement_result"] == "FAIL"
@@ -326,9 +326,9 @@ class TestMalformedGateFailuresNormalized:
         # must not raise AttributeError when the first failure is not a dict.
         # Phase A handler synthesizes a single wrapper failure, so the artifact
         # shows CustomGateViolationError — the key assertion is no internal crash.
-        aigc = AIGC(custom_gates=[PhaseAStringFailureGate()])
+        aegis = AIGC(custom_gates=[PhaseAStringFailureGate()])
         with pytest.raises(CustomGateViolationError) as exc_info:
-            aigc.enforce(base_invocation)
+            aegis.enforce(base_invocation)
 
         artifact = exc_info.value.audit_artifact
         assert artifact is not None
@@ -354,7 +354,7 @@ class TestMalformedGateFailuresNormalized:
                 return "pre_output"
 
             def evaluate(self, invocation, policy, context):
-                from aigc._internal.gates import GateResult
+                from aegis._internal.gates import GateResult
                 return GateResult(
                     passed=False,
                     failures=["gate failed: TOPSECRET-abc123xyz"],

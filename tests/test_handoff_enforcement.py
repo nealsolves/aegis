@@ -1,9 +1,9 @@
 """PR-08 handoffs enforcement tests."""
 from __future__ import annotations
 import pytest
-from aigc._internal.enforcement import AIGC
-from aigc._internal.errors import WorkflowHandoffDeniedError
-from aigc._internal.session import GovernanceSession
+from aegis._internal.enforcement import AIGC
+from aegis._internal.errors import WorkflowHandoffDeniedError
+from aegis._internal.session import GovernanceSession
 import uuid
 
 POLICY = "tests/golden_replays/golden_policy_v1.yaml"

@@ -11,7 +11,7 @@ from pathlib import Path
 
 from jsonschema import validate
 
-from aigc._internal.audit import (
+from aegis._internal.audit import (
     generate_audit_artifact,
     sanitize_failure_message,
     DEFAULT_REDACTION_PATTERNS,
@@ -81,7 +81,7 @@ def test_audit_schema_file_exists():
 
 def test_audit_includes_guards_evaluated():
     """Verify guards_evaluated in audit metadata when policy has guards."""
-    from aigc._internal.enforcement import enforce_invocation
+    from aegis._internal.enforcement import enforce_invocation
 
     # Use guards_multi policy which adds preconditions, not postconditions
     invocation = load_json("tests/golden_replays/golden_invocation_guards_none.json")
@@ -95,7 +95,7 @@ def test_audit_includes_guards_evaluated():
 
 def test_audit_includes_tool_constraints():
     """Verify tool_constraints in audit metadata when policy has tools."""
-    from aigc._internal.enforcement import enforce_invocation
+    from aegis._internal.enforcement import enforce_invocation
 
     invocation = load_json("tests/golden_replays/golden_invocation_tools_success.json")
 
@@ -108,7 +108,7 @@ def test_audit_includes_tool_constraints():
 
 def test_audit_includes_conditions_resolved():
     """Verify conditions_resolved in audit metadata when policy has conditions."""
-    from aigc._internal.enforcement import enforce_invocation
+    from aegis._internal.enforcement import enforce_invocation
 
     # Use guards_multi policy
     invocation = load_json("tests/golden_replays/golden_invocation_guards_partial.json")
@@ -123,7 +123,7 @@ def test_audit_includes_conditions_resolved():
 
 def test_failures_truncated_at_1000():
     """Verify failures array is bounded at MAX_FAILURES."""
-    from aigc._internal.audit import MAX_FAILURES
+    from aegis._internal.audit import MAX_FAILURES
 
     invocation = load_json(GOLDEN_SUCCESS)
     failures = [
@@ -142,7 +142,7 @@ def test_failures_truncated_at_1000():
 
 def test_metadata_truncated_at_100_keys():
     """Verify metadata is bounded at MAX_METADATA_KEYS."""
-    from aigc._internal.audit import MAX_METADATA_KEYS
+    from aegis._internal.audit import MAX_METADATA_KEYS
 
     invocation = load_json(GOLDEN_SUCCESS)
     metadata = {f"key_{i}": f"val_{i}" for i in range(150)}
@@ -157,7 +157,7 @@ def test_metadata_truncated_at_100_keys():
 
 def test_context_truncated_at_100_keys():
     """Verify context is bounded at MAX_CONTEXT_KEYS."""
-    from aigc._internal.audit import MAX_CONTEXT_KEYS
+    from aegis._internal.audit import MAX_CONTEXT_KEYS
 
     invocation = load_json(GOLDEN_SUCCESS)
     invocation["context"] = {f"ctx_{i}": f"val_{i}" for i in range(150)}
@@ -267,8 +267,8 @@ def test_sanitize_multiple_patterns():
 
 def test_sanitization_applied_in_enforcement_fail_path():
     """Verify sanitization is applied to failure messages in enforcement."""
-    from aigc._internal.enforcement import enforce_invocation
-    from aigc._internal.errors import GovernanceViolationError
+    from aegis._internal.enforcement import enforce_invocation
+    from aegis._internal.errors import GovernanceViolationError
 
     invocation = load_json(GOLDEN_SUCCESS)
     invocation["role"] = "attacker"
@@ -285,9 +285,9 @@ def test_sanitization_applied_in_enforcement_fail_path():
 def test_no_sensitive_data_in_fail_artifacts():
     """Scan FAIL audit artifacts for leaked sensitive patterns."""
     import json as json_mod
-    from aigc._internal.enforcement import enforce_invocation
-    from aigc._internal.errors import GovernanceViolationError
-    from aigc._internal.audit import DEFAULT_REDACTION_PATTERNS
+    from aegis._internal.enforcement import enforce_invocation
+    from aegis._internal.errors import GovernanceViolationError
+    from aegis._internal.audit import DEFAULT_REDACTION_PATTERNS
 
     invocation = load_json(GOLDEN_SUCCESS)
     invocation["role"] = "attacker"

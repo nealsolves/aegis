@@ -8,9 +8,9 @@ Validates the default v0.9.0 adopter journey end-to-end:
        a. Invocation without source_ids -> CustomGateViolationError from
           enforce_step_post_call (ProvenanceGate runs at INSERTION_PRE_OUTPUT)
           -> session artifact FAILED
-       b. aigc workflow doctor starter_dir/ -> WORKFLOW_SOURCE_REQUIRED finding
+       b. aegis workflow doctor starter_dir/ -> WORKFLOW_SOURCE_REQUIRED finding
        c. Unmodified starter (source_ids present) -> COMPLETED
-  4. Public-import boundary -- no aigc._internal in generated starters or
+  4. Public-import boundary -- no aegis._internal in generated starters or
      migration examples
 """
 from __future__ import annotations
@@ -24,7 +24,7 @@ from pathlib import Path
 
 import pytest
 
-from aigc import CustomGateViolationError
+from aegis import CustomGateViolationError
 
 
 # ---------------------------------------------------------------------------
@@ -32,14 +32,14 @@ from aigc import CustomGateViolationError
 # ---------------------------------------------------------------------------
 
 def _generate_starter(profile: str, output_dir: Path) -> Path:
-    """Run aigc workflow init and return the output directory."""
+    """Run aegis workflow init and return the output directory."""
     result = subprocess.run(
-        [sys.executable, "-m", "aigc", "workflow", "init",
+        [sys.executable, "-m", "aegis", "workflow", "init",
          "--profile", profile, "--output-dir", str(output_dir)],
         capture_output=True, text=True,
     )
     assert result.returncode == 0, (
-        f"aigc workflow init --profile {profile} failed:\n{result.stderr}"
+        f"aegis workflow init --profile {profile} failed:\n{result.stderr}"
     )
     return output_dir
 
@@ -206,11 +206,11 @@ class TestRegulatedBetaProof:
         _run_broken_regulated_workflow(d)
 
         result = subprocess.run(
-            [sys.executable, "-m", "aigc", "workflow", "doctor", str(d), "--json"],
+            [sys.executable, "-m", "aegis", "workflow", "doctor", str(d), "--json"],
             capture_output=True, text=True,
         )
         assert result.returncode == 0, (
-            f"aigc workflow doctor exited {result.returncode}:\n{result.stderr}"
+            f"aegis workflow doctor exited {result.returncode}:\n{result.stderr}"
         )
         findings = json.loads(result.stdout)
         codes = [f["code"] for f in findings]
@@ -224,7 +224,7 @@ class TestRegulatedBetaProof:
         _generate_starter("regulated-high-assurance", d)
         _break_regulated_starter(d)
         result = subprocess.run(
-            [sys.executable, "-m", "aigc", "workflow", "doctor", str(d)],
+            [sys.executable, "-m", "aegis", "workflow", "doctor", str(d)],
             capture_output=True, text=True,
         )
         # Doctor exits 1 only on ERROR severity; WORKFLOW_SOURCE_REQUIRED is INFO
@@ -326,7 +326,7 @@ class TestCleanEnvInstallProof:
 
 class TestPublicImportBoundaryProof:
     def test_no_internal_imports_in_minimal_starter(self):
-        from aigc._internal.starter_templates import render_minimal_starter
+        from aegis._internal.starter_templates import render_minimal_starter
         source = render_minimal_starter()["workflow_example.py"]
         for module in _collect_imports(source):
             assert "_internal" not in module, (
@@ -334,7 +334,7 @@ class TestPublicImportBoundaryProof:
             )
 
     def test_no_internal_imports_in_standard_starter(self):
-        from aigc._internal.starter_templates import render_standard_starter
+        from aegis._internal.starter_templates import render_standard_starter
         source = render_standard_starter()["workflow_example.py"]
         for module in _collect_imports(source):
             assert "_internal" not in module, (
@@ -342,7 +342,7 @@ class TestPublicImportBoundaryProof:
             )
 
     def test_no_internal_imports_in_regulated_starter(self):
-        from aigc._internal.starter_templates import render_regulated_starter
+        from aegis._internal.starter_templates import render_regulated_starter
         source = render_regulated_starter()["workflow_example.py"]
         for module in _collect_imports(source):
             assert "_internal" not in module, (

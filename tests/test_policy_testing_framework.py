@@ -1,14 +1,14 @@
 """Tests for the policy testing framework (M2 feature)."""
 import pytest
 
-from aigc._internal.policy_testing import (
+from aegis._internal.policy_testing import (
     PolicyTestCase,
     PolicyTestResult,
     PolicyTestSuite,
     expect_pass,
     expect_fail,
 )
-from aigc._internal.errors import GovernanceViolationError
+from aegis._internal.errors import GovernanceViolationError
 
 
 POLICY_FILE = "policies/base_policy.yaml"

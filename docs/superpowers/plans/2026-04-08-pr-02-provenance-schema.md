@@ -14,9 +14,9 @@
 
 | File | Action | Responsibility |
 |------|--------|---------------|
-| `aigc/_internal/audit.py` | Modify | Add `_normalize_provenance()`, `provenance` kwarg, bump version constant |
+| `aegis/_internal/audit.py` | Modify | Add `_normalize_provenance()`, `provenance` kwarg, bump version constant |
 | `schemas/audit_artifact.schema.json` | Modify | Add `provenance` property definition |
-| `aigc/schemas/audit_artifact.schema.json` | Modify | Identical copy of schema change |
+| `aegis/schemas/audit_artifact.schema.json` | Modify | Identical copy of schema change |
 | `tests/test_audit_provenance.py` | Create | All 15 provenance tests |
 | `tests/test_audit_artifact_contract.py` | Modify | Update `"1.3"` → `"1.4"` version assertion (line 46) |
 | `tests/test_audit_artifact_split_metadata.py` | Modify | Update `"1.3"` → `"1.4"` version assertions (lines 65–69) and docstring |
@@ -36,7 +36,7 @@
 
 **Files:**
 - Modify: `schemas/audit_artifact.schema.json`
-- Modify: `aigc/schemas/audit_artifact.schema.json`
+- Modify: `aegis/schemas/audit_artifact.schema.json`
 
 > Both files must always be identical. Make the same edit to both.
 
@@ -81,7 +81,7 @@ Find the `"signature"` block (around line 114) and insert `"provenance"` immedia
     "chain_id": {
 ```
 
-- [ ] **Step 2: Apply the identical change to `aigc/schemas/audit_artifact.schema.json`**
+- [ ] **Step 2: Apply the identical change to `aegis/schemas/audit_artifact.schema.json`**
 
 Repeat step 1 exactly in the second schema copy.
 
@@ -96,7 +96,7 @@ Expected: all existing tests pass. No provenance fields exist yet — schema cha
 - [ ] **Step 4: Commit**
 
 ```bash
-git add schemas/audit_artifact.schema.json aigc/schemas/audit_artifact.schema.json
+git add schemas/audit_artifact.schema.json aegis/schemas/audit_artifact.schema.json
 git commit -m "feat(schema): add optional provenance property to audit artifact schema v1.4"
 ```
 
@@ -106,7 +106,7 @@ git commit -m "feat(schema): add optional provenance property to audit artifact 
 
 **Files:**
 - Create: `tests/test_audit_provenance.py`
-- Modify: `aigc/_internal/audit.py`
+- Modify: `aegis/_internal/audit.py`
 
 ### Step 2a — Write the failing behavior tests
 
@@ -128,7 +128,7 @@ from pathlib import Path
 import pytest
 from jsonschema import validate, ValidationError
 
-from aigc._internal.audit import generate_audit_artifact
+from aegis._internal.audit import generate_audit_artifact
 
 SCHEMA_PATH = Path(__file__).resolve().parent.parent / "schemas" / "audit_artifact.schema.json"
 CHECKSUM_A = "a" * 64
@@ -241,7 +241,7 @@ Expected: all 8 tests fail with `TypeError: generate_audit_artifact() got an une
 
 ### Step 2b — Implement the changes in `audit.py`
 
-- [ ] **Step 3: Add `_normalize_provenance()` to `aigc/_internal/audit.py`**
+- [ ] **Step 3: Add `_normalize_provenance()` to `aegis/_internal/audit.py`**
 
 Insert this function between `_normalize_failures()` and `generate_audit_artifact()` (around line 97):
 
@@ -265,7 +265,7 @@ def _normalize_provenance(
 
 - [ ] **Step 4: Add the `provenance` kwarg to `generate_audit_artifact()`**
 
-In `aigc/_internal/audit.py`, add the kwarg after `risk_score`:
+In `aegis/_internal/audit.py`, add the kwarg after `risk_score`:
 
 ```python
 def generate_audit_artifact(
@@ -330,7 +330,7 @@ Expected: all existing tests pass. The new field `"provenance": null` on artifac
 - [ ] **Step 8: Commit**
 
 ```bash
-git add aigc/_internal/audit.py tests/test_audit_provenance.py
+git add aegis/_internal/audit.py tests/test_audit_provenance.py
 git commit -m "feat(audit): add provenance kwarg and _normalize_provenance() to generate_audit_artifact"
 ```
 
@@ -339,7 +339,7 @@ git commit -m "feat(audit): add provenance kwarg and _normalize_provenance() to 
 ## Task 3: Bump version constant and fix version-locked tests + golden fixtures
 
 **Files:**
-- Modify: `aigc/_internal/audit.py` (line 26)
+- Modify: `aegis/_internal/audit.py` (line 26)
 - Modify: `tests/test_audit_artifact_contract.py` (line 46)
 - Modify: `tests/test_audit_artifact_split_metadata.py` (lines 2–8, 65–69)
 - Modify: `tests/test_golden_replay_split.py` (lines 83–89)
@@ -366,7 +366,7 @@ python -m pytest tests/test_audit_provenance.py::test_audit_schema_version_is_1_
 
 Expected: FAIL — `AssertionError: assert '1.3' == '1.4'`
 
-- [ ] **Step 3: Bump `AUDIT_SCHEMA_VERSION` in `aigc/_internal/audit.py`**
+- [ ] **Step 3: Bump `AUDIT_SCHEMA_VERSION` in `aegis/_internal/audit.py`**
 
 Change line 26:
 
@@ -501,7 +501,7 @@ grep -rn '"1\.3"' tests/ --include="*.py"
 - [ ] **Step 12: Commit**
 
 ```bash
-git add aigc/_internal/audit.py \
+git add aegis/_internal/audit.py \
     tests/test_audit_provenance.py \
     tests/test_audit_artifact_contract.py \
     tests/test_audit_artifact_split_metadata.py \
@@ -714,7 +714,7 @@ When `provenance` is supplied to `generate_audit_artifact()`, it appears as a
 top-level key in the emitted artifact:
 
 ```python
-from aigc._internal.audit import generate_audit_artifact
+from aegis._internal.audit import generate_audit_artifact
 
 artifact = generate_audit_artifact(
     invocation,
@@ -806,7 +806,7 @@ Expected: all tests pass.
 - [ ] **Step 7: Lint**
 
 ```bash
-flake8 aigc/
+flake8 aegis/
 ```
 
 Expected: no errors.
@@ -856,7 +856,7 @@ Expected: all policies print `OK`.
 - [ ] **Step 4: Confirm both schema copies are identical**
 
 ```bash
-diff schemas/audit_artifact.schema.json aigc/schemas/audit_artifact.schema.json
+diff schemas/audit_artifact.schema.json aegis/schemas/audit_artifact.schema.json
 ```
 
 Expected: no output (files are identical).

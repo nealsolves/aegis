@@ -15,7 +15,7 @@ steps, a straightforward policy, and no external dependencies.
 **Generate:**
 
 ```bash
-aigc workflow init --profile minimal
+aegis workflow init --profile minimal
 ```
 
 **Generated files:**
@@ -58,7 +58,7 @@ demonstrating the `PAUSED` lifecycle state.
 **Generate:**
 
 ```bash
-aigc workflow init --profile standard
+aegis workflow init --profile standard
 ```
 
 **Generated files:**
@@ -107,7 +107,7 @@ failure-and-fix pattern documented in [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 **Generate:**
 
 ```bash
-aigc workflow init --profile regulated-high-assurance
+aegis workflow init --profile regulated-high-assurance
 ```
 
 **Generated files:**
@@ -148,7 +148,7 @@ Session: <uuid>
 All starters accept `--role` to set the role that appears in generated code:
 
 ```bash
-aigc workflow init --profile minimal --role reviewer
+aegis workflow init --profile minimal --role reviewer
 ```
 
 The generated `workflow_example.py` will use `role="reviewer"` in its invocation

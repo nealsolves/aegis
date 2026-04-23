@@ -6,8 +6,8 @@ Ensures that a canonical “bad” invocation fails governance enforcement.
 
 import json
 import pytest
-from aigc._internal.enforcement import enforce_invocation
-from aigc._internal.errors import SchemaValidationError
+from aegis._internal.enforcement import enforce_invocation
+from aegis._internal.errors import SchemaValidationError
 
 GOLDEN_FAILURE = "tests/golden_replays/golden_invocation_failure.json"
 

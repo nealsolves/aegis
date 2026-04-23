@@ -7,7 +7,7 @@ the PR-08 implementation, with the review written to `docs/audits` as Markdown.
 Review the PR-08 implementation in the local AIGC repository.
 
 Repository root:
-/Users/neal/Documents/_Shenanigans/_myProjects/aigc
+/Users/neal/Documents/_Shenanigans/_myProjects/aegis
 
 Base branch:
 develop
@@ -23,7 +23,7 @@ Task type:
 
 Primary deliverable:
 - Create a Markdown review report in:
-  /Users/neal/Documents/_Shenanigans/_myProjects/aigc/docs/audits
+  /Users/neal/Documents/_Shenanigans/_myProjects/aegis/docs/audits
 - Use this filename:
   YYYY-MM-DD-pr08-implementation-code-review-codex.md
 - Overwrite that file if it already exists
@@ -60,14 +60,14 @@ Expected PR-08 scope:
 - add typed `ValidatorHook` contracts with timeout, bounded retry, stale-result handling, and provenance
 
 Files to prioritize:
-- aigc/_internal/session.py
-- aigc/_internal/policy_loader.py
-- aigc/_internal/errors.py
-- aigc/_internal/validator_hook.py
-- aigc/_internal/workflow_doctor.py
-- aigc/schemas/policy_dsl.schema.json
+- aegis/_internal/session.py
+- aegis/_internal/policy_loader.py
+- aegis/_internal/errors.py
+- aegis/_internal/validator_hook.py
+- aegis/_internal/workflow_doctor.py
+- aegis/schemas/policy_dsl.schema.json
 - schemas/policy_dsl.schema.json
-- aigc/schemas/workflow_artifact.schema.json
+- aegis/schemas/workflow_artifact.schema.json
 - tests/test_engine_hardening.py
 - tests/test_approval_checkpoints.py
 - tests/test_budget_accounting.py
@@ -123,7 +123,7 @@ Minimum commands to run:
 - `git log --oneline develop..feat/v0.9-08-engine-hardening`
 - `git diff --stat develop...feat/v0.9-08-engine-hardening`
 - `git diff --name-only develop...feat/v0.9-08-engine-hardening`
-- `git diff develop...feat/v0.9-08-engine-hardening -- aigc/_internal/session.py aigc/_internal/policy_loader.py aigc/_internal/errors.py aigc/_internal/validator_hook.py aigc/_internal/workflow_doctor.py`
+- `git diff develop...feat/v0.9-08-engine-hardening -- aegis/_internal/session.py aegis/_internal/policy_loader.py aegis/_internal/errors.py aegis/_internal/validator_hook.py aegis/_internal/workflow_doctor.py`
 - `pytest -q tests/test_engine_hardening.py tests/test_approval_checkpoints.py tests/test_budget_accounting.py tests/test_validator_hook.py tests/test_sequence_enforcement.py tests/test_transition_enforcement.py tests/test_participant_enforcement.py tests/test_handoff_enforcement.py tests/test_protocol_enforcement.py tests/test_escalation_enforcement.py tests/test_workflow_doctor.py tests/test_v090_contract_freeze.py tests/test_session_core.py tests/test_workflow_lint.py`
 
 Specific review checklist:

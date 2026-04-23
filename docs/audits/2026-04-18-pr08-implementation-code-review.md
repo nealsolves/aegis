@@ -1,10 +1,10 @@
 # PR-08 Implementation Code Review
 
 - Audit date: 2026-04-18
-- Repository root: /Users/neal/Documents/_Shenanigans/_myProjects/aigc
+- Repository root: /Users/neal/Documents/_Shenanigans/_myProjects/aegis
 - Base branch: develop (SHA: 1b76ff69bf9b15df0f626535de7e7dbf7ed2782e)
 - Review branch: feat/v0.9-08-engine-hardening (SHA: 9f767f13117fd0b1d56e274337abfb90af9cca11)
-- Scope reviewed: aigc/_internal/session.py, aigc/_internal/policy_loader.py, aigc/_internal/errors.py, aigc/_internal/validator_hook.py, aigc/_internal/workflow_doctor.py, aigc/schemas/policy_dsl.schema.json, schemas/policy_dsl.schema.json, aigc/schemas/workflow_artifact.schema.json, implementation_status.md, RELEASE_GATES.md, all new test files listed under Changed files
+- Scope reviewed: aegis/_internal/session.py, aegis/_internal/policy_loader.py, aegis/_internal/errors.py, aegis/_internal/validator_hook.py, aegis/_internal/workflow_doctor.py, aegis/schemas/policy_dsl.schema.json, schemas/policy_dsl.schema.json, aegis/schemas/workflow_artifact.schema.json, implementation_status.md, RELEASE_GATES.md, all new test files listed under Changed files
 - Commands run:
   - `git -C ... status -sb`
   - `git -C ... rev-parse develop`
@@ -12,13 +12,13 @@
   - `git -C ... log --oneline develop..feat/v0.9-08-engine-hardening`
   - `git -C ... diff --stat develop...feat/v0.9-08-engine-hardening`
   - `git -C ... diff --name-only develop...feat/v0.9-08-engine-hardening`
-  - `git -C ... diff develop...feat/v0.9-08-engine-hardening -- aigc/_internal/session.py aigc/_internal/policy_loader.py aigc/_internal/errors.py aigc/_internal/validator_hook.py aigc/_internal/workflow_doctor.py`
-  - `git -C ... diff develop...feat/v0.9-08-engine-hardening -- aigc/schemas/policy_dsl.schema.json schemas/policy_dsl.schema.json aigc/schemas/workflow_artifact.schema.json`
-  - `diff aigc/schemas/policy_dsl.schema.json schemas/policy_dsl.schema.json`
+  - `git -C ... diff develop...feat/v0.9-08-engine-hardening -- aegis/_internal/session.py aegis/_internal/policy_loader.py aegis/_internal/errors.py aegis/_internal/validator_hook.py aegis/_internal/workflow_doctor.py`
+  - `git -C ... diff develop...feat/v0.9-08-engine-hardening -- aegis/schemas/policy_dsl.schema.json schemas/policy_dsl.schema.json aegis/schemas/workflow_artifact.schema.json`
+  - `diff aegis/schemas/policy_dsl.schema.json schemas/policy_dsl.schema.json`
   - `cd .worktrees/feat-v0.9-08-engine-hardening && python -m pytest -q tests/test_engine_hardening.py tests/test_approval_checkpoints.py tests/test_budget_accounting.py tests/test_validator_hook.py tests/test_sequence_enforcement.py tests/test_transition_enforcement.py tests/test_participant_enforcement.py tests/test_handoff_enforcement.py tests/test_protocol_enforcement.py tests/test_escalation_enforcement.py tests/test_workflow_doctor.py tests/test_v090_contract_freeze.py tests/test_session_core.py tests/test_workflow_lint.py`
   - `cd .worktrees/feat-v0.9-08-engine-hardening && python -m pytest -q`
-  - `cd .worktrees/feat-v0.9-08-engine-hardening && flake8 aigc`
-  - `cd .worktrees/feat-v0.9-08-engine-hardening && flake8 aigc/_internal/session.py aigc/_internal/policy_loader.py aigc/_internal/errors.py aigc/_internal/validator_hook.py aigc/_internal/workflow_doctor.py`
+  - `cd .worktrees/feat-v0.9-08-engine-hardening && flake8 aegis`
+  - `cd .worktrees/feat-v0.9-08-engine-hardening && flake8 aegis/_internal/session.py aegis/_internal/policy_loader.py aegis/_internal/errors.py aegis/_internal/validator_hook.py aegis/_internal/workflow_doctor.py`
 
 ---
 
@@ -28,20 +28,20 @@
 
 **Full suite:** 1359 passed, 11 warnings in 10.43s. Zero failures, zero errors.
 
-**Flake8 on aigc/:**
+**Flake8 on aegis/:**
 
 ```
 EXIT CODE 1
 
-aigc/_internal/workflow_doctor.py:29:1: F401 'aigc._internal.errors.WorkflowParticipantMismatchError' imported but unused
-aigc/_internal/workflow_doctor.py:29:1: F401 'aigc._internal.errors.WorkflowSequenceViolationError' imported but unused
-aigc/_internal/workflow_doctor.py:29:1: F401 'aigc._internal.errors.WorkflowTransitionDeniedError' imported but unused
-aigc/_internal/workflow_doctor.py:29:1: F401 'aigc._internal.errors.WorkflowRoleViolationError' imported but unused
-aigc/_internal/workflow_doctor.py:29:1: F401 'aigc._internal.errors.WorkflowProtocolViolationError' imported but unused
-aigc/_internal/workflow_doctor.py:29:1: F401 'aigc._internal.errors.WorkflowHandoffDeniedError' imported but unused
+aegis/_internal/workflow_doctor.py:29:1: F401 'aegis._internal.errors.WorkflowParticipantMismatchError' imported but unused
+aegis/_internal/workflow_doctor.py:29:1: F401 'aegis._internal.errors.WorkflowSequenceViolationError' imported but unused
+aegis/_internal/workflow_doctor.py:29:1: F401 'aegis._internal.errors.WorkflowTransitionDeniedError' imported but unused
+aegis/_internal/workflow_doctor.py:29:1: F401 'aegis._internal.errors.WorkflowRoleViolationError' imported but unused
+aegis/_internal/workflow_doctor.py:29:1: F401 'aegis._internal.errors.WorkflowProtocolViolationError' imported but unused
+aegis/_internal/workflow_doctor.py:29:1: F401 'aegis._internal.errors.WorkflowHandoffDeniedError' imported but unused
 ```
 
-`flake8 aigc` is a mandatory CI step in `.github/workflows/sdk_ci.yml:68` and `.github/workflows/release.yml:38`. These violations block CI.
+`flake8 aegis` is a mandatory CI step in `.github/workflows/sdk_ci.yml:68` and `.github/workflows/release.yml:38`. These violations block CI.
 
 ---
 
@@ -49,21 +49,21 @@ aigc/_internal/workflow_doctor.py:29:1: F401 'aigc._internal.errors.WorkflowHand
 
 ### F-01 — High — flake8 F401 violations in workflow_doctor.py block CI
 
-- Location: `aigc/_internal/workflow_doctor.py:29-38`
+- Location: `aegis/_internal/workflow_doctor.py:29-38`
 - Issue: Six exception classes are imported by object reference but are used only as strings in `_INVALID_TRANSITION_EXCEPTION_TYPES` (a `frozenset` of class-name strings, not class objects). The imports are never consumed by the runtime.
-- Why it matters: `flake8 aigc` runs as a mandatory CI step in both `sdk_ci.yml` and `release.yml`. This PR will not pass CI as submitted.
-- Evidence: Running `flake8 aigc/_internal/workflow_doctor.py` in the worktree returns exit code 1 with six F401 errors. The frozenset at lines 406-414 stores bare strings: `"WorkflowParticipantMismatchError"`, `"WorkflowSequenceViolationError"`, etc. — not the imported class objects.
+- Why it matters: `flake8 aegis` runs as a mandatory CI step in both `sdk_ci.yml` and `release.yml`. This PR will not pass CI as submitted.
+- Evidence: Running `flake8 aegis/_internal/workflow_doctor.py` in the worktree returns exit code 1 with six F401 errors. The frozenset at lines 406-414 stores bare strings: `"WorkflowParticipantMismatchError"`, `"WorkflowSequenceViolationError"`, etc. — not the imported class objects.
 - Recommended fix: Remove the six unused imports. The exception matching logic at line 452 (`exc_type in _INVALID_TRANSITION_EXCEPTION_TYPES`) compares a string from the artifact against string literals, so the import objects are never needed.
-- Verification gap: No test asserts that `flake8 aigc` passes (tests import from `aigc._internal` directly and pass regardless). The CI step would catch this on push.
+- Verification gap: No test asserts that `flake8 aegis` passes (tests import from `aegis._internal` directly and pass regardless). The CI step would catch this on push.
 
 ---
 
 ### F-02 — Medium — Doctor never emits WORKFLOW_STEP_BUDGET_EXCEEDED or WORKFLOW_HOOK_DENIED codes from artifact diagnosis
 
-- Location: `aigc/_internal/workflow_doctor.py:447-479`
+- Location: `aegis/_internal/workflow_doctor.py:447-479`
 - Issue: `_NEXT_ACTIONS` contains entries for `WORKFLOW_STEP_BUDGET_EXCEEDED` (line 78) and `WORKFLOW_HOOK_DENIED` (line 83), implying the doctor should emit these codes. However, `diagnose_workflow_artifact()` only branches on `is_invalid_transition` (which covers `_INVALID_TRANSITION_EXCEPTION_TYPES`) or falls through to `POLICY_LOAD_ERROR`. `WorkflowStepBudgetExceededError` and `WorkflowHookDeniedError` are not in `_INVALID_TRANSITION_EXCEPTION_TYPES` and the function contains no dedicated branch for them. A session that fails with either of these errors produces a `POLICY_LOAD_ERROR` doctor finding instead of the more specific code.
 - Why it matters: The `_NEXT_ACTIONS` entries for these two codes are dead. A user experiencing a step-budget failure or hook denial who runs `workflow doctor` on the resulting artifact receives a generic `POLICY_LOAD_ERROR` finding with generic guidance, not the targeted remediation text that was written for these scenarios. This partially defeats the stated goal of "add deterministic workflow failure reasons aligned with `workflow doctor`."
-- Evidence: `grep "WORKFLOW_STEP_BUDGET\|WORKFLOW_HOOK_DENIED" aigc/_internal/workflow_doctor.py` returns only lines 78 and 83 (the `_NEXT_ACTIONS` entries). No call-site emits either code. No test in `test_workflow_doctor.py` covers `WorkflowStepBudgetExceededError` or `WorkflowHookDeniedError` artifact diagnosis.
+- Evidence: `grep "WORKFLOW_STEP_BUDGET\|WORKFLOW_HOOK_DENIED" aegis/_internal/workflow_doctor.py` returns only lines 78 and 83 (the `_NEXT_ACTIONS` entries). No call-site emits either code. No test in `test_workflow_doctor.py` covers `WorkflowStepBudgetExceededError` or `WorkflowHookDeniedError` artifact diagnosis.
 - Recommended fix: Add `"WorkflowStepBudgetExceededError"` and `"WorkflowHookDeniedError"` to a new lookup dict (similar to `_INVALID_TRANSITION_EXCEPTION_TYPES`) that maps exception type names to their emitted reason codes. Alternatively, add explicit branches in `diagnose_workflow_artifact()` that check `exc_type in {"WorkflowStepBudgetExceededError"}` and emit `WORKFLOW_STEP_BUDGET_EXCEEDED`, and similarly for hook denied.
 - Verification gap: No test covers this path. Add tests for failed artifacts carrying `WorkflowStepBudgetExceededError` and `WorkflowHookDeniedError` in `failure_summary.exception_type`.
 
@@ -71,7 +71,7 @@ aigc/_internal/workflow_doctor.py:29:1: F401 'aigc._internal.errors.WorkflowHand
 
 ### F-03 — Low — resume() on a session with only denied checkpoints silently transitions to OPEN
 
-- Location: `aigc/_internal/session.py:344-364`
+- Location: `aegis/_internal/session.py:344-364`
 - Issue: `resume()` calls `self._transition(STATE_OPEN)` at line 344 before scanning `_approval_records` for a pending checkpoint. If all checkpoints are in "denied" status (after `deny_approval()`), the for-loop finds nothing and exits without updating any record. The session transitions from PAUSED to OPEN with a denied checkpoint still present. A subsequent `complete()` call correctly raises because `rec["status"] != "approved"` for the denied record. However, the intermediate state (OPEN + denied checkpoint) is semantically inconsistent and could confuse host code that checks `session.state` before deciding whether to proceed.
 - Why it matters: The error is not silent in the sense that `complete()` still enforces the guard. But an OPEN session that cannot be completed is an unexpected state from the caller's perspective. A caller that calls `resume()` after denial expecting a no-op or error receives a silent OPEN transition instead.
 - Evidence: No test covers `resume()` after `deny_approval()`. `test_denied_checkpoint_keeps_session_paused` (line 227 in `test_approval_checkpoints.py`) only calls `cancel()` after denial, not `resume()`. The state diagram at `_VALID_TRANSITIONS` (line 53 in `session.py`) permits PAUSED → OPEN, so no transition error fires.
@@ -82,7 +82,7 @@ aigc/_internal/workflow_doctor.py:29:1: F401 'aigc._internal.errors.WorkflowHand
 
 ### F-04 — Low — Post-call tool-budget reconciliation guard is unreachable in current architecture
 
-- Location: `aigc/_internal/session.py:981-995`
+- Location: `aegis/_internal/session.py:981-995`
 - Issue: The post-call guard (`if self._total_tool_calls_consumed > self._max_total_tool_calls`) runs after `_total_tool_calls_consumed += entry["tool_calls_count"]` at line 979. The pre-call guard (lines 822-838) uses `_projected_total = self._total_tool_calls_consumed + _tool_calls_this_step` and raises if `_projected_total > max`. If pre-call passes, `_projected_total <= max`. Post-call adds the same count (`entry["tool_calls_count"]` equals `_tool_calls_this_step`), so `_total_tool_calls_consumed` becomes exactly `_projected_total` which is `<= max`. The post-call check `> max` cannot fire.
 - Why it matters: The guard creates the impression of a two-phase reconciliation that does not exist in practice. Any future refactor that changes which phase increments the counter risks breaking one side while the other appears to protect. The comment "Budget post-call reconciliation — check if actual consumption exceeds budget" implies this is an active check, but it is structurally dead.
 - Evidence: No test triggers this path. `test_tool_call_budget_check_happens_at_pre_call` (line 127 in `test_budget_accounting.py`) tests only that the pre-call path fires. The post-call reconciliation path has no corresponding test.
@@ -93,7 +93,7 @@ aigc/_internal/workflow_doctor.py:29:1: F401 'aigc._internal.errors.WorkflowHand
 
 ### F-05 — Low — Warning branch in hook dispatch loop is dead code
 
-- Location: `aigc/_internal/session.py:900-908`
+- Location: `aegis/_internal/session.py:900-908`
 - Issue: The warning block at lines 900-908 fires when `_result.decision not in {VALIDATOR_ALLOW, VALIDATOR_WARN, VALIDATOR_EXECUTION_FAILURE}`. After the fail-closed check at lines 885-899 raises on `DENY`, `TIMEOUT`, and `REVIEW_REQUIRED`, only `ALLOW`, `WARN`, and `EXECUTION_FAILURE` can remain. All other decisions are normalized to `EXECUTION_FAILURE` by `_call_hook_once` before returning. The intersection of "not in _non_warning" and "not already raised" is empty.
 
   Verified empirically:
@@ -124,7 +124,7 @@ aigc/_internal/workflow_doctor.py:29:1: F401 'aigc._internal.errors.WorkflowHand
 
 **OQ-1 — Protocol enforcement scope boundary**
 
-`aigc/_internal/session.py` contains protocol-family-specific runtime checks for `bedrock` (alias-backed identity requirement) and `a2a` (gRPC rejection, `supportedInterfaces` version check) embedded directly at lines 697-735. CLAUDE.md designates `BedrockTraceAdapter` and `A2AAdapter` as reserved for PR-10a/10b. The plan text for PR-08 ("enforce protocol constraints") does explicitly include this scope. The distinction is: the PR-08 code enforces protocol *evidence requirements* declared in the policy's `protocol_constraints` block (a governance concern), while PR-10 adapters normalize *external provider payloads* (a transport concern). This scope placement is correct per the implementation plan but should be confirmed by the author, since inline protocol-family checks in session.py could create maintenance coupling before the adapters land.
+`aegis/_internal/session.py` contains protocol-family-specific runtime checks for `bedrock` (alias-backed identity requirement) and `a2a` (gRPC rejection, `supportedInterfaces` version check) embedded directly at lines 697-735. CLAUDE.md designates `BedrockTraceAdapter` and `A2AAdapter` as reserved for PR-10a/10b. The plan text for PR-08 ("enforce protocol constraints") does explicitly include this scope. The distinction is: the PR-08 code enforces protocol *evidence requirements* declared in the policy's `protocol_constraints` block (a governance concern), while PR-10 adapters normalize *external provider payloads* (a transport concern). This scope placement is correct per the implementation plan but should be confirmed by the author, since inline protocol-family checks in session.py could create maintenance coupling before the adapters land.
 
 **OQ-2 — EXECUTION_FAILURE is warning-path, not fail-closed**
 
@@ -164,7 +164,7 @@ The following scenarios have no direct test coverage. None are blocking given th
 
 Two items must be resolved before merging:
 
-1. **F-01 (High)**: Remove the six unused imports from `aigc/_internal/workflow_doctor.py:29-38`. This is a one-line fix (remove the six class names from the import list). The frozenset at lines 406-414 uses bare strings and does not need the class objects.
+1. **F-01 (High)**: Remove the six unused imports from `aegis/_internal/workflow_doctor.py:29-38`. This is a one-line fix (remove the six class names from the import list). The frozenset at lines 406-414 uses bare strings and does not need the class objects.
 
 2. **F-02 (Medium)**: Decide how to route `WorkflowStepBudgetExceededError` and `WorkflowHookDeniedError` through `diagnose_workflow_artifact()`. Either add exception-type branches that emit the specific codes, or remove the dead `_NEXT_ACTIONS` entries and document that these failures produce a generic `POLICY_LOAD_ERROR` doctor finding (with a note for PR-09 to improve).
 

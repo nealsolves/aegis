@@ -2,12 +2,12 @@
 
 The beta CLI covers six workflow-adoption commands:
 
-- `aigc policy init`
-- `aigc workflow init`
-- `aigc workflow lint`
-- `aigc workflow doctor`
-- `aigc workflow trace`
-- `aigc workflow export`
+- `aegis policy init`
+- `aegis workflow init`
+- `aegis workflow lint`
+- `aegis workflow doctor`
+- `aegis workflow trace`
+- `aegis workflow export`
 
 For `workflow lint` and `workflow doctor`, exit code `0` means no error-severity
 findings and exit code `1` means at least one error-severity finding.
@@ -19,10 +19,10 @@ no workflow artifacts.
 
 ---
 
-## `aigc policy init`
+## `aegis policy init`
 
 ```text
-aigc policy init --profile {minimal,standard,regulated-high-assurance} [--output OUTPUT] [--role ROLE]
+aegis policy init --profile {minimal,standard,regulated-high-assurance} [--output OUTPUT] [--role ROLE]
 ```
 
 Use this to generate a standalone `policy.yaml` from one of the shipped starter
@@ -31,17 +31,17 @@ profiles.
 Examples:
 
 ```bash
-aigc policy init --profile minimal
-aigc policy init --profile regulated-high-assurance --output policies/regulated.yaml
-aigc policy init --profile standard --role reviewer
+aegis policy init --profile minimal
+aegis policy init --profile regulated-high-assurance --output policies/regulated.yaml
+aegis policy init --profile standard --role reviewer
 ```
 
 ---
 
-## `aigc workflow init`
+## `aegis workflow init`
 
 ```text
-aigc workflow init --profile {minimal,standard,regulated-high-assurance} [--output-dir OUTPUT_DIR] [--role ROLE]
+aegis workflow init --profile {minimal,standard,regulated-high-assurance} [--output-dir OUTPUT_DIR] [--role ROLE]
 ```
 
 Generates a starter directory containing `policy.yaml`, `workflow_example.py`,
@@ -50,17 +50,17 @@ and `README.md`.
 Examples:
 
 ```bash
-aigc workflow init --profile minimal
-aigc workflow init --profile standard --output-dir governance-standard
-aigc workflow init --profile regulated-high-assurance --role analyst
+aegis workflow init --profile minimal
+aegis workflow init --profile standard --output-dir governance-standard
+aegis workflow init --profile regulated-high-assurance --role analyst
 ```
 
 ---
 
-## `aigc workflow lint`
+## `aegis workflow lint`
 
 ```text
-aigc workflow lint [--kind {auto,policy,starter_dir,workflow_artifact}] [--json] targets [targets ...]
+aegis workflow lint [--kind {auto,policy,starter_dir,workflow_artifact}] [--json] targets [targets ...]
 ```
 
 Static lint for governance targets. In the beta it covers:
@@ -75,18 +75,18 @@ Static lint for governance targets. In the beta it covers:
 Examples:
 
 ```bash
-aigc workflow lint policy.yaml
-aigc workflow lint governance/
-aigc workflow lint --kind workflow_artifact workflow_artifact.json
-aigc workflow lint --json governance/
+aegis workflow lint policy.yaml
+aegis workflow lint governance/
+aegis workflow lint --kind workflow_artifact workflow_artifact.json
+aegis workflow lint --json governance/
 ```
 
 ---
 
-## `aigc workflow doctor`
+## `aegis workflow doctor`
 
 ```text
-aigc workflow doctor [--kind {auto,policy,starter_dir,workflow_artifact,audit_artifact}] [--json] target
+aegis workflow doctor [--kind {auto,policy,starter_dir,workflow_artifact,audit_artifact}] [--json] target
 ```
 
 Runtime and evidence diagnosis for policy files, starter directories, workflow
@@ -95,9 +95,9 @@ artifacts, and invocation audit artifacts.
 Examples:
 
 ```bash
-aigc workflow doctor governance/
-aigc workflow doctor workflow_artifact.json
-aigc workflow doctor audit.json --kind audit_artifact --json
+aegis workflow doctor governance/
+aegis workflow doctor workflow_artifact.json
+aegis workflow doctor audit.json --kind audit_artifact --json
 ```
 
 See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for reason-code guidance and the
@@ -105,10 +105,10 @@ regulated failure-and-fix walkthrough.
 
 ---
 
-## `aigc workflow trace`
+## `aegis workflow trace`
 
 ```text
-aigc workflow trace --input FILE [--output FILE]
+aegis workflow trace --input FILE [--output FILE]
 ```
 
 Reconstruct workflow timelines from a JSONL artifact file containing workflow
@@ -150,21 +150,21 @@ Each step in `steps[]` includes:
 
 `unresolved_checksums` indicates sink failures or an incomplete export — the
 invocation artifacts referenced by those steps were not present in the JSONL
-file. Investigate with `aigc workflow doctor`.
+file. Investigate with `aegis workflow doctor`.
 
 Examples:
 
 ```bash
-aigc workflow trace --input audit.jsonl
-aigc workflow trace --input audit.jsonl --output timeline.json
+aegis workflow trace --input audit.jsonl
+aegis workflow trace --input audit.jsonl --output timeline.json
 ```
 
 ---
 
-## `aigc workflow export`
+## `aegis workflow export`
 
 ```text
-aigc workflow export --input FILE --mode {operator|audit} [--output FILE]
+aegis workflow export --input FILE --mode {operator|audit} [--output FILE]
 ```
 
 Export governed workflow evidence in operator or audit mode.
@@ -225,11 +225,11 @@ step. Use for compliance reporting and external audit handoff. Output shape:
 
 `integrity.unresolved_invocation_checksums` lists any invocation artifacts
 referenced by workflow steps that were not found in the input JSONL. Investigate
-missing evidence with `aigc workflow doctor`.
+missing evidence with `aegis workflow doctor`.
 
 Examples:
 
 ```bash
-aigc workflow export --input audit.jsonl --mode operator
-aigc workflow export --input audit.jsonl --mode audit --output compliance.json
+aegis workflow export --input audit.jsonl --mode operator
+aegis workflow export --input audit.jsonl --mode audit --output compliance.json
 ```

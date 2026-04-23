@@ -8,7 +8,7 @@ import jsonschema
 import pytest
 from pathlib import Path
 
-SCHEMA_PATH = Path("aigc/schemas/policy_dsl.schema.json")
+SCHEMA_PATH = Path("aegis/schemas/policy_dsl.schema.json")
 
 
 def _load_schema() -> dict:
@@ -65,8 +65,8 @@ def test_workflow_unknown_field_rejected():
 # Composition hardening: workflow-bearing fields must only narrow
 # ---------------------------------------------------------------------------
 
-from aigc._internal.policy_loader import load_policy
-from aigc._internal.errors import PolicyValidationError
+from aegis._internal.policy_loader import load_policy
+from aegis._internal.errors import PolicyValidationError
 
 
 def test_valid_composition_child_narrows_and_loads():
@@ -195,9 +195,9 @@ def test_child_can_tighten_max_steps():
 # State-machine tests
 # ---------------------------------------------------------------------------
 
-from aigc._internal.enforcement import AIGC
-from aigc._internal.session import STATE_FAILED, STATE_FINALIZED
-from aigc._internal.errors import (
+from aegis._internal.enforcement import AIGC
+from aegis._internal.session import STATE_FAILED, STATE_FINALIZED
+from aegis._internal.errors import (
     SessionStateError,
     WorkflowStepBudgetExceededError,
 )

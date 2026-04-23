@@ -1,12 +1,12 @@
 # PR-09 Implementation Code Review
 
 - **Audit date:** 2026-04-19
-- **Repository root:** /Users/neal/Documents/_Shenanigans/_myProjects/aigc
+- **Repository root:** /Users/neal/Documents/_Shenanigans/_myProjects/aegis
 - **Base branch:** develop (`7578cab959f9e4dd67e3e163a92e3482067d8c89`)
 - **Review branch:** feat/v0.9-09-exports-and-ops (`5764284ae32eec8fd0f23587369a69a774a5d0fc`)
-- **Scope reviewed:** aigc/_internal/workflow_trace.py, aigc/_internal/workflow_export.py,
-  aigc/_internal/cli.py, aigc/_internal/workflow_lint.py, aigc/_internal/session.py,
-  aigc/schemas/workflow_artifact.schema.json, demo-app-api/workflow_routes.py,
+- **Scope reviewed:** aegis/_internal/workflow_trace.py, aegis/_internal/workflow_export.py,
+  aegis/_internal/cli.py, aegis/_internal/workflow_lint.py, aegis/_internal/session.py,
+  aegis/schemas/workflow_artifact.schema.json, demo-app-api/workflow_routes.py,
   scripts/check_doc_parity.py, docs/reference/WORKFLOW_CLI.md,
   docs/reference/OPERATIONS_RUNBOOK.md, tests/test_workflow_trace.py,
   tests/test_workflow_export.py, tests/test_doc_parity_v090_truth.py, tests/test_cli.py,
@@ -21,15 +21,15 @@
   - `git diff --name-only develop...feat/v0.9-09-exports-and-ops`
   - `git show feat/v0.9-09-exports-and-ops:<file>` (all 7 priority implementation files + selected docs)
   - `git diff develop...feat/v0.9-09-exports-and-ops -- <file>` (lint, schema, session, specific docs)
-  - Verified existing worktree at `/Users/neal/Documents/_Shenanigans/_myProjects/aigc/.worktrees/feat-v0.9-09-exports-and-ops` at branch tip (`5764284`)
+  - Verified existing worktree at `/Users/neal/Documents/_Shenanigans/_myProjects/aegis/.worktrees/feat-v0.9-09-exports-and-ops` at branch tip (`5764284`)
   - `pip install -e . -q` (in correct worktree)
   - `python -m pytest -q tests/test_workflow_trace.py tests/test_workflow_export.py tests/test_v090_contract_freeze.py tests/test_doc_parity_v090_truth.py tests/test_workflow_doctor.py tests/test_cli.py` (179 tests)
   - `python -m pytest -q` (full suite — 1436 tests)
   - `python -m pytest -q demo-app-api/tests/test_workflow_routes.py` (10 tests)
   - `python scripts/check_doc_parity.py` (exits 1 — 2 parity errors)
-  - `flake8 aigc/_internal/` (from worktree — 4 E501 violations)
+  - `flake8 aegis/_internal/` (from worktree — 4 E501 violations)
   - `python3 -c "..."` (inline reproduction of trace/export unresolved divergence)
-  - Stale worktree at `/tmp/aigc-pr09-review` removed after discovering it was 2 commits behind
+  - Stale worktree at `/tmp/aegis-pr09-review` removed after discovering it was 2 commits behind
 
 ---
 
@@ -37,25 +37,25 @@
 
 ### F-01 — HIGH — Four flake8 E501 violations in cli.py will fail the CI lint gate
 
-- **Location:** `aigc/_internal/cli.py:378`, `aigc/_internal/cli.py:382`,
-  `aigc/_internal/cli.py:439`, `aigc/_internal/cli.py:443`
+- **Location:** `aegis/_internal/cli.py:378`, `aegis/_internal/cli.py:382`,
+  `aegis/_internal/cli.py:439`, `aegis/_internal/cli.py:443`
 - **Issue:** Four lines in `_cmd_workflow_trace` and `_cmd_workflow_export` exceed the 100-character
   limit enforced by `.flake8`. Two are the `print(f"ERROR: malformed JSONL line (not valid JSON):
   {line!r}", file=sys.stderr)` statements (101 chars each) and two are the f-string for the
   non-dict case (116 chars each). The CI workflows at `.github/workflows/sdk_ci.yml:68` and
-  `.github/workflows/release.yml:38` both run `flake8 aigc` against the whole package. The develop
+  `.github/workflows/release.yml:38` both run `flake8 aegis` against the whole package. The develop
   branch has zero flake8 violations; these four were introduced by the crash-fix commit
   `fix(pr09): address code-review findings — step-type crash, doc-parity gate, hidden trace failures`.
 - **Why it matters:** These violations will fail the CI lint gate on the remote PR. The branch
   cannot merge until they are resolved. This is a blocking issue for the remote push.
 - **Evidence:**
   ```
-  aigc/_internal/cli.py:378:101: E501 line too long (101 > 100 characters)
-  aigc/_internal/cli.py:382:101: E501 line too long (116 > 100 characters)
-  aigc/_internal/cli.py:439:101: E501 line too long (101 > 100 characters)
-  aigc/_internal/cli.py:443:101: E501 line too long (116 > 100 characters)
+  aegis/_internal/cli.py:378:101: E501 line too long (101 > 100 characters)
+  aegis/_internal/cli.py:382:101: E501 line too long (116 > 100 characters)
+  aegis/_internal/cli.py:439:101: E501 line too long (101 > 100 characters)
+  aegis/_internal/cli.py:443:101: E501 line too long (116 > 100 characters)
   ```
-  Running `flake8 aigc/_internal/cli.py` from the develop checkout returns empty (zero violations).
+  Running `flake8 aegis/_internal/cli.py` from the develop checkout returns empty (zero violations).
 - **Recommended fix:** Split the single-line print calls into multi-line form:
   ```python
   print(
@@ -65,7 +65,7 @@
   ```
   The non-dict message at lines 382/443 can similarly be folded into the already-present multi-line
   `print(...)` block that follows.
-- **Verification gap or confirming test:** `flake8 aigc` in the worktree reproduces all four
+- **Verification gap or confirming test:** `flake8 aegis` in the worktree reproduces all four
   violations directly. No test enforces flake8 compliance; the CI gate is the only enforcement.
 
 ---
@@ -98,10 +98,10 @@
 
 ---
 
-### F-03 — MEDIUM — `aigc workflow trace` and `aigc workflow export` report different unresolved-checksum sets for the same input when `invocation_audit_checksums` has entries absent from `steps[]`
+### F-03 — MEDIUM — `aegis workflow trace` and `aegis workflow export` report different unresolved-checksum sets for the same input when `invocation_audit_checksums` has entries absent from `steps[]`
 
-- **Location:** `aigc/_internal/workflow_trace.py` (full `unresolved` derivation block),
-  `aigc/_internal/workflow_export.py:57–68` (`expected` set construction)
+- **Location:** `aegis/_internal/workflow_trace.py` (full `unresolved` derivation block),
+  `aegis/_internal/workflow_export.py:57–68` (`expected` set construction)
 - **Issue:** `reconstruct_trace` derives `unresolved_checksums` exclusively from checksums
   referenced in `steps[].invocation_artifact_checksum` that have no matching invocation artifact.
   It does not consult the top-level `invocation_audit_checksums` list. `export_workflow` constructs
@@ -118,8 +118,8 @@
   The comment in `workflow_export.py:57-60` states the goal is for "trace and export to report
   the same unresolved set even when the two sources diverge," which indicates the divergence is
   unintentional.
-- **Why it matters:** An operator using only `aigc workflow trace` to verify evidence completeness
-  could see a clean trace while `aigc workflow export` would surface gaps. This is misleading about
+- **Why it matters:** An operator using only `aegis workflow trace` to verify evidence completeness
+  could see a clean trace while `aegis workflow export` would surface gaps. This is misleading about
   the completeness of governed evidence. The scenario arises whenever a workflow artifact's summary
   list disagrees with its step list, which can happen with a corrupt or partially-written artifact.
 - **Evidence:** Direct Python execution in the worktree confirms the asymmetry. No test in
@@ -142,12 +142,12 @@
 - **Location:** `demo-app-api/workflow_routes.py:292–328` (the `trace_evidence` route handler),
   `demo-app-api/tests/test_workflow_routes.py` (no reference to `/trace`)
 - **Issue:** PR-09 adds a `GET /api/workflow/v090/trace` endpoint that runs a real governed session
-  with a `JsonFileAuditSink`, then invokes `aigc workflow trace` via subprocess and returns the
+  with a `JsonFileAuditSink`, then invokes `aegis workflow trace` via subprocess and returns the
   parsed trace. The route raises HTTP 500 if the subprocess fails or returns non-JSON. This is
   the primary demo operator-evidence path required by the plan. None of this behavior is covered
   by any test. The existing test file covers the four other routes (`/run`, `/compare`, `/diagnose`,
   and helper state functions) with 10 tests, but has zero entries for `/trace`.
-- **Why it matters:** The `/trace` route exercises the subprocess invocation of `aigc workflow
+- **Why it matters:** The `/trace` route exercises the subprocess invocation of `aegis workflow
   trace`, the `JsonFileAuditSink`, JSONL sink writing and reading, and the HTTP 500 error paths.
   A regression in any of these could be introduced without any test catching it. This is the
   route that implements the "operator-facing evidence path using real artifacts" requirement.
@@ -172,8 +172,8 @@
 - **Location:** `docs/dev/pr_context.md:4` (header), `docs/dev/pr_context.md:36–47` (Current State)
 - **Issue:** The document header says `Status: feat/v0.9-09-exports-and-ops contains PR-01 through
   PR-09`. The `## Current State` section body at line 36 says `PR-01 through PR-08 are complete on
-  local develop`. The shipped CLI surface list in that section (lines 40-47) ends at `aigc workflow
-  doctor` and does not include `aigc workflow trace` or `aigc workflow export`. A PR-09 Outcomes
+  local develop`. The shipped CLI surface list in that section (lines 40-47) ends at `aegis workflow
+  doctor` and does not include `aegis workflow trace` or `aegis workflow export`. A PR-09 Outcomes
   section at the bottom correctly documents what shipped. The inconsistency creates a misleading
   reference for the exact document intended to describe the current beta surface.
 - **Why it matters:** This is a documentation tracking artifact, not a functional defect. However,
@@ -183,7 +183,7 @@
   confirms the header/body mismatch.
 - **Recommended fix:** Update the `## Current State` section: change "PR-01 through PR-08 are
   complete on local `develop`" to "PR-01 through PR-09 are complete on
-  `feat/v0.9-09-exports-and-ops`" and add `aigc workflow trace` and `aigc workflow export` to the
+  `feat/v0.9-09-exports-and-ops`" and add `aegis workflow trace` and `aegis workflow export` to the
   shipped CLI surface list.
 - **Verification gap or confirming test:** The `check_v090_pr09_contract` parity check correctly
   rejects the stale "Between PR-08 And PR-09" and "PR-09 has not started" patterns if they were
@@ -214,7 +214,7 @@
 
 **Checksum canonicalization was corrected.** `session.py` previously computed checksums via
 `json.dumps(artifact, sort_keys=True, separators=(",", ":"))`. PR-09 replaces this with
-`canonical_json_bytes(artifact)` from `aigc._internal.utils`, exactly matching the implementation
+`canonical_json_bytes(artifact)` from `aegis._internal.utils`, exactly matching the implementation
 in `audit.checksum`. This closes a previously-reported checksum mismatch risk. The
 `TestChecksumCorrelationParity` and `TestChecksumCorrelationParityExport` test classes confirm
 that integer-valued floats and non-ASCII content both correlate correctly across the audit and
@@ -224,7 +224,7 @@ session paths.
 `export_workflow` validate that each `steps[]` entry is a `dict` before any correlation logic runs
 and raise `ValueError` with a `workflow lint` hint. The CLI handlers catch this and exit 1.
 `workflow_lint.py` gained the same guard at lines 475-486. The schema at
-`aigc/schemas/workflow_artifact.schema.json` was tightened from `"steps": {"type": "array"}` to
+`aegis/schemas/workflow_artifact.schema.json` was tightened from `"steps": {"type": "array"}` to
 `"steps": {"type": "array", "items": {"type": "object"}}`. Schema, lint, trace, and export are
 all aligned on this invariant.
 
@@ -254,7 +254,7 @@ The `TestExportIntegrityStepReferenceParity` class tests this in four scenarios.
 `workflow_export.py:57-60` explicitly documents the intent.
 
 **The demo `/trace` route uses real governed artifacts.** The route creates a `JsonFileAuditSink`,
-runs two real governed steps, then calls `aigc workflow trace` via subprocess. CLI failure and
+runs two real governed steps, then calls `aegis workflow trace` via subprocess. CLI failure and
 non-JSON output both raise HTTP 500. No fabricated trace data.
 
 **1436 tests pass.** All 1436 tests pass on the branch with only pre-existing deprecation warnings.
@@ -287,7 +287,7 @@ non-JSON output both raise HTTP 500. No fabricated trace data.
 The following cases are not covered by any test on the PR-09 branch:
 
 1. **`GET /trace` demo route** — No test exercises this endpoint at all. The subprocess invocation
-   of `aigc workflow trace`, the `JsonFileAuditSink`, JSONL parsing, and the HTTP 500 error path
+   of `aegis workflow trace`, the `JsonFileAuditSink`, JSONL parsing, and the HTTP 500 error path
    are all unverified. This is the highest-priority gap given the route's role as the primary
    operator evidence demo.
 

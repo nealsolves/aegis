@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from aigc._internal.lineage import AuditLineage, _artifact_checksum
+from aegis._internal.lineage import AuditLineage, _artifact_checksum
 
 
 # ---------------------------------------------------------------------------
@@ -485,8 +485,8 @@ def test_lineage_key_stable_across_audit_chain_append():
     the parent's lineage key must be the same value so ancestors() / descendants()
     / orphans() all resolve the relationship correctly.
     """
-    from aigc._internal.audit import generate_audit_artifact
-    from aigc._internal.audit_chain import AuditChain
+    from aegis._internal.audit import generate_audit_artifact
+    from aegis._internal.audit_chain import AuditChain
 
     invocation = {
         "policy_file": "test_policy.yaml",

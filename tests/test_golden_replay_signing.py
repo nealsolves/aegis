@@ -1,6 +1,6 @@
 """Golden replay tests for artifact signing (M2)."""
-from aigc._internal.enforcement import AIGC
-from aigc._internal.signing import HMACSigner, verify_artifact
+from aegis._internal.enforcement import AIGC
+from aegis._internal.signing import HMACSigner, verify_artifact
 
 
 POLICY = "tests/golden_replays/golden_policy_v1.yaml"
@@ -17,8 +17,8 @@ INVOCATION = {
 
 def test_signed_pass_artifact():
     signer = HMACSigner(key=b"golden-test-key")
-    aigc = AIGC(signer=signer)
-    audit = aigc.enforce(INVOCATION)
+    aegis = AIGC(signer=signer)
+    audit = aegis.enforce(INVOCATION)
     assert audit["enforcement_result"] == "PASS"
     assert audit["signature"] is not None
     assert verify_artifact(audit, signer)
@@ -26,12 +26,12 @@ def test_signed_pass_artifact():
 
 def test_signed_fail_artifact():
     signer = HMACSigner(key=b"golden-test-key")
-    aigc = AIGC(signer=signer)
+    aegis = AIGC(signer=signer)
     bad_inv = dict(INVOCATION, role="unauthorized_role")
     import pytest
-    from aigc._internal.errors import GovernanceViolationError
+    from aegis._internal.errors import GovernanceViolationError
     with pytest.raises(GovernanceViolationError) as exc_info:
-        aigc.enforce(bad_inv)
+        aegis.enforce(bad_inv)
     audit = exc_info.value.audit_artifact
     assert audit["enforcement_result"] == "FAIL"
     assert audit["signature"] is not None
@@ -40,9 +40,9 @@ def test_signed_fail_artifact():
 
 def test_signature_deterministic():
     signer = HMACSigner(key=b"golden-test-key")
-    aigc = AIGC(signer=signer)
-    a1 = aigc.enforce(INVOCATION)
-    a2 = aigc.enforce(INVOCATION)
+    aegis = AIGC(signer=signer)
+    a1 = aegis.enforce(INVOCATION)
+    a2 = aegis.enforce(INVOCATION)
     # Timestamps differ, so signatures differ — but both verify
     assert verify_artifact(a1, signer)
     assert verify_artifact(a2, signer)
@@ -50,7 +50,7 @@ def test_signature_deterministic():
 
 def test_tampered_signature_fails():
     signer = HMACSigner(key=b"golden-test-key")
-    aigc = AIGC(signer=signer)
-    audit = aigc.enforce(INVOCATION)
+    aegis = AIGC(signer=signer)
+    audit = aegis.enforce(INVOCATION)
     audit["enforcement_result"] = "FAIL"  # tamper
     assert not verify_artifact(audit, signer)

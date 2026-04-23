@@ -12,12 +12,12 @@ Objective:
 2. Verify document vs code alignment across the SDK, CLI, schemas, tests, and demo surfaces.
 3. If code is correct and documentation is wrong, explicitly make that evaluation and fix the documentation.
 4. If code is wrong relative to the intended public contract, fix the code and update docs as needed.
-5. Produce a written findings report in `/Users/neal/Documents/_Shenanigans/_myProjects/aigc/docs/audits` before making substantive fixes.
+5. Produce a written findings report in `/Users/neal/Documents/_Shenanigans/_myProjects/aegis/docs/audits` before making substantive fixes.
 
 Operating rules:
 - Treat the implementation on `origin/develop` as the audit target, not whatever feature branch may currently be checked out.
 - If the current working tree is not safely based on `origin/develop`, stop and say so before editing.
-- Use executable behavior as the primary source of truth: public code in `aigc/`, JSON schemas, CLI behavior, demo app behavior, and tests.
+- Use executable behavior as the primary source of truth: public code in `aegis/`, JSON schemas, CLI behavior, demo app behavior, and tests.
 - Use docs as claims to verify, not as truth by assertion.
 - If docs disagree with code and the code is internally consistent, covered by tests, and aligned with the public API/schema, classify that as `DOC_BUG` and fix the docs.
 - If code disagrees with the intended contract and tests/docs/schemas support the docs, classify that as `CODE_BUG` and fix the code, then update docs if needed.
@@ -25,7 +25,7 @@ Operating rules:
 - Do not silently "fix docs to match a bug" unless you can defend that the shipped code is the correct behavior.
 
 Required scope:
-- Public SDK API exported from `aigc/__init__.py`
+- Public SDK API exported from `aegis/__init__.py`
 - Unified and split enforcement flows
 - Sync and async entry points
 - `AIGC` instance API
@@ -60,7 +60,7 @@ Phase 1: Establish audit baseline
 
 Phase 2: Write findings report before fixes
 - Create a timestamped markdown report in:
-  `/Users/neal/Documents/_Shenanigans/_myProjects/aigc/docs/audits`
+  `/Users/neal/Documents/_Shenanigans/_myProjects/aegis/docs/audits`
 - Filename format:
   `YYYY-MM-DD-origin-develop-e2e-review.md`
 - This report must exist before you make substantive code or documentation fixes.

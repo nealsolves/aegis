@@ -5,7 +5,7 @@ import inspect
 import re
 from typing import Any, Mapping
 
-from aigc import EnforcementGate, GateResult
+from aegis import EnforcementGate, GateResult
 
 
 class SessionAuthorizationGate(EnforcementGate):

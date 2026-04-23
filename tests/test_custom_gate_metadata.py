@@ -7,8 +7,8 @@ included in the PASS audit artifact under metadata["custom_gate_metadata"].
 import pytest
 from typing import Any, Mapping
 
-from aigc._internal.enforcement import AIGC
-from aigc._internal.gates import (
+from aegis._internal.enforcement import AIGC
+from aegis._internal.gates import (
     EnforcementGate,
     GateResult,
     INSERTION_PRE_AUTHORIZATION,
@@ -93,8 +93,8 @@ class TestSingleGateMetadata:
         gate = _MetadataGate(
             "tracker", INSERTION_POST_AUTHORIZATION, {"trace_id": "abc-123"},
         )
-        aigc = AIGC(custom_gates=[gate])
-        artifact = aigc.enforce(VALID_INVOCATION)
+        aegis = AIGC(custom_gates=[gate])
+        artifact = aegis.enforce(VALID_INVOCATION)
 
         assert artifact["enforcement_result"] == "PASS"
         custom_meta = artifact["metadata"]["custom_gate_metadata"]
@@ -106,8 +106,8 @@ class TestSingleGateMetadata:
             INSERTION_PRE_AUTHORIZATION,
             {"origin": "pre_auth"},
         )
-        aigc = AIGC(custom_gates=[gate])
-        artifact = aigc.enforce(VALID_INVOCATION)
+        aegis = AIGC(custom_gates=[gate])
+        artifact = aegis.enforce(VALID_INVOCATION)
 
         assert artifact["metadata"]["custom_gate_metadata"]["origin"] == "pre_auth"
 
@@ -117,8 +117,8 @@ class TestSingleGateMetadata:
             INSERTION_PRE_OUTPUT,
             {"stage": "pre_output"},
         )
-        aigc = AIGC(custom_gates=[gate])
-        artifact = aigc.enforce(VALID_INVOCATION)
+        aegis = AIGC(custom_gates=[gate])
+        artifact = aegis.enforce(VALID_INVOCATION)
 
         assert artifact["metadata"]["custom_gate_metadata"]["stage"] == "pre_output"
 
@@ -128,8 +128,8 @@ class TestSingleGateMetadata:
             INSERTION_POST_OUTPUT,
             {"final": True},
         )
-        aigc = AIGC(custom_gates=[gate])
-        artifact = aigc.enforce(VALID_INVOCATION)
+        aegis = AIGC(custom_gates=[gate])
+        artifact = aegis.enforce(VALID_INVOCATION)
 
         assert artifact["metadata"]["custom_gate_metadata"]["final"] is True
 
@@ -144,8 +144,8 @@ class TestMultiGateMetadataMerge:
         gate_b = _MetadataGate(
             "gate_b", INSERTION_POST_OUTPUT, {"key_b": "val_b"},
         )
-        aigc = AIGC(custom_gates=[gate_a, gate_b])
-        artifact = aigc.enforce(VALID_INVOCATION)
+        aegis = AIGC(custom_gates=[gate_a, gate_b])
+        artifact = aegis.enforce(VALID_INVOCATION)
 
         custom_meta = artifact["metadata"]["custom_gate_metadata"]
         assert custom_meta["key_a"] == "val_a"
@@ -158,8 +158,8 @@ class TestMultiGateMetadataMerge:
             _MetadataGate("g_pre_out", INSERTION_PRE_OUTPUT, {"c": 3}),
             _MetadataGate("g_post_out", INSERTION_POST_OUTPUT, {"d": 4}),
         ]
-        aigc = AIGC(custom_gates=gates)
-        artifact = aigc.enforce(VALID_INVOCATION)
+        aegis = AIGC(custom_gates=gates)
+        artifact = aegis.enforce(VALID_INVOCATION)
 
         custom_meta = artifact["metadata"]["custom_gate_metadata"]
         assert custom_meta == {"a": 1, "b": 2, "c": 3, "d": 4}
@@ -171,8 +171,8 @@ class TestMultiGateMetadataMerge:
         gate_b = _MetadataGate(
             "tracker_b", INSERTION_POST_AUTHORIZATION, {"y": 20},
         )
-        aigc = AIGC(custom_gates=[gate_a, gate_b])
-        artifact = aigc.enforce(VALID_INVOCATION)
+        aegis = AIGC(custom_gates=[gate_a, gate_b])
+        artifact = aegis.enforce(VALID_INVOCATION)
 
         custom_meta = artifact["metadata"]["custom_gate_metadata"]
         assert custom_meta["x"] == 10
@@ -188,8 +188,8 @@ class TestMetadataKeysSortedDeterministically:
             _MetadataGate("a_gate", INSERTION_POST_OUTPUT, {"apple": 2}),
             _MetadataGate("m_gate", INSERTION_POST_AUTHORIZATION, {"mango": 3}),
         ]
-        aigc = AIGC(custom_gates=gates)
-        artifact = aigc.enforce(VALID_INVOCATION)
+        aegis = AIGC(custom_gates=gates)
+        artifact = aegis.enforce(VALID_INVOCATION)
 
         custom_meta = artifact["metadata"]["custom_gate_metadata"]
         keys = list(custom_meta.keys())
@@ -205,8 +205,8 @@ class TestMetadataKeysSortedDeterministically:
                 {"charlie": 3, "alpha": 1, "bravo": 2},
             ),
         ]
-        aigc = AIGC(custom_gates=gates)
-        artifact = aigc.enforce(VALID_INVOCATION)
+        aegis = AIGC(custom_gates=gates)
+        artifact = aegis.enforce(VALID_INVOCATION)
 
         custom_meta = artifact["metadata"]["custom_gate_metadata"]
         assert list(custom_meta.keys()) == ["alpha", "bravo", "charlie"]
@@ -217,10 +217,10 @@ class TestMetadataKeysSortedDeterministically:
             _MetadataGate("g1", INSERTION_PRE_AUTHORIZATION, {"z": 1, "a": 2}),
             _MetadataGate("g2", INSERTION_POST_OUTPUT, {"m": 3, "b": 4}),
         ]
-        aigc = AIGC(custom_gates=gates)
+        aegis = AIGC(custom_gates=gates)
 
-        artifact_1 = aigc.enforce(VALID_INVOCATION)
-        artifact_2 = aigc.enforce(VALID_INVOCATION)
+        artifact_1 = aegis.enforce(VALID_INVOCATION)
+        artifact_2 = aegis.enforce(VALID_INVOCATION)
 
         meta_1 = artifact_1["metadata"]["custom_gate_metadata"]
         meta_2 = artifact_2["metadata"]["custom_gate_metadata"]
@@ -237,8 +237,8 @@ class TestMetadataSurvivesToArtifactOnPass:
             INSERTION_POST_AUTHORIZATION,
             {"evidence": "preserved"},
         )
-        aigc = AIGC(custom_gates=[gate])
-        artifact = aigc.enforce(VALID_INVOCATION)
+        aegis = AIGC(custom_gates=[gate])
+        artifact = aegis.enforce(VALID_INVOCATION)
 
         assert "custom_gate_metadata" in artifact["metadata"]
 
@@ -253,8 +253,8 @@ class TestMetadataSurvivesToArtifactOnPass:
                 "null_val": None,
             },
         )
-        aigc = AIGC(custom_gates=[gate])
-        artifact = aigc.enforce(VALID_INVOCATION)
+        aegis = AIGC(custom_gates=[gate])
+        artifact = aegis.enforce(VALID_INVOCATION)
 
         custom_meta = artifact["metadata"]["custom_gate_metadata"]
         assert custom_meta["nested"] == {"level": 2}
@@ -268,8 +268,8 @@ class TestMetadataSurvivesToArtifactOnPass:
             INSERTION_POST_AUTHORIZATION,
             {"custom_key": "custom_value"},
         )
-        aigc = AIGC(custom_gates=[gate])
-        artifact = aigc.enforce(VALID_INVOCATION)
+        aegis = AIGC(custom_gates=[gate])
+        artifact = aegis.enforce(VALID_INVOCATION)
 
         meta = artifact["metadata"]
         # Standard metadata fields must still be present
@@ -285,15 +285,15 @@ class TestEmptyMetadataOmitted:
 
     def test_no_metadata_key_when_gate_returns_empty(self):
         gate = _EmptyMetadataGate("no_meta_gate", INSERTION_POST_AUTHORIZATION)
-        aigc = AIGC(custom_gates=[gate])
-        artifact = aigc.enforce(VALID_INVOCATION)
+        aegis = AIGC(custom_gates=[gate])
+        artifact = aegis.enforce(VALID_INVOCATION)
 
         assert artifact["enforcement_result"] == "PASS"
         assert "custom_gate_metadata" not in artifact["metadata"]
 
     def test_no_metadata_key_when_no_custom_gates(self):
-        aigc = AIGC()
-        artifact = aigc.enforce(VALID_INVOCATION)
+        aegis = AIGC()
+        artifact = aegis.enforce(VALID_INVOCATION)
 
         assert artifact["enforcement_result"] == "PASS"
         assert "custom_gate_metadata" not in artifact["metadata"]
@@ -303,8 +303,8 @@ class TestEmptyMetadataOmitted:
             _EmptyMetadataGate("empty_a", INSERTION_PRE_AUTHORIZATION),
             _EmptyMetadataGate("empty_b", INSERTION_POST_OUTPUT),
         ]
-        aigc = AIGC(custom_gates=gates)
-        artifact = aigc.enforce(VALID_INVOCATION)
+        aegis = AIGC(custom_gates=gates)
+        artifact = aegis.enforce(VALID_INVOCATION)
 
         assert "custom_gate_metadata" not in artifact["metadata"]
 
@@ -315,8 +315,8 @@ class TestEmptyMetadataOmitted:
                 "has_meta", INSERTION_POST_OUTPUT, {"found": True},
             ),
         ]
-        aigc = AIGC(custom_gates=gates)
-        artifact = aigc.enforce(VALID_INVOCATION)
+        aegis = AIGC(custom_gates=gates)
+        artifact = aegis.enforce(VALID_INVOCATION)
 
         assert "custom_gate_metadata" in artifact["metadata"]
         assert artifact["metadata"]["custom_gate_metadata"]["found"] is True

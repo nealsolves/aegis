@@ -12,14 +12,14 @@ import pytest
 from collections import OrderedDict
 from pathlib import Path
 
-from aigc._internal.audit import checksum
-from aigc._internal.enforcement import (
+from aegis._internal.audit import checksum
+from aegis._internal.enforcement import (
     AIGC,
     PreCallResult,
     enforce_post_call,
     enforce_pre_call,
 )
-from aigc._internal.errors import (
+from aegis._internal.errors import (
     GovernanceViolationError,
     InvocationValidationError,
     SchemaValidationError,
@@ -290,20 +290,20 @@ class TestAIGCInstanceEdgeCases:
 
     def test_aigc_post_call_with_wrong_type_fails(self):
         """AIGC instance post_call with wrong type raises."""
-        aigc = AIGC()
+        aegis = AIGC()
 
         with pytest.raises(InvocationValidationError) as exc_info:
-            aigc.enforce_post_call("not a PreCallResult", {})
+            aegis.enforce_post_call("not a PreCallResult", {})
 
         assert exc_info.value.audit_artifact is not None
 
     def test_aigc_post_call_reuse_consumed_fails(self):
         """AIGC instance rejects reused PreCallResult."""
-        aigc = AIGC()
-        pre = aigc.enforce_pre_call(_pre_call_invocation())
-        aigc.enforce_post_call(pre, _valid_output())
+        aegis = AIGC()
+        pre = aegis.enforce_pre_call(_pre_call_invocation())
+        aegis.enforce_post_call(pre, _valid_output())
 
         with pytest.raises(InvocationValidationError) as exc_info:
-            aigc.enforce_post_call(pre, _valid_output())
+            aegis.enforce_post_call(pre, _valid_output())
 
         assert "already been consumed" in str(exc_info.value)

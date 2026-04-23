@@ -7,7 +7,7 @@ This runbook covers the source-only `v0.9.0` beta workflow path on local
 
 ```bash
 python -m pytest
-flake8 aigc
+flake8 aegis
 python scripts/check_doc_parity.py
 pytest demo-app-api/tests -q
 npm --prefix demo-app-react test
@@ -28,7 +28,7 @@ The harness proves:
 2. minimal starter -> `COMPLETED`
 3. standard starter -> `COMPLETED`
 4. regulated starter broken in place -> failure
-5. `aigc workflow doctor` on that same starter directory -> `WORKFLOW_SOURCE_REQUIRED`
+5. `aegis workflow doctor` on that same starter directory -> `WORKFLOW_SOURCE_REQUIRED`
 6. same starter fixed in place -> rerun -> `COMPLETED`
 
 The harness does not claim to run `workflow lint` or the entire golden-replay
@@ -49,22 +49,22 @@ The failure-and-fix tab should:
 
 ## Operator Commands — Trace and Export
 
-`aigc workflow trace` and `aigc workflow export` are the two operator inspection
+`aegis workflow trace` and `aegis workflow export` are the two operator inspection
 tools for governed workflow evidence. Both consume a JSONL file produced by an
 `AuditSink` and produce JSON output.
 
-### When to use `aigc workflow trace`
+### When to use `aegis workflow trace`
 
 Use `workflow trace` to reconstruct a session timeline and verify audit sink
 completeness after a workflow run. It shows which steps were resolved (invocation
 artifact found in the JSONL) and which were not (possible sink failure).
 
 ```bash
-aigc workflow trace --input audit.jsonl
-aigc workflow trace --input audit.jsonl --output timeline.json
+aegis workflow trace --input audit.jsonl
+aegis workflow trace --input audit.jsonl --output timeline.json
 ```
 
-### When to use `aigc workflow export --mode operator`
+### When to use `aegis workflow export --mode operator`
 
 Use `operator` mode for a full technical evidence dump — each step embeds the
 entire invocation artifact dict. Appropriate for incident reviews, debugging
@@ -72,17 +72,17 @@ governance decisions, or cross-referencing enforcement results with raw model
 output.
 
 ```bash
-aigc workflow export --input audit.jsonl --mode operator --output operator_export.json
+aegis workflow export --input audit.jsonl --mode operator --output operator_export.json
 ```
 
-### When to use `aigc workflow export --mode audit`
+### When to use `aegis workflow export --mode audit`
 
 Use `audit` mode for compliance handoff or external audit. Each step includes
 only `step_id`, `participant_id`, `invocation_artifact_checksum`, and
 `enforcement_result`. No raw invocation payload is included.
 
 ```bash
-aigc workflow export --input audit.jsonl --mode audit --output audit_export.json
+aegis workflow export --input audit.jsonl --mode audit --output audit_export.json
 ```
 
 ### Interpreting `unresolved_invocation_checksums`
@@ -95,7 +95,7 @@ by SHA-256 that is not present in the JSONL file. This typically indicates one o
 - a truncated or partial JSONL export
 - a JSONL file that covers only some sessions
 
-Run `aigc workflow doctor` on the individual artifact file to diagnose further.
+Run `aegis workflow doctor` on the individual artifact file to diagnose further.
 Both commands exit `0` even when checksums are unresolved — the gap is advisory
 evidence, not an enforcement failure. The enforcement decision was already made
 at the session layer.

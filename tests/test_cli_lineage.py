@@ -1,4 +1,4 @@
-"""Tests for --lineage flag in aigc compliance export (PR-04)."""
+"""Tests for --lineage flag in aegis compliance export (PR-04)."""
 from __future__ import annotations
 
 import json
@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from aigc._internal.cli import main
-from aigc._internal.audit import generate_audit_artifact
-from aigc._internal.lineage import _artifact_checksum
+from aegis._internal.cli import main
+from aegis._internal.audit import generate_audit_artifact
+from aegis._internal.lineage import _artifact_checksum
 
 
 # ---------------------------------------------------------------------------

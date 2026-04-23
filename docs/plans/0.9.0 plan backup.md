@@ -208,7 +208,7 @@ Additional rules:
 - Implement: add staged public-surface tests, CLI-shape tests, and starter-asset shape tests in two modes:
   - assert absence for symbols and commands intentionally not landed yet
   - flip to assert presence in the PR that introduces each public contract
-  - freeze command names and top-level UX envelopes for `aigc policy init`, `aigc workflow init`, `aigc workflow doctor`, `aigc workflow lint`, `aigc workflow trace`, and `aigc workflow export`
+  - freeze command names and top-level UX envelopes for `aegis policy init`, `aegis workflow init`, `aegis workflow doctor`, `aegis workflow lint`, `aegis workflow trace`, and `aegis workflow export`
   - freeze public example import boundaries and thin preset builder names at a shape level before implementation details expand
 - Implement: add protocol-boundary assertions:
   - Bedrock collaborator names are descriptive only; governed binding requires alias-backed evidence
@@ -374,7 +374,7 @@ Additional rules:
 
 - Branch: `feat/v0.9-12-workflow-cli`
 - Goal: make the new workflow surface observable, diagnosable, and operable for adopters and operators.
-- Implement: add `aigc policy init`, `aigc workflow init`, `aigc workflow doctor`, `aigc workflow trace`, `aigc workflow export`, and `aigc workflow lint`.
+- Implement: add `aegis policy init`, `aegis workflow init`, `aegis workflow doctor`, `aegis workflow trace`, `aegis workflow export`, and `aegis workflow lint`.
 - Implement: ship starter packs for `minimal`, `standard`, and `regulated-high-assurance` governance profiles through `policy init` and `workflow init`.
 - Implement: make `workflow lint` enforce schema, cross-file consistency, public-import safety, and minimum viable governance rules rather than syntax alone.
 - Implement: make `workflow doctor` explain common block reasons in plain English while also emitting stable reason codes and machine-readable JSON.
@@ -461,8 +461,8 @@ Additional rules:
 - Base install remains small; adapter dependencies are optional extras.
 - A new adopter can complete a workflow quickstart in `15` minutes or less using only public APIs.
 - At least two public starter examples are copy-and-paste usable.
-- `aigc policy init` and `aigc workflow init` produce working scaffolds for `minimal`, `standard`, and `regulated-high-assurance`.
-- `aigc workflow doctor` explains common block reasons clearly in plain English and stable machine-readable reason codes.
+- `aegis policy init` and `aegis workflow init` produce working scaffolds for `minimal`, `standard`, and `regulated-high-assurance`.
+- `aegis workflow doctor` explains common block reasons clearly in plain English and stable machine-readable reason codes.
 - Every public example, preset, and adoption asset passes without `_internal` imports.
 - Invocation-only to workflow migration is documented and tested.
 - The docs-to-working-app path passes from a clean environment.
@@ -480,7 +480,7 @@ Additional rules:
 - A2A boundary tests verify acceptance of normative `TASK_STATE_*` wire values and rejection of shorthand boundary values
 - `15` minute quickstart budget is met and the docs-to-working-app smoke path passes
 - at least two copy-and-paste starter examples are green and use only public imports
-- `aigc policy init`, `aigc workflow init`, `aigc workflow doctor`, `aigc workflow lint`, `aigc workflow trace`, and `aigc workflow export` pass snapshot and UX validation
+- `aegis policy init`, `aegis workflow init`, `aegis workflow doctor`, `aegis workflow lint`, `aegis workflow trace`, and `aegis workflow export` pass snapshot and UX validation
 - doctor and lint diagnostics explain common block reasons clearly
 - operator and audit export verification passes, including sink-failure reporting and integrity verification guidance
 - optional observability and event surfaces pass sanity tests and do not affect the base install

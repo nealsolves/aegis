@@ -1,8 +1,8 @@
 """Tests for guard evaluation engine."""
 
 import pytest
-from aigc._internal.guards import evaluate_guards, _merge_policy_blocks, _evaluate_condition_expression
-from aigc._internal.errors import GuardEvaluationError, ConditionResolutionError
+from aegis._internal.guards import evaluate_guards, _merge_policy_blocks, _evaluate_condition_expression
+from aegis._internal.errors import GuardEvaluationError, ConditionResolutionError
 
 
 def test_guard_matches_boolean_condition():
@@ -650,6 +650,6 @@ def test_guard_with_not_condition():
 
 def test_compile_guard_expression_import():
     """compile_guard_expression is importable."""
-    from aigc._internal.guards import compile_guard_expression
+    from aegis._internal.guards import compile_guard_expression
     ast = compile_guard_expression("is_enterprise and not is_internal")
     assert ast is not None

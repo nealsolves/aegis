@@ -12,10 +12,10 @@ import pytest
 # ---------------------------------------------------------------------------
 
 def test_validator_hook_not_on_public_surface():
-    """PR-08 keeps ValidatorHook internal. Freeze test asserts aigc.ValidatorHook must not exist."""
-    import aigc
-    assert not hasattr(aigc, "ValidatorHook"), (
-        "ValidatorHook must not be exported to the public aigc surface until the "
+    """PR-08 keeps ValidatorHook internal. Freeze test asserts aegis.ValidatorHook must not exist."""
+    import aegis
+    assert not hasattr(aegis, "ValidatorHook"), (
+        "ValidatorHook must not be exported to the public aegis surface until the "
         "planned-only designation is lifted and the freeze test is updated."
     )
 
@@ -24,8 +24,8 @@ def test_open_session_does_not_accept_validator_hooks():
     """open_session() must not accept validator_hooks — Fix 3: hook injection is not
     a public API surface in PR-08."""
     import inspect
-    import aigc
-    sig = inspect.signature(aigc.AIGC.open_session)
+    import aegis
+    sig = inspect.signature(aegis.AIGC.open_session)
     assert "validator_hooks" not in sig.parameters, (
         "validator_hooks must not be a public open_session() parameter in PR-08"
     )
@@ -34,8 +34,8 @@ def test_open_session_does_not_accept_validator_hooks():
 def test_governance_session_ctor_does_not_accept_validator_hooks():
     """The public GovernanceSession constructor must not expose validator_hooks."""
     import inspect
-    import aigc
-    sig = inspect.signature(aigc.GovernanceSession)
+    import aegis
+    sig = inspect.signature(aegis.GovernanceSession)
     assert "validator_hooks" not in sig.parameters, (
         "validator_hooks must remain internal-only and absent from the public "
         "GovernanceSession constructor"
@@ -44,7 +44,7 @@ def test_governance_session_ctor_does_not_accept_validator_hooks():
 
 def test_validator_hook_importable_from_internal():
     """Internal module must be importable for use by the engine."""
-    from aigc._internal.validator_hook import (
+    from aegis._internal.validator_hook import (
         ValidatorHook, ValidatorHookEnvelope, ValidatorHookResult,
         VALIDATOR_ALLOW, VALIDATOR_DENY,
     )
@@ -60,7 +60,7 @@ def test_validator_hook_importable_from_internal():
 # ---------------------------------------------------------------------------
 
 def test_envelope_is_immutable():
-    from aigc._internal.validator_hook import ValidatorHookEnvelope
+    from aegis._internal.validator_hook import ValidatorHookEnvelope
     env = ValidatorHookEnvelope(
         hook_schema_version="1.0",
         session_id="s-1",
@@ -79,7 +79,7 @@ def test_envelope_is_immutable():
 # ---------------------------------------------------------------------------
 
 def test_result_is_immutable():
-    from aigc._internal.validator_hook import ValidatorHookResult, VALIDATOR_ALLOW
+    from aegis._internal.validator_hook import ValidatorHookResult, VALIDATOR_ALLOW
     result = ValidatorHookResult(
         decision=VALIDATOR_ALLOW,
         reason_code=None,
@@ -99,13 +99,13 @@ def test_result_is_immutable():
 # ---------------------------------------------------------------------------
 
 def test_concrete_hook_must_implement_evaluate():
-    from aigc._internal.validator_hook import ValidatorHook
+    from aegis._internal.validator_hook import ValidatorHook
     with pytest.raises(TypeError):
         ValidatorHook()  # type: ignore[abstract]
 
 
 def _make_allow_hook():
-    from aigc._internal.validator_hook import ValidatorHook, ValidatorHookResult, VALIDATOR_ALLOW
+    from aegis._internal.validator_hook import ValidatorHook, ValidatorHookResult, VALIDATOR_ALLOW
     import time as _time
 
     class AllowHook(ValidatorHook):
@@ -128,7 +128,7 @@ def _make_allow_hook():
 
 
 def _make_deny_hook():
-    from aigc._internal.validator_hook import ValidatorHook, ValidatorHookResult, VALIDATOR_DENY
+    from aegis._internal.validator_hook import ValidatorHook, ValidatorHookResult, VALIDATOR_DENY
     import time as _time
 
     class DenyHook(ValidatorHook):
@@ -151,7 +151,7 @@ def _make_deny_hook():
 
 
 def _make_timeout_hook(delay_s: float = 10.0):
-    from aigc._internal.validator_hook import ValidatorHook, ValidatorHookResult, VALIDATOR_ALLOW
+    from aegis._internal.validator_hook import ValidatorHook, ValidatorHookResult, VALIDATOR_ALLOW
     import time as _time
 
     class SlowHook(ValidatorHook):
@@ -177,7 +177,7 @@ def _make_timeout_hook(delay_s: float = 10.0):
 
 def _make_flaky_hook(fail_times: int = 1):
     """Hook that returns EXECUTION_FAILURE `fail_times` before returning ALLOW."""
-    from aigc._internal.validator_hook import (
+    from aegis._internal.validator_hook import (
         ValidatorHook, ValidatorHookResult, VALIDATOR_ALLOW, VALIDATOR_EXECUTION_FAILURE,
     )
     import time as _time
@@ -222,7 +222,7 @@ def _make_flaky_hook(fail_times: int = 1):
 # ---------------------------------------------------------------------------
 
 def test_invoke_hook_allow_passes():
-    from aigc._internal.validator_hook import _invoke_hook, VALIDATOR_ALLOW, ValidatorHookEnvelope
+    from aegis._internal.validator_hook import _invoke_hook, VALIDATOR_ALLOW, ValidatorHookEnvelope
     import time as _time
     hook = _make_allow_hook()
     env = ValidatorHookEnvelope(
@@ -235,7 +235,7 @@ def test_invoke_hook_allow_passes():
 
 
 def test_invoke_hook_timeout_returns_timeout_decision():
-    from aigc._internal.validator_hook import _invoke_hook, VALIDATOR_TIMEOUT, ValidatorHookEnvelope
+    from aegis._internal.validator_hook import _invoke_hook, VALIDATOR_TIMEOUT, ValidatorHookEnvelope
     import time as _time
     hook = _make_timeout_hook(delay_s=5.0)  # hook waits 5s, timeout_ms=100
     env = ValidatorHookEnvelope(
@@ -248,7 +248,7 @@ def test_invoke_hook_timeout_returns_timeout_decision():
 
 
 def test_invoke_hook_retries_on_execution_failure():
-    from aigc._internal.validator_hook import _invoke_hook, VALIDATOR_ALLOW, ValidatorHookEnvelope
+    from aegis._internal.validator_hook import _invoke_hook, VALIDATOR_ALLOW, ValidatorHookEnvelope
     import time as _time
     hook = _make_flaky_hook(fail_times=1)  # fails once, then allows; max_retries=2
     env = ValidatorHookEnvelope(
@@ -262,7 +262,7 @@ def test_invoke_hook_retries_on_execution_failure():
 
 
 def test_invoke_hook_exhausted_retries_returns_execution_failure():
-    from aigc._internal.validator_hook import (
+    from aegis._internal.validator_hook import (
         _invoke_hook, VALIDATOR_EXECUTION_FAILURE, ValidatorHookEnvelope,
     )
     import time as _time
@@ -307,7 +307,7 @@ def _make_session(aigc_instance, hooks):
 
 def test_allow_hook_permits_step():
     """ALLOW hook must not block a step."""
-    from aigc._internal.enforcement import AIGC
+    from aegis._internal.enforcement import AIGC
     a = AIGC()
     hook = _make_allow_hook()
     session = _make_session(a, [hook])
@@ -320,8 +320,8 @@ def test_allow_hook_permits_step():
 
 def test_deny_hook_raises_workflow_hook_denied():
     """DENY hook must raise WorkflowHookDeniedError (Fix 4: distinct from ApprovalRequired)."""
-    from aigc._internal.enforcement import AIGC
-    from aigc._internal.errors import WorkflowHookDeniedError
+    from aegis._internal.enforcement import AIGC
+    from aegis._internal.errors import WorkflowHookDeniedError
     a = AIGC()
     hook = _make_deny_hook()
     session = _make_session(a, [hook])
@@ -333,8 +333,8 @@ def test_deny_hook_raises_workflow_hook_denied():
 
 def test_timeout_hook_fails_closed():
     """TIMEOUT hook must fail closed (raise WorkflowHookDeniedError)."""
-    from aigc._internal.enforcement import AIGC
-    from aigc._internal.errors import WorkflowHookDeniedError
+    from aegis._internal.enforcement import AIGC
+    from aegis._internal.errors import WorkflowHookDeniedError
     a = AIGC()
     hook = _make_timeout_hook(delay_s=5.0)
     session = _make_session(a, [hook])
@@ -345,8 +345,8 @@ def test_timeout_hook_fails_closed():
 
 def test_warn_hook_does_not_block_step():
     """WARN hook must log but allow the step to proceed."""
-    from aigc._internal.enforcement import AIGC
-    from aigc._internal.validator_hook import (
+    from aegis._internal.enforcement import AIGC
+    from aegis._internal.validator_hook import (
         ValidatorHook, ValidatorHookResult, VALIDATOR_WARN,
     )
     import time as _time
@@ -378,7 +378,7 @@ def test_warn_hook_does_not_block_step():
 
 def test_hook_evidence_recorded_in_workflow_artifact():
     """Hook results must appear in workflow artifact validator_hook_evidence."""
-    from aigc._internal.enforcement import AIGC
+    from aegis._internal.enforcement import AIGC
     a = AIGC()
     hook = _make_allow_hook()
     session = _make_session(a, [hook])
@@ -398,7 +398,7 @@ def test_hook_evidence_recorded_in_workflow_artifact():
 
 def test_flaky_hook_with_sufficient_retries_succeeds():
     """Hook that fails once with max_retries=2 must succeed on retry."""
-    from aigc._internal.enforcement import AIGC
+    from aegis._internal.enforcement import AIGC
     a = AIGC()
     hook = _make_flaky_hook(fail_times=1)  # fails once, then allows; max_retries=2
     session = _make_session(a, [hook])
@@ -415,7 +415,7 @@ def test_flaky_hook_with_sufficient_retries_succeeds():
 
 def test_unknown_decision_normalized_to_deny():
     """_call_hook_once must normalize an unrecognized decision to DENY."""
-    from aigc._internal.validator_hook import (
+    from aegis._internal.validator_hook import (
         ValidatorHook, ValidatorHookResult, ValidatorHookEnvelope,
         _call_hook_once,
         VALIDATOR_DENY,
@@ -455,9 +455,9 @@ def test_unknown_decision_normalized_to_deny():
 
 def test_unknown_decision_in_session_fails_closed():
     """Unknown decisions must fail closed when the hook result is consumed by a session."""
-    from aigc._internal.enforcement import AIGC
-    from aigc._internal.errors import WorkflowHookDeniedError
-    from aigc._internal.validator_hook import (
+    from aegis._internal.enforcement import AIGC
+    from aegis._internal.errors import WorkflowHookDeniedError
+    from aegis._internal.validator_hook import (
         ValidatorHook, ValidatorHookResult,
     )
     import time as _time
@@ -495,8 +495,8 @@ def test_unknown_decision_in_session_fails_closed():
 
 def test_multi_hook_each_gets_own_deadline():
     """Phase 1 Bug 3: each validator hook must receive its own deadline_ms, not the first hook's."""
-    from aigc._internal.enforcement import AIGC
-    from aigc._internal.validator_hook import (
+    from aegis._internal.enforcement import AIGC
+    from aegis._internal.validator_hook import (
         ValidatorHook, ValidatorHookResult, VALIDATOR_ALLOW,
     )
     import time as _time
@@ -566,8 +566,8 @@ def test_multi_hook_each_gets_own_deadline():
 
 def test_multi_hook_dispatch_order():
     """Evidence list in artifact must reflect dispatch order (hook 1 before hook 2)."""
-    from aigc._internal.enforcement import AIGC
-    from aigc._internal.validator_hook import (
+    from aegis._internal.enforcement import AIGC
+    from aegis._internal.validator_hook import (
         ValidatorHook, ValidatorHookResult, VALIDATOR_ALLOW,
     )
     import time as _time
@@ -620,8 +620,8 @@ def test_multi_hook_dispatch_order():
 
 def test_hook_envelope_includes_invocation_checksum():
     """Envelope's invocation_checksum must be a 64-char SHA-256 hex string."""
-    from aigc._internal.enforcement import AIGC
-    from aigc._internal.validator_hook import (
+    from aegis._internal.enforcement import AIGC
+    from aegis._internal.validator_hook import (
         ValidatorHook, ValidatorHookResult, VALIDATOR_ALLOW,
     )
     import time as _time
@@ -663,7 +663,7 @@ def test_hook_envelope_includes_invocation_checksum():
 
 def test_stale_result_marked_and_not_authoritative():
     """A result with a wrong attempt number must be marked stale with TIMEOUT (fail-closed)."""
-    from aigc._internal.validator_hook import (
+    from aegis._internal.validator_hook import (
         ValidatorHook, ValidatorHookResult, ValidatorHookEnvelope,
         _call_hook_once,
         VALIDATOR_ALLOW, VALIDATOR_TIMEOUT,
@@ -705,7 +705,7 @@ def test_stale_result_marked_and_not_authoritative():
 
 def test_result_past_absolute_deadline_is_stale():
     """A result whose observed_at is past envelope.observed_at + deadline_ms is stale."""
-    from aigc._internal.validator_hook import (
+    from aegis._internal.validator_hook import (
         ValidatorHook, ValidatorHookResult, ValidatorHookEnvelope,
         _call_hook_once,
         VALIDATOR_ALLOW, VALIDATOR_TIMEOUT,

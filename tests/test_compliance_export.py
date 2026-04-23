@@ -4,10 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from aigc import CallbackAuditSink, get_audit_sink, set_audit_sink
-from aigc.decorators import governed
-from aigc._internal.cli import main, _cmd_compliance_export
-from aigc._internal.audit import generate_audit_artifact
+from aegis import CallbackAuditSink, get_audit_sink, set_audit_sink
+from aegis.decorators import governed
+from aegis._internal.cli import main, _cmd_compliance_export
+from aegis._internal.audit import generate_audit_artifact
 
 
 def _make_artifact(result="PASS", **kwargs):
@@ -222,7 +222,7 @@ def test_compliance_export_all_invalid_no_output_file_written(tmp_path):
 def test_compliance_export_wrapped_function_error_artifact_is_valid(tmp_path):
     """A real split-decorator wrapped_function_error artifact passes compliance export.
 
-    Regression for Finding 1 (2026-04-05 audit): packaged aigc/schemas/audit_artifact.schema.json
+    Regression for Finding 1 (2026-04-05 audit): packaged aegis/schemas/audit_artifact.schema.json
     was missing 'wrapped_function_error' in the failure_gate enum, causing CLI compliance
     export to reject all split-decorator wrapped-function FAIL artifacts as schema-invalid.
     """

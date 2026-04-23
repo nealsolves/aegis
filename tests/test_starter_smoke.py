@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from aigc._internal.starter_templates import (
+from aegis._internal.starter_templates import (
     render_minimal_starter,
     render_standard_starter,
     render_regulated_starter,
@@ -103,8 +103,8 @@ class TestRegulatedStarterSmoke:
         The violation is raised during enforce_step_post_call, not pre-call.
         """
         import yaml
-        import aigc
-        from aigc import ProvenanceGate, CustomGateViolationError
+        import aegis
+        from aegis import ProvenanceGate, CustomGateViolationError
 
         # Policy must exist so loading succeeds before custom gates are evaluated
         (tmp_path / "policy.yaml").write_text(
@@ -112,7 +112,7 @@ class TestRegulatedStarterSmoke:
         )
 
         gate = ProvenanceGate(require_source_ids=True)
-        governance = aigc.AIGC(custom_gates=[gate])
+        governance = aegis.AIGC(custom_gates=[gate])
 
         with pytest.raises(CustomGateViolationError):
             with governance.open_session(

@@ -3,8 +3,8 @@ PR-08 budget accounting tests: max_steps and max_total_tool_calls enforcement.
 """
 from __future__ import annotations
 import pytest
-from aigc._internal.enforcement import AIGC
-from aigc._internal.errors import (
+from aegis._internal.enforcement import AIGC
+from aegis._internal.errors import (
     WorkflowStepBudgetExceededError,
     WorkflowToolBudgetExceededError,
     SessionStateError,

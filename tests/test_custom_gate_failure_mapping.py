@@ -11,12 +11,12 @@ from typing import Any, Mapping
 import pytest
 from jsonschema import validate
 
-from aigc._internal.enforcement import AIGC
-from aigc._internal.errors import (
+from aegis._internal.enforcement import AIGC
+from aegis._internal.errors import (
     CustomGateViolationError,
     GovernanceViolationError,
 )
-from aigc._internal.gates import (
+from aegis._internal.gates import (
     EnforcementGate,
     GateResult,
     INSERTION_PRE_AUTHORIZATION,
@@ -106,18 +106,18 @@ class TestCustomGateViolationErrorType:
 
     def test_raises_custom_gate_violation_error(self):
         gate = _FailingGate("blocker", INSERTION_POST_AUTHORIZATION)
-        aigc = AIGC(custom_gates=[gate])
+        aegis = AIGC(custom_gates=[gate])
 
         with pytest.raises(CustomGateViolationError):
-            aigc.enforce(VALID_INVOCATION)
+            aegis.enforce(VALID_INVOCATION)
 
     def test_does_not_raise_plain_governance_violation(self):
         """The exception type is specifically CustomGateViolationError."""
         gate = _FailingGate("blocker", INSERTION_POST_AUTHORIZATION)
-        aigc = AIGC(custom_gates=[gate])
+        aegis = AIGC(custom_gates=[gate])
 
         with pytest.raises(CustomGateViolationError) as exc_info:
-            aigc.enforce(VALID_INVOCATION)
+            aegis.enforce(VALID_INVOCATION)
 
         assert type(exc_info.value) is CustomGateViolationError
 
@@ -127,20 +127,20 @@ class TestFailureGateClassification:
 
     def test_failure_gate_is_custom_gate_violation(self):
         gate = _FailingGate("classifier", INSERTION_POST_AUTHORIZATION)
-        aigc = AIGC(custom_gates=[gate])
+        aegis = AIGC(custom_gates=[gate])
 
         with pytest.raises(CustomGateViolationError) as exc_info:
-            aigc.enforce(VALID_INVOCATION)
+            aegis.enforce(VALID_INVOCATION)
 
         artifact = exc_info.value.audit_artifact
         assert artifact["failure_gate"] == "custom_gate_violation"
 
     def test_failure_gate_is_not_postcondition_validation(self):
         gate = _FailingGate("classifier", INSERTION_POST_AUTHORIZATION)
-        aigc = AIGC(custom_gates=[gate])
+        aegis = AIGC(custom_gates=[gate])
 
         with pytest.raises(CustomGateViolationError) as exc_info:
-            aigc.enforce(VALID_INVOCATION)
+            aegis.enforce(VALID_INVOCATION)
 
         artifact = exc_info.value.audit_artifact
         assert artifact["failure_gate"] != "postcondition_validation"
@@ -156,20 +156,20 @@ class TestBackwardCompatibility:
 
     def test_instance_check_against_governance_violation(self):
         gate = _FailingGate("compat", INSERTION_POST_AUTHORIZATION)
-        aigc = AIGC(custom_gates=[gate])
+        aegis = AIGC(custom_gates=[gate])
 
         with pytest.raises(GovernanceViolationError) as exc_info:
-            aigc.enforce(VALID_INVOCATION)
+            aegis.enforce(VALID_INVOCATION)
 
         # Caught as GovernanceViolationError, but is actually Custom
         assert isinstance(exc_info.value, CustomGateViolationError)
 
     def test_exception_has_audit_artifact(self):
         gate = _FailingGate("compat", INSERTION_POST_AUTHORIZATION)
-        aigc = AIGC(custom_gates=[gate])
+        aegis = AIGC(custom_gates=[gate])
 
         with pytest.raises(CustomGateViolationError) as exc_info:
-            aigc.enforce(VALID_INVOCATION)
+            aegis.enforce(VALID_INVOCATION)
 
         assert exc_info.value.audit_artifact is not None
 
@@ -179,10 +179,10 @@ class TestArtifactSchemaValidity:
 
     def test_artifact_validates_against_schema(self):
         gate = _FailingGate("schema_check", INSERTION_POST_AUTHORIZATION)
-        aigc = AIGC(custom_gates=[gate])
+        aegis = AIGC(custom_gates=[gate])
 
         with pytest.raises(CustomGateViolationError) as exc_info:
-            aigc.enforce(VALID_INVOCATION)
+            aegis.enforce(VALID_INVOCATION)
 
         artifact = exc_info.value.audit_artifact
         # jsonschema.validate raises on schema violation
@@ -190,10 +190,10 @@ class TestArtifactSchemaValidity:
 
     def test_artifact_has_required_fields(self):
         gate = _FailingGate("fields_check", INSERTION_POST_AUTHORIZATION)
-        aigc = AIGC(custom_gates=[gate])
+        aegis = AIGC(custom_gates=[gate])
 
         with pytest.raises(CustomGateViolationError) as exc_info:
-            aigc.enforce(VALID_INVOCATION)
+            aegis.enforce(VALID_INVOCATION)
 
         artifact = exc_info.value.audit_artifact
         assert artifact["enforcement_result"] == "FAIL"
@@ -211,20 +211,20 @@ class TestPreAuthGateFailureMapping:
 
     def test_pre_auth_failure_gate(self):
         gate = _FailingGate("pre_auth_block", INSERTION_PRE_AUTHORIZATION)
-        aigc = AIGC(custom_gates=[gate])
+        aegis = AIGC(custom_gates=[gate])
 
         with pytest.raises(CustomGateViolationError) as exc_info:
-            aigc.enforce(VALID_INVOCATION)
+            aegis.enforce(VALID_INVOCATION)
 
         artifact = exc_info.value.audit_artifact
         assert artifact["failure_gate"] == "custom_gate_violation"
 
     def test_pre_auth_artifact_is_schema_valid(self):
         gate = _FailingGate("pre_auth_schema", INSERTION_PRE_AUTHORIZATION)
-        aigc = AIGC(custom_gates=[gate])
+        aegis = AIGC(custom_gates=[gate])
 
         with pytest.raises(CustomGateViolationError) as exc_info:
-            aigc.enforce(VALID_INVOCATION)
+            aegis.enforce(VALID_INVOCATION)
 
         validate(exc_info.value.audit_artifact, AUDIT_SCHEMA)
 
@@ -234,20 +234,20 @@ class TestPostAuthGateFailureMapping:
 
     def test_post_auth_failure_gate(self):
         gate = _FailingGate("post_auth_block", INSERTION_POST_AUTHORIZATION)
-        aigc = AIGC(custom_gates=[gate])
+        aegis = AIGC(custom_gates=[gate])
 
         with pytest.raises(CustomGateViolationError) as exc_info:
-            aigc.enforce(VALID_INVOCATION)
+            aegis.enforce(VALID_INVOCATION)
 
         artifact = exc_info.value.audit_artifact
         assert artifact["failure_gate"] == "custom_gate_violation"
 
     def test_post_auth_artifact_is_schema_valid(self):
         gate = _FailingGate("post_auth_schema", INSERTION_POST_AUTHORIZATION)
-        aigc = AIGC(custom_gates=[gate])
+        aegis = AIGC(custom_gates=[gate])
 
         with pytest.raises(CustomGateViolationError) as exc_info:
-            aigc.enforce(VALID_INVOCATION)
+            aegis.enforce(VALID_INVOCATION)
 
         validate(exc_info.value.audit_artifact, AUDIT_SCHEMA)
 
@@ -257,20 +257,20 @@ class TestPreOutputGateFailureMapping:
 
     def test_pre_output_failure_gate(self):
         gate = _FailingGate("pre_out_block", INSERTION_PRE_OUTPUT)
-        aigc = AIGC(custom_gates=[gate])
+        aegis = AIGC(custom_gates=[gate])
 
         with pytest.raises(CustomGateViolationError) as exc_info:
-            aigc.enforce(VALID_INVOCATION)
+            aegis.enforce(VALID_INVOCATION)
 
         artifact = exc_info.value.audit_artifact
         assert artifact["failure_gate"] == "custom_gate_violation"
 
     def test_pre_output_artifact_is_schema_valid(self):
         gate = _FailingGate("pre_out_schema", INSERTION_PRE_OUTPUT)
-        aigc = AIGC(custom_gates=[gate])
+        aegis = AIGC(custom_gates=[gate])
 
         with pytest.raises(CustomGateViolationError) as exc_info:
-            aigc.enforce(VALID_INVOCATION)
+            aegis.enforce(VALID_INVOCATION)
 
         validate(exc_info.value.audit_artifact, AUDIT_SCHEMA)
 
@@ -280,20 +280,20 @@ class TestPostOutputGateFailureMapping:
 
     def test_post_output_failure_gate(self):
         gate = _FailingGate("post_out_block", INSERTION_POST_OUTPUT)
-        aigc = AIGC(custom_gates=[gate])
+        aegis = AIGC(custom_gates=[gate])
 
         with pytest.raises(CustomGateViolationError) as exc_info:
-            aigc.enforce(VALID_INVOCATION)
+            aegis.enforce(VALID_INVOCATION)
 
         artifact = exc_info.value.audit_artifact
         assert artifact["failure_gate"] == "custom_gate_violation"
 
     def test_post_output_artifact_is_schema_valid(self):
         gate = _FailingGate("post_out_schema", INSERTION_POST_OUTPUT)
-        aigc = AIGC(custom_gates=[gate])
+        aegis = AIGC(custom_gates=[gate])
 
         with pytest.raises(CustomGateViolationError) as exc_info:
-            aigc.enforce(VALID_INVOCATION)
+            aegis.enforce(VALID_INVOCATION)
 
         validate(exc_info.value.audit_artifact, AUDIT_SCHEMA)
 
@@ -311,10 +311,10 @@ class TestCustomGateDoesNotSuppressCoreFailures:
         gate = _FailingGate("early_block", INSERTION_PRE_AUTHORIZATION)
         # Use a role that would fail role validation
         bad_role_invocation = {**VALID_INVOCATION, "role": "nonexistent_role"}
-        aigc = AIGC(custom_gates=[gate])
+        aegis = AIGC(custom_gates=[gate])
 
         with pytest.raises(CustomGateViolationError) as exc_info:
-            aigc.enforce(bad_role_invocation)
+            aegis.enforce(bad_role_invocation)
 
         artifact = exc_info.value.audit_artifact
         # The failure is the custom gate, not the role violation,
@@ -325,10 +325,10 @@ class TestCustomGateDoesNotSuppressCoreFailures:
         """A passing custom gate does not mask a subsequent core failure."""
         gate = _PassingGate("permissive", INSERTION_PRE_AUTHORIZATION)
         bad_role_invocation = {**VALID_INVOCATION, "role": "nonexistent_role"}
-        aigc = AIGC(custom_gates=[gate])
+        aegis = AIGC(custom_gates=[gate])
 
         with pytest.raises(GovernanceViolationError) as exc_info:
-            aigc.enforce(bad_role_invocation)
+            aegis.enforce(bad_role_invocation)
 
         artifact = exc_info.value.audit_artifact
         # The role validation failure comes through because the custom

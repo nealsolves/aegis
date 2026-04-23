@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from aigc.audit import checksum
-from aigc.cli import main as cli_main
-from aigc.workflow_export import export_workflow
+from aegis.audit import checksum
+from aegis.cli import main as cli_main
+from aegis.workflow_export import export_workflow
 
 
 def _cs(artifact):

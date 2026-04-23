@@ -18,11 +18,11 @@
 | Contract freeze | complete | Lifecycle, artifact separation, and instance-scoped workflow entry are frozen |
 | Golden-path contract | complete | Beta CLI inventory, starter profiles, docs order, and public-import rules are frozen |
 | Minimal session flow | complete | `GovernanceSession`, `AIGC.open_session(...)`, and `SessionPreCallResult` ship on `develop` |
-| Starters and migration | complete | `aigc workflow init`, `aigc policy init`, starter scaffolds, presets, and migration docs ship |
-| Diagnostics | complete | `aigc workflow lint` and `aigc workflow doctor` ship with stable first-user codes |
+| Starters and migration | complete | `aegis workflow init`, `aegis policy init`, starter scaffolds, presets, and migration docs ship |
+| Diagnostics | complete | `aegis workflow lint` and `aegis workflow doctor` ship with stable first-user codes |
 | Beta proof | complete | Clean-env proof, real failure/diagnosis/fix/rerun flow, and demo parity are in place |
 | Engine hardening | complete | Budgets, transitions, protocol constraints, approvals, handoffs, and internal validator hooks are hardened |
-| Exports and ops | complete | `aigc workflow trace` and `aigc workflow export` ship on `develop` |
+| Exports and ops | complete | `aegis workflow trace` and `aegis workflow export` ship on `develop` |
 | Optional adapters | not started | Begin in PR-10a, PR-10b, and PR-10c |
 | Beta freeze | not started | Begins in PR-11 |
 
@@ -60,10 +60,10 @@
 
 ## PR-05 Deliverables
 
-- [x] `aigc workflow init`
-- [x] `aigc policy init`
+- [x] `aegis workflow init`
+- [x] `aegis policy init`
 - [x] `minimal`, `standard`, and `regulated-high-assurance` starter scaffolds
-- [x] thin presets exposed through `aigc.presets`
+- [x] thin presets exposed through `aegis.presets`
 - [x] invocation-only migration guidance and smoke coverage
 - [x] public-import-only starter and example coverage
 
@@ -76,7 +76,7 @@
 - [x] `tests/test_pr07_beta_proof.py` validates minimal PASS, standard PASS, broken regulated starter, doctor diagnosis, fix-in-place, and rerun
 - [x] `scripts/validate_v090_beta_proof.py` validates the same clean-env journey in a fresh venv
 - [x] demo workflow routes and the React lab follow the same failure-and-fix story
-- [x] no maintained public docs, demos, or starters import `aigc._internal`
+- [x] no maintained public docs, demos, or starters import `aegis._internal`
 
 ## PR-08 Deliverables
 

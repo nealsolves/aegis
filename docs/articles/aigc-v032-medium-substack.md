@@ -1,6 +1,6 @@
 # AIGC v0.3.2: Governance at the Invocation Boundary
 
-*Release-accurate to AIGC v0.3.2, shipped 2026-04-05. All code and claims verified against the public repository at [github.com/nealsolves/aigc](https://github.com/nealsolves/aigc).*
+*Release-accurate to AIGC v0.3.2, shipped 2026-04-05. All code and claims verified against the public repository at [github.com/nealsolves/aegis](https://github.com/nealsolves/aegis).*
 
 ---
 
@@ -46,10 +46,10 @@ That scope is intentional. A narrower boundary is a more reliable boundary.
 ### Install
 
 ```bash
-pip install aigc-sdk
+pip install aegis-sdk
 ```
 
-The import name is `aigc`. The package name on PyPI is `aigc-sdk`. That distinction matters if you're pinning dependencies.
+The import name is `aegis`. The package name on PyPI is `aegis-sdk`. That distinction matters if you're pinning dependencies.
 
 ### Five Governance Invariants
 
@@ -208,7 +208,7 @@ This policy declares three things:
 ### 4.2 Calling the Enforcement Engine
 
 ```python
-from aigc import enforce_invocation, GovernanceViolationError, PreconditionError
+from aegis import enforce_invocation, GovernanceViolationError, PreconditionError
 
 invocation = {
     "policy_file": "policies/hello_policy.yaml",
@@ -321,7 +321,7 @@ Domain-specific controls belong to the host. AIGC supports custom gates at four 
 This gate enforces tenant isolation before any authorization check runs:
 
 ```python
-from aigc import EnforcementGate, GateResult, INSERTION_PRE_AUTHORIZATION
+from aegis import EnforcementGate, GateResult, INSERTION_PRE_AUTHORIZATION
 
 
 class TenantIsolationGate(EnforcementGate):
@@ -363,12 +363,12 @@ Key properties:
 The `AIGC` class is the production entry point. It owns sink, signer, gates, and policy cache with no global mutable state. Configuration is immutable after construction. `AIGC.enforce()` is thread-safe.
 
 ```python
-from aigc import AIGC, HMACSigner, AuditChain, JsonFileAuditSink
+from aegis import AIGC, HMACSigner, AuditChain, JsonFileAuditSink
 
 signer = HMACSigner(key=b"your-256-bit-secret-key-here-!!!")
 chain = AuditChain(chain_id="analytics-session-001")
 
-aigc = AIGC(
+aegis = AIGC(
     sink=JsonFileAuditSink("audit/governance.jsonl"),
     on_sink_failure="log",
     signer=signer,
@@ -381,7 +381,7 @@ aigc = AIGC(
 `InvocationBuilder` provides a fluent, validated construction API:
 
 ```python
-from aigc import InvocationBuilder
+from aegis import InvocationBuilder
 
 invocation = (
     InvocationBuilder()
@@ -398,7 +398,7 @@ invocation = (
     .build()
 )
 
-artifact = aigc.enforce(invocation)
+artifact = aegis.enforce(invocation)
 ```
 
 `build()` raises `InvocationValidationError` if required fields are missing. The returned dict is independent of the builder.
@@ -459,7 +459,7 @@ assert valid, f"Chain integrity broken: {errors}"
 
 # Or verify a chain loaded from the JSONL sink
 import json
-from aigc import verify_chain
+from aegis import verify_chain
 
 with open("audit/governance.jsonl") as f:
     artifacts = [json.loads(line) for line in f]
@@ -472,7 +472,7 @@ valid, errors = verify_chain(artifacts)
 For simpler call sites, `@governed` wraps a function and runs enforcement transparently:
 
 ```python
-from aigc import governed
+from aegis import governed
 
 @governed(
     policy_file="policies/analyst_policy.yaml",
@@ -543,7 +543,7 @@ Host Application
 ### 6.3 Split Enforcement in Code
 
 ```python
-from aigc import enforce_pre_call, enforce_post_call
+from aegis import enforce_pre_call, enforce_post_call
 
 # Assemble the invocation without output (model hasn't run yet)
 invocation = {
@@ -587,7 +587,7 @@ The token integrity was hardened as part of the 2026-04-05 security audit (six f
 ### 6.5 Split Mode with the Decorator
 
 ```python
-from aigc import governed
+from aegis import governed
 
 @governed(
     policy_file="policies/analyst_policy.yaml",
@@ -614,7 +614,7 @@ New fields in `metadata`:
 - `pre_call_timestamp`: Phase A completion time
 - `post_call_timestamp`: Phase B completion time
 
-New telemetry spans: `aigc.enforce_pre_call` and `aigc.enforce_post_call` with `aigc.enforcement_mode` attribute.
+New telemetry spans: `aegis.enforce_pre_call` and `aegis.enforce_post_call` with `aegis.enforcement_mode` attribute.
 
 ---
 
@@ -650,7 +650,7 @@ Below is the full capability surface of AIGC across its release history. Each la
 
 ## Part 8: The Interactive Demo
 
-The fastest way to understand AIGC governance in practice is the interactive demo, deployed at [nealsolves.github.io/aigc](https://nealsolves.github.io/aigc).
+The fastest way to understand AIGC governance in practice is the interactive demo, deployed at [nealsolves.github.io/aegis](https://nealsolves.github.io/aegis).
 
 It is a React application backed by a FastAPI server on Render. No user API keys required. Seven labs, each exercising a specific governance capability against a live enforcement engine.
 
@@ -729,12 +729,12 @@ The test suite documents 818 tests. Coverage clears the 90% CI gate. The 2026-04
 
 For enterprises, the value is concrete. AIGC does not ask leaders to trust that governance happened. It gives them a way to enforce it, prove it, and inspect it as part of the system that actually made the AI call.
 
-The interactive demo is at [nealsolves.github.io/aigc](https://nealsolves.github.io/aigc).
+The interactive demo is at [nealsolves.github.io/aegis](https://nealsolves.github.io/aegis).
 
-The SDK is at [github.com/nealsolves/aigc](https://github.com/nealsolves/aigc).
+The SDK is at [github.com/nealsolves/aegis](https://github.com/nealsolves/aegis).
 
 ```bash
-pip install aigc-sdk
+pip install aegis-sdk
 ```
 
 ---

@@ -1,8 +1,8 @@
 import warnings
 
 import pytest
-from aigc._internal.validator import validate_preconditions, validate_postconditions
-from aigc._internal.errors import GovernanceViolationError, PreconditionError
+from aegis._internal.validator import validate_preconditions, validate_postconditions
+from aegis._internal.errors import GovernanceViolationError, PreconditionError
 
 
 def test_precondition_missing():

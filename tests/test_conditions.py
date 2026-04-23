@@ -1,8 +1,8 @@
 """Tests for named condition resolution."""
 
 import pytest
-from aigc._internal.conditions import resolve_conditions
-from aigc._internal.errors import ConditionResolutionError
+from aegis._internal.conditions import resolve_conditions
+from aegis._internal.errors import ConditionResolutionError
 
 
 def test_resolve_condition_from_context():
@@ -170,7 +170,7 @@ def test_optional_condition_skip_emits_info_log(caplog):
     }
     context = {}
 
-    with caplog.at_level(logging.INFO, logger="aigc.conditions"):
+    with caplog.at_level(logging.INFO, logger="aegis.conditions"):
         resolved = resolve_conditions(policy, context)
 
     assert resolved == {}

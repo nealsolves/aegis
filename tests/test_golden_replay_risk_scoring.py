@@ -1,7 +1,7 @@
 """Golden replay tests for risk scoring (M2)."""
 import pytest
-from aigc._internal.enforcement import enforce_invocation, AIGC, GATE_RISK
-from aigc._internal.errors import RiskThresholdError
+from aegis._internal.enforcement import enforce_invocation, AIGC, GATE_RISK
+from aegis._internal.errors import RiskThresholdError
 
 
 RISK_POLICY = "tests/golden_replays/policy_with_risk.yaml"
@@ -78,7 +78,7 @@ def test_risk_scoring_deterministic():
 
 def test_risk_via_aigc_class():
     """Risk scoring works through AIGC class with config override."""
-    aigc = AIGC(
+    aegis = AIGC(
         risk_config={
             "mode": "warn_only",
             "threshold": 0.1,
@@ -96,5 +96,5 @@ def test_risk_via_aigc_class():
         "output": {"result": "ok"},
         "context": {"role_declared": True, "schema_exists": True},
     }
-    audit = aigc.enforce(inv)
+    audit = aegis.enforce(inv)
     assert audit["risk_score"] is not None

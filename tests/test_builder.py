@@ -2,8 +2,8 @@
 
 import pytest
 
-from aigc import InvocationBuilder
-from aigc._internal.errors import InvocationValidationError
+from aegis import InvocationBuilder
+from aegis._internal.errors import InvocationValidationError
 
 
 POLICY = "tests/golden_replays/golden_policy_v1.yaml"
@@ -11,7 +11,7 @@ POLICY = "tests/golden_replays/golden_policy_v1.yaml"
 
 def test_builder_produces_valid_invocation():
     """Builder produces a dict that passes enforcement."""
-    from aigc import enforce_invocation
+    from aegis import enforce_invocation
 
     inv = (
         InvocationBuilder()
@@ -64,7 +64,7 @@ def test_builder_produces_independent_dicts():
 
 
 def test_builder_exported_from_top_level():
-    """InvocationBuilder is importable from top-level aigc package."""
-    import aigc
-    assert hasattr(aigc, "InvocationBuilder")
-    assert aigc.InvocationBuilder is InvocationBuilder
+    """InvocationBuilder is importable from top-level aegis package."""
+    import aegis
+    assert hasattr(aegis, "InvocationBuilder")
+    assert aegis.InvocationBuilder is InvocationBuilder

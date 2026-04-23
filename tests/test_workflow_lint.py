@@ -1,11 +1,11 @@
-"""Tests for aigc._internal.workflow_lint."""
+"""Tests for aegis._internal.workflow_lint."""
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-from aigc._internal.workflow_lint import (
+from aegis._internal.workflow_lint import (
     lint_audit_artifact,
     lint_policy,
     lint_starter_dir,
@@ -89,9 +89,9 @@ def _make_starter_dir(tmp_path: Path, *, internal_import: bool = False) -> Path:
     d = tmp_path / "starter"
     d.mkdir()
     (d / "policy.yaml").write_text(MINIMAL_VALID_POLICY, encoding="utf-8")
-    workflow_src = "import aigc\n\ndef run(): pass\n"
+    workflow_src = "import aegis\n\ndef run(): pass\n"
     if internal_import:
-        workflow_src = "from aigc._internal import errors\n\ndef run(): pass\n"
+        workflow_src = "from aegis._internal import errors\n\ndef run(): pass\n"
     (d / "workflow_example.py").write_text(workflow_src, encoding="utf-8")
     (d / "README.md").write_text("# Starter\n", encoding="utf-8")
     return d

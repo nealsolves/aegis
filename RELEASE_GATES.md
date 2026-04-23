@@ -39,7 +39,7 @@ no further public-surface work proceeds until the default path is repaired.
 
 ## PR-03 — Golden-Path Contract Freeze Gate
 
-- [x] the beta CLI inventory is frozen as `aigc policy init`, `aigc workflow init`, `aigc workflow lint`, and `aigc workflow doctor`
+- [x] the beta CLI inventory is frozen as `aegis policy init`, `aegis workflow init`, `aegis workflow lint`, and `aegis workflow doctor`
 - [x] scaffold profiles are frozen as `minimal`, `standard`, and `regulated-high-assurance`
 - [x] starter coverage is frozen as local multi-step review, approval checkpoint, source required, and tool budget
 - [x] public-import boundary rules are frozen across docs, starters, presets, and demo code
@@ -47,8 +47,8 @@ no further public-surface work proceeds until the default path is repaired.
 
 ## PR-06 — Doctor And Lint Gate
 
-- [x] `aigc workflow lint` covers schema, transition references, unsupported bindings, budgets, starter integrity, and public-import safety
-- [x] `aigc workflow doctor` covers policy, starter, workflow-artifact, and audit-artifact diagnosis
+- [x] `aegis workflow lint` covers schema, transition references, unsupported bindings, budgets, starter integrity, and public-import safety
+- [x] `aegis workflow doctor` covers policy, starter, workflow-artifact, and audit-artifact diagnosis
 - [x] stable first-user reason codes and next actions exist for common failures
 
 ## PR-07 — Beta Proof Gate
@@ -60,20 +60,20 @@ no further public-surface work proceeds until the default path is repaired.
 - [x] the broken asset diagnosed by `workflow doctor` is the same generated starter that was broken and later rerun
 - [x] demo failure diagnosis uses the real broken starter directory rather than synthetic backend fixtures
 - [x] the default adopter path succeeds without Bedrock, A2A, or the OpenAI Agents SDK
-- [x] no maintained public docs, demos, or starters import `aigc._internal`
+- [x] no maintained public docs, demos, or starters import `aegis._internal`
 
 ## PR-08 — Engine Hardening Gate
 
 - [x] restrictive composition rejects widening workflow merges
 - [x] approvals, budgets, transitions, handoffs, participants, roles, and protocol constraints behave deterministically
 - [x] validator hooks are wired internally through ordinary session creation and remain internal-only in the beta contract
-- [x] workflow-step exceptions raised by public session methods are catchable through `aigc` and `aigc.errors`
+- [x] workflow-step exceptions raised by public session methods are catchable through `aegis` and `aegis.errors`
 - [x] failed Phase B attempts clean up session tokens deterministically
 
 ## PR-09 — Exports and Ops Gate
 
-- [x] `aigc workflow trace` — timeline reconstruction from workflow and invocation artifacts
-- [x] `aigc workflow export` — operator and audit export modes with checksum integrity reporting
+- [x] `aegis workflow trace` — timeline reconstruction from workflow and invocation artifacts
+- [x] `aegis workflow export` — operator and audit export modes with checksum integrity reporting
 - [x] operator-facing export portability and timeline reconstruction
 
 ## Deferred To PR-10 And Later

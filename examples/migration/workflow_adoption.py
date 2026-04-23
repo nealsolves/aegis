@@ -5,7 +5,7 @@ The same two governed model calls, now correlated under a GovernanceSession.
 No logic was rewritten -- the governance calls are wrapped additively.
 
 Diff from invocation_only.py:
-  1. Create governance = aigc.AIGC() instance (same as before)
+  1. Create governance = aegis.AIGC() instance (same as before)
   2. Wrap calls in: with governance.open_session(...) as session:
   3. Replace governance.enforce_pre_call  -> session.enforce_step_pre_call
   4. Replace governance.enforce_post_call -> session.enforce_step_post_call
@@ -14,9 +14,9 @@ Diff from invocation_only.py:
 Usage:
     python workflow_adoption.py
 
-Requires: aigc v0.9.0-beta or later (development installation: pip install -e <repo>)
+Requires: aegis v0.9.0-beta or later (development installation: pip install -e <repo>)
 """
-import aigc
+import aegis
 
 
 def _simulate_model_call(prompt: str) -> dict:
@@ -29,7 +29,7 @@ def run_with_workflow_adoption(policy_file: str = "policy.yaml") -> dict:
 
     Returns the workflow artifact (status + correlated step checksums).
     """
-    governance = aigc.AIGC()
+    governance = aegis.AIGC()
 
     with governance.open_session(policy_file=policy_file) as session:
         prompts = ["Analyze the document.", "Summarize the findings."]

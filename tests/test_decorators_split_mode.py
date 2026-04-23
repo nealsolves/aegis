@@ -13,8 +13,8 @@ from __future__ import annotations
 
 import pytest
 
-from aigc._internal.decorators import governed
-from aigc._internal.errors import (
+from aegis._internal.decorators import governed
+from aegis._internal.errors import (
     GovernanceViolationError,
     SchemaValidationError,
 )

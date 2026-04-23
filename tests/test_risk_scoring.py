@@ -1,6 +1,6 @@
 """Tests for the risk scoring engine (M2 feature)."""
 import pytest
-from aigc._internal.risk_scoring import (
+from aegis._internal.risk_scoring import (
     compute_risk_score,
     RiskScore,
     RISK_MODE_STRICT,
@@ -34,7 +34,7 @@ def _base_policy():
 
 
 def test_invalid_risk_mode_raises():
-    from aigc._internal.errors import PolicyValidationError
+    from aegis._internal.errors import PolicyValidationError
     with pytest.raises(PolicyValidationError, match="Invalid risk mode"):
         compute_risk_score(
             _base_invocation(), _base_policy(),

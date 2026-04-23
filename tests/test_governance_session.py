@@ -1,15 +1,15 @@
 """
 Public-boundary tests for GovernanceSession and SessionPreCallResult.
 
-All imports from aigc.* only — never aigc._internal.
+All imports from aegis.* only — never aegis._internal.
 """
 
 from __future__ import annotations
 
 import pytest
 
-import aigc
-from aigc import (
+import aegis
+from aegis import (
     AIGC,
     GovernanceSession,
     SessionPreCallResult,
@@ -22,24 +22,24 @@ from aigc import (
 # ---------------------------------------------------------------------------
 
 def test_governance_session_importable_from_aigc():
-    """GovernanceSession is a module-level export of aigc."""
-    assert GovernanceSession is aigc.GovernanceSession
+    """GovernanceSession is a module-level export of aegis."""
+    assert GovernanceSession is aegis.GovernanceSession
 
 
 def test_session_pre_call_result_importable_from_aigc():
-    """SessionPreCallResult is a module-level export of aigc."""
-    assert SessionPreCallResult is aigc.SessionPreCallResult
+    """SessionPreCallResult is a module-level export of aegis."""
+    assert SessionPreCallResult is aegis.SessionPreCallResult
 
 
 def test_session_state_error_importable_from_aigc():
-    """SessionStateError is a module-level export of aigc."""
-    assert SessionStateError is aigc.SessionStateError
+    """SessionStateError is a module-level export of aegis."""
+    assert SessionStateError is aegis.SessionStateError
 
 
 def test_open_session_is_not_module_level():
-    """open_session must not exist at the aigc module level — it is instance-scoped."""
-    assert not hasattr(aigc, "open_session"), (
-        "open_session must not be a module-level aigc export; "
+    """open_session must not exist at the aegis module level — it is instance-scoped."""
+    assert not hasattr(aegis, "open_session"), (
+        "open_session must not be a module-level aegis export; "
         "use AIGC().open_session(...) instead"
     )
 
@@ -108,7 +108,7 @@ def test_open_session_exception_exit_produces_failed():
 
 def test_session_token_rejected_by_module_enforce_post_call():
     """SessionPreCallResult passed to module-level enforce_post_call raises."""
-    from aigc import enforce_post_call
+    from aegis import enforce_post_call
     a = AIGC()
     with a.open_session() as session:
         token = session.enforce_step_pre_call(dict(_BASE_INV))

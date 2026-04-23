@@ -16,14 +16,14 @@ release train reaches PR-11 and a `release/v0.9.0` cut is made.
 Beta-only surfaces currently available from source:
 
 - `AIGC.open_session(...)`, `GovernanceSession`, `SessionPreCallResult`
-- `aigc workflow init`, `aigc policy init`, `aigc workflow lint`,
-  `aigc workflow doctor`
+- `aegis workflow init`, `aegis policy init`, `aegis workflow lint`,
+  `aegis workflow doctor`
 - starter scaffolds, migration docs, beta proof harness, and workflow demo lab
 
 Still deferred beyond the current beta public surface:
 
-- `aigc workflow trace`
-- `aigc workflow export`
+- `aegis workflow trace`
+- `aegis workflow export`
 - `AgentIdentity`
 - `AgentCapabilityManifest`
 - `ValidatorHook` as a public API
@@ -44,17 +44,17 @@ Still deferred beyond the current beta public surface:
   artifacts from a JSONL audit trail. Edges are drawn from
   `provenance["derived_from_audit_checksums"]`. Provides `roots()`, `leaves()`,
   `ancestors()`, `descendants()`, `orphans()`, and `has_cycle()`. Available as
-  `from aigc import AuditLineage`.
+  `from aegis import AuditLineage`.
 - `ProvenanceGate`: built-in enforcement gate at `INSERTION_PRE_OUTPUT` that
   blocks invocations whose runtime context lacks provenance `source_ids`.
   Failure codes: `PROVENANCE_MISSING` and `SOURCE_IDS_MISSING`. Available as
-  `from aigc import ProvenanceGate`. Register via
+  `from aegis import ProvenanceGate`. Register via
   `AIGC(custom_gates=[ProvenanceGate()])`. Closes PR-05.
 - `enforce_invocation`, `enforce_pre_call`/`enforce_post_call`, and `AIGC`
   enforcement methods now forward `invocation["context"]["provenance"]` into
   every emitted audit artifact, enabling `AuditLineage` cross-invocation
   traversal.
-- `RiskHistory` advisory utility (`aigc.RiskHistory`): records risk scores
+- `RiskHistory` advisory utility (`aegis.RiskHistory`): records risk scores
   over time for a named entity and classifies the trend as `"improving"`,
   `"stable"`, or `"degrading"` via `trajectory()`. Exports
   `TRAJECTORY_IMPROVING`, `TRAJECTORY_STABLE`, `TRAJECTORY_DEGRADING`
@@ -109,7 +109,7 @@ Still deferred beyond the current beta public surface:
 - **`@governed(pre_call_enforcement=True)`**: Opt-in split mode for the decorator — Phase A runs before the wrapped function; Phase A failure blocks execution.
 - **Instance-scoped split methods**: `AIGC.enforce_pre_call()` and `AIGC.enforce_post_call()` (sync + async) with the same contract as module-level functions.
 - **Audit schema v1.3**: Additive `metadata` fields: `enforcement_mode`, `pre_call_gates_evaluated`, `post_call_gates_evaluated`, `pre_call_timestamp`, `post_call_timestamp`, plus additive `failure_gate="wrapped_function_error"` for wrapped-function split failures. Prior artifacts remain valid.
-- **Telemetry split spans**: `aigc.enforce_pre_call` and `aigc.enforce_post_call` span names with `aigc.enforcement_mode` attribute.
+- **Telemetry split spans**: `aegis.enforce_pre_call` and `aegis.enforce_post_call` span names with `aegis.enforcement_mode` attribute.
 
 ### Changed
 
@@ -202,14 +202,14 @@ Still deferred beyond the current beta public surface:
 - **Tamper-evident audit chain** — `AuditChain` for chained artifact
   verification
 - **OpenTelemetry integration** — Enforcement spans and gate events via
-  `aigc.telemetry`
+  `aegis.telemetry`
 - **Policy testing framework** — Programmatic policy testing via
-  `aigc.policy_testing`
+  `aegis.policy_testing`
 - **Policy version dates** — `effective_date` / `expiration_date`
   enforcement
 - **Composition strategies** — `intersect`, `union`, `replace` for policy
   composition
-- **Compliance export CLI** — `aigc compliance export` command
+- **Compliance export CLI** — `aegis compliance export` command
 
 ### Changed
 
@@ -255,7 +255,7 @@ Still deferred beyond the current beta public surface:
   on metadata and context; truncation with logging (WS-7, D-13)
 - **Strict mode** — `AIGC(strict_mode=True)` rejects policies without roles,
   preconditions, or typed preconditions (WS-13)
-- **Internal import deprecation** — `from aigc._internal import X` emits
+- **Internal import deprecation** — `from aegis._internal import X` emits
   `DeprecationWarning`; public imports unaffected (WS-14)
 - **Audit schema v1.2** — `risk_score` (null) and `signature` (null)
   forward-compatibility placeholders (WS-15)
@@ -264,8 +264,8 @@ Still deferred beyond the current beta public surface:
 - **AST-based guard expressions** — guard conditions compiled to AST; supports
   `and`, `or`, `not`, comparison operators, `in` operator, parenthesized
   expressions (WS-19, D-07)
-- **Policy CLI** — `aigc policy lint` and `aigc policy validate` commands;
-  `python -m aigc` entry point (WS-20, D-07)
+- **Policy CLI** — `aegis policy lint` and `aegis policy validate` commands;
+  `python -m aegis` entry point (WS-20, D-07)
 
 ### Changed
 
@@ -286,7 +286,7 @@ Still deferred beyond the current beta public surface:
 
 ### Fixed
 
-- Schema files now bundled inside the wheel (`aigc/schemas/`); installed users
+- Schema files now bundled inside the wheel (`aegis/schemas/`); installed users
   previously got `PolicyLoadError` because schemas only existed at the repo root
 - Policy loader resolves schemas from package-internal path first, falling back
   to repo-root for editable/dev installs
@@ -305,7 +305,7 @@ Still deferred beyond the current beta public surface:
 ### Added
 
 - API stability note in `docs/USAGE.md`: only symbols exported from the
-  top-level `aigc` package are stable public API; `aigc._internal.*` is
+  top-level `aegis` package are stable public API; `aegis._internal.*` is
   private and may change between releases
 - PR template at `.github/pull_request_template.md` for contributor guidance
 - Public audit reports tracked in `docs/audits/` and included in markdown lint
@@ -313,7 +313,7 @@ Still deferred beyond the current beta public surface:
 ### Changed
 
 - **PyPI distribution name: `aigc` → `aigc-sdk`** (`pip install aigc-sdk`);
-  import name is unchanged (`import aigc`)
+  import name was unchanged (`import aigc`)
 - `docs/PUBLIC_INTEGRATION_CONTRACT.md`: LLM stub in decorator quickstart
   replaced with a self-contained `_StubLLM` class so the example is
   independently runnable without an external `llm` reference
@@ -361,18 +361,18 @@ Still deferred beyond the current beta public surface:
 - **Phase 3 — Production Readiness**
   - Async enforcement via `enforce_invocation_async()` — Phase 3.1
   - Pluggable audit sinks (`JsonFileAuditSink`, `CallbackAuditSink`) — Phase 3.2
-  - Structured logging (`aigc` logger namespace, `NullHandler` default) — Phase 3.3
+  - Structured logging (`aegis` logger namespace, `NullHandler` default) — Phase 3.3
   - `@governed` decorator for sync and async LLM call sites — Phase 3.4
   - ADR-0004 production readiness decisions
 
 ---
 
-[0.3.3]: https://github.com/nealsolves/aigc/compare/v0.3.2...v0.3.3
-[0.3.2]: https://github.com/nealsolves/aigc/compare/v0.3.1...v0.3.2
-[0.3.1]: https://github.com/nealsolves/aigc/compare/v0.3.0...v0.3.1
-[0.3.0]: https://github.com/nealsolves/aigc/compare/v0.2.0...v0.3.0
-[0.2.0]: https://github.com/nealsolves/aigc/compare/v0.1.3...v0.2.0
-[0.1.3]: https://github.com/nealsolves/aigc/compare/v0.1.2...v0.1.3
-[0.1.2]: https://github.com/nealsolves/aigc/compare/v0.1.1...v0.1.2
-[0.1.1]: https://github.com/nealsolves/aigc/compare/v0.1.0...v0.1.1
-[0.1.0]: https://github.com/nealsolves/aigc/releases/tag/v0.1.0
+[0.3.3]: https://github.com/nealsolves/aegis/compare/v0.3.2...v0.3.3
+[0.3.2]: https://github.com/nealsolves/aegis/compare/v0.3.1...v0.3.2
+[0.3.1]: https://github.com/nealsolves/aegis/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/nealsolves/aegis/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/nealsolves/aegis/compare/v0.1.3...v0.2.0
+[0.1.3]: https://github.com/nealsolves/aegis/compare/v0.1.2...v0.1.3
+[0.1.2]: https://github.com/nealsolves/aegis/compare/v0.1.1...v0.1.2
+[0.1.1]: https://github.com/nealsolves/aegis/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/nealsolves/aegis/releases/tag/v0.1.0

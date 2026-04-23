@@ -11,8 +11,8 @@ Governance in AIGC is runtime enforcement, not documentation and not prompting.
 
 ## At a Glance
 
-- Package: `pip install aigc-sdk`
-- Import: `import aigc`
+- Package: `pip install aegis-sdk`
+- Import: `import aegis`
 - Current release: `v0.3.3` on `2026-04-10`
 - Current release scope: invocation governance plus workflow-aware provenance
   and lineage groundwork, audit schema `v1.4`, `AuditLineage`,
@@ -51,9 +51,9 @@ legacy unified mode (deprecated).
 
 The source-only `v0.9.0` beta line on local `develop` adds workflow governance
 built around `AIGC.open_session(...)`, `GovernanceSession`,
-`SessionPreCallResult`, `aigc workflow init`, `aigc policy init`,
-`aigc workflow lint`, `aigc workflow doctor`, `aigc workflow trace`, and
-`aigc workflow export`. No external API keys are required for the default
+`SessionPreCallResult`, `aegis workflow init`, `aegis policy init`,
+`aegis workflow lint`, `aegis workflow doctor`, `aegis workflow trace`, and
+`aegis workflow export`. No external API keys are required for the default
 adopter path. The currently shipped PyPI package remains `v0.3.3`. Optional
 Bedrock/A2A adapters remain later PRs. The target-state architecture is
 captured in `docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md`.
@@ -64,7 +64,7 @@ Workflow governance is available in the source-only `v0.9.0` beta line on
 local `develop`. No external API keys are required. Install from source, then:
 
 ```bash
-aigc workflow init --profile minimal
+aegis workflow init --profile minimal
 cd governance
 python workflow_example.py
 # Status:  COMPLETED
@@ -91,7 +91,7 @@ release by release.
 | Release | Date | What changed for users |
 | ------- | ---- | ---------------------- |
 | `0.1.0` | 2026-02-16 | Initial SDK: policy loading, role allowlists, preconditions, output schema validation, postconditions, deterministic audit artifacts |
-| `0.1.1` to `0.1.3` | 2026-02-17 to 2026-02-23 | Installation and integration stabilization: context in audit artifacts, absolute policy paths, packaged schemas, public API guidance, `aigc-sdk` PyPI package name |
+| `0.1.1` to `0.1.3` | 2026-02-17 to 2026-02-23 | Installation and integration stabilization: context in audit artifacts, absolute policy paths, packaged schemas, public API guidance, `aegis-sdk` PyPI package name |
 | `0.2.0` | 2026-03-06 | SDK ergonomics and operability: instance-scoped `AIGC`, typed preconditions, exception sanitization, policy caching, sink failure modes, audit schema `v1.2`, `InvocationBuilder`, AST-based guards, policy CLI |
 | `0.3.0` | 2026-03-15 | Governance hardening: risk scoring, artifact signing, audit chain utility, pluggable `PolicyLoader`, policy dates, telemetry, policy testing, compliance export, custom gate isolation and metadata preservation |
 | `0.3.1` | 2026-04-04 | Demo parity release: React demo and FastAPI backend became the maintained hands-on surface for all 7 labs |
@@ -103,14 +103,14 @@ For the full change log, use [CHANGELOG.md](CHANGELOG.md).
 ## Installation
 
 ```bash
-pip install aigc-sdk
+pip install aegis-sdk
 ```
 
 Editable install from source:
 
 ```bash
-python3 -m venv aigc-env
-source aigc-env/bin/activate
+python3 -m venv aegis-env
+source aegis-env/bin/activate
 pip install -e '.[dev]'
 ```
 
@@ -129,7 +129,7 @@ interpreter's installed Python packages without contacting an index.
 Unified enforcement remains the simplest integration path:
 
 ```python
-from aigc import enforce_invocation
+from aegis import enforce_invocation
 
 artifact = enforce_invocation(
     {
@@ -147,7 +147,7 @@ artifact = enforce_invocation(
 For new code that needs isolated configuration, use the instance API:
 
 ```python
-from aigc import AIGC, JsonFileAuditSink
+from aegis import AIGC, JsonFileAuditSink
 
 engine = AIGC(sink=JsonFileAuditSink("audit.jsonl"))
 artifact = engine.enforce(invocation)
@@ -159,7 +159,7 @@ Split mode lets you authorize before the model call and validate output after
 the call:
 
 ```python
-from aigc import enforce_post_call, enforce_pre_call
+from aegis import enforce_post_call, enforce_pre_call
 
 pre = enforce_pre_call(
     {
@@ -179,7 +179,7 @@ artifact = enforce_post_call(pre, output)
 The `@governed` decorator uses split enforcement by default (since v0.3.3):
 
 ```python
-from aigc import governed
+from aegis import governed
 
 @governed(
     policy_file="policies/base_policy.yaml",
@@ -198,7 +198,7 @@ Phase A runs before the model call; Phase B validates output after. Pass
 
 The maintained demo is a React frontend plus FastAPI backend:
 
-- Site: [https://nealsolves.github.io/aigc/](https://nealsolves.github.io/aigc/)
+- Site: [https://nealsolves.github.io/aegis/](https://nealsolves.github.io/aegis/)
 - Coverage: 7 labs across risk scoring, signing, audit chain, composition,
   loaders and policy dates, custom gates, and compliance export
 - Purpose: hands-on orientation to the runtime that shipped in `v0.3.x`
@@ -209,19 +209,19 @@ The repo also contains a local-only workflow beta lab in
 
 ## CLI Surface
 
-The `aigc` console script exposes three practical commands:
+The `aegis` console script exposes three practical commands:
 
-- `aigc policy lint <file...>` for syntax and schema checks
-- `aigc policy validate <file...>` for semantic validation, including
+- `aegis policy lint <file...>` for syntax and schema checks
+- `aegis policy validate <file...>` for semantic validation, including
   composition and cycle detection
-- `aigc compliance export --input audit.jsonl [--output report.json] [--lineage]`
+- `aegis compliance export --input audit.jsonl [--output report.json] [--lineage]`
   for offline compliance reporting over stored audit trails; add `--lineage` to
   include DAG-level lineage analysis (node counts, duplicate detection,
   root/leaf/orphan lists, cycle detection)
 
-The source-only `v0.9.0` beta line adds `aigc workflow init`,
-`aigc policy init`, `aigc workflow lint`, `aigc workflow doctor`,
-`aigc workflow trace`, and `aigc workflow export`. The current PyPI release
+The source-only `v0.9.0` beta line adds `aegis workflow init`,
+`aegis policy init`, `aegis workflow lint`, `aegis workflow doctor`,
+`aegis workflow trace`, and `aegis workflow export`. The current PyPI release
 (`v0.3.3`) CLI surface is unchanged.
 
 ## Repo Guide
@@ -242,7 +242,7 @@ If you are new to the repo, start here:
 Before release, the repo expects these checks to pass locally:
 
 ```bash
-python -m pytest --cov=aigc --cov-report=term-missing --cov-fail-under=90
-flake8 aigc
+python -m pytest --cov=aegis --cov-report=term-missing --cov-fail-under=90
+flake8 aegis
 npx markdownlint-cli2 "**/*.md"
 ```

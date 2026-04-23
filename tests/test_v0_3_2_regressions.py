@@ -14,8 +14,8 @@ import importlib.metadata
 
 import pytest
 
-import aigc
-from aigc._internal.enforcement import (
+import aegis
+from aegis._internal.enforcement import (
     AIGC,
     PreCallResult,
     enforce_post_call,
@@ -23,17 +23,17 @@ from aigc._internal.enforcement import (
     enforce_pre_call,
     enforce_pre_call_async,
 )
-from aigc._internal.errors import (
+from aegis._internal.errors import (
     CustomGateViolationError,
     InvocationValidationError,
 )
-from aigc._internal.gates import (
+from aegis._internal.gates import (
     EnforcementGate,
     GateResult,
     INSERTION_POST_OUTPUT,
     INSERTION_PRE_OUTPUT,
 )
-from aigc._internal.policy_loader import load_policy
+from aegis._internal.policy_loader import load_policy
 
 
 # ── Helpers ────────────────────────────────────────────────────────
@@ -277,7 +277,7 @@ class TestFinding3PreCallResultShallowMutability:
         # Even after mutation, the output without 'confidence' should still
         # be checked against the original (deep-copied) policy
         # The golden policy requires 'confidence' — output without it should FAIL
-        from aigc._internal.errors import SchemaValidationError
+        from aegis._internal.errors import SchemaValidationError
         with pytest.raises(SchemaValidationError):
             enforce_post_call(pre, {"result": "ok"})
 
@@ -303,7 +303,7 @@ class TestFinding3PreCallResultShallowMutability:
         pre.invocation_snapshot["input"]["injected_key"] = "injected_value"
         artifact = enforce_post_call(pre, _valid_output())
         # The input checksum must match the ORIGINAL input (before mutation).
-        from aigc._internal.audit import checksum
+        from aegis._internal.audit import checksum
         original_input_checksum = checksum({"query": "test"})
         assert artifact["input_checksum"] == original_input_checksum, (
             "Tampered input must not affect the input_checksum in the artifact"
@@ -319,7 +319,7 @@ class TestFinding3PreCallResultShallowMutability:
         artifact = enforce_post_call(pre, _valid_output())
         assert artifact["enforcement_result"] == "PASS"
         # The input checksum must match the original, un-mutated input
-        from aigc._internal.audit import checksum
+        from aegis._internal.audit import checksum
         assert artifact["input_checksum"] == checksum({"query": "test"})
 
 
@@ -374,11 +374,11 @@ class TestFinding5PackagingMetadata:
     """Runtime __version__ and pyproject.toml version must agree."""
 
     def test_runtime_version_is_0_3_3(self):
-        """aigc.__version__ must be 0.3.3."""
-        assert aigc.__version__ == "0.3.3"
+        """aegis.__version__ must be 0.3.3."""
+        assert aegis.__version__ == "0.3.3"
 
     def test_pyproject_toml_version_matches_runtime(self):
-        """pyproject.toml version must equal aigc.__version__.
+        """pyproject.toml version must equal aegis.__version__.
 
         Reads pyproject.toml directly (regex) rather than relying on
         an installed .dist-info, which may be stale in editable installs.
@@ -393,7 +393,7 @@ class TestFinding5PackagingMetadata:
         )
         assert m, "Could not find version = ... in pyproject.toml"
         toml_version = m.group(1)
-        assert toml_version == aigc.__version__, (
+        assert toml_version == aegis.__version__, (
             f"pyproject.toml has version {toml_version!r} but "
-            f"aigc.__version__ is {aigc.__version__!r}"
+            f"aegis.__version__ is {aegis.__version__!r}"
         )

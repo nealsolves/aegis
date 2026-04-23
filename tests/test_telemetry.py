@@ -1,6 +1,6 @@
 """Tests for OpenTelemetry integration (M2 feature)."""
 from unittest.mock import MagicMock, patch
-from aigc._internal.telemetry import (
+from aegis._internal.telemetry import (
     is_otel_available,
     enforcement_span,
     record_gate_event,
@@ -40,7 +40,7 @@ def test_record_enforcement_result_noop_on_none():
 
 def test_governance_unaffected_by_telemetry():
     """Enforcement works identically whether OTel is available or not."""
-    from aigc._internal.enforcement import enforce_invocation
+    from aegis._internal.enforcement import enforce_invocation
 
     invocation = {
         "policy_file": "tests/golden_replays/golden_policy_v1.yaml",
@@ -76,7 +76,7 @@ def test_record_gate_event_with_mock_span():
     span = MagicMock()
     record_gate_event(span, "role_validation", status="completed")
     span.set_attribute.assert_called_with(
-        "aigc.gate.role_validation.status", "completed"
+        "aegis.gate.role_validation.status", "completed"
     )
 
 
@@ -93,11 +93,11 @@ def test_record_gate_event_with_details():
             "count": 3,
         },
     )
-    span.set_attribute.assert_any_call("aigc.gate.guard_eval.status", "completed")
-    span.set_attribute.assert_any_call("aigc.gate.guard_eval.score", 0.85)
-    span.set_attribute.assert_any_call("aigc.gate.guard_eval.passed", True)
-    span.set_attribute.assert_any_call("aigc.gate.guard_eval.label", "ok")
-    span.set_attribute.assert_any_call("aigc.gate.guard_eval.count", 3)
+    span.set_attribute.assert_any_call("aegis.gate.guard_eval.status", "completed")
+    span.set_attribute.assert_any_call("aegis.gate.guard_eval.score", 0.85)
+    span.set_attribute.assert_any_call("aegis.gate.guard_eval.passed", True)
+    span.set_attribute.assert_any_call("aegis.gate.guard_eval.label", "ok")
+    span.set_attribute.assert_any_call("aegis.gate.guard_eval.count", 3)
 
 
 def test_record_gate_event_filters_non_primitive_details():
@@ -115,11 +115,11 @@ def test_record_gate_event_filters_non_primitive_details():
     )
     # Only status and "name" should be set (the primitives)
     calls = {call.args[0] for call in span.set_attribute.call_args_list}
-    assert "aigc.gate.test_gate.status" in calls
-    assert "aigc.gate.test_gate.name" in calls
-    assert "aigc.gate.test_gate.nested" not in calls
-    assert "aigc.gate.test_gate.items" not in calls
-    assert "aigc.gate.test_gate.obj" not in calls
+    assert "aegis.gate.test_gate.status" in calls
+    assert "aegis.gate.test_gate.name" in calls
+    assert "aegis.gate.test_gate.nested" not in calls
+    assert "aegis.gate.test_gate.items" not in calls
+    assert "aegis.gate.test_gate.obj" not in calls
 
 
 def test_record_gate_event_no_details():
@@ -128,7 +128,7 @@ def test_record_gate_event_no_details():
     record_gate_event(span, "precondition", status="failed")
     assert span.set_attribute.call_count == 1
     span.set_attribute.assert_called_once_with(
-        "aigc.gate.precondition.status", "failed"
+        "aegis.gate.precondition.status", "failed"
     )
 
 
@@ -149,10 +149,10 @@ def test_record_enforcement_result_with_mock_span():
         role="planner",
         risk_score=0.42,
     )
-    span.set_attribute.assert_any_call("aigc.enforcement.result", "PASS")
-    span.set_attribute.assert_any_call("aigc.enforcement.policy_file", "policy.yaml")
-    span.set_attribute.assert_any_call("aigc.enforcement.role", "planner")
-    span.set_attribute.assert_any_call("aigc.enforcement.risk_score", 0.42)
+    span.set_attribute.assert_any_call("aegis.enforcement.result", "PASS")
+    span.set_attribute.assert_any_call("aegis.enforcement.policy_file", "policy.yaml")
+    span.set_attribute.assert_any_call("aegis.enforcement.role", "planner")
+    span.set_attribute.assert_any_call("aegis.enforcement.risk_score", 0.42)
 
 
 def test_record_enforcement_result_minimal():
@@ -160,7 +160,7 @@ def test_record_enforcement_result_minimal():
     span = MagicMock()
     record_enforcement_result(span, "FAIL")
     assert span.set_attribute.call_count == 1
-    span.set_attribute.assert_called_once_with("aigc.enforcement.result", "FAIL")
+    span.set_attribute.assert_called_once_with("aegis.enforcement.result", "FAIL")
 
 
 def test_record_enforcement_result_exception_resilience():
@@ -178,7 +178,7 @@ def test_record_enforcement_result_exception_resilience():
 
 def test_enforcement_span_with_mock_tracer():
     """enforcement_span creates a real span when tracer is available."""
-    import aigc._internal.telemetry as tel
+    import aegis._internal.telemetry as tel
 
     mock_span = MagicMock()
     mock_tracer = MagicMock()
@@ -208,7 +208,7 @@ def test_enforcement_span_with_mock_tracer():
 
 def test_enforcement_span_defaults_attributes_to_empty_dict():
     """enforcement_span passes empty dict when attributes is None."""
-    import aigc._internal.telemetry as tel
+    import aegis._internal.telemetry as tel
 
     mock_span = MagicMock()
     mock_tracer = MagicMock()

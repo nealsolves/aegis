@@ -6,7 +6,7 @@ how policies are resolved — no filesystem path required.
 """
 
 import yaml as yaml_lib
-from aigc import PolicyLoaderBase
+from aegis import PolicyLoaderBase
 
 
 class InMemoryPolicyLoader(PolicyLoaderBase):
@@ -19,8 +19,8 @@ class InMemoryPolicyLoader(PolicyLoaderBase):
     Usage::
 
         loader = InMemoryPolicyLoader(yaml_text)
-        aigc = AIGC(policy_loader=loader)
-        artifact = aigc.enforce(invocation)
+        aegis = AIGC(policy_loader=loader)
+        artifact = aegis.enforce(invocation)
     """
 
     def __init__(self, yaml_text: str) -> None:

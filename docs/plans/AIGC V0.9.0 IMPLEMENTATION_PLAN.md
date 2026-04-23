@@ -18,7 +18,7 @@ This plan exists to make that statement true without weakening architecture.
 - Invocation-only users remain supported.
 - Optional adapters remain optional.
 - Security remains fail-closed.
-- Public examples must use only public APIs and must never import from `aigc._internal`.
+- Public examples must use only public APIs and must never import from `aegis._internal`.
 - Workflow adoption remains instance-scoped through `AIGC.open_session(...)`.
 - Invocation artifacts remain one artifact per invocation attempt, separate from workflow or session evidence.
 - `v0.9.0` is the feature-complete beta for `v1.0.0`, not GA.
@@ -29,8 +29,8 @@ The first adopter for `v0.9.0` is a Python application team that already owns a 
 
 The target experience is direct:
 
-- install `aigc`
-- run `aigc workflow init`
+- install `aegis`
+- run `aegis workflow init`
 - choose `minimal` or `standard`
 - drop the generated assets into a simple local `2`-step or `3`-step host-owned workflow
 - get a first PASS quickly
@@ -58,13 +58,13 @@ If those are weak, the beta is weak, even if the architecture is otherwise corre
 The default path is local workflow first. Presets and starter scaffolds come first. `workflow doctor` and `workflow lint` come first. Adapters come later.
 
 1. Install the package in a fresh Python environment.
-2. Run `aigc workflow init`.
+2. Run `aegis workflow init`.
 3. Choose a `minimal` or `standard` starter.
 4. Drop AIGC into a simple local `2`-step or `3`-step workflow in a host-owned app.
 5. Run the workflow successfully.
 6. Inspect workflow artifacts and correlated invocation evidence.
 7. Intentionally trigger a common failure.
-8. Use `aigc workflow doctor` or `aigc workflow lint` to understand the issue.
+8. Use `aegis workflow doctor` or `aegis workflow lint` to understand the issue.
 9. Fix the issue using public docs and starter guidance.
 10. Run again and succeed.
 
@@ -82,10 +82,10 @@ Default-path rules:
 
 | Scenario | Release acceptance criteria | Result |
 | --- | --- | --- |
-| Fresh install -> minimal workflow scaffold -> PASS | A clean environment installs base `aigc`, runs `aigc workflow init`, selects `minimal`, drops the starter into a local host app, opens a session through `AIGC.open_session(...)`, and completes a passing workflow with correlated evidence. | PASS |
+| Fresh install -> minimal workflow scaffold -> PASS | A clean environment installs base `aegis`, runs `aegis workflow init`, selects `minimal`, drops the starter into a local host app, opens a session through `AIGC.open_session(...)`, and completes a passing workflow with correlated evidence. | PASS |
 | Fresh install -> standard workflow scaffold -> PASS | A clean environment completes the `standard` path without Bedrock, A2A, or the OpenAI Agents SDK and without hand-authoring advanced manifests. | PASS |
-| Broken config -> doctor identifies exact issue | `aigc workflow doctor` returns the exact broken setting or missing requirement, a stable reason code, a plain-English explanation, and the next action. | FAIL explained |
-| Invalid transition -> lint or doctor explains why | `aigc workflow lint` or `aigc workflow doctor` identifies the invalid transition, the governing rule, and the valid next step. | FAIL explained |
+| Broken config -> doctor identifies exact issue | `aegis workflow doctor` returns the exact broken setting or missing requirement, a stable reason code, a plain-English explanation, and the next action. | FAIL explained |
+| Invalid transition -> lint or doctor explains why | `aegis workflow lint` or `aegis workflow doctor` identifies the invalid transition, the governing rule, and the valid next step. | FAIL explained |
 | Approval-required path blocks correctly and explains next action | The workflow pauses or blocks fail-closed, records auditable checkpoint state, and tells the operator exactly what approval action is required. | BLOCK correct |
 | Invocation-only migration path works without rewrite | An existing invocation-only integration can keep working and can adopt workflow governance through a small additive diff rather than a rewrite. | PASS |
 | Docs-to-working-app path succeeds from clean environment | The documented quickstart works from scratch without maintainer-only steps, without `_internal` imports, and without hidden bootstrap knowledge. | PASS |
@@ -110,12 +110,12 @@ Default-path rules:
 - Invocation-only users keep working on supported public APIs.
 - Workflow adoption remains instance-scoped through `AIGC.open_session(...)`.
 - `v0.9.0` does not introduce a new module-level `open_session(...)` public API.
-- The frozen golden-path CLI inventory is `aigc policy init`,
-  `aigc workflow init`, `aigc workflow lint`, and `aigc workflow doctor`.
+- The frozen golden-path CLI inventory is `aegis policy init`,
+  `aegis workflow init`, `aegis workflow lint`, and `aegis workflow doctor`.
 - `GovernanceSession`, `SessionPreCallResult`, and `AIGC.open_session(...)`
   are frozen as planned-only contract surfaces before runtime work lands.
   PR-02 documents and tests them; it does not ship placeholder runtime stubs.
-- Public examples, quickstarts, starter assets, presets, recipes, and demo code must use only public APIs and must never import from `aigc._internal`.
+- Public examples, quickstarts, starter assets, presets, recipes, and demo code must use only public APIs and must never import from `aegis._internal`.
 - Hand-authored workflow DSL remains supported but is advanced mode.
 - Starter packs, `workflow init`, and thin presets are the default adoption path.
 - The frozen scaffold profiles are `minimal`, `standard`, and
@@ -202,7 +202,7 @@ Rules:
 
 ### Diagnostics and evidence trust
 
-- `aigc workflow doctor` and `aigc workflow lint` are core product surface.
+- `aegis workflow doctor` and `aegis workflow lint` are core product surface.
 - Diagnostics must emit stable machine-readable reason codes and plain-English explanations.
 - Common blocker coverage must include identity mismatch, invalid transition, unsupported binding, missing required evidence, malformed or stale session token, and scaffold or setup mistakes.
 - External protocol evidence is untrusted until validated against the relevant adapter or validator contract.
@@ -213,10 +213,10 @@ Rules:
 
 Frozen CLI command inventory:
 
-- `aigc policy init`
-- `aigc workflow init`
-- `aigc workflow lint`
-- `aigc workflow doctor`
+- `aegis policy init`
+- `aegis workflow init`
+- `aegis workflow lint`
+- `aegis workflow doctor`
 
 Frozen scaffold profiles:
 
@@ -420,7 +420,7 @@ Two isolated adopter validations are not enough for `1.0.0` promotion.
 - Branch: `feat/v0.9-05-starters-and-migration`
 - Goal: make the first-adopter path copy-pasteable before richer engine work dominates the release.
 - Implement:
-  - ship `aigc workflow init` and `aigc policy init` for `minimal`, `standard`, and `regulated-high-assurance`
+  - ship `aegis workflow init` and `aegis policy init` for `minimal`, `standard`, and `regulated-high-assurance`
   - ship copy-paste starter examples that run on the Step `4` session flow
   - ship initial migration helpers that show the smallest safe diff from invocation-only governance to workflow governance
   - ship thin preset builders that compile to ordinary session plus policy plus manifest behavior with no hidden runtime layer
@@ -439,8 +439,8 @@ Two isolated adopter validations are not enough for `1.0.0` promotion.
 - Branch: `feat/v0.9-06-doctor-and-lint`
 - Goal: make first failures understandable before advanced tracks expand.
 - Implement:
-  - add `aigc workflow lint` for schema, transitions, bindings, budgets, starter integrity, and public-import safety
-  - add `aigc workflow doctor` for runtime and evidence diagnosis
+  - add `aegis workflow lint` for schema, transitions, bindings, budgets, starter integrity, and public-import safety
+  - add `aegis workflow doctor` for runtime and evidence diagnosis
   - emit stable reason codes plus plain-English explanations
   - cover identity mismatch, invalid transition, unsupported binding, missing required evidence, malformed or stale session token, and scaffold mistakes
   - require next-action guidance for common failures
@@ -506,7 +506,7 @@ Two isolated adopter validations are not enough for `1.0.0` promotion.
 - Branch: `feat/v0.9-09-exports-and-ops`
 - Goal: round out visibility and portability after core adoption and engine semantics are stable.
 - Implement:
-  - add `aigc workflow trace` and `aigc workflow export`
+  - add `aegis workflow trace` and `aegis workflow export`
   - reconstruct workflow timelines from workflow artifacts plus invocation evidence
   - support operator and audit export modes with integrity metadata and verification guidance
   - surface sink failures explicitly while preserving fail-closed semantics where sinks are required

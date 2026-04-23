@@ -11,10 +11,10 @@ import json
 
 import pytest
 
-from aigc._internal.enforcement import enforce_invocation
-from aigc._internal.errors import GovernanceViolationError
-from aigc._internal.errors import AuditSinkError
-from aigc._internal.sinks import (
+from aegis._internal.enforcement import enforce_invocation
+from aegis._internal.errors import GovernanceViolationError
+from aegis._internal.errors import AuditSinkError
+from aegis._internal.sinks import (
     AuditSink,
     CallbackAuditSink,
     JsonFileAuditSink,
@@ -217,12 +217,12 @@ def test_audit_sink_error_has_correct_code():
 
 def test_aigc_instance_does_not_mutate_global_sink():
     """AIGC.enforce() must never touch the global sink state."""
-    from aigc import AIGC
+    from aegis import AIGC
 
     assert get_audit_sink() is None  # no prior sink
     received = []
-    aigc = AIGC(sink=CallbackAuditSink(received.append))
-    aigc.enforce(VALID_INVOCATION)
+    aegis = AIGC(sink=CallbackAuditSink(received.append))
+    aegis.enforce(VALID_INVOCATION)
 
     assert len(received) == 1
     # Global sink must remain untouched — AIGC uses per-call sink injection
@@ -231,15 +231,15 @@ def test_aigc_instance_does_not_mutate_global_sink():
 
 def test_aigc_instance_does_not_leak_to_global_with_previous():
     """AIGC.enforce() must not affect a previously set global sink."""
-    from aigc import AIGC
+    from aegis import AIGC
 
     previous_received = []
     previous_sink = CallbackAuditSink(previous_received.append)
     set_audit_sink(previous_sink)
 
     instance_received = []
-    aigc = AIGC(sink=CallbackAuditSink(instance_received.append))
-    aigc.enforce(VALID_INVOCATION)
+    aegis = AIGC(sink=CallbackAuditSink(instance_received.append))
+    aegis.enforce(VALID_INVOCATION)
 
     assert len(instance_received) == 1
     # Previous global sink must remain unchanged and not have received anything
@@ -249,7 +249,7 @@ def test_aigc_instance_does_not_leak_to_global_with_previous():
 
 def test_aigc_two_instances_isolated():
     """Two AIGC instances with different sinks must not interfere."""
-    from aigc import AIGC
+    from aegis import AIGC
 
     received_a = []
     received_b = []
@@ -267,7 +267,7 @@ def test_aigc_two_instances_isolated():
 
 def test_aigc_instance_with_none_sink_does_not_interfere():
     """AIGC(sink=None) must not receive artifacts from another instance."""
-    from aigc import AIGC
+    from aegis import AIGC
 
     received = []
     aigc_sinked = AIGC(sink=CallbackAuditSink(received.append))
@@ -284,29 +284,29 @@ def test_aigc_instance_with_none_sink_does_not_interfere():
 
 def test_aigc_on_sink_failure_raise_is_effective():
     """AIGC(on_sink_failure='raise') must actually raise on PASS sink failure."""
-    from aigc import AIGC
+    from aegis import AIGC
 
-    aigc = AIGC(sink=_BrokenSink(), on_sink_failure="raise")
+    aegis = AIGC(sink=_BrokenSink(), on_sink_failure="raise")
     with pytest.raises(AuditSinkError, match="sink exploded"):
-        aigc.enforce(VALID_INVOCATION)
+        aegis.enforce(VALID_INVOCATION)
 
 
 def test_aigc_on_sink_failure_log_does_not_raise():
     """AIGC(on_sink_failure='log') must not raise on sink failure."""
-    from aigc import AIGC
+    from aegis import AIGC
 
-    aigc = AIGC(sink=_BrokenSink(), on_sink_failure="log")
-    audit = aigc.enforce(VALID_INVOCATION)
+    aegis = AIGC(sink=_BrokenSink(), on_sink_failure="log")
+    audit = aegis.enforce(VALID_INVOCATION)
     assert audit["enforcement_result"] == "PASS"
 
 
 def test_aigc_does_not_mutate_global_failure_mode():
     """AIGC.enforce() must never touch the global failure mode."""
-    from aigc import AIGC
+    from aegis import AIGC
 
     assert get_sink_failure_mode() == "log"  # default
-    aigc = AIGC(sink=CallbackAuditSink(lambda a: None), on_sink_failure="raise")
-    aigc.enforce(VALID_INVOCATION)
+    aegis = AIGC(sink=CallbackAuditSink(lambda a: None), on_sink_failure="raise")
+    aegis.enforce(VALID_INVOCATION)
     assert get_sink_failure_mode() == "log"  # untouched
 
 
@@ -342,10 +342,10 @@ def test_sink_cannot_mutate_exception_artifact():
 
 def test_aigc_sink_cannot_mutate_artifact():
     """AIGC instance sink receives a deep copy."""
-    from aigc import AIGC
+    from aegis import AIGC
 
-    aigc = AIGC(sink=_MutatingSink())
-    audit = aigc.enforce(VALID_INVOCATION)
+    aegis = AIGC(sink=_MutatingSink())
+    audit = aegis.enforce(VALID_INVOCATION)
     assert audit["enforcement_result"] == "PASS"
 
 
@@ -367,12 +367,12 @@ def test_fail_artifact_preserved_when_sink_raises():
 
 def test_fail_artifact_preserved_via_aigc_instance():
     """AIGC(on_sink_failure='raise') must preserve FAIL artifact on sink error."""
-    from aigc import AIGC
+    from aegis import AIGC
 
-    aigc = AIGC(sink=_BrokenSink(), on_sink_failure="raise")
+    aegis = AIGC(sink=_BrokenSink(), on_sink_failure="raise")
     bad = {**VALID_INVOCATION, "role": "attacker"}
     with pytest.raises(GovernanceViolationError) as exc_info:
-        aigc.enforce(bad)
+        aegis.enforce(bad)
 
     assert hasattr(exc_info.value, "audit_artifact")
     assert exc_info.value.audit_artifact["enforcement_result"] == "FAIL"
@@ -382,7 +382,7 @@ def test_fail_artifact_preserved_via_aigc_instance():
 
 def test_pre_pipeline_invocation_validation_has_artifact():
     """InvocationValidationError must carry a FAIL audit artifact."""
-    from aigc._internal.errors import InvocationValidationError
+    from aegis._internal.errors import InvocationValidationError
 
     bad = {**VALID_INVOCATION}
     del bad["role"]  # missing required field
@@ -396,7 +396,7 @@ def test_pre_pipeline_invocation_validation_has_artifact():
 
 def test_pre_pipeline_policy_load_error_has_artifact():
     """PolicyLoadError must carry a FAIL audit artifact."""
-    from aigc._internal.errors import PolicyLoadError
+    from aegis._internal.errors import PolicyLoadError
 
     bad = {**VALID_INVOCATION, "policy_file": "nonexistent_policy.yaml"}
     with pytest.raises(PolicyLoadError) as exc_info:
@@ -409,16 +409,16 @@ def test_pre_pipeline_policy_load_error_has_artifact():
 
 def test_pre_pipeline_aigc_strict_mode_has_artifact():
     """Strict mode PolicyValidationError must carry a FAIL audit artifact."""
-    from aigc import AIGC
-    from aigc._internal.errors import PolicyValidationError
+    from aegis import AIGC
+    from aegis._internal.errors import PolicyValidationError
 
     bare_string_inv = {
         **VALID_INVOCATION,
         "policy_file": "tests/fixtures/bare_string_preconditions_policy.yaml",
     }
-    aigc = AIGC(strict_mode=True)
+    aegis = AIGC(strict_mode=True)
     with pytest.raises(PolicyValidationError) as exc_info:
-        aigc.enforce(bare_string_inv)
+        aegis.enforce(bare_string_inv)
 
     assert exc_info.value.audit_artifact is not None
     assert exc_info.value.audit_artifact["enforcement_result"] == "FAIL"
@@ -428,7 +428,7 @@ def test_pre_pipeline_aigc_strict_mode_has_artifact():
 
 def test_sink_failure_gate_is_schema_valid():
     """AuditSinkError must map to 'sink_emission' gate (schema-valid)."""
-    from aigc._internal.enforcement import _map_exception_to_failure_gate
+    from aegis._internal.enforcement import _map_exception_to_failure_gate
 
     exc = AuditSinkError("test")
     assert _map_exception_to_failure_gate(exc) == "sink_emission"
@@ -438,16 +438,16 @@ def test_sink_failure_gate_is_schema_valid():
 
 def test_aigc_has_policy_cache():
     """AIGC instances must have a per-instance PolicyCache."""
-    from aigc import AIGC
+    from aegis import AIGC
 
-    aigc = AIGC()
-    assert hasattr(aigc, 'policy_cache')
-    assert aigc.policy_cache is not None
+    aegis = AIGC()
+    assert hasattr(aegis, 'policy_cache')
+    assert aegis.policy_cache is not None
 
 
 def test_aigc_policy_cache_is_per_instance():
     """Two AIGC instances must have separate PolicyCache instances."""
-    from aigc import AIGC
+    from aegis import AIGC
 
     a = AIGC()
     b = AIGC()

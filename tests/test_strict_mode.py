@@ -4,9 +4,9 @@ import warnings
 
 import pytest
 
-from aigc import AIGC
-from aigc._internal.enforcement import _validate_policy_strict
-from aigc._internal.errors import PolicyValidationError
+from aegis import AIGC
+from aegis._internal.enforcement import _validate_policy_strict
+from aegis._internal.errors import PolicyValidationError
 
 
 POLICY = "tests/golden_replays/golden_policy_v1.yaml"
@@ -74,27 +74,27 @@ def test_strict_collects_multiple_issues():
 
 def test_strict_rejects_bare_string_preconditions_e2e():
     """AIGC(strict_mode=True) rejects policy with bare-string preconditions."""
-    aigc = AIGC(strict_mode=True)
+    aegis = AIGC(strict_mode=True)
     inv = _make_invocation(BARE_STRING_POLICY)
     with pytest.raises(PolicyValidationError) as exc_info:
-        aigc.enforce(inv)
+        aegis.enforce(inv)
     assert any("bare-string" in i for i in exc_info.value.details["issues"])
 
 
 def test_strict_rejects_no_preconditions_e2e():
     """AIGC(strict_mode=True) rejects policy without preconditions."""
-    aigc = AIGC(strict_mode=True)
+    aegis = AIGC(strict_mode=True)
     inv = _make_invocation(NO_PRECONDITIONS_POLICY)
     with pytest.raises(PolicyValidationError) as exc_info:
-        aigc.enforce(inv)
+        aegis.enforce(inv)
     assert any("pre_conditions" in i for i in exc_info.value.details["issues"])
 
 
 def test_strict_passes_typed_policy_e2e():
     """AIGC(strict_mode=True) accepts typed precondition policy."""
-    aigc = AIGC(strict_mode=True)
+    aegis = AIGC(strict_mode=True)
     inv = _make_invocation(TYPED_POLICY)
-    audit = aigc.enforce(inv)
+    audit = aegis.enforce(inv)
     assert audit["enforcement_result"] == "PASS"
 
 
@@ -103,21 +103,21 @@ def test_strict_passes_typed_policy_e2e():
 
 def test_nonstrict_warns_bare_string():
     """Non-strict AIGC warns for bare-string preconditions but proceeds."""
-    aigc = AIGC(strict_mode=False)
+    aegis = AIGC(strict_mode=False)
     inv = _make_invocation(BARE_STRING_POLICY)
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
-        audit = aigc.enforce(inv)
+        audit = aegis.enforce(inv)
     assert audit["enforcement_result"] == "PASS"
 
 
 def test_nonstrict_warns_no_preconditions():
     """Non-strict AIGC warns for missing preconditions."""
-    aigc = AIGC(strict_mode=False)
+    aegis = AIGC(strict_mode=False)
     inv = _make_invocation(NO_PRECONDITIONS_POLICY)
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
-        audit = aigc.enforce(inv)
+        audit = aegis.enforce(inv)
     assert audit["enforcement_result"] == "PASS"
     user_warnings = [x for x in w if issubclass(x.category, UserWarning)]
     assert any("pre_conditions" in str(x.message) for x in user_warnings)
@@ -128,7 +128,7 @@ def test_nonstrict_warns_no_preconditions():
 
 def test_standalone_enforce_unaffected():
     """Standalone enforce_invocation() does not enforce strict mode."""
-    from aigc import enforce_invocation
+    from aegis import enforce_invocation
 
     inv = _make_invocation(BARE_STRING_POLICY)
     audit = enforce_invocation(inv)

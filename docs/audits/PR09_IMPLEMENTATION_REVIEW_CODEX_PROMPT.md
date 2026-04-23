@@ -8,7 +8,7 @@ Markdown.
 Review the PR-09 implementation in the local AIGC repository.
 
 Repository root:
-/Users/neal/Documents/_Shenanigans/_myProjects/aigc
+/Users/neal/Documents/_Shenanigans/_myProjects/aegis
 
 Base branch:
 develop
@@ -24,7 +24,7 @@ Task type:
 
 Primary deliverable:
 - Create a Markdown review report in:
-  /Users/neal/Documents/_Shenanigans/_myProjects/aigc/docs/audits
+  /Users/neal/Documents/_Shenanigans/_myProjects/aegis/docs/audits
 - Use this filename:
   YYYY-MM-DD-pr09-implementation-code-review-codex.md
 - Overwrite that file if it already exists
@@ -59,7 +59,7 @@ Canonical review sources:
 - scripts/check_doc_parity.py
 
 Expected PR-09 scope:
-- ship `aigc workflow trace` and `aigc workflow export`
+- ship `aegis workflow trace` and `aegis workflow export`
 - reconstruct workflow timelines from workflow artifacts plus invocation evidence using checksum correlation
 - support operator and audit export modes with integrity metadata and verification guidance
 - surface sink failures and incomplete exports explicitly, without pretending they are enforcement failures
@@ -69,11 +69,11 @@ Expected PR-09 scope:
 - advance the release packet from "planned for PR-09" to "shipped in PR-09" on the review branch without weakening earlier PR truth checks
 
 Files to prioritize based on the actual diff:
-- aigc/_internal/cli.py
-- aigc/_internal/workflow_trace.py
-- aigc/_internal/workflow_export.py
-- aigc/_internal/workflow_lint.py
-- aigc/schemas/workflow_artifact.schema.json
+- aegis/_internal/cli.py
+- aegis/_internal/workflow_trace.py
+- aegis/_internal/workflow_export.py
+- aegis/_internal/workflow_lint.py
+- aegis/schemas/workflow_artifact.schema.json
 - scripts/check_doc_parity.py
 - demo-app-api/workflow_routes.py
 - docs/reference/WORKFLOW_CLI.md
@@ -127,14 +127,14 @@ Minimum commands to run:
 - `git log --oneline develop..feat/v0.9-09-exports-and-ops`
 - `git diff --stat develop...feat/v0.9-09-exports-and-ops`
 - `git diff --name-only develop...feat/v0.9-09-exports-and-ops`
-- `git diff develop...feat/v0.9-09-exports-and-ops -- aigc/_internal/cli.py aigc/_internal/workflow_trace.py aigc/_internal/workflow_export.py aigc/_internal/workflow_lint.py aigc/schemas/workflow_artifact.schema.json scripts/check_doc_parity.py demo-app-api/workflow_routes.py docs/reference/WORKFLOW_CLI.md docs/reference/OPERATIONS_RUNBOOK.md`
+- `git diff develop...feat/v0.9-09-exports-and-ops -- aegis/_internal/cli.py aegis/_internal/workflow_trace.py aegis/_internal/workflow_export.py aegis/_internal/workflow_lint.py aegis/schemas/workflow_artifact.schema.json scripts/check_doc_parity.py demo-app-api/workflow_routes.py docs/reference/WORKFLOW_CLI.md docs/reference/OPERATIONS_RUNBOOK.md`
 - `rg -n "workflow trace|workflow export|reserved for PR-09|unshipped until PR-09|planned-only|Deferred To PR-09" README.md CLAUDE.md docs/dev/pr_context.md RELEASE_GATES.md implementation_status.md docs/PUBLIC_INTEGRATION_CONTRACT.md docs/architecture/AIGC_HIGH_LEVEL_DESIGN.md docs/reference/WORKFLOW_CLI.md docs/reference/OPERATIONS_RUNBOOK.md`
 - `pytest -q tests/test_workflow_trace.py tests/test_workflow_export.py tests/test_v090_contract_freeze.py tests/test_doc_parity_v090_truth.py tests/test_workflow_doctor.py tests/test_cli.py demo-app-api/tests/test_workflow_routes.py`
 
 Specific review checklist:
 
 1. CLI command contract
-- Verify `aigc workflow trace` and `aigc workflow export` are registered under the workflow CLI and match the intended top-level command inventory
+- Verify `aegis workflow trace` and `aegis workflow export` are registered under the workflow CLI and match the intended top-level command inventory
 - Verify help text, docs, and real argument parsing agree on `--input`, `--output`, and `--mode`
 - Verify malformed JSONL lines, non-dict artifacts, missing files, unreadable inputs, and unwritable outputs are handled intentionally and do not produce misleading success
 - Verify unresolved checksum cases exit `0` only when the gap is truly advisory, not when the input is structurally corrupt
@@ -158,7 +158,7 @@ Specific review checklist:
 - Verify sink-failure and incomplete-export handling stay compatible with fail-closed semantics where sinks are required
 
 4. Schema, lint, and doctor coherence
-- Verify `aigc/schemas/workflow_artifact.schema.json` and runtime/lint assumptions agree about `steps[]` entry shape
+- Verify `aegis/schemas/workflow_artifact.schema.json` and runtime/lint assumptions agree about `steps[]` entry shape
 - Verify lint catches corrupt artifacts early enough that trace/export are not forced to guess at bad input
 - Verify trace/export behavior does not contradict `workflow doctor` guidance for incomplete or corrupted evidence
 - Review `scripts/check_doc_parity.py` to ensure PR-09 documentation is allowed without accidentally weakening pre-PR-09 truth checks more than necessary

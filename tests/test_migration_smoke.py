@@ -31,7 +31,7 @@ def test_workflow_adoption_example_is_importable():
 
 
 def test_invocation_only_example_no_internal_imports():
-    """invocation_only.py must not import from aigc._internal."""
+    """invocation_only.py must not import from aegis._internal."""
     import ast
     source = (EXAMPLES_DIR / "invocation_only.py").read_text()
     tree = ast.parse(source)
@@ -45,7 +45,7 @@ def test_invocation_only_example_no_internal_imports():
 
 
 def test_workflow_adoption_example_no_internal_imports():
-    """workflow_adoption.py must not import from aigc._internal."""
+    """workflow_adoption.py must not import from aegis._internal."""
     import ast
     source = (EXAMPLES_DIR / "workflow_adoption.py").read_text()
     tree = ast.parse(source)

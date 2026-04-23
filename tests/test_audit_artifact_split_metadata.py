@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 from jsonschema import validate, ValidationError
 
-from aigc._internal.audit import generate_audit_artifact, AUDIT_SCHEMA_VERSION
+from aegis._internal.audit import generate_audit_artifact, AUDIT_SCHEMA_VERSION
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 

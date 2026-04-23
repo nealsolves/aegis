@@ -2,8 +2,8 @@
 
 import pytest
 from unittest.mock import MagicMock
-from aigc._internal.retry import with_retry, RetryExhaustedError
-from aigc._internal.errors import SchemaValidationError, PreconditionError, GovernanceViolationError
+from aegis._internal.retry import with_retry, RetryExhaustedError
+from aegis._internal.errors import SchemaValidationError, PreconditionError, GovernanceViolationError
 
 
 def _base_invocation_with_retry():
@@ -180,7 +180,7 @@ def test_retry_each_attempt_produces_audit():
 
 def test_with_retry_unified_mode_unchanged():
     """with_retry still works with unified enforce_invocation after split refactor."""
-    from aigc._internal.enforcement import enforce_invocation
+    from aegis._internal.enforcement import enforce_invocation
 
     invocation = {
         "model_provider": "anthropic",

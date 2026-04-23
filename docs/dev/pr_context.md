@@ -39,12 +39,12 @@ no further public-surface work proceeds until the default path is repaired.
   - `AIGC.open_session(...)`
   - `GovernanceSession`
   - `SessionPreCallResult`
-  - `aigc workflow init`
-  - `aigc policy init`
-  - `aigc workflow lint`
-  - `aigc workflow doctor`
-  - `aigc workflow trace`
-  - `aigc workflow export`
+  - `aegis workflow init`
+  - `aegis policy init`
+  - `aegis workflow lint`
+  - `aegis workflow doctor`
+  - `aegis workflow trace`
+  - `aegis workflow export`
 - The default adopter path succeeds without Bedrock, A2A, or the OpenAI Agents SDK.
 - `ValidatorHook` is implemented as an internal engine capability in PR-08. It
   is not a public beta surface.
@@ -54,8 +54,8 @@ no further public-surface work proceeds until the default path is repaired.
 - Workflow adoption is always instance-scoped through `AIGC.open_session(...)`.
 - Invocation artifacts remain separate from workflow/session artifacts.
 - Public examples, docs, starters, presets, and demo code must use public
-  `aigc` imports only and must not import from `aigc._internal`.
-- `aigc workflow trace` and `aigc workflow export` shipped in PR-09.
+  `aegis` imports only and must not import from `aegis._internal`.
+- `aegis workflow trace` and `aegis workflow export` shipped in PR-09.
 - `AgentIdentity`, `AgentCapabilityManifest`, `BedrockTraceAdapter`,
   `A2AAdapter`, and `OpenAIAgentsAdapter` remain later-track surfaces.
 
@@ -63,12 +63,12 @@ no further public-surface work proceeds until the default path is repaired.
 
 - The regulated failure-and-fix proof now breaks the generated
   `workflow_example.py`, runs that same broken starter, diagnoses that same
-  directory with `aigc workflow doctor`, restores the same file, and reruns the
+  directory with `aegis workflow doctor`, restores the same file, and reruns the
   same starter to `COMPLETED`.
 - Demo failure diagnosis now uses a real generated starter directory instead of
   fabricating a diagnostic-only directory.
 - Workflow-step exceptions raised from public session methods are re-exported
-  from `aigc` and `aigc.errors`.
+  from `aegis` and `aegis.errors`.
 - Session post-call attempts now clean up session tokens deterministically on
   failure instead of leaving dead pending tokens behind.
 
@@ -76,8 +76,8 @@ no further public-surface work proceeds until the default path is repaired.
 
 PR-09 shipped:
 
-- `aigc workflow trace` — timeline reconstruction from workflow and invocation artifacts
-- `aigc workflow export` — operator and audit export modes
+- `aegis workflow trace` — timeline reconstruction from workflow and invocation artifacts
+- `aegis workflow export` — operator and audit export modes
 - operator-facing visibility and portability polish
 
 ## Next PR

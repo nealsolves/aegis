@@ -1,14 +1,14 @@
 """Tests for composition restriction semantics (M2 feature)."""
 import pytest
 
-from aigc._internal.policy_loader import (
+from aegis._internal.policy_loader import (
     _merge_policies,
     load_policy,
     COMPOSITION_INTERSECT,
     COMPOSITION_UNION,
     COMPOSITION_REPLACE,
 )
-from aigc._internal.errors import PolicyValidationError
+from aegis._internal.errors import PolicyValidationError
 
 
 # ── Default merge (backward compatible) ──────────────────────────

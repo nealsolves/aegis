@@ -1,6 +1,6 @@
 """Tests for audit artifact signing and verification (M2 feature)."""
 import pytest
-from aigc._internal.signing import (
+from aegis._internal.signing import (
     ArtifactSigner,
     HMACSigner,
     sign_artifact,

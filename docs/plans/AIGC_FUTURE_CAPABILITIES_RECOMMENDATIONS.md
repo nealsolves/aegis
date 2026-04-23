@@ -89,7 +89,7 @@ streaming:
 
 **The gap:** There is no structured way to know whether a given AIGC policy + session configuration covers the OWASP 2026 Top 10 for Agentic Applications. Compliance teams need this mapping, and it's a strong enterprise differentiator.
 
-**What it is:** A CLI command and a programmatic report: `aigc workflow audit --framework owasp-agentic-2026`. Analyzes an AIGC policy + session manifest against the 10 OWASP categories and returns a structured report: which categories are covered, partially covered, or not addressed, with specific policy fields that satisfy each control.
+**What it is:** A CLI command and a programmatic report: `aegis workflow audit --framework owasp-agentic-2026`. Analyzes an AIGC policy + session manifest against the 10 OWASP categories and returns a structured report: which categories are covered, partially covered, or not addressed, with specific policy fields that satisfy each control.
 
 **OWASP 2026 Top 10 coverage mapping (partial):**
 
@@ -106,7 +106,7 @@ streaming:
 | AA9 — Misleading Human Oversight | Partial: approval checkpoints | Quorum escalation (Tier 2) |
 | AA10 — Rogue Agent | None | Kill switch + trust decay (Tier 2) |
 
-**Format:** Machine-readable JSON + human-readable markdown. Fits the existing `aigc workflow export` pattern.
+**Format:** Machine-readable JSON + human-readable markdown. Fits the existing `aegis workflow export` pattern.
 
 ---
 
@@ -137,13 +137,13 @@ circuit_breakers:
 
 ---
 
-### 5. Policy Satisfiability Checker (`aigc policy check`)
+### 5. Policy Satisfiability Checker (`aegis policy check`)
 
 **The gap:** Complex policies can contain contradictions — a role permitted by one clause and denied by another, or a composed policy where extends + guards create an impossible combination. Currently AIGC validates schema syntax but not semantic satisfiability.
 
-**What it is:** A static analysis tool: `aigc policy check --satisfiability`. Uses constraint-solving techniques (reducible to a SAT/SMT problem at the scale of AIGC policies) to identify: unreachable role combinations, always-failing preconditions, guard conditions that can never evaluate true, composition results that are empty (no role can satisfy the policy).
+**What it is:** A static analysis tool: `aegis policy check --satisfiability`. Uses constraint-solving techniques (reducible to a SAT/SMT problem at the scale of AIGC policies) to identify: unreachable role combinations, always-failing preconditions, guard conditions that can never evaluate true, composition results that are empty (no role can satisfy the policy).
 
-**Why now:** Enterprises authoring complex policy hierarchies (`regulated-high-assurance` profile) need confidence their policies are not accidentally over-restrictive. This is also a strong sales and onboarding asset — `aigc policy check` as part of the adoption journey.
+**Why now:** Enterprises authoring complex policy hierarchies (`regulated-high-assurance` profile) need confidence their policies are not accidentally over-restrictive. This is also a strong sales and onboarding asset — `aegis policy check` as part of the adoption journey.
 
 **Fits AIGC boundary:** Pure static analysis. No runtime component. Lives in the CLI toolchain alongside `lint` and `doctor`.
 
@@ -234,17 +234,17 @@ trust_decay:
 
 ---
 
-### 9. Executable Policy from Natural Language (`aigc policy generate`)
+### 9. Executable Policy from Natural Language (`aegis policy generate`)
 
 **The gap:** Policy authoring in YAML is the biggest adoption friction point beyond the starter scaffolds. Enterprise teams have governance requirements written in natural language (legal documents, compliance frameworks, internal guidelines) and need to translate them into machine-enforceable AIGC policies. There is a 2025 arXiv paper showing exactly this pipeline — clause mining, evidence gating, SMT validation.
 
-**What it is:** A CLI command: `aigc policy generate --from "docs/compliance_requirements.md" --profile regulated-high-assurance`. Uses an LLM (the host provides the LLM — AIGC does not own model calls) to extract governance clauses and translates them into AIGC policy YAML. The generated policy is then validated by `aigc policy check` (satisfiability) and `aigc policy lint` (schema).
+**What it is:** A CLI command: `aegis policy generate --from "docs/compliance_requirements.md" --profile regulated-high-assurance`. Uses an LLM (the host provides the LLM — AIGC does not own model calls) to extract governance clauses and translates them into AIGC policy YAML. The generated policy is then validated by `aegis policy check` (satisfiability) and `aegis policy lint` (schema).
 
 **This is an inversion of AIGC's current model:** Instead of humans authoring policies and AIGC enforcing them, humans specify intent in natural language and AIGC generates the enforcement policy. The LLM is used for translation, not for governance decisions.
 
-**Critical constraint:** Generated policies are always reviewed and approved by a human before activation. `aigc policy generate` is a drafting tool, not an autonomous policy author. The generated policy goes through the same frozen validation chain as any hand-authored policy.
+**Critical constraint:** Generated policies are always reviewed and approved by a human before activation. `aegis policy generate` is a drafting tool, not an autonomous policy author. The generated policy goes through the same frozen validation chain as any hand-authored policy.
 
-**Why AIGC is well-positioned:** The existing policy DSL schema is the structured target format. The existing `aigc policy lint` and `aigc policy check` tools are the validation layer. The generation step is additive.
+**Why AIGC is well-positioned:** The existing policy DSL schema is the structured target format. The existing `aegis policy lint` and `aegis policy check` tools are the validation layer. The generation step is additive.
 
 ---
 
@@ -255,7 +255,7 @@ trust_decay:
 **What it is:** An `AgentAttestation` mechanism where agent deployments produce signed capability manifests at build time, and AIGC verifies the signature at session start before accepting participant binding. The signing uses the same `AuditSigner` interface already in AIGC (HMAC-SHA256, or asymmetric keys for higher assurance).
 
 **Flow:**
-1. At agent build time: `aigc agent attest --manifest participant.yaml --signing-key prod.key` → produces `participant.manifest.signed`
+1. At agent build time: `aegis agent attest --manifest participant.yaml --signing-key prod.key` → produces `participant.manifest.signed`
 2. At session start: `GovernanceSession` verifies the signature against the registered public key before accepting the participant
 3. If signature fails: participant binding is rejected (fail-closed)
 
@@ -269,7 +269,7 @@ trust_decay:
 
 **The gap:** AIGC currently produces audit artifacts per-instance. In distributed multi-agent systems — where multiple independent AIGC instances govern different agents in a shared workflow — there is no native mechanism to correlate evidence across instances into a unified audit trail.
 
-**What it is:** A `DistributedCorrelationId` model where workflows that span multiple AIGC instances share a `global_session_id` and `correlation_chain_id`. Each instance emits artifacts with these fields. Offline tooling (`aigc workflow merge-trace`) can reconstruct the full distributed audit trail from independently emitted artifacts.
+**What it is:** A `DistributedCorrelationId` model where workflows that span multiple AIGC instances share a `global_session_id` and `correlation_chain_id`. Each instance emits artifacts with these fields. Offline tooling (`aegis workflow merge-trace`) can reconstruct the full distributed audit trail from independently emitted artifacts.
 
 **Evidence additions:**
 ```json
@@ -291,7 +291,7 @@ trust_decay:
 
 **The gap:** Current validation proves a policy is syntactically valid and satisfiable. It cannot prove that a workflow policy, composed of multiple participant manifests and sequential steps, satisfies higher-level safety properties — e.g., "no sequence of allowed steps can result in a budget being exceeded" or "the approval step always precedes the write step."
 
-**What it is:** Integration with a lightweight formal verification layer (bounded model checking, reachability analysis over the workflow state machine). Policy authors declare invariants: `aigc policy verify --property "approval_precedes_write"`. The verifier enumerates reachable states and either produces a proof or a counterexample (a sequence of steps that violates the property).
+**What it is:** Integration with a lightweight formal verification layer (bounded model checking, reachability analysis over the workflow state machine). Policy authors declare invariants: `aegis policy verify --property "approval_precedes_write"`. The verifier enumerates reachable states and either produces a proof or a counterexample (a sequence of steps that violates the property).
 
 **This is genuinely cutting-edge:** Papers on formal AI safety verification (arXiv 2510.14133) note that formal assessment of multi-agent systems is critical as they move to high-stakes applications, but the tooling is nascent. AIGC's deterministic, declarative policy model is one of the few SDK designs actually amenable to formal analysis.
 
@@ -311,7 +311,7 @@ trust_decay:
 
 **The gap:** Compliance with the EU AI Act (high-risk provisions, August 2026), NIST AI RMF, SOC 2, and ISO 42001 (AI Management System) requires structured evidence. Currently AIGC's workflow export provides raw artifacts — a compliance analyst must manually map those to regulatory requirements.
 
-**What it is:** Structured compliance packs generated by `aigc audit export --compliance eu-ai-act` that produce:
+**What it is:** Structured compliance packs generated by `aegis audit export --compliance eu-ai-act` that produce:
 - A provenance manifest (every invocation, its policy, its outcome)
 - A risk assessment summary (aggregate risk scores, risk distribution, high-risk events)
 - A human oversight record (all approval checkpoints, their outcomes, and who approved)
@@ -351,7 +351,7 @@ Given the v1.0.0 GA milestone as the baseline, the recommended sequencing after 
 
 **v1.2 — Enterprise Adoption Acceleration:**
 - OWASP Agentic Top 10 Compliance Reporter
-- Policy Satisfiability Checker (`aigc policy check`)
+- Policy Satisfiability Checker (`aegis policy check`)
 - Agent Capability Attestation and Plugin Signing
 
 **v1.3 — Security Depth:**
@@ -360,7 +360,7 @@ Given the v1.0.0 GA milestone as the baseline, the recommended sequencing after 
 - Behavioral Trust Scoring and Trust Decay
 
 **v2.0 — Governance Intelligence:**
-- Executable Policy from Natural Language (`aigc policy generate`)
+- Executable Policy from Natural Language (`aegis policy generate`)
 - Distributed Audit Correlation
 - Regulatory Compliance Artifact Auto-Generation
 

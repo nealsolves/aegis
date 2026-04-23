@@ -10,12 +10,12 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from scenarios import SCENARIOS
-from aigc import (
+from aegis import (
     AIGC, AIGCError, HMACSigner, verify_artifact, verify_chain,
     validate_policy_dates, PolicyTestCase, PolicyTestSuite,
     PolicyValidationError,
 )
-from aigc.policy_loader import (
+from aegis.policy_loader import (
     merge_policies,
     COMPOSITION_INTERSECT,
     COMPOSITION_UNION,
@@ -119,15 +119,15 @@ def enforce(req: EnforceRequest):
     scenario = SCENARIOS[req.scenario_key]
     policy_path = str(SAMPLE_POLICIES_DIR / scenario["policy"])
 
-    aigc = AIGC(
+    aegis = AIGC(
         risk_config={"mode": req.mode, "threshold": 0.7, "factors": MEDICAL_FACTORS}
     )
     try:
         if req.flow == "split":
-            pre_call_result = aigc.enforce_pre_call(_build_pre_call_invocation(scenario, policy_path))
-            artifact = aigc.enforce_post_call(pre_call_result, scenario["output"])
+            pre_call_result = aegis.enforce_pre_call(_build_pre_call_invocation(scenario, policy_path))
+            artifact = aegis.enforce_post_call(pre_call_result, scenario["output"])
         else:
-            artifact = aigc.enforce(_build_full_invocation(scenario, policy_path))
+            artifact = aegis.enforce(_build_full_invocation(scenario, policy_path))
         return {"artifact": artifact, "error": None}
     except AIGCError as exc:
         artifact = getattr(exc, "audit_artifact", None)
@@ -155,10 +155,10 @@ def sign_enforce(req: SignEnforceRequest):
     except ValueError:
         raise HTTPException(status_code=422, detail="key must be a valid hex string (64 hex chars)")
     signer = HMACSigner(key=key_bytes)
-    aigc = AIGC(signer=signer)
+    aegis = AIGC(signer=signer)
 
     try:
-        artifact = aigc.enforce(_build_full_invocation(scenario, policy_path))
+        artifact = aegis.enforce(_build_full_invocation(scenario, policy_path))
         return {"artifact": artifact, "error": None}
     except AIGCError as exc:
         artifact = getattr(exc, "audit_artifact", None)
@@ -223,9 +223,9 @@ def chain_append(req: ChainAppendRequest):
     policy_path = str(SAMPLE_POLICIES_DIR / scenario["policy"])
     chain_id = req.chain_id or str(uuid.uuid4())
 
-    aigc = AIGC()
+    aegis = AIGC()
     try:
-        artifact = aigc.enforce(_build_full_invocation(scenario, policy_path))
+        artifact = aegis.enforce(_build_full_invocation(scenario, policy_path))
     except AIGCError as exc:
         artifact = getattr(exc, "audit_artifact", None)
         if not artifact:
@@ -490,13 +490,13 @@ def lab8_query_kb(req: Lab8KBRequest):
     scenario = SCENARIOS[req.scenario_key]
     policy_path = str(SAMPLE_POLICIES_DIR / scenario["policy"])
 
-    from aigc import ProvenanceGate
-    aigc_instance = AIGC(custom_gates=[ProvenanceGate()])
+    from aegis import ProvenanceGate
+    aegis_instance = AIGC(custom_gates=[ProvenanceGate()])
     invocation = _build_full_invocation(scenario, policy_path)
     source_ids = scenario["context"].get("provenance", {}).get("source_ids", [])
 
     try:
-        artifact = aigc_instance.enforce(invocation)
+        artifact = aegis_instance.enforce(invocation)
         return {"artifact": artifact, "source_ids": source_ids, "error": None}
     except AIGCError as exc:
         artifact = getattr(exc, "audit_artifact", None)
@@ -515,13 +515,13 @@ def lab9_compare(req: Lab9CompareRequest):
     policy_path = str(SAMPLE_POLICIES_DIR / scenario["policy"])
 
     # Governed path — strict mode exposes full policy impact (risk threshold enforced)
-    aigc_instance = AIGC(
+    aegis_instance = AIGC(
         risk_config={"mode": "strict", "threshold": 0.7, "factors": MEDICAL_FACTORS}
     )
     governed_artifact = None
     governed_error = None
     try:
-        governed_artifact = aigc_instance.enforce(_build_full_invocation(scenario, policy_path))
+        governed_artifact = aegis_instance.enforce(_build_full_invocation(scenario, policy_path))
     except AIGCError as exc:
         governed_artifact = getattr(exc, "audit_artifact", None)
         governed_error = str(exc)
@@ -562,13 +562,13 @@ def lab10_split_trace(req: Lab10SplitRequest):
     scenario = SCENARIOS[req.scenario_key]
     policy_path = str(SAMPLE_POLICIES_DIR / scenario["policy"])
 
-    aigc_instance = AIGC(
+    aegis_instance = AIGC(
         risk_config={"mode": req.mode, "threshold": 0.7, "factors": MEDICAL_FACTORS}
     )
     pre_invocation = _build_pre_call_invocation(scenario, policy_path)
 
     try:
-        pre_result = aigc_instance.enforce_pre_call(pre_invocation)
+        pre_result = aegis_instance.enforce_pre_call(pre_invocation)
     except AIGCError as exc:
         # Phase A blocked
         artifact = getattr(exc, "audit_artifact", None)
@@ -597,7 +597,7 @@ def lab10_split_trace(req: Lab10SplitRequest):
 
     # Phase B
     try:
-        artifact = aigc_instance.enforce_post_call(pre_result, scenario["output"])
+        artifact = aegis_instance.enforce_post_call(pre_result, scenario["output"])
     except AIGCError as exc:
         artifact = getattr(exc, "audit_artifact", None)
         meta = (artifact or {}).get("metadata", {})
@@ -655,12 +655,12 @@ def run_gate(req: GateRunRequest):
 
     scenario = SCENARIOS[req.scenario_key]
     policy_path = str(SAMPLE_POLICIES_DIR / scenario["policy"])
-    aigc = AIGC(custom_gates=[gate])
+    aegis = AIGC(custom_gates=[gate])
 
     invocation = _build_full_invocation(scenario, policy_path)
 
     try:
-        artifact = aigc.enforce(invocation)
+        artifact = aegis.enforce(invocation)
     except AIGCError as exc:
         artifact = getattr(exc, "audit_artifact", None)
 

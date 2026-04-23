@@ -6,15 +6,15 @@ run_gates() converts mutation attempts into CUSTOM_GATE_MUTATION failures.
 import pytest
 from typing import Any, Mapping
 
-from aigc._internal.gates import (
+from aegis._internal.gates import (
     EnforcementGate,
     GateResult,
     run_gates,
     INSERTION_POST_AUTHORIZATION,
     _ImmutableView,
 )
-from aigc._internal.enforcement import AIGC
-from aigc._internal.errors import GovernanceViolationError
+from aegis._internal.enforcement import AIGC
+from aegis._internal.errors import GovernanceViolationError
 
 
 # ── _ImmutableView unit tests ────────────────────────────────────
@@ -244,9 +244,9 @@ VALID_INVOCATION = {
 
 def test_aigc_mutating_gate_produces_governance_failure():
     """AIGC with a mutating gate must produce a FAIL enforcement result."""
-    aigc = AIGC(custom_gates=[PolicyMutatingGate()])
+    aegis = AIGC(custom_gates=[PolicyMutatingGate()])
     with pytest.raises(GovernanceViolationError) as exc_info:
-        aigc.enforce(VALID_INVOCATION)
+        aegis.enforce(VALID_INVOCATION)
     exc = exc_info.value
     artifact = exc.audit_artifact
     assert artifact is not None

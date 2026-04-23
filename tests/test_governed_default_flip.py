@@ -15,8 +15,8 @@ import warnings
 
 import pytest
 
-from aigc._internal.decorators import governed
-from aigc._internal.errors import GovernanceViolationError
+from aegis._internal.decorators import governed
+from aegis._internal.errors import GovernanceViolationError
 
 POLICY = "tests/golden_replays/golden_policy_v1.yaml"
 PROVIDER = "anthropic"

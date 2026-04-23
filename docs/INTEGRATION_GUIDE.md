@@ -40,7 +40,7 @@ The SDK enforces this boundary:
 ### Direct enforcement
 
 ```python
-from aigc import enforce_invocation
+from aegis import enforce_invocation
 
 response = llm.generate(messages)
 
@@ -62,7 +62,7 @@ audit = enforce_invocation({
 ### Decorator pattern
 
 ```python
-from aigc import governed
+from aegis import governed
 
 @governed(
     policy_file="policies/planner.yaml",
@@ -79,7 +79,7 @@ async def plan_investigation(input_data: dict, context: dict) -> dict:
 For async applications (FastAPI, agentic frameworks):
 
 ```python
-from aigc import enforce_invocation_async
+from aegis import enforce_invocation_async
 
 audit = await enforce_invocation_async(invocation)
 ```
@@ -163,7 +163,7 @@ The SDK generates audit artifacts. You choose where they go.
 ### Built-in sinks
 
 ```python
-from aigc import JsonFileAuditSink, CallbackAuditSink, set_audit_sink
+from aegis import JsonFileAuditSink, CallbackAuditSink, set_audit_sink
 
 # File sink — append one JSON line per enforcement
 set_audit_sink(JsonFileAuditSink("audit.jsonl"))
@@ -178,7 +178,7 @@ Subclass `AuditSink` for domain-specific storage (SQLite, DynamoDB,
 message queues):
 
 ```python
-from aigc import AuditSink
+from aegis import AuditSink
 
 class MyDatabaseSink(AuditSink):
     def emit(self, artifact: dict) -> None:
@@ -260,7 +260,7 @@ The invocation dict is identical to `enforce_invocation` **except that `output`
 is omitted** — it is not yet available:
 
 ```python
-from aigc import enforce_pre_call, enforce_post_call
+from aegis import enforce_pre_call, enforce_post_call
 
 pre_call_result = enforce_pre_call({
     "policy_file": "policies/planner.yaml",
@@ -311,7 +311,7 @@ phase-A authorization from being reused across multiple model outputs.
 Since v0.3.3, `@governed` uses split enforcement by default:
 
 ```python
-from aigc import governed
+from aegis import governed
 
 @governed(
     policy_file="policies/planner.yaml",
@@ -353,7 +353,7 @@ When `provenance` is supplied to `generate_audit_artifact()`, it appears as a
 top-level key in the emitted artifact:
 
 ```python
-from aigc.audit import generate_audit_artifact
+from aegis.audit import generate_audit_artifact
 
 artifact = generate_audit_artifact(
     invocation,
@@ -395,7 +395,7 @@ artifact, so `AuditLineage` can traverse it.
 Pass provenance in the invocation context dict:
 
 ```python
-from aigc import AIGC, ProvenanceGate
+from aegis import AIGC, ProvenanceGate
 
 invocation = {
     "policy_file": "policies/my_policy.yaml",
@@ -412,8 +412,8 @@ invocation = {
     },
 }
 
-aigc = AIGC(custom_gates=[ProvenanceGate()])
-audit = aigc.enforce(invocation)
+aegis = AIGC(custom_gates=[ProvenanceGate()])
+audit = aegis.enforce(invocation)
 # audit["provenance"]["source_ids"] == ["doc-a", "doc-b"]
 ```
 
@@ -443,7 +443,7 @@ the SHA-256 checksums of prior artifacts this invocation was derived from.
 ### Loading a trail
 
 ```python
-from aigc import AuditLineage
+from aegis import AuditLineage
 
 lineage = AuditLineage.from_jsonl("audit_trail.jsonl")
 ```
@@ -491,11 +491,11 @@ pass that key as a `derived_from_audit_checksums` entry.
 
 ### CLI lineage mode
 
-Pass `--lineage` to `aigc compliance export` to append a lineage analysis section
+Pass `--lineage` to `aegis compliance export` to append a lineage analysis section
 alongside the standard compliance statistics:
 
 ```bash
-aigc compliance export --input audit_trail.jsonl --output report.json --lineage
+aegis compliance export --input audit_trail.jsonl --output report.json --lineage
 ```
 
 The report gains a `"lineage"` key:
@@ -544,7 +544,7 @@ pair). It does **not** modify enforcement — it exposes graduated trust signals
 ### Basic usage
 
 ```python
-from aigc import RiskHistory
+from aegis import RiskHistory
 
 history = RiskHistory("planner-workflow")
 history.record(0.72)
@@ -560,7 +560,7 @@ print(history.scores)        # (0.72, 0.58, 0.41)
 ### Integration with `compute_risk_score`
 
 ```python
-from aigc import RiskHistory, compute_risk_score
+from aegis import RiskHistory, compute_risk_score
 
 history = RiskHistory("planner:summarize")
 
@@ -672,7 +672,7 @@ The `provenance` object is optional. Omitting it does not affect enforcement.
 Reconstruct a DAG of related invocations from a JSONL audit trail:
 
 ```python
-from aigc import AuditLineage
+from aegis import AuditLineage
 
 lineage = AuditLineage.from_jsonl("audit_trail.jsonl")
 roots = lineage.roots()           # artifacts with no declared parents
@@ -688,7 +688,7 @@ orphans = lineage.orphans()       # reference missing parents
 Block invocations that lack `source_ids` in their provenance context:
 
 ```python
-from aigc import AIGC, ProvenanceGate
+from aegis import AIGC, ProvenanceGate
 
 sdk = AIGC(custom_gates=[ProvenanceGate()])
 audit = sdk.enforce(invocation)  # fails with PROVENANCE_MISSING if source_ids absent
@@ -699,7 +699,7 @@ audit = sdk.enforce(invocation)  # fails with PROVENANCE_MISSING if source_ids a
 Track risk trends over time for a named entity:
 
 ```python
-from aigc import RiskHistory, TRAJECTORY_DEGRADING
+from aegis import RiskHistory, TRAJECTORY_DEGRADING
 
 # entity_id is required; stability_band is optional (default 0.05)
 history = RiskHistory("session-42")

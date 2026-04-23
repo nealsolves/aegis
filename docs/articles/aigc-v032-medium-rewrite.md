@@ -145,7 +145,7 @@ This policy says three things:
 And the corresponding enforcement call can be shown just as simply:
 
 ```python
-from aigc import enforce_invocation
+from aegis import enforce_invocation
 
 artifact = enforce_invocation({
     "policy_file": "policies/hello.yaml",
@@ -213,7 +213,7 @@ The organization can show not just that it detected a violation, but that it **n
 The implementation is straightforward enough to explain in a few lines:
 
 ```python
-from aigc import enforce_pre_call, enforce_post_call
+from aegis import enforce_pre_call, enforce_post_call
 
 pre = enforce_pre_call(invocation)
 output = model.generate(invocation["input"])

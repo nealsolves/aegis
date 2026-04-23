@@ -629,9 +629,9 @@ def render_beta(theme: Theme) -> str:
         [
             rect(60, 1028, 1480, 100, "ops-panel", rx=24),
             section_text(84, 1052, "BETA ADOPTION + OPERATOR SURFACES"),
-            node(92, 1060, 238, 46, "node-ops", ["aigc workflow init"], rx=14),
-            node(356, 1060, 238, 46, "node-ops", ["aigc workflow lint"], rx=14),
-            node(620, 1060, 238, 46, "node-ops", ["aigc workflow doctor"], rx=14),
+            node(92, 1060, 238, 46, "node-ops", ["aegis workflow init"], rx=14),
+            node(356, 1060, 238, 46, "node-ops", ["aegis workflow lint"], rx=14),
+            node(620, 1060, 238, 46, "node-ops", ["aegis workflow doctor"], rx=14),
             text_box(
                 888,
                 1054,

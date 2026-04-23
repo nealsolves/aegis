@@ -2,7 +2,7 @@
 import warnings
 import pytest
 
-from aigc._internal.sinks import (
+from aegis._internal.sinks import (
     set_sink_failure_mode,
     get_sink_failure_mode,
 )

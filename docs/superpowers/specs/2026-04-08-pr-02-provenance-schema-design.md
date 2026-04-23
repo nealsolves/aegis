@@ -55,7 +55,7 @@ Out of scope:
 
 ---
 
-## Section 1: Schema (`schemas/audit_artifact.schema.json` + `aigc/schemas/audit_artifact.schema.json`)
+## Section 1: Schema (`schemas/audit_artifact.schema.json` + `aegis/schemas/audit_artifact.schema.json`)
 
 ### Version handling
 
@@ -64,13 +64,13 @@ with no enum constraint — the schema does not pin a version literal, so v1.3
 artifacts without a `provenance` key remain valid under v1.4.
 
 The version bump lives only in `AUDIT_SCHEMA_VERSION = "1.4"` in
-`aigc/_internal/audit.py`. The runtime emits `"1.4"`; the schema accepts any
+`aegis/_internal/audit.py`. The runtime emits `"1.4"`; the schema accepts any
 string.
 
 Both schema copies must be updated identically:
 
 - `schemas/audit_artifact.schema.json`
-- `aigc/schemas/audit_artifact.schema.json`
+- `aegis/schemas/audit_artifact.schema.json`
 
 ### New `provenance` property
 
@@ -132,7 +132,7 @@ Added as a top-level property, not in `required`:
 
 ---
 
-## Section 2: Runtime (`aigc/_internal/audit.py`)
+## Section 2: Runtime (`aegis/_internal/audit.py`)
 
 ### Constant
 
@@ -245,9 +245,9 @@ will reach sinks unchanged. Enforcement-layer validation is deferred to PR-05.
 
 | File | Type |
 |------|------|
-| `aigc/_internal/audit.py` | modify |
+| `aegis/_internal/audit.py` | modify |
 | `schemas/audit_artifact.schema.json` | modify |
-| `aigc/schemas/audit_artifact.schema.json` | modify |
+| `aegis/schemas/audit_artifact.schema.json` | modify |
 | `tests/test_audit_provenance.py` | new |
 | `tests/test_audit_artifact_contract.py` | modify |
 | `tests/test_audit_artifact_split_metadata.py` | modify |

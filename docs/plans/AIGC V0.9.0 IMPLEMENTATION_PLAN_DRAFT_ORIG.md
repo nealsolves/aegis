@@ -63,8 +63,8 @@ Advanced workflow DSL authoring, Bedrock normalization, A2A normalization, and r
 
 ### Default first-adopter journey
 
-1. Install `aigc` in a fresh Python environment.
-2. Run `aigc workflow init` and select either `minimal` or `standard`.
+1. Install `aegis` in a fresh Python environment.
+2. Run `aegis workflow init` and select either `minimal` or `standard`.
 3. Generate starter policy and workflow assets without hand-authoring advanced manifests.
 4. Copy a starter `2`-step or `3`-step workflow into a local host application that already owns orchestration and provider calls.
 5. Open a session through `AIGC.open_session(...)`.
@@ -79,7 +79,7 @@ Advanced workflow DSL authoring, Bedrock normalization, A2A normalization, and r
    - missing required evidence
    - malformed or stale session token
    - scaffold or setup mistake
-8. Run `aigc workflow lint` for static issues and `aigc workflow doctor` for runtime or evidence issues.
+8. Run `aegis workflow lint` for static issues and `aegis workflow doctor` for runtime or evidence issues.
 9. Read a plain-English explanation plus a stable machine-readable reason code.
 10. Fix the problem using public docs and starter guidance.
 11. Re-run successfully.
@@ -119,7 +119,7 @@ Advanced workflow DSL authoring, Bedrock normalization, A2A normalization, and r
 - Invocation-only users keep working on supported APIs.
 - Workflow adoption remains instance-scoped through `AIGC.open_session(...)`.
 - `v0.9.0` does not introduce a new module-level `open_session(...)` public API.
-- Public examples, quickstarts, starter assets, presets, and demo code must use only public APIs and must never import from `aigc._internal`.
+- Public examples, quickstarts, starter assets, presets, and demo code must use only public APIs and must never import from `aegis._internal`.
 - Hand-authored workflow DSL is supported but treated as advanced mode.
 - Starter packs, init scaffolds, and thin presets are the default adoption path.
 - Thin presets must stay honest. They compile to ordinary session plus policy plus manifest behavior and must not hide host orchestration ownership or create alternate enforcement semantics.
@@ -302,12 +302,12 @@ Additional rules:
 - Goal: freeze the default adopter experience before too much surface area ossifies.
 - Implement:
   - Freeze the default CLI and starter surface for:
-    - `aigc policy init`
-    - `aigc workflow init`
-    - `aigc workflow lint`
-    - `aigc workflow doctor`
-    - `aigc workflow trace`
-    - `aigc workflow export`
+    - `aegis policy init`
+    - `aegis workflow init`
+    - `aegis workflow lint`
+    - `aegis workflow doctor`
+    - `aegis workflow trace`
+    - `aegis workflow export`
   - Freeze the default scaffold profiles:
     - `minimal`
     - `standard`
@@ -358,7 +358,7 @@ Additional rules:
 - Branch: `feat/v0.9-05-starters-and-presets`
 - Goal: make the default path copy-pasteable before richer engine work dominates the release.
 - Implement:
-  - Ship `aigc workflow init` and `aigc policy init` scaffolds for `minimal`, `standard`, and `regulated-high-assurance`.
+  - Ship `aegis workflow init` and `aegis policy init` scaffolds for `minimal`, `standard`, and `regulated-high-assurance`.
   - Ship at least two copy-paste starter examples that run against the Step `4` session flow.
   - Ship starter workflows for:
     - local multi-step review flow
@@ -382,8 +382,8 @@ Additional rules:
 - Branch: `feat/v0.9-06-doctor-and-lint`
 - Goal: make first failures understandable before advanced workflow surface expands.
 - Implement:
-  - Add `aigc workflow lint` for static validation of schema, transitions, bindings, budgets, starter integrity, and public-import safety.
-  - Add `aigc workflow doctor` for runtime and evidence diagnosis.
+  - Add `aegis workflow lint` for static validation of schema, transitions, bindings, budgets, starter integrity, and public-import safety.
+  - Add `aegis workflow doctor` for runtime and evidence diagnosis.
   - Emit stable machine-readable reason codes plus plain-English messages.
   - Cover at minimum:
     - identity mismatch
@@ -454,7 +454,7 @@ Additional rules:
 - Branch: `feat/v0.9-09-exports-and-ops`
 - Goal: round out workflow visibility and portability after the core adoption path and engine are stable.
 - Implement:
-  - Add `aigc workflow trace` and `aigc workflow export`.
+  - Add `aegis workflow trace` and `aegis workflow export`.
   - Reconstruct workflow timelines from workflow artifacts plus invocation evidence.
   - Support operator and audit export modes with integrity metadata, sink outcomes, and verification guidance.
   - Surface sink failures explicitly and preserve fail-closed semantics where policy marks sinks as required.
@@ -629,7 +629,7 @@ Documentation is ordered by first-adopter priority, not by architecture category
 
 | Scenario | Required outcome |
 | --- | --- |
-| Fresh install -> minimal workflow scaffold -> first PASS | A clean environment can install base `aigc`, run `workflow init`, paste the starter into a local host app, and produce a passing workflow plus correlated evidence. |
+| Fresh install -> minimal workflow scaffold -> first PASS | A clean environment can install base `aegis`, run `workflow init`, paste the starter into a local host app, and produce a passing workflow plus correlated evidence. |
 | Fresh install -> standard workflow scaffold -> first PASS | A clean environment can complete the standard path without Bedrock or A2A and without hand-authoring advanced manifests. |
 | Broken config -> doctor identifies exact issue | `workflow doctor` emits a stable reason code, a plain-English blocker explanation, and a next-action hint. |
 | Invalid transition -> lint or doctor explains why | The user is told what transition is invalid, what rule blocked it, and what valid next step is expected. |
@@ -699,7 +699,7 @@ Later:
 - At least one failure-and-fix path is tested end to end and validated for clarity.
 - `workflow doctor` and `workflow lint` provide stable reason codes and plain-English explanations for common first-adopter failures.
 - The docs-to-working-app path succeeds without internal-code reading or manual advanced manifest authoring.
-- `aigc policy init`, `aigc workflow init`, `aigc workflow lint`, `aigc workflow doctor`, `aigc workflow trace`, and `aigc workflow export` pass snapshot and UX validation.
+- `aegis policy init`, `aegis workflow init`, `aegis workflow lint`, `aegis workflow doctor`, `aegis workflow trace`, and `aegis workflow export` pass snapshot and UX validation.
 - Public examples, presets, starter packs, docs snippets, and demo code pass `_internal` import boundary checks.
 - Invocation-only migration is documented, tested, and works without rewrite.
 - Workflow artifact schema, invocation-correlation metadata, and backward compatibility for invocation-only users are locked.

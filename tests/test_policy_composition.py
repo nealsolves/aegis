@@ -1,8 +1,8 @@
 """Tests for policy composition via extends."""
 
 import pytest
-from aigc._internal.policy_loader import load_policy
-from aigc._internal.errors import PolicyLoadError
+from aegis._internal.policy_loader import load_policy
+from aegis._internal.errors import PolicyLoadError
 
 
 def test_extends_merges_arrays():

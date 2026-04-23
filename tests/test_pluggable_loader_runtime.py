@@ -11,9 +11,9 @@ import asyncio
 import pytest
 from typing import Any
 
-from aigc._internal.enforcement import AIGC
-from aigc._internal.policy_loader import PolicyLoaderBase, PolicyCache
-from aigc._internal.errors import PolicyLoadError, GovernanceViolationError
+from aegis._internal.enforcement import AIGC
+from aegis._internal.policy_loader import PolicyLoaderBase, PolicyCache
+from aegis._internal.errors import PolicyLoadError, GovernanceViolationError
 
 
 # ── Custom loader implementations ────────────────────────────────
@@ -70,9 +70,9 @@ def test_aigc_enforce_uses_custom_loader():
     'my-policy-id' has no corresponding file on disk.
     """
     loader = InMemoryPolicyLoader({"my-policy-id": VALID_POLICY})
-    aigc = AIGC(policy_loader=loader)
+    aegis = AIGC(policy_loader=loader)
 
-    artifact = aigc.enforce(VALID_INVOCATION)
+    artifact = aegis.enforce(VALID_INVOCATION)
 
     assert artifact["enforcement_result"] == "PASS"
     assert loader.load_count >= 1
@@ -84,9 +84,9 @@ def test_aigc_enforce_uses_custom_loader():
 def test_pass_artifact_has_correct_fields():
     """The returned audit artifact on PASS has the standard structure."""
     loader = InMemoryPolicyLoader({"my-policy-id": VALID_POLICY})
-    aigc = AIGC(policy_loader=loader)
+    aegis = AIGC(policy_loader=loader)
 
-    artifact = aigc.enforce(VALID_INVOCATION)
+    artifact = aegis.enforce(VALID_INVOCATION)
 
     assert artifact["enforcement_result"] == "PASS"
     assert artifact["policy_version"] == "1.0"
@@ -120,10 +120,10 @@ def test_custom_loader_roles_are_enforced():
         "pre_conditions": {"required": {"prompt": {"type": "string"}}},
     }
     loader = InMemoryPolicyLoader({"role-check": policy_with_roles})
-    aigc = AIGC(policy_loader=loader)
+    aegis = AIGC(policy_loader=loader)
 
     inv = _make_invocation(policy_file="role-check", role="analyst")
-    artifact = aigc.enforce(inv)
+    artifact = aegis.enforce(inv)
     assert artifact["enforcement_result"] == "PASS"
     assert artifact["role"] == "analyst"
 
@@ -141,12 +141,12 @@ def test_custom_loader_wrong_role_fails():
         "pre_conditions": {"required": {"prompt": {"type": "string"}}},
     }
     loader = InMemoryPolicyLoader({"strict-roles": policy_no_executor})
-    aigc = AIGC(policy_loader=loader)
+    aegis = AIGC(policy_loader=loader)
 
     inv = _make_invocation(policy_file="strict-roles", role="executor")
 
     with pytest.raises(GovernanceViolationError) as exc_info:
-        aigc.enforce(inv)
+        aegis.enforce(inv)
 
     # The exception must carry an audit artifact (fail-closed)
     assert exc_info.value.audit_artifact is not None
@@ -161,14 +161,14 @@ def test_custom_loader_caching():
     is called only once for repeated enforcements.
     """
     loader = InMemoryPolicyLoader({"cached-policy": VALID_POLICY})
-    aigc = AIGC(policy_loader=loader)
+    aegis = AIGC(policy_loader=loader)
 
-    artifact1 = aigc.enforce(VALID_INVOCATION | {"policy_file": "cached-policy"})
+    artifact1 = aegis.enforce(VALID_INVOCATION | {"policy_file": "cached-policy"})
     assert artifact1["enforcement_result"] == "PASS"
 
     initial_load_count = loader.load_count
 
-    artifact2 = aigc.enforce(VALID_INVOCATION | {"policy_file": "cached-policy"})
+    artifact2 = aegis.enforce(VALID_INVOCATION | {"policy_file": "cached-policy"})
     assert artifact2["enforcement_result"] == "PASS"
 
     # Second call should hit cache — load_count must not increase
@@ -186,15 +186,15 @@ def test_no_filesystem_path_required():
     arbitrary_refs = [
         "org/team/policy-v3",
         "db://policies/12345",
-        "urn:aigc:policy:production:latest",
+        "urn:aegis:policy:production:latest",
         "just-a-slug",
     ]
 
     for ref in arbitrary_refs:
         loader = InMemoryPolicyLoader({ref: VALID_POLICY})
-        aigc = AIGC(policy_loader=loader)
+        aegis = AIGC(policy_loader=loader)
         inv = _make_invocation(policy_file=ref)
-        artifact = aigc.enforce(inv)
+        artifact = aegis.enforce(inv)
         assert artifact["enforcement_result"] == "PASS", (
             f"Failed for policy_file={ref!r}"
         )
@@ -208,12 +208,12 @@ def test_deterministic_checksums_with_custom_loader():
     checksums across multiple enforcement runs.
     """
     loader = InMemoryPolicyLoader({"det-policy": VALID_POLICY})
-    aigc = AIGC(policy_loader=loader)
+    aegis = AIGC(policy_loader=loader)
 
     inv = _make_invocation(policy_file="det-policy")
 
-    artifact1 = aigc.enforce(inv)
-    artifact2 = aigc.enforce(inv)
+    artifact1 = aegis.enforce(inv)
+    artifact2 = aegis.enforce(inv)
 
     assert artifact1["input_checksum"] == artifact2["input_checksum"]
     assert artifact1["output_checksum"] == artifact2["output_checksum"]
@@ -229,10 +229,10 @@ async def test_async_enforce_uses_custom_loader():
     producing a PASS artifact without filesystem access.
     """
     loader = InMemoryPolicyLoader({"async-policy": VALID_POLICY})
-    aigc = AIGC(policy_loader=loader)
+    aegis = AIGC(policy_loader=loader)
 
     inv = _make_invocation(policy_file="async-policy")
-    artifact = await aigc.enforce_async(inv)
+    artifact = await aegis.enforce_async(inv)
 
     assert artifact["enforcement_result"] == "PASS"
     assert artifact["policy_version"] == "1.0"
@@ -246,12 +246,12 @@ async def test_async_enforce_custom_loader_failure():
     for a missing policy produces a FAIL artifact.
     """
     loader = InMemoryPolicyLoader({})  # No policies registered
-    aigc = AIGC(policy_loader=loader)
+    aegis = AIGC(policy_loader=loader)
 
     inv = _make_invocation(policy_file="nonexistent")
 
     with pytest.raises(PolicyLoadError, match="Not found"):
-        await aigc.enforce_async(inv)
+        await aegis.enforce_async(inv)
 
 
 @pytest.mark.asyncio
@@ -260,12 +260,12 @@ async def test_async_and_sync_produce_same_stable_fields():
     invocation must produce identical stable audit fields.
     """
     loader = InMemoryPolicyLoader({"parity-policy": VALID_POLICY})
-    aigc = AIGC(policy_loader=loader)
+    aegis = AIGC(policy_loader=loader)
 
     inv = _make_invocation(policy_file="parity-policy")
 
-    sync_artifact = aigc.enforce(inv)
-    async_artifact = await aigc.enforce_async(inv)
+    sync_artifact = aegis.enforce(inv)
+    async_artifact = await aegis.enforce_async(inv)
 
     stable_fields = [
         "audit_schema_version",
@@ -294,12 +294,12 @@ def test_custom_loader_not_found_produces_fail_artifact():
     still produces a FAIL audit artifact attached to the exception.
     """
     loader = InMemoryPolicyLoader({})
-    aigc = AIGC(policy_loader=loader)
+    aegis = AIGC(policy_loader=loader)
 
     inv = _make_invocation(policy_file="missing-policy")
 
     with pytest.raises(PolicyLoadError) as exc_info:
-        aigc.enforce(inv)
+        aegis.enforce(inv)
 
     assert exc_info.value.audit_artifact is not None
     assert exc_info.value.audit_artifact["enforcement_result"] == "FAIL"

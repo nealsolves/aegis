@@ -3,8 +3,8 @@ PR-08 approval checkpoint tests: auditable pause/resume metadata.
 """
 from __future__ import annotations
 import pytest
-from aigc._internal.enforcement import AIGC
-from aigc._internal.errors import SessionStateError
+from aegis._internal.enforcement import AIGC
+from aegis._internal.errors import SessionStateError
 
 POLICY = "tests/golden_replays/golden_policy_v1.yaml"
 

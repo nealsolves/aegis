@@ -7,7 +7,7 @@ alongside the existing unified enforce_invocation() path.
 
 import pytest
 
-from aigc._internal.enforcement import (
+from aegis._internal.enforcement import (
     PreCallResult,
     enforce_invocation,
     enforce_post_call,
@@ -15,7 +15,7 @@ from aigc._internal.enforcement import (
     enforce_pre_call_async,
     enforce_post_call_async,
 )
-from aigc._internal.errors import (
+from aegis._internal.errors import (
     GovernanceViolationError,
     InvocationValidationError,
     SchemaValidationError,
@@ -273,7 +273,7 @@ class TestUnifiedBackwardCompat:
         Per design spec Section 11.2, enforcement_mode must be set on all
         unified mode artifacts, including FAIL artifacts.
         """
-        from aigc._internal.errors import GovernanceViolationError
+        from aegis._internal.errors import GovernanceViolationError
 
         inv = _unified_invocation()
         inv["role"] = "unauthorized_role"  # triggers role validation failure

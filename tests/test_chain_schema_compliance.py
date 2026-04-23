@@ -10,10 +10,10 @@ import json
 
 from jsonschema import validate as jsonschema_validate
 
-from aigc._internal.audit import generate_audit_artifact
-from aigc._internal.audit_chain import AuditChain
-from aigc._internal.cli import main
-from aigc._internal.policy_loader import SCHEMAS_DIR
+from aegis._internal.audit import generate_audit_artifact
+from aegis._internal.audit_chain import AuditChain
+from aegis._internal.cli import main
+from aegis._internal.policy_loader import SCHEMAS_DIR
 
 # ---------------------------------------------------------------------------
 # Shared helpers

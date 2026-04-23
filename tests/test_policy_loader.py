@@ -5,8 +5,8 @@ from unittest.mock import patch, mock_open
 
 import pytest
 
-from aigc._internal.errors import PolicyLoadError, PolicyValidationError
-from aigc._internal.policy_loader import (
+from aegis._internal.errors import PolicyLoadError, PolicyValidationError
+from aegis._internal.policy_loader import (
     load_policy,
     load_policy_async,
     _path_to_pointer,
@@ -126,7 +126,7 @@ def test_resolve_policy_schema_path_uses_dsl_when_present():
 def test_resolve_policy_schema_path_falls_back_to_legacy(tmp_path):
     """_resolve_policy_schema_path falls back to legacy schema when DSL is absent (lines 38-44)."""
     with patch(
-        "aigc._internal.policy_loader.POLICY_DSL_SCHEMA_PATH",
+        "aegis._internal.policy_loader.POLICY_DSL_SCHEMA_PATH",
         tmp_path / "nonexistent_dsl.schema.json",
     ):
         schema_path = _resolve_policy_schema_path()
@@ -137,11 +137,11 @@ def test_resolve_policy_schema_path_raises_when_neither_schema_exists(tmp_path):
     """_resolve_policy_schema_path raises when both schemas are absent (lines 39-42)."""
     with (
         patch(
-            "aigc._internal.policy_loader.POLICY_DSL_SCHEMA_PATH",
+            "aegis._internal.policy_loader.POLICY_DSL_SCHEMA_PATH",
             tmp_path / "missing_dsl.schema.json",
         ),
         patch(
-            "aigc._internal.policy_loader.LEGACY_POLICY_SCHEMA_PATH",
+            "aegis._internal.policy_loader.LEGACY_POLICY_SCHEMA_PATH",
             tmp_path / "missing_legacy.schema.json",
         ),
     ):
@@ -164,7 +164,7 @@ def test_load_policy_schema_wrong_draft(tmp_path):
     bad_schema_file = tmp_path / "bad.schema.json"
     bad_schema_file.write_text(json.dumps(bad_schema))
 
-    with patch("aigc._internal.policy_loader.POLICY_DSL_SCHEMA_PATH", bad_schema_file):
+    with patch("aegis._internal.policy_loader.POLICY_DSL_SCHEMA_PATH", bad_schema_file):
         with pytest.raises(PolicyLoadError) as exc_info:
             load_policy("tests/golden_replays/golden_policy_v1.yaml")
     assert "Draft-07" in str(exc_info.value)
@@ -172,7 +172,7 @@ def test_load_policy_schema_wrong_draft(tmp_path):
 
 # --- PolicyCache tests ---
 
-from aigc._internal.policy_loader import PolicyCache
+from aegis._internal.policy_loader import PolicyCache
 
 GOLDEN_POLICY = "tests/golden_replays/golden_policy_v1.yaml"
 

@@ -9,15 +9,15 @@ from __future__ import annotations
 
 import pytest
 
-from aigc._internal.enforcement import (
+from aegis._internal.enforcement import (
     AIGC,
     enforce_invocation,
     enforce_post_call,
     enforce_pre_call,
     enforce_pre_call_async,
 )
-from aigc._internal.errors import CustomGateViolationError
-from aigc._internal.gates import EnforcementGate, GateResult
+from aegis._internal.errors import CustomGateViolationError
+from aegis._internal.gates import EnforcementGate, GateResult
 
 GOLDEN_POLICY = "tests/golden_replays/golden_policy_v1.yaml"
 

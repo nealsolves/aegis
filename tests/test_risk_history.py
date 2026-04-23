@@ -1,12 +1,12 @@
 """Tests for RiskHistory advisory utility."""
 import pytest
-from aigc._internal.risk_history import (
+from aegis._internal.risk_history import (
     RiskHistory,
     TRAJECTORY_IMPROVING,
     TRAJECTORY_STABLE,
     TRAJECTORY_DEGRADING,
 )
-from aigc._internal.risk_scoring import RiskScore
+from aegis._internal.risk_scoring import RiskScore
 
 
 # ── Construction ──────────────────────────────────────────────────────────────

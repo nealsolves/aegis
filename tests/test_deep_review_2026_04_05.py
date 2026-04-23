@@ -11,20 +11,20 @@ from __future__ import annotations
 
 import pytest
 
-from aigc._internal.enforcement import (
+from aegis._internal.enforcement import (
     AIGC,
     enforce_invocation,
     enforce_post_call,
     enforce_pre_call,
     enforce_pre_call_async,
 )
-from aigc._internal.errors import InvocationValidationError
-from aigc._internal.sinks import (
+from aegis._internal.errors import InvocationValidationError
+from aegis._internal.sinks import (
     CallbackAuditSink,
     get_audit_sink,
     set_audit_sink,
 )
-from aigc._internal.decorators import governed
+from aegis._internal.decorators import governed
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -390,7 +390,7 @@ class TestF03DecoratorFunctionFailureArtifact:
             call_count[0] += 1
             raise RuntimeError("should never reach here")
 
-        from aigc._internal.errors import GovernanceViolationError
+        from aegis._internal.errors import GovernanceViolationError
         with pytest.raises(GovernanceViolationError):
             fn(self.VALID_INPUT, self.VALID_CONTEXT)
 

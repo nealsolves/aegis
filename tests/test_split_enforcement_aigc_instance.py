@@ -8,8 +8,8 @@ rather than global state.
 
 import pytest
 
-from aigc._internal.enforcement import AIGC, PreCallResult
-from aigc._internal.sinks import CallbackAuditSink
+from aegis._internal.enforcement import AIGC, PreCallResult
+from aegis._internal.sinks import CallbackAuditSink
 
 
 # ── Helpers ──────────────────────────────────────────────────────
@@ -41,16 +41,16 @@ def _valid_output():
 
 def test_aigc_enforce_pre_call_uses_policy_cache():
     """Instance enforce_pre_call() uses instance policy cache on repeat calls."""
-    aigc = AIGC()
+    aegis = AIGC()
     inv = _pre_call_invocation()
 
     # First call — loads and caches the policy
-    pre1 = aigc.enforce_pre_call(inv)
+    pre1 = aegis.enforce_pre_call(inv)
     assert isinstance(pre1, PreCallResult)
     assert pre1.policy_file == GOLDEN_POLICY
 
     # Second call — should succeed using the cached policy
-    pre2 = aigc.enforce_pre_call(inv)
+    pre2 = aegis.enforce_pre_call(inv)
     assert isinstance(pre2, PreCallResult)
     assert pre2.policy_file == GOLDEN_POLICY
 
@@ -63,9 +63,9 @@ def test_aigc_enforce_post_call_does_not_reload_policy():
 
     Phase B must use pre_call_result.effective_policy, not call load_policy().
     """
-    aigc = AIGC()
-    pre = aigc.enforce_pre_call(_pre_call_invocation())
-    audit = aigc.enforce_post_call(pre, _valid_output())
+    aegis = AIGC()
+    pre = aegis.enforce_pre_call(_pre_call_invocation())
+    audit = aegis.enforce_post_call(pre, _valid_output())
 
     assert audit["enforcement_result"] == "PASS"
     assert audit["model_provider"] == "openai"
@@ -78,10 +78,10 @@ def test_aigc_sink_isolation_in_split_mode():
     """AIGC instance with custom sink receives split-mode artifacts."""
     collected = []
     sink = CallbackAuditSink(callback=collected.append)
-    aigc = AIGC(sink=sink)
+    aegis = AIGC(sink=sink)
 
-    pre = aigc.enforce_pre_call(_pre_call_invocation())
-    audit = aigc.enforce_post_call(pre, _valid_output())
+    pre = aegis.enforce_pre_call(_pre_call_invocation())
+    audit = aegis.enforce_post_call(pre, _valid_output())
 
     # The artifact should have been emitted to our custom sink
     assert len(collected) == 1
@@ -95,9 +95,9 @@ def test_aigc_sink_isolation_in_split_mode():
 
 def test_aigc_split_artifact_stable_fields():
     """Sync split path produces artifact with expected stable fields."""
-    aigc = AIGC()
-    pre = aigc.enforce_pre_call(_pre_call_invocation())
-    audit = aigc.enforce_post_call(pre, _valid_output())
+    aegis = AIGC()
+    pre = aegis.enforce_pre_call(_pre_call_invocation())
+    audit = aegis.enforce_post_call(pre, _valid_output())
 
     # Stable identity fields
     assert audit["model_provider"] == "openai"
@@ -120,8 +120,8 @@ def test_aigc_split_artifact_stable_fields():
 @pytest.mark.asyncio
 async def test_aigc_enforce_pre_call_async():
     """Async instance pre_call returns PreCallResult with correct fields."""
-    aigc = AIGC()
-    pre = await aigc.enforce_pre_call_async(_pre_call_invocation())
+    aegis = AIGC()
+    pre = await aegis.enforce_pre_call_async(_pre_call_invocation())
 
     assert isinstance(pre, PreCallResult)
     assert pre.policy_file == GOLDEN_POLICY
@@ -133,9 +133,9 @@ async def test_aigc_enforce_pre_call_async():
 @pytest.mark.asyncio
 async def test_aigc_enforce_post_call_async():
     """Async instance post_call delegates to sync and returns valid artifact."""
-    aigc = AIGC()
-    pre = await aigc.enforce_pre_call_async(_pre_call_invocation())
-    audit = await aigc.enforce_post_call_async(pre, _valid_output())
+    aegis = AIGC()
+    pre = await aegis.enforce_pre_call_async(_pre_call_invocation())
+    audit = await aegis.enforce_post_call_async(pre, _valid_output())
 
     assert audit["enforcement_result"] == "PASS"
     assert audit["metadata"]["enforcement_mode"] == "split"

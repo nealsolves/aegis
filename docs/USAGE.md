@@ -22,7 +22,7 @@ contract.
 This is the shortest path when your host assembles a complete invocation.
 
 ```python
-from aigc import enforce_invocation
+from aegis import enforce_invocation
 
 artifact = enforce_invocation(
     {
@@ -52,7 +52,7 @@ Use split mode when you want AIGC to authorize before the model call and only
 validate output after the model responds.
 
 ```python
-from aigc import enforce_post_call, enforce_pre_call
+from aegis import enforce_post_call, enforce_pre_call
 
 pre = enforce_pre_call(
     {
@@ -88,7 +88,7 @@ Prefer `AIGC(...)` when you want runtime configuration without mutating global
 state.
 
 ```python
-from aigc import AIGC, HMACSigner, JsonFileAuditSink
+from aegis import AIGC, HMACSigner, JsonFileAuditSink
 
 engine = AIGC(
     sink=JsonFileAuditSink("audit.jsonl"),
@@ -109,7 +109,7 @@ Use the decorator when you want governance attached directly to a function that
 performs the model call.
 
 ```python
-from aigc import governed
+from aegis import governed
 
 @governed(
     policy_file="policies/base_policy.yaml",
@@ -128,7 +128,7 @@ before the wrapped function; Phase B validates output after. Passing
 To use the legacy unified mode (deprecated):
 
 ```python
-from aigc import governed
+from aegis import governed
 
 @governed(
     policy_file="policies/base_policy.yaml",
@@ -148,7 +148,7 @@ Built-in sinks cover the common cases.
 ### File sink
 
 ```python
-from aigc import AIGC, JsonFileAuditSink
+from aegis import AIGC, JsonFileAuditSink
 
 engine = AIGC(sink=JsonFileAuditSink("audit.jsonl"))
 artifact = engine.enforce(invocation)
@@ -157,7 +157,7 @@ artifact = engine.enforce(invocation)
 ### Callback sink
 
 ```python
-from aigc import AIGC, CallbackAuditSink
+from aegis import AIGC, CallbackAuditSink
 
 engine = AIGC(sink=CallbackAuditSink(lambda artifact: db.insert(artifact)))
 artifact = engine.enforce(invocation)
@@ -168,7 +168,7 @@ artifact = engine.enforce(invocation)
 ```python
 import json
 
-from aigc import AIGC, AuditSink
+from aegis import AIGC, AuditSink
 
 
 class SQLiteAuditSink(AuditSink):
@@ -205,7 +205,7 @@ points:
 Example:
 
 ```python
-from aigc import (
+from aegis import (
     AIGC,
     EnforcementGate,
     GateResult,
@@ -256,7 +256,7 @@ If policies live in a database, API, or secrets system, implement
 ```python
 import yaml
 
-from aigc import AIGC, PolicyLoaderBase, PolicyLoadError
+from aegis import AIGC, PolicyLoaderBase, PolicyLoadError
 
 
 class DatabasePolicyLoader(PolicyLoaderBase):
@@ -293,19 +293,19 @@ composition resolution, and policy-date checks after loading.
 Once audit artifacts are being persisted to JSONL, the CLI can build a report.
 
 ```bash
-aigc compliance export --input audit.jsonl
+aegis compliance export --input audit.jsonl
 ```
 
 Write the report to a file:
 
 ```bash
-aigc compliance export --input audit.jsonl --output compliance-report.json
+aegis compliance export --input audit.jsonl --output compliance-report.json
 ```
 
 Include individual artifacts in the report:
 
 ```bash
-aigc compliance export \
+aegis compliance export \
   --input audit.jsonl \
   --output compliance-report.json \
   --include-artifacts
@@ -320,7 +320,7 @@ Every governance failure raises a typed exception and attaches the FAIL artifact
 at `exc.audit_artifact`.
 
 ```python
-from aigc import (
+from aegis import (
     GovernanceViolationError,
     PreconditionError,
     SchemaValidationError,
@@ -347,13 +347,13 @@ Practical rules:
 
 ## Recipe 10: Public API boundary
 
-Only import from the top-level `aigc` package:
+Only import from the top-level `aegis` package:
 
 ```python
-from aigc import AIGC, enforce_invocation, JsonFileAuditSink
+from aegis import AIGC, enforce_invocation, JsonFileAuditSink
 ```
 
-Do not build production integrations on `aigc._internal.*`. That namespace is
+Do not build production integrations on `aegis._internal.*`. That namespace is
 private implementation detail and may change between releases.
 
 ## Recipe 11: Lineage-aware compliance report
@@ -363,13 +363,13 @@ stats. Useful for auditing agentic workflows where invocations derive from prior
 invocations.
 
 ```bash
-aigc compliance export --input audit_trail.jsonl --lineage
+aegis compliance export --input audit_trail.jsonl --lineage
 ```
 
 Write to a file and combine with `--include-artifacts`:
 
 ```bash
-aigc compliance export \
+aegis compliance export \
   --input audit_trail.jsonl \
   --output compliance-report.json \
   --include-artifacts \
@@ -384,13 +384,13 @@ always holds.
 ## Recipe 12: Risk trend monitoring with `RiskHistory`
 
 ```python
-from aigc import AIGC, RiskHistory
+from aegis import AIGC, RiskHistory
 
-aigc = AIGC()
+aegis = AIGC()
 history = RiskHistory("summarizer-workflow")
 
 for invocation in workflow_invocations:
-    audit = aigc.enforce(invocation)
+    audit = aegis.enforce(invocation)
     risk_score = audit.get("risk_score")
     if risk_score is not None:
         history.record(risk_score)

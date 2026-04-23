@@ -5,12 +5,12 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "aigc-sdk"
+name = "aegis"
 version = "0.3.3"
 description = "Deterministic, fail-closed governance enforcement for AI model invocations."
 readme = "README.md"
 requires-python = ">=3.10"
-license = {text = "MIT"}
+license = {text = "Apache-2.0"}
 authors = [{ name = "Neal Adams", email = "neal@nealsolves.com" }]
 keywords = [
   "governance",
@@ -24,7 +24,7 @@ keywords = [
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",
-  "License :: OSI Approved :: MIT License",
+  "License :: OSI Approved :: Apache Software License",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.10",
@@ -40,14 +40,14 @@ dependencies = [
 ]
 
 [project.scripts]
-aigc = "aigc.cli:main"
+aegis = "aegis.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/nealsolves/aigc"
-Repository = "https://github.com/nealsolves/aigc"
-Documentation = "https://github.com/nealsolves/aigc/blob/main/docs/USAGE.md"
-"Issue Tracker" = "https://github.com/nealsolves/aigc/issues"
-Changelog = "https://github.com/nealsolves/aigc/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/nealsolves/aegis"
+Repository = "https://github.com/nealsolves/aegis"
+Documentation = "https://github.com/nealsolves/aegis/blob/main/docs/USAGE.md"
+"Issue Tracker" = "https://github.com/nealsolves/aegis/issues"
+Changelog = "https://github.com/nealsolves/aegis/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = [
@@ -63,7 +63,7 @@ testpaths = ["tests"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["aigc", "aigc.*"]
+include = ["aegis", "aegis.*"]
 
 [tool.setuptools.package-data]
-aigc = ["schemas/*.json", "py.typed"]
+aegis = ["schemas/*.json", "py.typed"]

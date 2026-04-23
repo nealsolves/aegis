@@ -182,13 +182,13 @@ No two-artifact model is allowed.
 
 Span names:
 
-- unified: `aigc.enforce_invocation`
-- split Phase A: `aigc.enforce_pre_call`
-- split Phase B: `aigc.enforce_post_call`
+- unified: `aegis.enforce_invocation`
+- split Phase A: `aegis.enforce_pre_call`
+- split Phase B: `aegis.enforce_post_call`
 
 Required attribute:
 
-- `aigc.enforcement_mode`
+- `aegis.enforcement_mode`
 
 ## Consequences
 
@@ -227,7 +227,7 @@ The change is accepted only if:
 - `docs/plans/v0.3.2_IMPLEMENTATION_PLAN.md`
 - `docs/plans/v0.3.2_TEST_PLAN.md`
 - `docs/plans/v0.3.2_SCHEMA_DIFF.md`
-- `aigc/_internal/enforcement.py`
-- `aigc/_internal/decorators.py`
-- `aigc/_internal/audit.py`
+- `aegis/_internal/enforcement.py`
+- `aegis/_internal/decorators.py`
+- `aegis/_internal/audit.py`
 - `docs/architecture/ARCHITECTURAL_INVARIANTS.md`

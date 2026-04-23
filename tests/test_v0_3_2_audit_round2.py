@@ -10,7 +10,7 @@ Finding 4 — Unified pre-pipeline FAIL artifacts omit metadata.enforcement_mode
 """
 import pytest
 
-from aigc._internal.enforcement import (
+from aegis._internal.enforcement import (
     AIGC,
     enforce_invocation,
     enforce_post_call,
@@ -18,11 +18,11 @@ from aigc._internal.enforcement import (
     enforce_pre_call,
     enforce_pre_call_async,
 )
-from aigc._internal.errors import (
+from aegis._internal.errors import (
     InvocationValidationError,
     SchemaValidationError,
 )
-from aigc._internal.gates import (
+from aegis._internal.gates import (
     EnforcementGate,
     GateResult,
     INSERTION_POST_OUTPUT,
@@ -245,7 +245,7 @@ class TestFinding3AsyncGateCaptureParity:
         Baseline: sync enforce_pre_call uses gates captured before Phase A,
         so the blocker survives the mutating gate removing it from _custom_gates.
         """
-        from aigc._internal.errors import CustomGateViolationError
+        from aegis._internal.errors import CustomGateViolationError
 
         blocker = _BlockingPreOutputGate()
         engine = AIGC(custom_gates=[])
@@ -264,7 +264,7 @@ class TestFinding3AsyncGateCaptureParity:
         Without the fix, the blocker is removed during Phase A and absent
         from _phase_b_grouped_gates, causing an UNEXPECTED_PASS.
         """
-        from aigc._internal.errors import CustomGateViolationError
+        from aegis._internal.errors import CustomGateViolationError
 
         blocker = _BlockingPreOutputGate()
         engine = AIGC(custom_gates=[])
@@ -336,7 +336,7 @@ class TestFinding4UnifiedPrePipelineEnforcementMode:
 
     async def test_module_level_enforce_invocation_async_missing_output_fail_has_mode(self):
         """enforce_invocation_async() with missing output: artifact has mode=unified."""
-        from aigc._internal.enforcement import enforce_invocation_async
+        from aegis._internal.enforcement import enforce_invocation_async
 
         inv = _pre_call_inv()
         with pytest.raises(InvocationValidationError) as exc_info:

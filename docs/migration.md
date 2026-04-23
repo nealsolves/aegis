@@ -20,7 +20,7 @@ Single one-off calls are fine with invocation-only governance.
 ### Before (invocation-only)
 
 ```python
-governance = aigc.AIGC()
+governance = aegis.AIGC()
 
 pre = governance.enforce_pre_call(invocation)
 output = call_model(...)
@@ -30,7 +30,7 @@ artifact = governance.enforce_post_call(pre, output)
 ### After (additive workflow adoption)
 
 ```python
-governance = aigc.AIGC()
+governance = aegis.AIGC()
 
 with governance.open_session(policy_file="policy.yaml") as session:  # + wrap
     pre = session.enforce_step_pre_call(invocation)                    # enforce_pre_call →
@@ -97,7 +97,7 @@ state, it raises `SessionStateError` with code `WORKFLOW_INVALID_TRANSITION`. Ca
 If you are starting fresh rather than migrating:
 
 ```bash
-aigc workflow init --profile minimal
+aegis workflow init --profile minimal
 cd governance
 python workflow_example.py
 ```

@@ -19,10 +19,10 @@ always instance-scoped through `AIGC.open_session(...)`.
 See [docs/reference/WORKFLOW_QUICKSTART.md](reference/WORKFLOW_QUICKSTART.md)
 for the fastest path to a working workflow with these surfaces.
 
-Also available in the source-only `v0.9.0` beta line: `aigc workflow init`,
-`aigc policy init`, `aigc workflow lint`, `aigc workflow doctor`,
-`aigc.presets.MinimalPreset`, `aigc.presets.StandardPreset`,
-`aigc.presets.RegulatedHighAssurancePreset`, `WorkflowStarterIntegrityError`,
+Also available in the source-only `v0.9.0` beta line: `aegis workflow init`,
+`aegis policy init`, `aegis workflow lint`, `aegis workflow doctor`,
+`aegis.presets.MinimalPreset`, `aegis.presets.StandardPreset`,
+`aegis.presets.RegulatedHighAssurancePreset`, `WorkflowStarterIntegrityError`,
 and `docs/migration.md` (migration guide from invocation-only to workflow
 governance). This is beta, not yet stable.
 
@@ -33,11 +33,11 @@ part of the `v0.3.3` artifact or the current beta public surface:
 those names until they ship through the public package exports, instance API,
 CLI surface, and contract tests.
 
-`aigc workflow trace` and `aigc workflow export` shipped in PR-09 and are part
+`aegis workflow trace` and `aegis workflow export` shipped in PR-09 and are part
 of the current beta CLI surface.
 
 All public examples, starter packs, presets, demo code, and docs snippets
-must use public `aigc` imports only and must not depend on `aigc._internal`.
+must use public `aegis` imports only and must not depend on `aegis._internal`.
 
 ---
 
@@ -48,14 +48,14 @@ Install and run governance enforcement in under five minutes.
 ### 1.1 Install
 
 ```bash
-pip install aigc-sdk
+pip install aegis-sdk
 ```
 
 Or from source (editable, with dev dependencies):
 
 ```bash
-git clone https://github.com/nealsolves/aigc
-cd aigc
+git clone https://github.com/nealsolves/aegis
+cd aegis
 python -m pip install --upgrade pip setuptools wheel
 pip install --no-build-isolation -e '.[dev]'
 ```
@@ -83,7 +83,7 @@ output_schema:
 ### 1.3 Call `enforce_invocation`
 
 ```python
-from aigc import enforce_invocation, GovernanceViolationError, PreconditionError
+from aegis import enforce_invocation, GovernanceViolationError, PreconditionError
 
 invocation = {
     "policy_file": "policies/hello_policy.yaml",
@@ -182,7 +182,7 @@ Custom gates inject governance logic at defined insertion points in the pipeline
 modifying the core enforcement code. This gate enforces tenant isolation:
 
 ```python
-from aigc import EnforcementGate, GateResult, INSERTION_PRE_AUTHORIZATION
+from aegis import EnforcementGate, GateResult, INSERTION_PRE_AUTHORIZATION
 
 
 class TenantIsolationGate(EnforcementGate):
@@ -226,12 +226,12 @@ Wire everything together once at startup. The `AIGC` class is the production ent
 it owns its sink, signer, gates, and policy cache with no global mutable state:
 
 ```python
-from aigc import AIGC, HMACSigner, AuditChain, JsonFileAuditSink
+from aegis import AIGC, HMACSigner, AuditChain, JsonFileAuditSink
 
 signer = HMACSigner(key=b"your-256-bit-secret-key-here-!!!")
 chain = AuditChain(chain_id="analytics-session-001")
 
-aigc = AIGC(
+aegis = AIGC(
     sink=JsonFileAuditSink("audit/governance.jsonl"),
     on_sink_failure="log",
     signer=signer,
@@ -252,7 +252,7 @@ Configuration is immutable after construction. `AIGC.enforce()` is thread-safe.
 Use `InvocationBuilder` for a fluent, validated construction:
 
 ```python
-from aigc import InvocationBuilder
+from aegis import InvocationBuilder
 
 invocation = (
     InvocationBuilder()
@@ -269,7 +269,7 @@ invocation = (
     .build()
 )
 
-artifact = aigc.enforce(invocation)
+artifact = aegis.enforce(invocation)
 ```
 
 `build()` validates that all required fields are present and raises `InvocationValidationError`
@@ -305,7 +305,7 @@ To verify a chain loaded from storage (e.g., from the audit sink's JSONL file):
 
 ```python
 import json
-from aigc import verify_chain
+from aegis import verify_chain
 
 with open("audit/governance.jsonl") as f:
     artifacts = [json.loads(line) for line in f]
@@ -319,7 +319,7 @@ For simpler call sites that don't need instance-scoped configuration, the `@gove
 decorator wraps a function and runs enforcement transparently:
 
 ```python
-from aigc import governed, set_audit_sink, JsonFileAuditSink
+from aegis import governed, set_audit_sink, JsonFileAuditSink
 
 set_audit_sink(JsonFileAuditSink("audit/governance.jsonl"))
 
@@ -355,7 +355,7 @@ signers, or custom gates, use the `AIGC` class directly as shown in sections 2.3
 Every governance failure raises a typed exception with a FAIL artifact attached:
 
 ```python
-from aigc import (
+from aegis import (
     AIGCError,
     GovernanceViolationError,
     PreconditionError,
@@ -366,7 +366,7 @@ from aigc import (
 )
 
 try:
-    artifact = aigc.enforce(invocation)
+    artifact = aegis.enforce(invocation)
     chain.append(artifact)
 except RiskThresholdError as exc:
     # Risk score exceeded threshold in strict mode
@@ -402,7 +402,7 @@ FAIL artifacts are emitted to the sink before the exception propagates.
 Use the policy testing framework to validate policies in isolation, without a running LLM:
 
 ```python
-from aigc import PolicyTestCase, PolicyTestSuite, expect_pass, expect_fail
+from aegis import PolicyTestCase, PolicyTestSuite, expect_pass, expect_fail
 
 # Quick single-case assertions
 expect_pass(PolicyTestCase(
@@ -477,7 +477,7 @@ integration, see Section 2.
 Subclass `AuditSink` to send artifacts to any destination:
 
 ```python
-from aigc import AuditSink, set_audit_sink
+from aegis import AuditSink, set_audit_sink
 import json
 
 
@@ -522,7 +522,7 @@ Strategies:
 Load the child policy directly — resolution happens at load time:
 
 ```python
-from aigc import enforce_invocation
+from aegis import enforce_invocation
 artifact = enforce_invocation({
     "policy_file": "policies/child_policy.yaml",
     ...
@@ -536,7 +536,7 @@ Cycle detection is built-in. If `A` extends `B` extends `A`, loading raises `Pol
 Wrap invocations with `with_retry` for bounded retries on `SchemaValidationError`:
 
 ```python
-from aigc import with_retry
+from aegis import with_retry
 
 # retry_policy belongs in the policy YAML, not the invocation payload
 artifact = with_retry(invocation)
@@ -549,7 +549,7 @@ tool calls on the host side is to build a thin wrapper that constructs the invoc
 enforces governance, and then executes the tool:
 
 ```python
-from aigc import enforce_invocation
+from aegis import enforce_invocation
 
 
 def run_tool_with_governance(tool_name: str, params: dict, base_invocation: dict) -> dict:
@@ -571,7 +571,7 @@ to the AIGC API.
 Fluent builder as an alternative to hand-constructing invocation dicts:
 
 ```python
-from aigc import InvocationBuilder
+from aegis import InvocationBuilder
 
 invocation = (
     InvocationBuilder()
@@ -600,7 +600,7 @@ Inject governance logic at four pipeline insertion points:
 | `INSERTION_POST_OUTPUT` | After all validation, before risk scoring |
 
 ```python
-from aigc import EnforcementGate, GateResult, INSERTION_POST_OUTPUT
+from aegis import EnforcementGate, GateResult, INSERTION_POST_OUTPUT
 
 
 class ComplianceTagGate(EnforcementGate):
@@ -616,7 +616,7 @@ class ComplianceTagGate(EnforcementGate):
         return GateResult(passed=True, metadata={"compliance": "sox-compliant"})
 
 
-aigc = AIGC(custom_gates=[ComplianceTagGate()])
+aegis = AIGC(custom_gates=[ComplianceTagGate()])
 ```
 
 Gate metadata is merged into `metadata.custom_gate_metadata` in the audit artifact.
@@ -630,16 +630,16 @@ The SDK ships `ProvenanceGate` — a workflow-aware built-in gate for source
 presence enforcement. Import and register it like any custom gate:
 
 ```python
-from aigc import AIGC, ProvenanceGate
+from aegis import AIGC, ProvenanceGate
 
-aigc = AIGC(custom_gates=[ProvenanceGate()])
+aegis = AIGC(custom_gates=[ProvenanceGate()])
 ```
 
 Available built-in gates:
 
 | Gate | Module | Insertion Point | Enforces |
 |------|--------|-----------------|---------|
-| `ProvenanceGate` | `aigc.provenance_gate` | `pre_output` | `source_ids` present in context provenance |
+| `ProvenanceGate` | `aegis.provenance_gate` | `pre_output` | `source_ids` present in context provenance |
 
 ### 3.7 Risk scoring
 
@@ -680,7 +680,7 @@ The `AIGC` class accepts `risk_config` as a constructor override; otherwise the 
 HMAC-SHA256 signing provides tamper evidence for audit artifacts:
 
 ```python
-from aigc import HMACSigner, sign_artifact, verify_artifact
+from aegis import HMACSigner, sign_artifact, verify_artifact
 
 signer = HMACSigner(key=b"your-secret-key")
 
@@ -690,8 +690,8 @@ sign_artifact(artifact, signer)           # signs in place
 assert verify_artifact(artifact, signer)  # True
 
 # Automatic signing (AIGC instance)
-aigc = AIGC(signer=signer)
-artifact = aigc.enforce(invocation)       # signed automatically
+aegis = AIGC(signer=signer)
+artifact = aegis.enforce(invocation)       # signed automatically
 assert verify_artifact(artifact, signer)  # True
 ```
 
@@ -701,7 +701,7 @@ UTF-8) excluding the `signature` field itself. Both PASS and FAIL artifacts are 
 Implement `ArtifactSigner` for alternative signing schemes (e.g., asymmetric keys):
 
 ```python
-from aigc import ArtifactSigner
+from aegis import ArtifactSigner
 
 
 class AsymmetricSigner(ArtifactSigner):
@@ -714,7 +714,7 @@ class AsymmetricSigner(ArtifactSigner):
 Link enforcement artifacts into a cryptographic chain:
 
 ```python
-from aigc import AuditChain, verify_chain
+from aegis import AuditChain, verify_chain
 
 chain = AuditChain(chain_id="session-001")
 chain.append(artifact_1)
@@ -742,7 +742,7 @@ expiration_date: "2027-12-31"
 raises `PolicyValidationError`. To validate dates independently:
 
 ```python
-from aigc import validate_policy_dates
+from aegis import validate_policy_dates
 
 evidence = validate_policy_dates(policy_dict)
 print(evidence["active"])  # True or raises
@@ -762,7 +762,7 @@ Load policies from sources other than the filesystem:
 ```python
 import yaml
 
-from aigc import AIGC, PolicyLoaderBase, PolicyLoadError
+from aegis import AIGC, PolicyLoaderBase, PolicyLoadError
 
 
 class DatabasePolicyLoader(PolicyLoaderBase):
@@ -776,8 +776,8 @@ class DatabasePolicyLoader(PolicyLoaderBase):
         return yaml.safe_load(row["yaml"])
 
 
-aigc = AIGC(policy_loader=DatabasePolicyLoader(db))
-artifact = aigc.enforce(invocation)
+aegis = AIGC(policy_loader=DatabasePolicyLoader(db))
+artifact = aegis.enforce(invocation)
 ```
 
 All loaded policies pass through the same schema validation, date validation, and composition
@@ -789,7 +789,7 @@ thread-safe LRU cache.
 Test policies in isolation without a running LLM:
 
 ```python
-from aigc import PolicyTestCase, PolicyTestSuite, expect_pass, expect_fail
+from aegis import PolicyTestCase, PolicyTestSuite, expect_pass, expect_fail
 
 expect_pass(PolicyTestCase(name="ok", policy_file="p.yaml", role="planner", ...))
 expect_fail(PolicyTestCase(name="bad role", ...), gate="role_validation")
@@ -819,7 +819,7 @@ pip install opentelemetry-api opentelemetry-sdk
 No SDK configuration changes are needed. To check availability at runtime:
 
 ```python
-from aigc.telemetry import is_otel_available
+from aegis.telemetry import is_otel_available
 
 if is_otel_available():
     print("OTel spans will be emitted during enforcement")
@@ -830,9 +830,9 @@ if is_otel_available():
 The `AIGC` class bundles all configuration into an immutable, thread-safe instance:
 
 ```python
-from aigc import AIGC
+from aegis import AIGC
 
-aigc = AIGC(
+aegis = AIGC(
     sink=my_sink,                    # AuditSink instance
     on_sink_failure="log",           # "log" or "raise"
     strict_mode=True,                # Reject weak policies
@@ -843,8 +843,8 @@ aigc = AIGC(
     redaction_patterns=my_patterns,  # Custom PII redaction
 )
 
-artifact = aigc.enforce(invocation)
-artifact = await aigc.enforce_async(invocation)
+artifact = aegis.enforce(invocation)
+artifact = await aegis.enforce_async(invocation)
 ```
 
 The instance owns its policy cache and never mutates global state. Multiple `AIGC` instances
@@ -879,10 +879,10 @@ public data carrier — do not inspect its internals. It is single-use: calling
 **`AIGC` instance methods:**
 
 ```python
-aigc.enforce_pre_call(invocation)          # sync
-aigc.enforce_post_call(pre_result, output) # sync
-await aigc.enforce_pre_call_async(invocation)
-await aigc.enforce_post_call_async(pre_result, output)
+aegis.enforce_pre_call(invocation)          # sync
+aegis.enforce_post_call(pre_result, output) # sync
+await aegis.enforce_pre_call_async(invocation)
+await aegis.enforce_post_call_async(pre_result, output)
 ```
 
 These have the same contract as the module-level functions and respect the
@@ -940,7 +940,7 @@ invocation context dict.
 
 ### 3.17 AuditLineage (v0.3.3+)
 
-`AuditLineage` is available as `from aigc import AuditLineage`.
+`AuditLineage` is available as `from aegis import AuditLineage`.
 
 **Loading:**
 
@@ -984,7 +984,7 @@ Use `lineage.checksum_of(artifact)` or the return value of `add_artifact()` inst
 `trajectory()` signal — advisory only, does not affect enforcement.
 
 ```python
-from aigc import RiskHistory, compute_risk_score
+from aegis import RiskHistory, compute_risk_score
 
 history = RiskHistory("planner:summarize")
 
@@ -1067,7 +1067,7 @@ falls outside the valid range.
 **Fix**: Check the policy's date fields:
 
 ```python
-from aigc import validate_policy_dates
+from aegis import validate_policy_dates
 evidence = validate_policy_dates(yaml.safe_load(open("policies/my_policy.yaml")))
 print(evidence)  # Shows effective_date, expiration_date, evaluation_date, active
 ```
@@ -1171,7 +1171,7 @@ was not called at all.
 **Fix**: Register the sink once at application startup, before any governed calls:
 
 ```python
-from aigc import set_audit_sink, JsonFileAuditSink
+from aegis import set_audit_sink, JsonFileAuditSink
 set_audit_sink(JsonFileAuditSink("audit.jsonl"))
 ```
 
@@ -1182,14 +1182,14 @@ set_audit_sink(JsonFileAuditSink("audit.jsonl"))
 **Cause**: Policy file I/O is dispatched to a thread pool via `asyncio.to_thread`. If
 you are using `enforce_invocation` (sync) inside an async context, it will block.
 
-**Fix**: Use `enforce_invocation_async` or `aigc.enforce_async` in async contexts:
+**Fix**: Use `enforce_invocation_async` or `aegis.enforce_async` in async contexts:
 
 ```python
-from aigc import enforce_invocation_async
+from aegis import enforce_invocation_async
 artifact = await enforce_invocation_async(invocation)
 
 # Or with AIGC instance
-artifact = await aigc.enforce_async(invocation)
+artifact = await aegis.enforce_async(invocation)
 ```
 
 ---

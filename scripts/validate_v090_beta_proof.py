@@ -170,7 +170,7 @@ def main() -> int:
     #      without any index access.
     #   2. Install the repo editable with --no-deps --no-build-isolation so
     #      pip does not try to resolve or download anything.
-    #   3. Verify the imported aigc module resolves to this checkout, not to
+    #   3. Verify the imported aegis module resolves to this checkout, not to
     #      a host-installed copy.
     # ------------------------------------------------------------------
     def gate_install():
@@ -196,8 +196,8 @@ def main() -> int:
             [
                 python,
                 "-c",
-                "import aigc; from pathlib import Path; "
-                "print(Path(aigc.__file__).resolve())",
+                "import aegis; from pathlib import Path; "
+                "print(Path(aegis.__file__).resolve())",
             ],
             env=env,
         )
@@ -206,7 +206,7 @@ def main() -> int:
             f"{probe.stderr}"
         )
         imported = Path(probe.stdout.strip())
-        expected = (REPO_ROOT / "aigc" / "__init__.py").resolve()
+        expected = (REPO_ROOT / "aegis" / "__init__.py").resolve()
         assert imported == expected, (
             "editable install did not import from the current checkout:\n"
             f"expected {expected}\n"
@@ -232,9 +232,9 @@ def main() -> int:
         d.mkdir()
         t0 = time.time()
 
-        r = _run([python, "-m", "aigc", "workflow", "init",
+        r = _run([python, "-m", "aegis", "workflow", "init",
                   "--profile", "minimal", "--output-dir", str(d)], env=env)
-        assert r.returncode == 0, f"aigc workflow init failed:\n{r.stderr}"
+        assert r.returncode == 0, f"aegis workflow init failed:\n{r.stderr}"
 
         artifact = _run_workflow_in_venv(
             python, env, d / "workflow_example.py", "run_minimal_workflow", tmp_dir
@@ -259,9 +259,9 @@ def main() -> int:
         d.mkdir()
         t0 = time.time()
 
-        r = _run([python, "-m", "aigc", "workflow", "init",
+        r = _run([python, "-m", "aegis", "workflow", "init",
                   "--profile", "standard", "--output-dir", str(d)], env=env)
-        assert r.returncode == 0, f"aigc workflow init failed:\n{r.stderr}"
+        assert r.returncode == 0, f"aegis workflow init failed:\n{r.stderr}"
 
         artifact = _run_workflow_in_venv(
             python, env, d / "workflow_example.py", "run_standard_workflow", tmp_dir
@@ -285,9 +285,9 @@ def main() -> int:
         nonlocal regulated_original_source
         regulated_dir.mkdir()
 
-        r = _run([python, "-m", "aigc", "workflow", "init",
+        r = _run([python, "-m", "aegis", "workflow", "init",
                   "--profile", "regulated-high-assurance", "--output-dir", str(regulated_dir)], env=env)
-        assert r.returncode == 0, f"aigc workflow init failed:\n{r.stderr}"
+        assert r.returncode == 0, f"aegis workflow init failed:\n{r.stderr}"
         regulated_original_source = _break_regulated_starter(
             regulated_dir / "workflow_example.py"
         )
@@ -304,10 +304,10 @@ def main() -> int:
     # Gate 5: doctor diagnosis
     # ------------------------------------------------------------------
     def gate_diagnosis():
-        r = _run([python, "-m", "aigc", "workflow", "doctor",
+        r = _run([python, "-m", "aegis", "workflow", "doctor",
                   str(regulated_dir), "--json"], env=env)
         assert r.returncode == 0, (
-            f"aigc workflow doctor exited {r.returncode}:\n{r.stderr}"
+            f"aegis workflow doctor exited {r.returncode}:\n{r.stderr}"
         )
         findings = json.loads(r.stdout)
         codes = [f["code"] for f in findings]

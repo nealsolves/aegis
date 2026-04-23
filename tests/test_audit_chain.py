@@ -1,8 +1,8 @@
 """Tests for tamper-evident audit chain (M2 feature)."""
 import copy
 import pytest
-from aigc._internal.audit_chain import AuditChain, verify_chain
-from aigc._internal.audit import generate_audit_artifact
+from aegis._internal.audit_chain import AuditChain, verify_chain
+from aegis._internal.audit import generate_audit_artifact
 
 
 def _sample_invocation():

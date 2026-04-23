@@ -2,7 +2,7 @@
 v0.9.0 workflow governance demo routes.
 
 Uses real AIGC.open_session() — no fake backend behavior.
-All imports are from the public aigc API only (no aigc._internal).
+All imports are from the public aegis API only (no aegis._internal).
 """
 from __future__ import annotations
 
@@ -20,8 +20,8 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-import aigc.presets as presets
-from aigc import AIGC, JsonFileAuditSink
+import aegis.presets as presets
+from aegis import AIGC, JsonFileAuditSink
 
 router = APIRouter(prefix="/api/workflow/v090", tags=["workflow-v090"])
 
@@ -30,7 +30,7 @@ router = APIRouter(prefix="/api/workflow/v090", tags=["workflow-v090"])
 _MAX_RUNS = 20
 # run_id -> {"starter_dir": str, "artifact": dict, "original_source": str}
 _run_state: dict[str, dict] = {}
-_POLICY_TMPDIR = tempfile.TemporaryDirectory(prefix="aigc_demo_policies_")
+_POLICY_TMPDIR = tempfile.TemporaryDirectory(prefix="aegis_demo_policies_")
 _policy_cache: dict[str, str] = {}
 
 
@@ -82,14 +82,14 @@ def _sim(prompt: str) -> dict:
 
 def _generate_starter_dir(profile: str) -> str:
     starter_dir = tempfile.mkdtemp(
-        prefix=f"aigc_demo_{profile}_",
+        prefix=f"aegis_demo_{profile}_",
         dir=_POLICY_TMPDIR.name,
     )
     result = subprocess.run(
         [
             sys.executable,
             "-m",
-            "aigc",
+            "aegis",
             "workflow",
             "init",
             "--profile",
@@ -109,7 +109,7 @@ def _generate_starter_dir(profile: str) -> str:
 
 def _load_workflow_module(starter_dir: str):
     workflow_py = Path(starter_dir) / "workflow_example.py"
-    module_name = f"_aigc_demo_workflow_{uuid.uuid4().hex}"
+    module_name = f"_aegis_demo_workflow_{uuid.uuid4().hex}"
     spec = importlib.util.spec_from_file_location(module_name, workflow_py)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"could not load workflow module from {workflow_py}")
@@ -262,7 +262,7 @@ def compare_workflows():
 
 @router.get("/diagnose")
 def diagnose_last_failure(run_id: str | None = None):
-    """Run aigc workflow doctor on the starter dir for a specific run.
+    """Run aegis workflow doctor on the starter dir for a specific run.
 
     ``run_id`` is returned by POST /run when scenario='failure'.  When omitted
     the most recent failure is used (single-user convenience fallback).
@@ -277,7 +277,7 @@ def diagnose_last_failure(run_id: str | None = None):
 
     starter_dir = run["starter_dir"]
     result = subprocess.run(
-        [sys.executable, "-m", "aigc", "workflow", "doctor",
+        [sys.executable, "-m", "aegis", "workflow", "doctor",
          starter_dir, "--json"],
         capture_output=True, text=True,
     )
@@ -296,7 +296,7 @@ def trace_evidence():
 
     Implements the evidence view: produces real workflow + invocation artifacts,
     writes them to a temp JSONL file via JsonFileAuditSink, then reconstructs the
-    timeline via 'aigc workflow trace'. No fake backend behavior.
+    timeline via 'aegis workflow trace'. No fake backend behavior.
     """
     policy_file = _get_policy_path("minimal")
     jsonl_file = tempfile.NamedTemporaryFile(
@@ -323,7 +323,7 @@ def trace_evidence():
             session.complete()
 
         result = subprocess.run(
-            [sys.executable, "-m", "aigc", "workflow", "trace", "--input", jsonl_path],
+            [sys.executable, "-m", "aegis", "workflow", "trace", "--input", jsonl_path],
             capture_output=True, text=True,
         )
         if result.returncode != 0:

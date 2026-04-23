@@ -2,8 +2,8 @@
 
 import json
 import pytest
-from aigc._internal.enforcement import enforce_invocation
-from aigc._internal.errors import ToolConstraintViolationError
+from aegis._internal.enforcement import enforce_invocation
+from aegis._internal.errors import ToolConstraintViolationError
 
 
 def load_json(path):

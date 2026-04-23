@@ -25,11 +25,11 @@ Your output must be **thorough, actionable, and testable**.
 
 Repository root:
 
-`/Users/neal/Documents/_Shenanigans/_myProjects/aigc`
+`/Users/neal/Documents/_Shenanigans/_myProjects/aegis`
 
 Write the final report as markdown here:
 
-`/Users/neal/Documents/_Shenanigans/_myProjects/aigc/docs/audits/PR01_PR08_IMPLEMENTATION_REVIEW_LOCAL_DEVELOP.md`
+`/Users/neal/Documents/_Shenanigans/_myProjects/aegis/docs/audits/PR01_PR08_IMPLEMENTATION_REVIEW_LOCAL_DEVELOP.md`
 
 If a file with that exact name already exists, overwrite it.
 
@@ -60,7 +60,7 @@ Important review assumptions you must enforce:
 - `v0.9.0` is a **beta** intended to be easy for app teams to drop into a real workflow quickly.
 - AIGC must remain an **SDK**, not become a hosted runtime, orchestrator, or transport owner.
 - The **host owns orchestration, transport, retries, credentials, business state, tool execution, and provider SDK usage**.
-- Public examples, docs, starters, presets, and demo code must use **public APIs only** and must not import from `aigc._internal`.
+- Public examples, docs, starters, presets, and demo code must use **public APIs only** and must not import from `aegis._internal`.
 - The default first-adopter path must succeed **without Bedrock or A2A**.
 - Workflow adoption is intended to be **instance-scoped through `AIGC.open_session(...)`**.
 - Invocation artifacts must remain separate from workflow or session evidence.
@@ -153,7 +153,7 @@ The implementation must satisfy the **intent** of the release contract.
 Test whether local `develop` can support the intended first-adopter journey for `v0.9.0`:
 
 1. install package in a clean environment
-2. run `aigc workflow init`
+2. run `aegis workflow init`
 3. choose minimal or standard starter
 4. drop into a simple host-owned workflow
 5. reach first PASS
@@ -223,14 +223,14 @@ Use the local repo. Prefer direct inspection over assumptions.
 Run whatever is necessary, but at minimum attempt the following where applicable:
 
 ```bash
-cd /Users/neal/Documents/_Shenanigans/_myProjects/aigc
+cd /Users/neal/Documents/_Shenanigans/_myProjects/aegis
 
 git branch --show-current
 git status --short
 rg "workflow init|workflow lint|workflow doctor|workflow trace|open_session|GovernanceSession|SessionPreCallResult|AgentIdentity|AgentCapabilityManifest|ValidatorHook|BedrockTraceAdapter|A2AAdapter" .
-rg "aigc\._internal" README.md PROJECT.md docs examples demo-app-react demo-app-api
+rg "aegis\._internal" README.md PROJECT.md docs examples demo-app-react demo-app-api
 python -m pytest
-flake8 aigc
+flake8 aegis
 python scripts/check_doc_parity.py
 ```
 

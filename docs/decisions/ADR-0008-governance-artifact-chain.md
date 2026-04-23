@@ -64,7 +64,7 @@ The first artifact in a chain has `previous_audit_checksum: null` and
 {
   "previous_audit_checksum": "sha256:abc123...",
   "chain_index": 42,
-  "chain_id": "aigc-instance-uuid"
+  "chain_id": "aegis-instance-uuid"
 }
 ```
 
@@ -78,7 +78,7 @@ The first artifact in a chain has `previous_audit_checksum: null` and
 ### Opt-in activation
 
 ```python
-aigc = AIGC(
+aegis = AIGC(
     sink=JsonFileAuditSink("audit.jsonl"),
     chain_artifacts=True,  # enables hash chaining
 )
@@ -99,7 +99,7 @@ of artifacts and checks:
 4. No artifact has been modified (recompute checksum, compare)
 
 ```python
-from aigc.audit import verify_chain
+from aegis.audit import verify_chain
 
 artifacts = load_artifacts("audit.jsonl")
 result = verify_chain(artifacts)
@@ -190,8 +190,8 @@ Cons:
 - Audit artifact impact: Three new fields when `chain_artifacts=True`
 - Golden replays impact: New golden fixtures for chained artifacts. Chain
   verification golden replay.
-- Structural impact: New `verify_chain()` function in `aigc._internal.audit`
-  or `aigc._internal.chain`. Public export via `aigc.audit`.
+- Structural impact: New `verify_chain()` function in `aegis._internal.audit`
+  or `aegis._internal.chain`. Public export via `aegis.audit`.
 - Backward compatibility: Fully backward compatible. Fields are optional and
   additive. Disabled by default.
 

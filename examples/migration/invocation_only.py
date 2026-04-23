@@ -7,9 +7,9 @@ with no workflow correlation between calls.
 Usage:
     python invocation_only.py
 
-Requires: aigc v0.9.0-beta or later (development installation: pip install -e <repo>)
+Requires: aegis v0.9.0-beta or later (development installation: pip install -e <repo>)
 """
-import aigc
+import aegis
 
 
 def _simulate_model_call(prompt: str) -> dict:
@@ -19,7 +19,7 @@ def _simulate_model_call(prompt: str) -> dict:
 
 def run_with_invocation_only(policy_file: str = "policy.yaml") -> list[dict]:
     """Govern two model calls independently. Returns list of audit artifacts."""
-    governance = aigc.AIGC()
+    governance = aegis.AIGC()
     artifacts = []
 
     prompts = ["Analyze the document.", "Summarize the findings."]

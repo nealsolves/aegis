@@ -6,17 +6,17 @@ import subprocess
 import sys
 from pathlib import Path
 
-import aigc
-from aigc import PreCallResult
+import aegis
+from aegis import PreCallResult
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = REPO_ROOT / "scripts" / "check_doc_parity.py"
 EXPECTED_CLI_COMMANDS = [
-    "aigc policy init",
-    "aigc workflow init",
-    "aigc workflow lint",
-    "aigc workflow doctor",
+    "aegis policy init",
+    "aegis workflow init",
+    "aegis workflow lint",
+    "aegis workflow doctor",
 ]
 EXPECTED_SCAFFOLD_PROFILES = [
     "minimal",
@@ -109,20 +109,20 @@ def test_v090_golden_path_lists_are_frozen_in_plan_and_hld():
 
 def test_v090_public_surface_includes_session_primitives():
     assert PreCallResult is not None
-    assert hasattr(aigc, "PreCallResult")
-    assert hasattr(aigc, "enforce_pre_call")
-    assert hasattr(aigc, "enforce_post_call")
+    assert hasattr(aegis, "PreCallResult")
+    assert hasattr(aegis, "enforce_pre_call")
+    assert hasattr(aegis, "enforce_post_call")
 
-    # PR-04 surfaces — must now be importable from aigc (module-level class exports)
-    assert hasattr(aigc, "GovernanceSession"), "GovernanceSession must ship in PR-04"
-    assert hasattr(aigc, "SessionPreCallResult"), "SessionPreCallResult must ship in PR-04"
+    # PR-04 surfaces — must now be importable from aegis (module-level class exports)
+    assert hasattr(aegis, "GovernanceSession"), "GovernanceSession must ship in PR-04"
+    assert hasattr(aegis, "SessionPreCallResult"), "SessionPreCallResult must ship in PR-04"
 
     # open_session is an INSTANCE METHOD on AIGC, NOT a module-level export
-    assert not hasattr(aigc, "open_session"), (
+    assert not hasattr(aegis, "open_session"), (
         "open_session must not be a module-level export — "
         "it is instance-scoped via AIGC.open_session()"
     )
-    assert callable(getattr(aigc.AIGC(), "open_session", None)), (
+    assert callable(getattr(aegis.AIGC(), "open_session", None)), (
         "AIGC instances must have open_session as a callable method"
     )
 
@@ -134,12 +134,12 @@ def test_v090_public_surface_includes_session_primitives():
         "BedrockTraceAdapter",
         "A2AAdapter",
     ):
-        assert not hasattr(aigc, name), f"aigc.{name} should not ship in v0.9.0 beta"
+        assert not hasattr(aegis, name), f"aegis.{name} should not ship in v0.9.0 beta"
 
 
 def test_v090_cli_surface_has_workflow_and_policy_init_commands():
     result = subprocess.run(
-        [sys.executable, "-m", "aigc", "--help"],
+        [sys.executable, "-m", "aegis", "--help"],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
@@ -151,7 +151,7 @@ def test_v090_cli_surface_has_workflow_and_policy_init_commands():
     assert "policy" in result.stdout
 
     policy_help = subprocess.run(
-        [sys.executable, "-m", "aigc", "policy", "--help"],
+        [sys.executable, "-m", "aegis", "policy", "--help"],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
@@ -162,7 +162,7 @@ def test_v090_cli_surface_has_workflow_and_policy_init_commands():
     assert "init" in policy_help.stdout
 
     workflow_help = subprocess.run(
-        [sys.executable, "-m", "aigc", "workflow", "--help"],
+        [sys.executable, "-m", "aegis", "workflow", "--help"],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
@@ -185,29 +185,29 @@ def test_v090_public_examples_and_demo_use_public_imports_only():
     for path in public_files:
         text = path.read_text(encoding="utf-8")
         assert not re.search(
-            r"(^|\n)\s*(from|import)\s+aigc\._internal",
+            r"(^|\n)\s*(from|import)\s+aegis\._internal",
             text,
         ), f"{path} leaks internal imports"
 
 
 def test_v090_pr05_preset_classes_importable():
     """MinimalPreset, StandardPreset, RegulatedHighAssurancePreset must be importable."""
-    import aigc.presets as presets
+    import aegis.presets as presets
 
-    assert hasattr(presets, "MinimalPreset"), "MinimalPreset missing from aigc.presets"
-    assert hasattr(presets, "StandardPreset"), "StandardPreset missing from aigc.presets"
+    assert hasattr(presets, "MinimalPreset"), "MinimalPreset missing from aegis.presets"
+    assert hasattr(presets, "StandardPreset"), "StandardPreset missing from aegis.presets"
     assert hasattr(
         presets, "RegulatedHighAssurancePreset"
-    ), "RegulatedHighAssurancePreset missing from aigc.presets"
+    ), "RegulatedHighAssurancePreset missing from aegis.presets"
 
 
 def test_v090_pr05_workflow_init_cli_exits_cleanly(tmp_path):
-    """aigc workflow init with a profile creates files without error."""
+    """aegis workflow init with a profile creates files without error."""
     result = subprocess.run(
         [
             sys.executable,
             "-m",
-            "aigc",
+            "aegis",
             "workflow",
             "init",
             "--profile",
@@ -222,17 +222,17 @@ def test_v090_pr05_workflow_init_cli_exits_cleanly(tmp_path):
     )
     assert result.returncode == 0, f"workflow init failed: {result.stderr}"
     generated_files = list(tmp_path.iterdir())
-    assert generated_files, "No files generated by aigc workflow init"
+    assert generated_files, "No files generated by aegis workflow init"
 
 
 def test_v090_pr05_policy_init_cli_exits_cleanly(tmp_path):
-    """aigc policy init writes a policy file without error."""
+    """aegis policy init writes a policy file without error."""
     output_path = tmp_path / "policy.yaml"
     result = subprocess.run(
         [
             sys.executable,
             "-m",
-            "aigc",
+            "aegis",
             "policy",
             "init",
             "--profile",
@@ -250,8 +250,8 @@ def test_v090_pr05_policy_init_cli_exits_cleanly(tmp_path):
 
 
 def test_v090_pr05_workflow_starter_integrity_error_importable():
-    """WorkflowStarterIntegrityError must be importable from the public aigc namespace."""
-    from aigc import WorkflowStarterIntegrityError
+    """WorkflowStarterIntegrityError must be importable from the public aegis namespace."""
+    from aegis import WorkflowStarterIntegrityError
 
     assert WorkflowStarterIntegrityError is not None
 
@@ -261,9 +261,9 @@ def test_v090_pr05_workflow_starter_integrity_error_importable():
 # ---------------------------------------------------------------------------
 
 def test_v090_pr06_workflow_help_lists_lint_and_doctor():
-    """aigc workflow --help must list init, lint, and doctor subcommands."""
+    """aegis workflow --help must list init, lint, and doctor subcommands."""
     result = subprocess.run(
-        [sys.executable, "-m", "aigc", "workflow", "--help"],
+        [sys.executable, "-m", "aegis", "workflow", "--help"],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
@@ -276,8 +276,8 @@ def test_v090_pr06_workflow_help_lists_lint_and_doctor():
 
 
 def test_v090_pr06_all_seven_reason_codes_importable():
-    """All 7 frozen reason-code error classes must be importable from aigc."""
-    from aigc import (
+    """All 7 frozen reason-code error classes must be importable from aegis."""
+    from aegis import (
         WorkflowStarterIntegrityError,      # PR-05
         WorkflowApprovalRequiredError,       # PR-06
         WorkflowSourceRequiredError,         # PR-06
@@ -285,7 +285,7 @@ def test_v090_pr06_all_seven_reason_codes_importable():
         WorkflowUnsupportedBindingError,     # PR-06
         WorkflowSessionTokenInvalidError,    # PR-06
     )
-    from aigc import SessionStateError  # WORKFLOW_INVALID_TRANSITION (PR-04)
+    from aegis import SessionStateError  # WORKFLOW_INVALID_TRANSITION (PR-04)
 
     assert WorkflowStarterIntegrityError("x").code == "WORKFLOW_STARTER_INTEGRITY_ERROR"
     assert WorkflowApprovalRequiredError("x").code == "WORKFLOW_APPROVAL_REQUIRED"
@@ -298,7 +298,7 @@ def test_v090_pr06_all_seven_reason_codes_importable():
 
 def test_v090_pr08_public_workflow_errors_exported():
     """PR-08 workflow-step errors raised by public methods must be public imports."""
-    from aigc import (
+    from aegis import (
         WorkflowHandoffDeniedError,
         WorkflowHookDeniedError,
         WorkflowParticipantMismatchError,
@@ -320,11 +320,11 @@ def test_v090_pr08_public_workflow_errors_exported():
 
 
 def test_v090_pr06_workflow_lint_cli_exits_cleanly_on_valid_policy(tmp_path):
-    """aigc workflow lint on a valid policy exits 0."""
+    """aegis workflow lint on a valid policy exits 0."""
     policy = tmp_path / "policy.yaml"
     policy.write_text('policy_version: "1.0"\nroles:\n  - ai-assistant\n', encoding="utf-8")
     result = subprocess.run(
-        [sys.executable, "-m", "aigc", "workflow", "lint", str(policy)],
+        [sys.executable, "-m", "aegis", "workflow", "lint", str(policy)],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
@@ -335,11 +335,11 @@ def test_v090_pr06_workflow_lint_cli_exits_cleanly_on_valid_policy(tmp_path):
 
 
 def test_v090_pr06_workflow_lint_cli_exits_1_on_invalid_policy(tmp_path):
-    """aigc workflow lint on an invalid policy exits 1."""
+    """aegis workflow lint on an invalid policy exits 1."""
     policy = tmp_path / "bad.yaml"
     policy.write_text("roles: [unclosed", encoding="utf-8")
     result = subprocess.run(
-        [sys.executable, "-m", "aigc", "workflow", "lint", str(policy)],
+        [sys.executable, "-m", "aegis", "workflow", "lint", str(policy)],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
@@ -349,11 +349,11 @@ def test_v090_pr06_workflow_lint_cli_exits_1_on_invalid_policy(tmp_path):
 
 
 def test_v090_pr06_workflow_doctor_cli_exits_cleanly_on_valid_policy(tmp_path):
-    """aigc workflow doctor on a valid policy exits 0."""
+    """aegis workflow doctor on a valid policy exits 0."""
     policy = tmp_path / "policy.yaml"
     policy.write_text('policy_version: "1.0"\nroles:\n  - ai-assistant\n', encoding="utf-8")
     result = subprocess.run(
-        [sys.executable, "-m", "aigc", "workflow", "doctor", str(policy)],
+        [sys.executable, "-m", "aegis", "workflow", "doctor", str(policy)],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,

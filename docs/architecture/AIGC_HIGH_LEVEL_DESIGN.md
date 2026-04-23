@@ -23,9 +23,9 @@ and emits evidence.
 Availability boundary: this document describes the intended `1.0.0` public
 surface. The currently shipped package remains `v0.3.3`. The upcoming unreleased
 v0.9.0-beta line adds `GovernanceSession`, `SessionPreCallResult`,
-`AIGC.open_session(...)`, `aigc workflow init`, `aigc policy init`,
-`aigc workflow lint`, `aigc workflow doctor`, `aigc workflow trace`, and
-`aigc workflow export`. `AgentIdentity`, `AgentCapabilityManifest`,
+`AIGC.open_session(...)`, `aegis workflow init`, `aegis policy init`,
+`aegis workflow lint`, `aegis workflow doctor`, `aegis workflow trace`, and
+`aegis workflow export`. `AgentIdentity`, `AgentCapabilityManifest`,
 `ValidatorHook`, `BedrockTraceAdapter`, and `A2AAdapter` remain planned-only
 and are not part of the current beta public surface.
 
@@ -458,8 +458,8 @@ workflow evidence mechanism in the 1.0.0 design.
 
 Operator tooling sits above emitted evidence:
 
-- `aigc workflow lint`
-- `aigc workflow doctor`
+- `aegis workflow lint`
+- `aegis workflow doctor`
 - later trace/export tooling
 
 ---
@@ -572,7 +572,7 @@ about what it trusts, what it normalizes, and what it refuses to infer.
 - invocation gate ordering is unchanged
 - workflow governance wraps invocation governance
 - missing required protocol evidence fails closed
-- public integrations must not depend on `aigc._internal`
+- public integrations must not depend on `aegis._internal`
 - adapters cannot become hidden alternate enforcement engines
 
 ### 12.2 Trust Boundaries
@@ -614,9 +614,9 @@ Available in the source-only `v0.9.0` beta line — not part of the `v0.3.3` art
 | `GovernanceSession` | workflow governance primitive |
 | `SessionPreCallResult` | workflow-scoped split handoff |
 | `AIGC.open_session(...)` | instance-scoped workflow entrypoint |
-| `aigc workflow init` / `aigc policy init` | starter and policy bootstrap surface |
-| `aigc workflow lint` / `aigc workflow doctor` | beta diagnostic surface |
-| `aigc workflow trace` / `aigc workflow export` | operator inspection and audit export surface (shipped in PR-09) |
+| `aegis workflow init` / `aegis policy init` | starter and policy bootstrap surface |
+| `aegis workflow lint` / `aegis workflow doctor` | beta diagnostic surface |
+| `aegis workflow trace` / `aegis workflow export` | operator inspection and audit export surface (shipped in PR-09) |
 
 Planned for 1.0.0 or later (not in the current beta public surface):
 
@@ -643,7 +643,7 @@ After `1.0.0` GA, the intended stability promise covers:
 
 It does not cover:
 
-- `aigc._internal`
+- `aegis._internal`
 - undocumented helper modules
 - internal lifecycle fields
 - experimental adapter internals
@@ -667,10 +667,10 @@ this architecture reference.
 
 Frozen CLI command inventory:
 
-- `aigc policy init`
-- `aigc workflow init`
-- `aigc workflow lint`
-- `aigc workflow doctor`
+- `aegis policy init`
+- `aegis workflow init`
+- `aegis workflow lint`
+- `aegis workflow doctor`
 
 Frozen scaffold profiles:
 
@@ -690,7 +690,7 @@ Rules:
 - hand-authored workflow DSL remains supported as advanced mode and is not
   required for the default path
 - public quickstarts, starter packs, presets, demo code, and docs snippets
-  must use public `aigc` imports only and must not depend on `aigc._internal`
+  must use public `aegis` imports only and must not depend on `aegis._internal`
 
 Frozen first-user diagnostic reason codes:
 

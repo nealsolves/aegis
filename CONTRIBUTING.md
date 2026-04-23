@@ -5,8 +5,8 @@ Thank you for your interest in contributing to AIGC.
 ## Development Setup
 
 ```bash
-python3 -m venv aigc-env
-source aigc-env/bin/activate
+python3 -m venv aegis-env
+source aegis-env/bin/activate
 python -m pip install --upgrade pip setuptools wheel
 pip install --no-build-isolation -e '.[dev]'
 ```
@@ -20,13 +20,13 @@ python -m pytest
 CI enforces a 90% coverage gate:
 
 ```bash
-python -m pytest --cov=aigc --cov-fail-under=90
+python -m pytest --cov=aegis --cov-fail-under=90
 ```
 
 ## Linting
 
 ```bash
-flake8 aigc
+flake8 aegis
 npx markdownlint-cli2 "**/*.md"
 ```
 
@@ -53,7 +53,7 @@ All PRs must follow `.github/pull_request_template.md`.
 Before submitting:
 
 1. All tests pass (`python -m pytest`)
-2. Linters pass (`flake8 aigc` and `npx markdownlint-cli2 "**/*.md"`)
+2. Linters pass (`flake8 aegis` and `npx markdownlint-cli2 "**/*.md"`)
 3. Golden replays updated if governance behavior changed
 4. Documentation updated if architecture changed
 

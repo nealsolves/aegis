@@ -24,8 +24,8 @@ from pathlib import Path
 import pytest
 from jsonschema import validate, ValidationError
 
-from aigc._internal.enforcement import enforce_invocation
-from aigc._internal.errors import (
+from aegis._internal.enforcement import enforce_invocation
+from aegis._internal.errors import (
     AIGCError,
     InvocationValidationError,
     PolicyLoadError,

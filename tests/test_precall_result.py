@@ -9,11 +9,11 @@ import pickle
 
 import pytest
 
-from aigc._internal.enforcement import (
+from aegis._internal.enforcement import (
     enforce_post_call,
     enforce_pre_call,
 )
-from aigc._internal.errors import InvocationValidationError
+from aegis._internal.errors import InvocationValidationError
 
 
 def _pre_call_invocation():

@@ -31,8 +31,8 @@ walks through the `v0.3.x` capabilities.
 
 The source-only `v0.9.0` beta workflow governance line is available on local
 `develop`. It adds `AIGC.open_session()`, `GovernanceSession`, starter
-scaffolds, `aigc workflow init`, `aigc workflow lint`, and
-`aigc workflow doctor`. See
+scaffolds, `aegis workflow init`, `aegis workflow lint`, and
+`aegis workflow doctor`. See
 [docs/reference/WORKFLOW_QUICKSTART.md](docs/reference/WORKFLOW_QUICKSTART.md)
 for the first-adopter path.
 
@@ -87,8 +87,8 @@ via `pre_call_enforcement=False`.
 This tree focuses on the parts of the repo a new visitor is most likely to use.
 
 ```text
-aigc/
-├── aigc/                           Public package surface
+aegis/
+├── aegis/                           Public package surface
 │   ├── __init__.py                 Stable imports
 │   ├── enforcement.py              Public enforcement entry points
 │   ├── decorators.py               Public @governed surface
@@ -158,8 +158,8 @@ The next patch releases made the SDK practical to install and embed:
 - absolute policy paths were supported for installed-library use
 - packaged wheels started including schema files reliably
 - public API stability guidance was clarified
-- the PyPI distribution name became `aigc-sdk` while the import remained
-  `aigc`
+- the PyPI distribution name became `aegis-sdk` while the import remained
+  `aegis`
 
 These releases mattered less for new features than for making the initial SDK
 survive real installations and integrations.
@@ -301,4 +301,4 @@ order listed in the [README.md workflow section](README.md#workflow-governance-v
   `v0.3.3` capabilities (lineage, provenance, risk history, split-by-default
   decorator behavior) are described in the current docs and changelog.
 - The demo apps are important orientation tools, but the SDK package under
-  `aigc/` is the authoritative product surface.
+  `aegis/` is the authoritative product surface.

@@ -11,7 +11,7 @@ import json
 
 import pytest
 
-from aigc._internal.enforcement import (
+from aegis._internal.enforcement import (
     AIGC,
     PreCallResult,
     _ENFORCEMENT_TOKEN,
@@ -19,7 +19,7 @@ from aigc._internal.enforcement import (
     enforce_post_call,
     enforce_pre_call,
 )
-from aigc._internal.errors import InvocationValidationError
+from aegis._internal.errors import InvocationValidationError
 
 GOLDEN_POLICY = "tests/golden_replays/golden_policy_v1.yaml"
 
@@ -51,7 +51,7 @@ def _make_forged_token(
     Used to verify that post-call rejects such tokens (Finding #1 path) or
     that corrupted-bytes tokens produce typed errors (Finding #2 path).
     """
-    from aigc._internal.policy_loader import load_policy
+    from aegis._internal.policy_loader import load_policy
 
     policy = load_policy(GOLDEN_POLICY)
     inv_snapshot = {

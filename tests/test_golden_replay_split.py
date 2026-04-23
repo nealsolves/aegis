@@ -9,12 +9,12 @@ import json
 import pytest
 from pathlib import Path
 
-from aigc._internal.enforcement import (
+from aegis._internal.enforcement import (
     enforce_invocation,
     enforce_pre_call,
     enforce_post_call,
 )
-from aigc._internal.errors import (
+from aegis._internal.errors import (
     GovernanceViolationError,
     InvocationValidationError,
 )

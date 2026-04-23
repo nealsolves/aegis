@@ -2,7 +2,7 @@
 import pytest
 from typing import Any, Mapping
 
-from aigc._internal.gates import (
+from aegis._internal.gates import (
     EnforcementGate,
     GateResult,
     validate_gate,
@@ -14,8 +14,8 @@ from aigc._internal.gates import (
     INSERTION_POST_OUTPUT,
     VALID_INSERTION_POINTS,
 )
-from aigc._internal.enforcement import AIGC, enforce_invocation, GATE_GUARDS
-from aigc._internal.errors import CustomGateViolationError, GovernanceViolationError
+from aegis._internal.enforcement import AIGC, enforce_invocation, GATE_GUARDS
+from aegis._internal.errors import CustomGateViolationError, GovernanceViolationError
 
 
 # ── Test gate implementations ────────────────────────────────────
@@ -205,17 +205,17 @@ VALID_INVOCATION = {
 
 
 def test_aigc_with_passing_custom_gate():
-    aigc = AIGC(custom_gates=[PassingGate()])
-    audit = aigc.enforce(VALID_INVOCATION)
+    aegis = AIGC(custom_gates=[PassingGate()])
+    audit = aegis.enforce(VALID_INVOCATION)
     assert audit["enforcement_result"] == "PASS"
     gates = audit["metadata"]["gates_evaluated"]
     assert "custom:passing_gate" in gates
 
 
 def test_aigc_with_failing_custom_gate():
-    aigc = AIGC(custom_gates=[FailingGate()])
+    aegis = AIGC(custom_gates=[FailingGate()])
     with pytest.raises(CustomGateViolationError) as exc_info:
-        aigc.enforce(VALID_INVOCATION)
+        aegis.enforce(VALID_INVOCATION)
     # CustomGateViolationError is a subclass of GovernanceViolationError
     assert isinstance(exc_info.value, GovernanceViolationError)
     assert exc_info.value.audit_artifact is not None
@@ -224,8 +224,8 @@ def test_aigc_with_failing_custom_gate():
 
 def test_aigc_custom_gate_ordering_proof():
     """Custom gates appear in gates_evaluated at correct positions."""
-    aigc = AIGC(custom_gates=[PreAuthGate(), PassingGate(), PostOutputGate()])
-    audit = aigc.enforce(VALID_INVOCATION)
+    aegis = AIGC(custom_gates=[PreAuthGate(), PassingGate(), PostOutputGate()])
+    audit = aegis.enforce(VALID_INVOCATION)
     gates = audit["metadata"]["gates_evaluated"]
 
     # Pre-auth gate runs first
@@ -290,9 +290,9 @@ def test_post_auth_gate_cannot_suppress_role_failure(tmp_path):
                             "field": None}],
             )
 
-    aigc = AIGC(custom_gates=[AlwaysFailPostAuth()])
+    aegis = AIGC(custom_gates=[AlwaysFailPostAuth()])
     with pytest.raises(GovernanceViolationError) as exc_info:
-        aigc.enforce({
+        aegis.enforce({
             "policy_file": str(policy_file),
             "model_provider": "openai",
             "model_identifier": "gpt-4",

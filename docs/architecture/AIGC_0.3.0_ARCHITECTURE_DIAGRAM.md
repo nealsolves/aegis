@@ -70,7 +70,7 @@ flowchart TB
     subgraph Ops["Operational Utilities Around The Runtime"]
         direction LR
         Chain["AuditChain.append()<br/>opt-in, host-managed"]
-        CLI["aigc compliance export<br/>reads JSONL audit trails"]
+        CLI["aegis compliance export<br/>reads JSONL audit trails"]
     end
 
     App -->|"direct integration"| E1
@@ -122,7 +122,7 @@ flowchart LR
   AIGC assembles the invocation and enforces policy on the result.
 - `AuditChain` is not part of the automatic enforcement pipeline in `0.3.0`.
   It is an opt-in utility the host applies to artifacts it manages.
-- `aigc compliance export` is an offline analysis step over stored audit
+- `aegis compliance export` is an offline analysis step over stored audit
   artifacts, not a live runtime gate.
 - Pre-pipeline failures still produce schema-valid FAIL artifacts, but they
   bypass the core gate sequence because enforcement never fully starts.

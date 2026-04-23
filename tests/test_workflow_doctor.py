@@ -1,4 +1,4 @@
-"""Tests for aigc._internal.workflow_doctor."""
+"""Tests for aegis._internal.workflow_doctor."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import json
 from datetime import date
 from pathlib import Path
 
-from aigc._internal.workflow_doctor import (
+from aegis._internal.workflow_doctor import (
     diagnose_workflow_policy,
     diagnose_starter_dir,
     diagnose_workflow_artifact,
@@ -50,13 +50,13 @@ def _make_standard_starter_dir(tmp_path: Path) -> Path:
     d = _make_starter_dir(tmp_path, "standard")
     # Include the approval checkpoint pattern
     workflow_src = """\
-import aigc
+import aegis
 
 def _request_human_approval(summary):
     return True
 
 def run(policy_file=None):
-    governance = aigc.AIGC()
+    governance = aegis.AIGC()
     with governance.open_session(policy_file=policy_file) as session:
         session.pause()
         approved = _request_human_approval("step 1 result")
@@ -73,12 +73,12 @@ def run(policy_file=None):
 def _make_regulated_starter_dir(tmp_path: Path) -> Path:
     d = _make_starter_dir(tmp_path, "regulated")
     workflow_src = """\
-import aigc
-from aigc import ProvenanceGate
+import aegis
+from aegis import ProvenanceGate
 
 def run(policy_file=None):
     gate = ProvenanceGate(require_source_ids=True)
-    governance = aigc.AIGC(custom_gates=[gate])
+    governance = aegis.AIGC(custom_gates=[gate])
     with governance.open_session(policy_file=policy_file) as session:
         pre = session.enforce_step_pre_call({
             "context": {"provenance": {"source_ids": ["doc-001"]}},
@@ -99,10 +99,10 @@ def run(policy_file=None):
 def _make_minimal_starter_dir(tmp_path: Path) -> Path:
     d = _make_starter_dir(tmp_path, "minimal_simple")
     workflow_src = """\
-import aigc
+import aegis
 
 def run(policy_file=None):
-    governance = aigc.AIGC()
+    governance = aegis.AIGC()
     with governance.open_session(policy_file=policy_file) as session:
         session.complete()
 """

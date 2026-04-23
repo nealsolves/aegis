@@ -4,7 +4,7 @@
 
 **Goal:** Flip the `@governed` decorator's default from `pre_call_enforcement=False` to `pre_call_enforcement=True`, making split enforcement the standard execution model for v0.3.3+, while keeping `pre_call_enforcement=False` available as a deprecated legacy opt-out.
 
-**Architecture:** Add a module-level `_UNSET` sentinel in `aigc/_internal/decorators.py`. The `governed()` factory detects whether `pre_call_enforcement` was supplied by the caller: absent → `True` (new default); explicitly `False` → emit `DeprecationWarning` then use unified mode; explicitly `True` → use split mode (no change). No changes to `enforcement.py` or the test golden replays; the enforcement pipeline is unchanged. Five migration tests confirm the new default, the legacy opt-out, and the deprecation warning.
+**Architecture:** Add a module-level `_UNSET` sentinel in `aegis/_internal/decorators.py`. The `governed()` factory detects whether `pre_call_enforcement` was supplied by the caller: absent → `True` (new default); explicitly `False` → emit `DeprecationWarning` then use unified mode; explicitly `True` → use split mode (no change). No changes to `enforcement.py` or the test golden replays; the enforcement pipeline is unchanged. Five migration tests confirm the new default, the legacy opt-out, and the deprecation warning.
 
 **Tech Stack:** Python 3.11+, `pytest`, `pytest-asyncio` (asyncio_mode = "auto")
 
@@ -14,7 +14,7 @@
 
 | File | Action | Responsibility |
 |------|--------|---------------|
-| `aigc/_internal/decorators.py` | Modify | Add sentinel, deprecation warning, flip default, update docstring |
+| `aegis/_internal/decorators.py` | Modify | Add sentinel, deprecation warning, flip default, update docstring |
 | `tests/test_governed_default_flip.py` | Create | 5 migration tests |
 | `CHANGELOG.md` | Modify | Add Changed entry, remove "Upcoming" planned line |
 | `README.md` | Modify | Remove explicit `pre_call_enforcement=True` from decorator example |
@@ -69,8 +69,8 @@ import warnings
 
 import pytest
 
-from aigc._internal.decorators import governed
-from aigc._internal.errors import GovernanceViolationError
+from aegis._internal.decorators import governed
+from aegis._internal.errors import GovernanceViolationError
 
 POLICY = "tests/golden_replays/golden_policy_v1.yaml"
 PROVIDER = "anthropic"
@@ -210,11 +210,11 @@ that's fine. We need at least 3 red tests before proceeding.
 ## Task 3: Implement the default flip in `decorators.py`
 
 **Files:**
-- Modify: `aigc/_internal/decorators.py`
+- Modify: `aegis/_internal/decorators.py`
 
 - [ ] **Step 1: Read the current file**
 
-Open `aigc/_internal/decorators.py`. The key changes are at the top and in the
+Open `aegis/_internal/decorators.py`. The key changes are at the top and in the
 `governed()` signature (around lines 87–118).
 
 - [ ] **Step 2: Add `import warnings` to the imports block**
@@ -238,7 +238,7 @@ from typing import Any, Callable
 
 - [ ] **Step 3: Add the `_UNSET` sentinel before `governed()`**
 
-After the `logger = logging.getLogger("aigc.decorators")` line (line 45), add:
+After the `logger = logging.getLogger("aegis.decorators")` line (line 45), add:
 
 ```python
 _UNSET = object()  # sentinel: distinguishes "omitted" from explicit False
@@ -337,7 +337,7 @@ schema violations still raise).
 - [ ] **Step 7: Run the linter**
 
 ```bash
-flake8 aigc
+flake8 aegis
 ```
 
 Expected: no errors.
@@ -345,7 +345,7 @@ Expected: no errors.
 - [ ] **Step 8: Commit the runtime change**
 
 ```bash
-git add aigc/_internal/decorators.py tests/test_governed_default_flip.py
+git add aegis/_internal/decorators.py tests/test_governed_default_flip.py
 git commit -m "feat(decorators): flip @governed default to pre_call_enforcement=True (PR-07)
 
 Split enforcement is now the default execution model for @governed.
@@ -414,7 +414,7 @@ The current block reads:
 The decorator also supports split mode:
 
 ```python
-from aigc import governed
+from aegis import governed
 
 @governed(
     policy_file="policies/base_policy.yaml",
@@ -434,7 +434,7 @@ Replace with:
 The `@governed` decorator uses split enforcement by default (since v0.3.3):
 
 ```python
-from aigc import governed
+from aegis import governed
 
 @governed(
     policy_file="policies/base_policy.yaml",
@@ -474,7 +474,7 @@ The current block reads:
 For decorator-based call sites, opt in with `pre_call_enforcement=True`:
 
 ```python
-from aigc import governed
+from aegis import governed
 
 @governed(
     policy_file="policies/planner.yaml",
@@ -500,7 +500,7 @@ Replace with:
 Since v0.3.3, `@governed` uses split enforcement by default:
 
 ```python
-from aigc import governed
+from aegis import governed
 
 @governed(
     policy_file="policies/planner.yaml",
@@ -737,7 +737,7 @@ be regressions. There are none currently; confirm before merging.
 - [ ] **Step 2: Run the linter**
 
 ```bash
-flake8 aigc
+flake8 aegis
 ```
 
 Expected: no errors.

@@ -9,8 +9,8 @@
   require access to PyPI or an internal package mirror:
 
 ```bash
-git clone https://github.com/nealsolves/aigc
-cd aigc
+git clone https://github.com/nealsolves/aegis
+cd aegis
 git checkout develop
 pip install -e ".[dev]"
 ```
@@ -27,7 +27,7 @@ current interpreter's installed Python packages instead of contacting an index.
 ## Step 1 — Generate a minimal starter
 
 ```bash
-aigc workflow init --profile minimal
+aegis workflow init --profile minimal
 ```
 
 This creates a `governance/` directory containing:
@@ -83,12 +83,12 @@ UUID that correlates all invocation artifacts.
 
 ## Next steps
 
-- **Run a different profile:** Try `aigc workflow init --profile standard` for a
+- **Run a different profile:** Try `aegis workflow init --profile standard` for a
   three-step workflow with an approval checkpoint (pause/resume). See
   [STARTER_INDEX.md](STARTER_INDEX.md) for all profiles.
 
 - **Diagnose issues:** If your workflow raises an error, run
-  `aigc workflow doctor <starter-dir>/` for structured advice. See
+  `aegis workflow doctor <starter-dir>/` for structured advice. See
   [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for all reason codes.
 
 - **CLI reference:** See [WORKFLOW_CLI.md](WORKFLOW_CLI.md) for full command

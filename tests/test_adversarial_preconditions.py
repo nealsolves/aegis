@@ -6,8 +6,8 @@ pass bare-string truthiness checks but violate type contracts.
 
 import pytest
 
-from aigc._internal.errors import PreconditionError
-from aigc._internal.validator import _validate_typed_precondition
+from aegis._internal.errors import PreconditionError
+from aegis._internal.validator import _validate_typed_precondition
 
 
 def test_boolean_true_rejected_for_string_type():

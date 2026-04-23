@@ -12,9 +12,9 @@ These tests close audit finding C2.
 
 import pytest
 
-from aigc._internal.enforcement import AIGC
-from aigc._internal.errors import AIGCError, PolicyValidationError
-from aigc._internal.risk_scoring import (
+from aegis._internal.enforcement import AIGC
+from aegis._internal.errors import AIGCError, PolicyValidationError
+from aegis._internal.risk_scoring import (
     compute_risk_score,
     VALID_RISK_MODES,
 )
@@ -109,18 +109,18 @@ class TestInvalidRiskModeProducesFAILArtifact:
     """C2 regression: invalid risk_config.mode in pipeline must emit FAIL."""
 
     def test_raises_aigc_error_not_value_error(self, base_invocation):
-        aigc = AIGC(risk_config={"mode": "invalid", "factors": []})
+        aegis = AIGC(risk_config={"mode": "invalid", "factors": []})
         with pytest.raises(AIGCError) as exc_info:
-            aigc.enforce(base_invocation)
+            aegis.enforce(base_invocation)
 
         assert not isinstance(exc_info.value, type) or True
         # Must not be raw ValueError
         assert isinstance(exc_info.value, AIGCError)
 
     def test_fail_artifact_attached(self, base_invocation):
-        aigc = AIGC(risk_config={"mode": "invalid", "factors": []})
+        aegis = AIGC(risk_config={"mode": "invalid", "factors": []})
         with pytest.raises(AIGCError) as exc_info:
-            aigc.enforce(base_invocation)
+            aegis.enforce(base_invocation)
 
         artifact = exc_info.value.audit_artifact
         assert artifact is not None
@@ -128,29 +128,29 @@ class TestInvalidRiskModeProducesFAILArtifact:
 
     def test_artifact_emitted_to_sink(self, base_invocation):
         emitted = []
-        from aigc._internal.sinks import CallbackAuditSink
+        from aegis._internal.sinks import CallbackAuditSink
         sink = CallbackAuditSink(lambda a: emitted.append(a))
-        aigc = AIGC(
+        aegis = AIGC(
             risk_config={"mode": "not_a_mode", "factors": []},
             sink=sink,
         )
         with pytest.raises(AIGCError):
-            aigc.enforce(base_invocation)
+            aegis.enforce(base_invocation)
 
         assert len(emitted) == 1
         assert emitted[0]["enforcement_result"] == "FAIL"
 
     def test_failure_gate_is_risk_scoring(self, base_invocation):
         """Invalid risk_config.mode must map to risk_scoring gate."""
-        aigc = AIGC(risk_config={"mode": "bad", "factors": []})
+        aegis = AIGC(risk_config={"mode": "bad", "factors": []})
         with pytest.raises(AIGCError) as exc_info:
-            aigc.enforce(base_invocation)
+            aegis.enforce(base_invocation)
 
         artifact = exc_info.value.audit_artifact
         assert artifact["failure_gate"] == "risk_scoring"
 
     def test_non_risk_policy_validation_still_invocation_validation(self):
         """PolicyValidationError without risk details stays invocation_validation."""
-        from aigc._internal.enforcement import _map_exception_to_failure_gate
+        from aegis._internal.enforcement import _map_exception_to_failure_gate
         exc = PolicyValidationError("generic issue", details={"issues": []})
         assert _map_exception_to_failure_gate(exc) == "invocation_validation"
