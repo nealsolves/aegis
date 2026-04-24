@@ -99,4 +99,37 @@ describe('useApi', () => {
     expect(result.current.error).toBeNull()
     vi.unstubAllGlobals()
   })
+
+  it('aborts an in-flight request on unmount without surfacing an error', async () => {
+    let signal: AbortSignal | undefined
+    const mockFetch = vi.fn((_url: string, init?: RequestInit) => {
+      signal = init?.signal ?? undefined
+      return new Promise((_resolve, reject) => {
+        signal?.addEventListener('abort', () => {
+          reject(new DOMException('The operation was aborted.', 'AbortError'))
+        })
+      })
+    })
+    vi.stubGlobal('fetch', mockFetch)
+
+    const { result, unmount } = renderHook(() => useApi<{ status: string }>(), {
+      wrapper: AigcProvider,
+    })
+
+    let pending!: Promise<{ status: string } | null>
+    await act(async () => {
+      pending = result.current.call('/slow')
+    })
+
+    unmount()
+
+    let data: { status: string } | null = { status: 'unexpected' }
+    await act(async () => {
+      data = await pending
+    })
+
+    expect(signal?.aborted).toBe(true)
+    expect(data).toBeNull()
+    vi.unstubAllGlobals()
+  })
 })
