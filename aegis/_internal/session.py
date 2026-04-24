@@ -16,6 +16,7 @@ from aegis._internal.errors import (
     SessionStateError,
 )
 from aegis._internal.sinks import emit_to_sink
+from aegis._internal.tools import validate_tool_constraints
 from aegis._internal.utils import canonical_json_bytes
 
 if TYPE_CHECKING:
@@ -243,6 +244,60 @@ class GovernanceSession:
     @property
     def workflow_artifact(self) -> dict[str, Any] | None:
         return self._workflow_artifact
+
+    def protocol_constraints_for(self, protocol: str) -> dict[str, Any]:
+        """Return workflow protocol constraints for adapter-managed protocol seams."""
+        return dict((self._protocol_constraints or {}).get(protocol) or {})
+
+    def participant_for(self, participant_id: str) -> dict[str, Any] | None:
+        """Return a workflow participant declaration for adapter binding checks."""
+        participant = self._participants_by_id.get(participant_id)
+        return dict(participant) if participant is not None else None
+
+    def register_adapter_step_state(
+        self,
+        session_result: SessionPreCallResult,
+        state: dict[str, Any],
+    ) -> None:
+        """Register adapter-owned state for a pending governed step."""
+        self._assert_open()
+        self._assert_owns(session_result)
+        if session_result._token_id not in self._pending_results:
+            raise InvocationValidationError(
+                "Token not registered in this session",
+                details={"token_id": session_result._token_id},
+            )
+        self._adapter_step_states[session_result._token_id] = state
+
+    def adapter_step_state(
+        self,
+        session_result: SessionPreCallResult,
+    ) -> dict[str, Any] | None:
+        """Return adapter-owned state for a pending governed step, if present."""
+        self._assert_open()
+        self._assert_owns(session_result)
+        return self._adapter_step_states.get(session_result._token_id)
+
+    def pop_adapter_step_state(
+        self,
+        session_result: SessionPreCallResult,
+    ) -> dict[str, Any]:
+        """Remove and return adapter-owned state for a pending governed step."""
+        self._assert_open()
+        self._assert_owns(session_result)
+        return self._adapter_step_states.pop(session_result._token_id, {})
+
+    def discard_adapter_step(
+        self,
+        session_result: SessionPreCallResult,
+        *,
+        rollback_authorization: bool = False,
+    ) -> None:
+        """Invalidate an adapter-prepared pending step without running Phase B."""
+        self._discard_pending_step(
+            session_result,
+            rollback_authorization=rollback_authorization,
+        )
 
     # ------------------------------------------------------------------
     # Context manager
@@ -557,6 +612,22 @@ class GovernanceSession:
                 details={"token_id": session_result._token_id},
             )
 
+        entry = self._pending_results[session_result._token_id]
+        adapter_state = self._adapter_step_states.get(session_result._token_id)
+        observed_tool_calls = list(
+            (adapter_state or {}).get("dynamic_tool_calls") or []
+        )
+        projected_call = {"name": tool_name, "id": tool_call_id}
+        inner = entry.get("inner")
+        effective_policy = getattr(inner, "_frozen_effective_policy", None)
+        if effective_policy is None:
+            effective_policy = getattr(inner, "effective_policy", {})
+
+        validate_tool_constraints(
+            {"tool_calls": [*observed_tool_calls, projected_call]},
+            effective_policy,
+        )
+
         # Enforce session-level tool-call budget (real-time)
         projected = self._total_tool_calls_consumed + 1
         if (
@@ -579,10 +650,10 @@ class GovernanceSession:
         self._total_tool_calls_consumed += 1
 
         # Update adapter-managed state (summary evidence only)
-        adapter_state = self._adapter_step_states.get(session_result._token_id)
         if adapter_state is not None:
             adapter_state["dynamic_tool_calls_count"] += 1
             adapter_state["dynamic_tool_calls"].append({
+                "name": tool_name,
                 "tool_name": tool_name,
                 "tool_call_id": tool_call_id,
                 "authorized_at": int(time.time()),

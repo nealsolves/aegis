@@ -203,7 +203,8 @@ Two new methods were added to `GovernanceSession` for adapter use:
 ### `authorize_step_tool_call(session_result, *, tool_name, tool_call_id=None)`
 
 Called by the adapter for each intercepted tool call. Enforces the session
-tool-call budget and records summary evidence.
+tool-call budget, policy `tools.allowed_tools` / per-tool `max_calls`, and
+records summary evidence.
 
 ### `enforce_step_post_call(session_result, output, *, step_metadata=None)`
 

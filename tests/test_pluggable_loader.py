@@ -19,8 +19,10 @@ class InMemoryPolicyLoader(PolicyLoaderBase):
 
     def __init__(self, policies: dict[str, dict[str, Any]]):
         self._policies = policies
+        self.load_count = 0
 
     def load(self, policy_ref: str) -> dict[str, Any]:
+        self.load_count += 1
         if policy_ref not in self._policies:
             raise PolicyLoadError(
                 f"Policy not found in memory: {policy_ref}",
@@ -95,6 +97,31 @@ def test_custom_loader_schema_validation():
     loader = InMemoryPolicyLoader(policies)
     with pytest.raises(Exception):  # PolicyValidationError
         load_policy("bad", loader=loader)
+
+
+def test_custom_loader_rejects_extends_without_filesystem_fallback(tmp_path):
+    """Custom loaders must not resolve extends through FilePolicyLoader."""
+    child_ref = str(tmp_path / "child.yaml")
+    base_path = tmp_path / "base.yaml"
+    base_path.write_text(
+        "policy_version: '1.0'\nroles:\n  - planner\n  - auditor\n",
+        encoding="utf-8",
+    )
+
+    loader = InMemoryPolicyLoader(
+        {
+            child_ref: {
+                "extends": "base.yaml",
+                "policy_version": "1.0",
+                "roles": ["planner"],
+            }
+        }
+    )
+
+    with pytest.raises(PolicyLoadError, match="not supported with custom loaders"):
+        load_policy(child_ref, loader=loader)
+
+    assert loader.load_count == 1
 
 
 # ── Default file loader ─────────────────────────────────────────

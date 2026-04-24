@@ -554,6 +554,63 @@ def test_authorize_step_tool_call_increments_session_counter():
         assert session._total_tool_calls_consumed == 2
 
 
+def test_authorize_step_tool_call_enforces_allowed_tools():
+    from aegis import AEGIS
+    from aegis._internal.errors import ToolConstraintViolationError
+
+    a = AEGIS()
+    invocation = copy.deepcopy(_BASE_INV)
+    invocation["policy_file"] = "tests/golden_replays/policy_with_tools.yaml"
+    invocation["context"] = {"role_declared": True}
+
+    with a.open_session(policy_file=None) as session:
+        r = session.enforce_step_pre_call(invocation)
+        session._adapter_step_states[r._token_id] = {
+            "adapter_step_key": "k",
+            "dynamic_tool_calls_count": 0,
+            "dynamic_tool_calls": [],
+            "checkpoint_id": None,
+        }
+
+        with pytest.raises(ToolConstraintViolationError, match="not in allowed_tools"):
+            session.authorize_step_tool_call(r, tool_name="unlisted_tool")
+
+        assert session._total_tool_calls_consumed == 0
+        assert session._adapter_step_states[r._token_id]["dynamic_tool_calls"] == []
+
+
+def test_authorize_step_tool_call_enforces_per_tool_max_calls():
+    from aegis import AEGIS
+    from aegis._internal.errors import ToolConstraintViolationError
+
+    a = AEGIS()
+    invocation = copy.deepcopy(_BASE_INV)
+    invocation["policy_file"] = "tests/golden_replays/policy_with_tools.yaml"
+    invocation["context"] = {"role_declared": True}
+
+    with a.open_session(policy_file=None) as session:
+        r = session.enforce_step_pre_call(invocation)
+        session._adapter_step_states[r._token_id] = {
+            "adapter_step_key": "k",
+            "dynamic_tool_calls_count": 0,
+            "dynamic_tool_calls": [],
+            "checkpoint_id": None,
+        }
+
+        session.authorize_step_tool_call(r, tool_name="search_knowledge_base")
+        session.authorize_step_tool_call(r, tool_name="search_knowledge_base")
+        with pytest.raises(ToolConstraintViolationError, match="max is 2"):
+            session.authorize_step_tool_call(r, tool_name="search_knowledge_base")
+
+        state = session._adapter_step_states[r._token_id]
+        assert session._total_tool_calls_consumed == 2
+        assert state["dynamic_tool_calls_count"] == 2
+        assert [tc["name"] for tc in state["dynamic_tool_calls"]] == [
+            "search_knowledge_base",
+            "search_knowledge_base",
+        ]
+
+
 def test_authorize_step_tool_call_rejects_unregistered_token():
     from aegis import AEGIS
     from aegis._internal.session import SessionPreCallResult
@@ -784,8 +841,14 @@ def test_tracing_processor_handles_exception_gracefully():
 
 def _make_prepared_step(session: Any, token_id: str, adapter_step_key: str) -> Any:
     from aegis.openai_agents_adapter import OpenAIAgentsPreparedStep
-    session_result = MagicMock()
-    session_result._token_id = token_id
+    from aegis._internal.session import SessionPreCallResult
+
+    session_result = SessionPreCallResult(
+        session_id=session.session_id,
+        step_id="step-test",
+        participant_id=None,
+        _token_id=token_id,
+    )
     session._adapter_step_states[token_id] = {
         "adapter_step_key": adapter_step_key,
         "dynamic_tool_calls_count": 0,

@@ -352,6 +352,31 @@ def test_protocol_constraints_accept_local_bedrock_a2a_sections():
     jsonschema.validate(policy, schema)
 
 
+def test_protocol_constraints_accept_openai_agents_in_packaged_schema():
+    schema = _load_schema()
+    policy = {
+        "policy_version": "1.0",
+        "roles": ["planner"],
+        "workflow": {
+            "protocol_constraints": {
+                "openai_agents": {
+                    "require_trace": False,
+                    "allow_hosted_tools": False,
+                    "allow_agent_as_tool": True,
+                    "require_unique_agent_names": True,
+                },
+            },
+        },
+    }
+    jsonschema.validate(policy, schema)
+
+
+def test_root_and_packaged_policy_dsl_schemas_match():
+    root_schema = Path("schemas/policy_dsl.schema.json").read_text()
+    packaged_schema = Path("aegis/schemas/policy_dsl.schema.json").read_text()
+    assert packaged_schema == root_schema
+
+
 def test_unknown_workflow_field_still_rejected():
     schema = _load_schema()
     policy = {

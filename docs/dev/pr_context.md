@@ -45,8 +45,6 @@ no further public-surface work proceeds until the default path is repaired.
   - `aegis workflow doctor`
   - `aegis workflow trace`
   - `aegis workflow export`
-  - `BedrockTraceAdapter` (optional, `aegis[bedrock]`)
-  - `A2AAdapter` (optional, `aegis[a2a]`)
   - `OpenAIAgentsAdapter` (optional, `aegis[openai-agents]`)
 - The default adopter path succeeds without Bedrock, A2A, or the OpenAI Agents SDK.
 - `ValidatorHook` is implemented as an internal engine capability in PR-08. It
@@ -59,10 +57,12 @@ no further public-surface work proceeds until the default path is repaired.
 - Public examples, docs, starters, presets, and demo code must use public
   `aegis` imports only and must not import from `aegis._internal`.
 - `aegis workflow trace` and `aegis workflow export` shipped in PR-09.
-- `BedrockTraceAdapter`, `A2AAdapter`, and `OpenAIAgentsAdapter` are source-only
-  beta surfaces behind optional extras (`aegis[bedrock]`, `aegis[a2a]`,
-  `aegis[openai-agents]`). They are not re-exported from the top-level `aegis`
-  package.
+- `OpenAIAgentsAdapter` is a source-only beta surface behind the optional
+  `aegis[openai-agents]` extra. It is not re-exported from the top-level
+  `aegis` package.
+- `BedrockTraceAdapter` and `A2AAdapter` remain planned follow-on adapter
+  surfaces; their protocol evidence checks exist in the workflow runtime, but
+  no public adapter modules or extras ship on this branch.
 - `AgentIdentity` and `AgentCapabilityManifest` remain out-of-scope for v0.9.0.
 
 ## Verified PR-07 / PR-08 Outcomes
@@ -88,14 +88,14 @@ PR-09 shipped:
 
 ## PR-10a Outcomes
 
-PR-10a shipped:
+PR-10a remains planned:
 
 - `BedrockTraceAdapter` — alias-backed identity, fail-closed on missing trace
 - optional Bedrock adapter (`aegis[bedrock]`)
 
 ## PR-10b Outcomes
 
-PR-10b shipped:
+PR-10b remains planned:
 
 - `A2AAdapter` — strict `TASK_STATE_*` validation, gRPC rejection
 - optional A2A adapter (`aegis[a2a]`)
