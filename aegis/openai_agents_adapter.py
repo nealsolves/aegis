@@ -227,7 +227,10 @@ def _resolve_handoff_target(handoff: Any) -> Any | None:
 
 
 def _resolve_agent_as_tool_inner(tool: Any) -> Any | None:
-    inner = getattr(tool, "_inner_agent", None)
+    # Try _agent_instance (SDK v0.11+) first, then _inner_agent (older SDK)
+    inner = getattr(tool, "_agent_instance", None)
+    if inner is None:
+        inner = getattr(tool, "_inner_agent", None)
     if inner is not None and _is_agent_like(inner):
         return inner
     return None
