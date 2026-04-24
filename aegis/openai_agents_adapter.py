@@ -543,9 +543,7 @@ class OpenAIAgentsAdapter:
         _require_sdk()
 
         # --- Protocol constraints ---
-        oa_constraints: dict[str, Any] = (
-            (session._protocol_constraints or {}).get("openai_agents") or {}
-        )
+        oa_constraints = session.protocol_constraints_for("openai_agents")
         allow_hosted_tools = oa_constraints.get("allow_hosted_tools", False)
         allow_agent_as_tool = oa_constraints.get("allow_agent_as_tool", True)
         require_unique_names = oa_constraints.get("require_unique_agent_names", True)
@@ -578,23 +576,22 @@ class OpenAIAgentsAdapter:
             )
 
         # --- Participant-role consistency check ---
-        if session._participants_by_id:
-            part = session._participants_by_id.get(binding.participant_id)
-            if part:
-                allowed_roles = part.get("roles")
-                if allowed_roles and binding.role not in allowed_roles:
-                    from aegis._internal.errors import WorkflowParticipantMismatchError
-                    raise WorkflowParticipantMismatchError(
-                        f"binding.role={binding.role!r} not in participant "
-                        f"{binding.participant_id!r} allowed roles: {allowed_roles}",
-                        details={
-                            "session_id": session.session_id,
-                            "participant_id": binding.participant_id,
-                            "binding_role": binding.role,
-                            "allowed_roles": allowed_roles,
-                            "reason_code": "WORKFLOW_PARTICIPANT_ROLE_MISMATCH",
-                        },
-                    )
+        part = session.participant_for(binding.participant_id)
+        if part:
+            allowed_roles = part.get("roles")
+            if allowed_roles and binding.role not in allowed_roles:
+                from aegis._internal.errors import WorkflowParticipantMismatchError
+                raise WorkflowParticipantMismatchError(
+                    f"binding.role={binding.role!r} not in participant "
+                    f"{binding.participant_id!r} allowed roles: {allowed_roles}",
+                    details={
+                        "session_id": session.session_id,
+                        "participant_id": binding.participant_id,
+                        "binding_role": binding.role,
+                        "allowed_roles": allowed_roles,
+                        "reason_code": "WORKFLOW_PARTICIPANT_ROLE_MISMATCH",
+                    },
+                )
 
         # --- Reject double-counting ---
         if invocation.get("tool_calls"):
@@ -649,13 +646,16 @@ class OpenAIAgentsAdapter:
 
         try:
             # --- Register adapter state for dynamic tool tracking ---
-            session._adapter_step_states[session_result._token_id] = {
-                "adapter_step_key": adapter_step_key,
-                "dynamic_tool_calls_count": 0,
-                "dynamic_tool_calls": [],
-                "checkpoint_id": None,
-                "require_trace": require_trace,
-            }
+            session.register_adapter_step_state(
+                session_result,
+                {
+                    "adapter_step_key": adapter_step_key,
+                    "dynamic_tool_calls_count": 0,
+                    "dynamic_tool_calls": [],
+                    "checkpoint_id": None,
+                    "require_trace": require_trace,
+                },
+            )
 
             # --- Wrap tools on cloned graph ---
             self._wrap_all_tools(
@@ -675,7 +675,7 @@ class OpenAIAgentsAdapter:
             # --- Register global trace processor ---
             self._get_trace_processor()
         except Exception:
-            session._discard_pending_step(
+            session.discard_adapter_step(
                 session_result,
                 rollback_authorization=True,
             )
@@ -736,8 +736,7 @@ class OpenAIAgentsAdapter:
             reason=f"OpenAI Agents SDK interruption: {reasons}",
         )
 
-        token_id = prepared._session_result._token_id
-        state = prepared._session._adapter_step_states.get(token_id)
+        state = prepared._session.adapter_step_state(prepared._session_result)
         if state is not None:
             state["checkpoint_id"] = checkpoint_id
 
@@ -765,9 +764,8 @@ class OpenAIAgentsAdapter:
             stale state reuse.
         """
         session = pending._prepared._session
-        token_id = pending._prepared._session_result._token_id
 
-        adapter_state = session._adapter_step_states.get(token_id)
+        adapter_state = session.adapter_step_state(pending._prepared._session_result)
         if adapter_state is None:
             raise WorkflowSessionTokenInvalidError(
                 "Adapter step state not found; the prepared step may have already "
@@ -817,9 +815,8 @@ class OpenAIAgentsAdapter:
         session = prepared._session
         session_result = prepared._session_result
         adapter_step_key = prepared._adapter_step_key
-        token_id = session_result._token_id
 
-        adapter_state = session._adapter_step_states.pop(token_id, {})
+        adapter_state = session.pop_adapter_step_state(session_result)
         try:
             trace_processor = self._get_trace_processor()
             trace_summaries = (
@@ -855,7 +852,7 @@ class OpenAIAgentsAdapter:
                 step_metadata=step_metadata,
             )
         except Exception:
-            session._discard_pending_step(session_result)
+            session.discard_adapter_step(session_result)
             raise
 
     def _build_step_metadata(
