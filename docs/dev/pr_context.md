@@ -48,7 +48,9 @@ no further public-surface work proceeds until the default path is repaired.
   - `aegis workflow export`
 - The default adopter path succeeds without Bedrock, A2A, or the OpenAI Agents SDK.
 - `ValidatorHook` is implemented as an internal engine capability in PR-08. It is not a public beta surface.
-- PR-10a, PR-10b, PR-10c, and PR-10d remain pre-freeze work before PR-11.
+- PR-10a and PR-10b have not started.
+- PR-10c is being worked on local `develop` and has not been pushed to `origin/develop` yet.
+- PR-10d remains proposed pre-freeze work before PR-11.
 
 ---
 
@@ -112,10 +114,9 @@ It must not add a new runtime, new transport layer, MCP governance proxy, stream
 
 ## Next PRs
 
-Recommended order:
+Current execution note:
 
-1. PR-10a — Bedrock adapter
-2. PR-10b — A2A adapter
-3. PR-10c — OpenAI Agents SDK adapter
-4. PR-10d — research-informed safety addendum implementation
-5. PR-11 — beta freeze and release cut
+- PR-10c is in local `develop` work and should be pushed/reviewed when ready.
+- PR-10a and PR-10b remain not started.
+- PR-10d should remain a post-adapter hardening addendum, landing after the adapter surfaces it needs to test are visible to the target branch.
+- PR-11 follows after PR-10a, PR-10b, PR-10c, and PR-10d gates are satisfied.
