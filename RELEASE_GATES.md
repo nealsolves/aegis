@@ -25,7 +25,8 @@ no further public-surface work proceeds until the default path is repaired.
 | PR-09 | `feat/v0.9-09-exports-and-ops` | Ship trace, export, and operator polish |
 | PR-10a | `feat/v0.9-10-bedrock-adapter` | Add optional Bedrock adapter with alias-backed identity binding |
 | PR-10b | `feat/v0.9-10-a2a-adapter` | Add optional A2A adapter with strict wire-contract validation |
-| PR-10c | `feat/v0.9-10-openai-agents-adapter` | Add optional OpenAI Agents SDK adapter with governed binding and explicit unsupported-surface rejection |
+| PR-10c | `feat/v0.9-10-openai-agents-adapter` | Add optional OpenAI Agents SDK adapter with governed binding and fail-closed unsupported-surface rules |
+| PR-10d | `feat/v0.9-10d-research-safety-addendum` | Add research-informed lint, doctor, export, safety-smoke, and adapter-fixture hardening |
 | PR-11 | `feat/v0.9-11-beta-freeze` -> `release/v0.9.0` | Freeze the beta and start the final release sequence only after all gates pass |
 
 ---
@@ -76,9 +77,26 @@ no further public-surface work proceeds until the default path is repaired.
 - [x] `aegis workflow export` — operator and audit export modes with checksum integrity reporting
 - [x] operator-facing export portability and timeline reconstruction
 
+## PR-10d — Research Safety Addendum Gate
+
+PR-10d is a bounded post-adapter hardening addendum. It must improve the existing beta surfaces without reopening product scope.
+
+- [ ] graph/topology lint rules are deterministic and test-backed
+- [ ] every new finding has a stable code, plain-English explanation, and next action
+- [ ] witness traces are bounded and useful for invalid path diagnosis
+- [ ] `workflow doctor` maps new findings to remediation guidance
+- [ ] `workflow export` includes backward-compatible governance rationale metadata
+- [ ] starter safety smoke tests pass without external dependencies
+- [ ] adapter-informed tests use fixtures only and do not require provider credentials
+- [ ] no public example imports from `aegis._internal`
+- [ ] no new required runtime dependency is introduced
+- [ ] default local adopter path remains unchanged and green
+- [ ] base package smoke still passes
+
 ## Deferred To PR-10 And Later
 
 - [ ] optional Bedrock, A2A, and OpenAI Agents SDK adapter tracks
+- [ ] research-informed PR-10d safety hardening addendum
 
 ---
 
@@ -100,11 +118,12 @@ no further public-surface work proceeds until the default path is repaired.
 
 `v0.9.0` beta ships only if all of the following are true:
 
-- [ ] PR-01 through PR-10c work is merged to `origin/develop`
+- [ ] PR-01 through PR-10d work is merged to `origin/develop`
 - [x] the golden-path contract is frozen before later public-surface expansion
 - [x] quickstart, starters, migration, diagnostics, beta proof, and engine hardening are test-backed on local `develop`
 - [x] PR-09 operator polish lands
 - [ ] optional adapter work lands
+- [ ] PR-10d research-informed safety hardening lands
 - [ ] `feat/v0.9-11-beta-freeze` lands
 - [ ] `release/v0.9.0` is cut from the PR-11 result
 - [ ] only then is the `origin/develop` -> `origin/main` PR opened

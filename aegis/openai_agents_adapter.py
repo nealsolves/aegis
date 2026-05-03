@@ -360,11 +360,27 @@ def _make_tool_wrapper(
     except ImportError:
         try:
             from agents import FunctionTool
-        except ImportError:
-            return tool
+        except ImportError as err:
+            raise WorkflowUnsupportedBindingError(
+                "Could not load OpenAI Agents FunctionTool type; governed tool "
+                "wrapping cannot be verified",
+                details={
+                    "tool_type": type(tool).__name__,
+                    "reason_code": "WORKFLOW_UNSUPPORTED_BINDING",
+                },
+            ) from err
 
     if not isinstance(tool, FunctionTool):
-        return tool
+        raise WorkflowUnsupportedBindingError(
+            f"Tool {getattr(tool, 'name', type(tool).__name__)!r} has type "
+            f"{type(tool).__name__!r}, which cannot be governance-wrapped; "
+            "governed OpenAI Agents runs support FunctionTool-compatible tools only",
+            details={
+                "tool_name": getattr(tool, "name", None),
+                "tool_type": type(tool).__name__,
+                "reason_code": "WORKFLOW_UNSUPPORTED_BINDING",
+            },
+        )
 
     original_invoke = tool.on_invoke_tool
 
@@ -705,13 +721,15 @@ class OpenAIAgentsAdapter:
             ]
             try:
                 agent.tools = wrapped
-            except (AttributeError, TypeError):
-                logger.warning(
-                    "OpenAIAgentsAdapter: could not replace tools on agent %r — "
-                    "governed wrappers were not applied; tool budget enforcement "
-                    "will not fire for this agent",
-                    getattr(agent, "name", agent),
-                )
+            except (AttributeError, TypeError) as err:
+                raise WorkflowUnsupportedBindingError(
+                    f"Agent {getattr(agent, 'name', repr(agent))!r} has immutable tools; "
+                    "governed wrappers cannot be applied — aborting prepare_step",
+                    details={
+                        "agent_name": getattr(agent, "name", None),
+                        "reason_code": "WORKFLOW_UNSUPPORTED_BINDING",
+                    },
+                ) from err
 
     def pause_step(
         self,

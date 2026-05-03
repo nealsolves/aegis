@@ -158,7 +158,7 @@ workflow:
   protocol_constraints:
     openai_agents:
       require_trace: false          # default: false
-      allow_hosted_tools: false     # default: false — rejects WebSearch, FileSearch, etc.
+      allow_hosted_tools: false     # default: false — hosted tools are not governance-wrapped
       allow_agent_as_tool: true     # default: true
       require_unique_agent_names: true  # default: true
 ```
@@ -191,8 +191,9 @@ The following surfaces are rejected in governed mode:
 |---------|--------|
 | `RealtimeAgent`, `SandboxAgent` | Not supported in v0.9.0 |
 | `mcp_servers` on any agent | Not supported in governed mode |
-| `WebSearchTool`, `FileSearchTool`, `CodeInterpreterTool`, `ComputerTool` | Hosted tools (set `allow_hosted_tools=true` to override) |
+| `WebSearchTool`, `FileSearchTool`, `CodeInterpreterTool`, `ComputerTool` | Hosted tools are not governance-wrapped |
 | `HostedMCPTool`, `MCPTool` | Hosted MCP (not supported) |
+| Non-`FunctionTool` custom tool classes | No verified pre-execution wrapper hook |
 | Predeclared `tool_calls` in invocation | Adapter tracks tool calls dynamically |
 | Duplicate agent names (across root + handoffs + nested) | Set `require_unique_agent_names=false` to override |
 

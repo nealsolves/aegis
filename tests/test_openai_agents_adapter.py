@@ -22,6 +22,7 @@ from __future__ import annotations
 import copy
 import json
 import sys
+import types
 import unittest.mock as mock
 from pathlib import Path
 from typing import Any
@@ -382,6 +383,120 @@ def test_wrap_all_tools_uses_object_identity_for_duplicate_names():
     assert child.tools == ["wrapped:child_tool"]
 
 
+def test_wrap_all_tools_raises_on_immutable_agent_tools():
+    import aegis.openai_agents_adapter as _mod
+    from aegis._internal.errors import WorkflowUnsupportedBindingError
+    from aegis.openai_agents_adapter import OpenAIAgentsAdapter
+
+    class _Tool:
+        name = "my_tool"
+
+    class _FrozenAgent:
+        name = "FrozenAgent"
+        handoffs = []
+
+        @property
+        def tools(self):
+            return [_Tool()]
+
+        @tools.setter
+        def tools(self, value):
+            raise AttributeError("immutable")
+
+    with pytest.raises(WorkflowUnsupportedBindingError, match="immutable tools"):
+        OpenAIAgentsAdapter()._wrap_all_tools(
+            _FrozenAgent(),
+            session=MagicMock(),
+            session_result=MagicMock(),
+        )
+
+
+def test_prepare_step_aborts_on_immutable_agent_tools(monkeypatch):
+    import aegis.openai_agents_adapter as _mod
+    from aegis import AEGIS
+    from aegis._internal.errors import WorkflowUnsupportedBindingError
+    from aegis.openai_agents_adapter import OpenAIAgentsAdapter, OpenAIAgentsParticipantBinding
+
+    class _FunctionTool:
+        pass
+
+    class _Tool(_FunctionTool):
+        name = "my_tool"
+        on_invoke_tool = None
+
+    class _FrozenAgent:
+        name = "AgentA"
+        handoffs = []
+
+        @property
+        def tools(self):
+            return [_Tool()]
+
+        @tools.setter
+        def tools(self, value):
+            raise AttributeError("immutable")
+
+        def clone(self):
+            return self
+
+    import types as _types
+    fake_agents = _types.ModuleType("agents")
+    fake_agents.FunctionTool = _FunctionTool
+    monkeypatch.setitem(sys.modules, "agents", fake_agents)
+
+    a = AEGIS()
+    adapter = OpenAIAgentsAdapter()
+    invocation = copy.deepcopy(_BASE_INV)
+    invocation["protocol"] = "openai_agents"
+    invocation["context"] = {
+        **_BASE_INV["context"],
+        "protocol_evidence": {"openai_agents": {"root_agent": _FrozenAgent()}},
+    }
+
+    with a.open_session(policy_file=None) as session:
+        with patch.object(_mod, "_SDK_AVAILABLE", True):
+            with pytest.raises(WorkflowUnsupportedBindingError, match="immutable tools"):
+                adapter.prepare_step(
+                    session,
+                    invocation,
+                    binding=OpenAIAgentsParticipantBinding("p1", "AgentA", "planner"),
+                )
+
+        assert session._pending_results == {}
+        assert session._adapter_step_states == {}
+        assert session._authorized_step_count == 0
+
+
+def test_make_tool_wrapper_rejects_non_function_tool_when_sdk_available(monkeypatch):
+    import aegis.openai_agents_adapter as _mod
+    from aegis._internal.errors import WorkflowUnsupportedBindingError
+
+    class _FunctionTool:
+        pass
+
+    class _CustomTool:
+        name = "custom_tool"
+
+    fake_agents = types.ModuleType("agents")
+    fake_agents.FunctionTool = _FunctionTool
+    monkeypatch.setitem(sys.modules, "agents", fake_agents)
+
+    with patch.object(_mod, "_SDK_AVAILABLE", True):
+        with pytest.raises(
+            WorkflowUnsupportedBindingError,
+            match="cannot be governance-wrapped",
+        ) as exc_info:
+            _mod._make_tool_wrapper(
+                _CustomTool(),
+                session=MagicMock(),
+                session_result=MagicMock(),
+            )
+
+    assert exc_info.value.details["tool_name"] == "custom_tool"
+    assert exc_info.value.details["tool_type"] == "_CustomTool"
+    assert exc_info.value.details["reason_code"] == "WORKFLOW_UNSUPPORTED_BINDING"
+
+
 # ---------------------------------------------------------------------------
 # Missing root_agent evidence rejection
 # ---------------------------------------------------------------------------
@@ -433,6 +548,49 @@ def test_prepare_step_rejects_predeclared_tool_calls():
         with patch.object(_mod, "_SDK_AVAILABLE", True):
             with pytest.raises(InvocationValidationError, match="tool_calls"):
                 adapter.prepare_step(session, invocation, binding=binding)
+
+
+def test_prepare_step_rejects_custom_tool_without_wrapper_hook(monkeypatch):
+    import aegis.openai_agents_adapter as _mod
+    from aegis import AEGIS
+    from aegis._internal.errors import WorkflowUnsupportedBindingError
+    from aegis.openai_agents_adapter import OpenAIAgentsAdapter, OpenAIAgentsParticipantBinding
+
+    class _FunctionTool:
+        pass
+
+    class _CustomTool:
+        name = "custom_tool"
+
+    fake_agents = types.ModuleType("agents")
+    fake_agents.FunctionTool = _FunctionTool
+    monkeypatch.setitem(sys.modules, "agents", fake_agents)
+
+    a = AEGIS()
+    adapter = OpenAIAgentsAdapter()
+    root_agent = _make_typed_agent("AgentA", "Agent", tools=[_CustomTool()])
+    invocation = copy.deepcopy(_BASE_INV)
+    invocation["protocol"] = "openai_agents"
+    invocation["context"] = {
+        **_BASE_INV["context"],
+        "protocol_evidence": {"openai_agents": {"root_agent": root_agent}},
+    }
+
+    with a.open_session(policy_file=None) as session:
+        with patch.object(_mod, "_SDK_AVAILABLE", True):
+            with pytest.raises(
+                WorkflowUnsupportedBindingError,
+                match="cannot be governance-wrapped",
+            ):
+                adapter.prepare_step(
+                    session,
+                    invocation,
+                    binding=OpenAIAgentsParticipantBinding("p1", "AgentA", "planner"),
+                )
+
+        assert session._pending_results == {}
+        assert session._adapter_step_states == {}
+        assert session._authorized_step_count == 0
 
 
 def test_prepare_step_requires_sdk():

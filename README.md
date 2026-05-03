@@ -1,4 +1,4 @@
-# AEGIS — Auditable Intelligence Governance Contract
+# AEGIS — Auditable Enforcement and Governance for Intelligent Systems
 
 ![AEGIS Banner](<graphics/aegis banner.png>)
 
@@ -17,6 +17,8 @@ Governance in AEGIS is runtime enforcement, not documentation and not prompting.
 - Current release scope: invocation governance plus workflow-aware provenance
   and lineage groundwork, audit schema `v1.4`, `AuditLineage`,
   `ProvenanceGate`, `RiskHistory`, `@governed` defaults to split enforcement
+- Current beta line: source-only `v0.9.0` workflow governance on local
+  `develop`; the shipped PyPI package remains `v0.3.3`
 - Verification baseline: `1484 tests`, coverage above the `90%` CI gate
 
 ## Why This Repo Exists
@@ -55,8 +57,11 @@ built around `AEGIS.open_session(...)`, `GovernanceSession`,
 `aegis workflow lint`, `aegis workflow doctor`, `aegis workflow trace`, and
 `aegis workflow export`. No external API keys are required for the default
 adopter path. The currently shipped PyPI package remains `v0.3.3`. Optional
-Bedrock/A2A adapters remain later PRs. The target-state architecture is
-captured in `docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md`.
+Bedrock and A2A adapters remain later tracks. The optional OpenAI Agents SDK
+adapter is present in the source-only beta under `aegis.openai_agents_adapter`;
+it requires `aegis[openai-agents]` and is not re-exported from top-level
+`aegis`. The target-state architecture is captured in
+`docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md`.
 
 ## Workflow Governance (v0.9.0 Beta)
 
@@ -82,21 +87,36 @@ python workflow_example.py
 6. [Public API Contract](docs/PUBLIC_INTEGRATION_CONTRACT.md)
 7. [Supported Environments](docs/reference/SUPPORTED_ENVIRONMENTS.md)
 8. [Operations Runbook](docs/reference/OPERATIONS_RUNBOOK.md)
+9. [External Adapter Docs](docs/reference/external/README.md)
 
 ## Release Narrative
 
 This is the versioned story of the repo's current state and how it evolved
 release by release.
 
-| Release | Date | What changed for users |
-| ------- | ---- | ---------------------- |
-| `0.1.0` | 2026-02-16 | Initial SDK: policy loading, role allowlists, preconditions, output schema validation, postconditions, deterministic audit artifacts |
-| `0.1.1` to `0.1.3` | 2026-02-17 to 2026-02-23 | Installation and integration stabilization: context in audit artifacts, absolute policy paths, packaged schemas, public API guidance, `aegis` PyPI package name |
-| `0.2.0` | 2026-03-06 | SDK ergonomics and operability: instance-scoped `AEGIS`, typed preconditions, exception sanitization, policy caching, sink failure modes, audit schema `v1.2`, `InvocationBuilder`, AST-based guards, policy CLI |
-| `0.3.0` | 2026-03-15 | Governance hardening: risk scoring, artifact signing, audit chain utility, pluggable `PolicyLoader`, policy dates, telemetry, policy testing, compliance export, custom gate isolation and metadata preservation |
-| `0.3.1` | 2026-04-04 | Demo parity release: React demo and FastAPI backend became the maintained hands-on surface for all 7 labs |
-| `0.3.2` | 2026-04-05 | Split enforcement release: `enforce_pre_call()` / `enforce_post_call()`, `PreCallResult`, split decorator mode, audit schema `v1.3`, and post-release security hardening from the 2026-04-05 audit |
-| `0.3.3` | `2026-04-10` | Workflow-aware provenance and lineage groundwork: audit schema `v1.4` provenance metadata, `AuditLineage` DAG reconstruction, `ProvenanceGate` built-in enforcement gate, `RiskHistory` risk trend tracking, `@governed` defaults to `pre_call_enforcement=True` (split enforcement is the standard execution model) |
+- `0.1.0` (`2026-02-16`): initial SDK with policy loading, role
+  allowlists, preconditions, output schema validation, postconditions, and
+  deterministic audit artifacts.
+- `0.1.1` to `0.1.3` (`2026-02-17` to `2026-02-23`): installation and
+  integration stabilization, including context in audit artifacts, absolute
+  policy paths, packaged schemas, public API guidance, and the `aegis` PyPI
+  package name.
+- `0.2.0` (`2026-03-06`): SDK ergonomics and operability with
+  instance-scoped `AEGIS`, typed preconditions, exception sanitization, policy
+  caching, sink failure modes, audit schema `v1.2`, `InvocationBuilder`,
+  AST-based guards, and policy CLI.
+- `0.3.0` (`2026-03-15`): governance hardening with risk scoring, artifact
+  signing, audit chain utility, pluggable `PolicyLoader`, policy dates,
+  telemetry, policy testing, compliance export, and custom gate isolation.
+- `0.3.1` (`2026-04-04`): demo parity release where the React demo and FastAPI
+  backend became the maintained hands-on surface for all 7 labs.
+- `0.3.2` (`2026-04-05`): split enforcement through `enforce_pre_call()` /
+  `enforce_post_call()`, `PreCallResult`, split decorator mode, audit schema
+  `v1.3`, and post-release security hardening from the 2026-04-05 audit.
+- `0.3.3` (`2026-04-10`): workflow-aware provenance and lineage groundwork,
+  including audit schema `v1.4` provenance metadata, `AuditLineage`,
+  `ProvenanceGate`, `RiskHistory`, and `@governed` defaulting to split
+  enforcement.
 
 For the full change log, use [CHANGELOG.md](CHANGELOG.md).
 
@@ -223,6 +243,29 @@ The source-only `v0.9.0` beta line adds `aegis workflow init`,
 `aegis policy init`, `aegis workflow lint`, `aegis workflow doctor`,
 `aegis workflow trace`, and `aegis workflow export`. The current PyPI release
 (`v0.3.3`) CLI surface is unchanged.
+
+## SDK Package Boundary
+
+The installable runtime SDK is the Python package under `aegis/`. The wheel is
+configured by `pyproject.toml` to include `aegis` and `aegis.*`, plus package
+data under `aegis/schemas/` and `aegis/py.typed`.
+
+```text
+aegis/
+├── __init__.py                    Stable top-level public exports
+├── enforcement.py                 Invocation and split-enforcement APIs
+├── session.py                     v0.9.0-beta workflow session surface
+├── workflow_trace.py              v0.9.0-beta trace helpers
+├── workflow_export.py             v0.9.0-beta export helpers
+├── openai_agents_adapter.py       Optional source-only OpenAI Agents adapter
+├── schemas/                       Runtime JSON Schemas packaged with the SDK
+└── _internal/                     Private implementation used by public modules
+```
+
+Repo folders such as `docs/`, `tests/`, `scripts/`, `examples/`,
+`demo-app-api/`, `demo-app-react/`, `policies/`, top-level `schemas/`, and
+generated build/cache output are repository, documentation, demo, or maintainer
+artifacts. They are not required in the runtime wheel.
 
 ## Repo Guide
 
