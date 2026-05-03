@@ -2,15 +2,16 @@
 
 **Target Version:** `0.9.0` Beta
 **Baseline Version:** `0.3.3`
-**Active Branch:** `develop`
-**Last Updated:** 2026-04-19
+**Active Branch:** `feat/v0.9-10d-research-safety-addendum`
+**Last Updated:** 2026-05-03
 
 ---
 
 ## Overall Progress
 
 - PR-01 through PR-09 are complete.
-- PR-10a, PR-10b, PR-10c, and PR-11 have not started.
+- PR-10a, PR-10b, PR-10c, PR-10d, and PR-11 have not started.
+- PR-10d is now proposed as a bounded research-informed safety addendum after PR-10a/b/c and before PR-11.
 
 | Track | Status | Notes |
 |-------|--------|-------|
@@ -24,6 +25,7 @@
 | Engine hardening | complete | Budgets, transitions, protocol constraints, approvals, handoffs, and internal validator hooks are hardened |
 | Exports and ops | complete | `aegis workflow trace` and `aegis workflow export` ship on `develop` |
 | Optional adapters | not started | Begin in PR-10a, PR-10b, and PR-10c |
+| Research safety addendum | proposed | PR-10d adds graph/topology lint, doctor remediation, export rationale, and safety smoke tests |
 | Beta freeze | not started | Begins in PR-11 |
 
 ---
@@ -35,6 +37,7 @@
 - PR-07 is the mandatory stop-ship checkpoint. If the golden path fails there,
   no further public-surface work proceeds until the default path is repaired.
 - The default adopter path must succeed without Bedrock, A2A, or the OpenAI Agents SDK.
+- PR-10d must not introduce a new runtime, transport proxy, MCP gateway, streaming runtime, memory manager, or new required dependency.
 
 ---
 
@@ -44,7 +47,7 @@
 |----|--------|--------|-------|
 | PR-01 | `feat/v0.9-01-source-of-truth` | complete | Canonical plan, release packet, supersession banners, and CI truth checks |
 | PR-02 | `feat/v0.9-02-contract-freeze` | complete | Freeze lifecycle, `SessionPreCallResult`, `AEGIS.open_session(...)`, and evidence separation |
-| PR-03 | `feat/v0.9-03-golden-path-contract` | complete | Freeze beta CLI shape, starter profiles, docs order, and public-import rules |
+| PR-03 | `feat/v0.9-03-golden-path-contract` | complete | Freeze beta CLI shape, starter profiles, public-import rules, docs order, and first-user reason codes |
 | PR-04 | `feat/v0.9-04-minimal-session-flow` | complete | Smallest real governed local workflow path |
 | PR-05 | `feat/v0.9-05-starters-and-migration` | complete | Starters, thin presets, and migration helpers |
 | PR-06 | `feat/v0.9-06-doctor-and-lint` | complete | Diagnostics: lint, doctor, stable reason codes |
@@ -54,6 +57,7 @@
 | PR-10a | `feat/v0.9-10-bedrock-adapter` | not started | Optional Bedrock adapter with alias-backed identity rules |
 | PR-10b | `feat/v0.9-10-a2a-adapter` | not started | Optional A2A adapter with strict wire-contract rules |
 | PR-10c | `feat/v0.9-10-openai-agents-adapter` | not started | Optional OpenAI Agents SDK adapter for host-owned `openai-agents` runs |
+| PR-10d | `feat/v0.9-10d-research-safety-addendum` | proposed | Research-informed lint, doctor, export, safety smoke, and adapter-fixture hardening |
 | PR-11 | `feat/v0.9-11-beta-freeze` -> `release/v0.9.0` | not started | Public API freeze, beta gate verification, and release cut |
 
 ---
@@ -87,3 +91,14 @@
 - [x] internal validator-hook wiring through ordinary session creation
 - [x] public re-exports for workflow-step exceptions raised by public methods
 - [x] deterministic session token cleanup on failed Phase B attempts
+
+## PR-10d Proposed Deliverables
+
+- [ ] graph/topology lint rules with bounded witness traces
+- [ ] temporal-check approximations using existing DSL fields only
+- [ ] source and memory provenance warnings without adding full memory governance
+- [ ] backward-compatible workflow export governance rationale metadata
+- [ ] fixture-only adapter-informed capability and trust tests after PR-10a/b/c land
+- [ ] internal multi-aspect `ValidatorHook` example without public promotion
+- [ ] starter and workflow safety smoke tests with no external services
+- [ ] release docs confirming PR-10d does not change the default local adopter path
