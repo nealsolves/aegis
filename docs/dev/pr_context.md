@@ -1,8 +1,8 @@
-# PR Context — `v0.9.0` PR-09 exports-and-ops
+# PR Context — `v0.9.0` PR-10d Research Safety Addendum
 
-Date: 2026-04-19
-Status: `feat/v0.9-09-exports-and-ops` contains PR-01 through PR-09
-Active branch: `feat/v0.9-09-exports-and-ops`
+Date: 2026-05-03
+Status: Proposed
+Active branch: `feat/v0.9-10d-research-safety-addendum`
 
 ---
 
@@ -28,13 +28,14 @@ no further public-surface work proceeds until the default path is repaired.
 | PR-10a | `feat/v0.9-10-bedrock-adapter` | Add optional Bedrock adapter with alias-backed identity binding |
 | PR-10b | `feat/v0.9-10-a2a-adapter` | Add optional A2A adapter with strict wire-contract validation |
 | PR-10c | `feat/v0.9-10-openai-agents-adapter` | Add optional OpenAI Agents SDK adapter with governed binding and fail-closed unsupported-surface rules |
+| PR-10d | `feat/v0.9-10d-research-safety-addendum` | Add research-informed lint, doctor, export, safety-smoke, and adapter-fixture hardening |
 | PR-11 | `feat/v0.9-11-beta-freeze` -> `release/v0.9.0` | Freeze the beta and start the final release sequence only after all gates pass |
 
 ---
 
 ## Current State
 
-- PR-01 through PR-09 are complete on local `develop`.
+- PR-01 through PR-09 are complete on `develop`.
 - The source-only `v0.9.0` beta path currently ships:
   - `AEGIS.open_session(...)`
   - `GovernanceSession`
@@ -46,45 +47,75 @@ no further public-surface work proceeds until the default path is repaired.
   - `aegis workflow trace`
   - `aegis workflow export`
 - The default adopter path succeeds without Bedrock, A2A, or the OpenAI Agents SDK.
-- `ValidatorHook` is implemented as an internal engine capability in PR-08. It
-  is not a public beta surface.
+- `ValidatorHook` is implemented as an internal engine capability in PR-08. It is not a public beta surface.
+- PR-10a, PR-10b, PR-10c, and PR-10d remain pre-freeze work before PR-11.
 
-## Beta Contract Notes
+---
 
-- Workflow adoption is always instance-scoped through `AEGIS.open_session(...)`.
-- Invocation artifacts remain separate from workflow/session artifacts.
-- Public examples, docs, starters, presets, and demo code must use public
-  `aegis` imports only and must not import from `aegis._internal`.
-- `aegis workflow trace` and `aegis workflow export` shipped in PR-09.
-- `AgentIdentity`, `AgentCapabilityManifest`, `BedrockTraceAdapter`,
-  `A2AAdapter`, and `OpenAIAgentsAdapter` remain later-track surfaces.
+## PR-10d Goal
 
-## Verified PR-07 / PR-08 Outcomes
+PR-10d converts recent agent-safety research into bounded hardening of the existing beta surfaces:
 
-- The regulated failure-and-fix proof now breaks the generated
-  `workflow_example.py`, runs that same broken starter, diagnoses that same
-  directory with `aegis workflow doctor`, restores the same file, and reruns the
-  same starter to `COMPLETED`.
-- Demo failure diagnosis now uses a real generated starter directory instead of
-  fabricating a diagnostic-only directory.
-- Workflow-step exceptions raised from public session methods are re-exported
-  from `aegis` and `aegis.errors`.
-- Session post-call attempts now clean up session tokens deterministically on
-  failure instead of leaving dead pending tokens behind.
+- graph/topology lint rules
+- bounded witness traces
+- temporal-check approximations using existing DSL fields
+- source and memory provenance warnings
+- workflow doctor remediation mapping
+- workflow export governance rationale metadata
+- fixture-only adapter capability/trust tests after PR-10a/b/c
+- internal multi-aspect `ValidatorHook` example
+- starter safety smoke tests
 
-## PR-09 Outcomes
+It must not add a new runtime, new transport layer, MCP governance proxy, streaming governance handle, memory governance subsystem, public LLM-as-judge engine, or new required dependency.
 
-PR-09 shipped:
+---
 
-- `aegis workflow trace` — timeline reconstruction from workflow and invocation artifacts
-- `aegis workflow export` — operator and audit export modes
-- operator-facing visibility and portability polish
+## In Scope
 
-## Next PR
+- `docs/plans/v0.9.0_PR-10d_RESEARCH_SAFETY_ADDENDUM_PLAN.md`
+- `RELEASE_GATES.md` PR-10d branch map and exit gates
+- `implementation_status.md` PR-10d status and deliverables
+- `docs/dev/pr_context.md` alignment to PR-10d
+- Future implementation work listed in the PR-10d addendum plan:
+  - `aegis/_internal/workflow_lint.py`
+  - `aegis/_internal/workflow_doctor.py`
+  - `aegis/_internal/workflow_export.py`
+  - starter templates and safety smoke tests
+  - fixture-only optional adapter tests after PR-10a/b/c land
 
-PR-10a (`feat/v0.9-10-bedrock-adapter`) is the next branch:
+---
 
-- `BedrockTraceAdapter` — alias-backed identity, fail-closed on missing trace
-- optional Bedrock adapter track
-- PR-10b follows with `A2AAdapter`
-- PR-10c follows with `OpenAIAgentsAdapter` for the `openai-agents` runtime
+## Out of Scope
+
+- PR-10a Bedrock implementation
+- PR-10b A2A implementation
+- PR-10c OpenAI Agents SDK implementation
+- PR-11 beta freeze
+- public `ValidatorHook` promotion
+- full memory governance
+- streaming governance
+- MCP governance proxy
+- formal model checking
+- new required package dependencies
+
+---
+
+## Exit Criteria
+
+- PR-10d plan is present and linked from release-truth docs.
+- Release gates include PR-10d after PR-10a/b/c and before PR-11.
+- Implementation status includes PR-10d as proposed/not started.
+- The plan preserves the AEGIS ownership boundary: host owns execution; AEGIS governs and emits evidence.
+- The plan preserves the default local adopter path and keeps optional adapters optional.
+
+---
+
+## Next PRs
+
+Recommended order:
+
+1. PR-10a — Bedrock adapter
+2. PR-10b — A2A adapter
+3. PR-10c — OpenAI Agents SDK adapter
+4. PR-10d — research-informed safety addendum implementation
+5. PR-11 — beta freeze and release cut
