@@ -6,7 +6,7 @@ Enterprise AI is moving fast, but most governance still lives in the wrong place
 
 That gap is exactly where AEGIS fits.
 
-AEGIS, short for **Auditable Intelligence Governance Contract**, is a Python SDK for deterministic, fail-closed governance of AI model invocations. It does not try to replace your model, your orchestration framework, or your application logic. Instead, it sits at the invocation boundary between your system and the model provider, validates each call against policy, and emits a tamper-evident audit artifact whether the invocation passes or fails.
+AEGIS, short for **Auditable Enforcement and Governance for Intelligent Systems**, is a Python SDK for deterministic, fail-closed governance of AI model invocations. It does not try to replace your model, your orchestration framework, or your application logic. Instead, it sits at the invocation boundary between your system and the model provider, validates each call against policy, and emits a tamper-evident audit artifact whether the invocation passes or fails.
 
 That distinction matters. AEGIS is not governance as advice. It is governance as runtime enforcement.
 

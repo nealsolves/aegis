@@ -8,7 +8,7 @@ AEGIS takes a harder position.
 
 It puts governance at the **invocation boundary**: the exact point where an application attempts to use a model. That means policy is checked in the execution path, not in a separate document and not only after the fact.
 
-That is the core idea behind **AEGIS — the Auditable Intelligence Governance Contract**.
+That is the core idea behind **AEGIS — the Auditable Enforcement and Governance for Intelligent Systems**.
 
 ## The governing principle
 

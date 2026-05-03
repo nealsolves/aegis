@@ -2,7 +2,7 @@
 
 ## The Framework
 
-AEGIS (Auditable Intelligence Governance Contract) enforces three governance
+AEGIS (Auditable Enforcement and Governance for Intelligent Systems) enforces three governance
 functions at the AI invocation boundary:
 
 - `Contract`: what the system is allowed to do

@@ -1,8 +1,7 @@
 # PROJECT.md — AEGIS Repository Guide
 
 This is the repo-level orientation document for AEGIS
-(Auditable Intelligence Governance Contract). It is written for first-time
-visitors who need to understand the current state, how the runtime is
+(Auditable Enforcement and Governance for Intelligent Systems). It is written for first-time visitors who need to understand the current state, how the runtime is
 organized, and how the project evolved release by release.
 
 Use [README.md](README.md) for the quick start. Use this file for structure,

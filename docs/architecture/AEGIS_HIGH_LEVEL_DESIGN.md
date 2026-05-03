@@ -1,6 +1,6 @@
 # AEGIS High-Level Design
 
-**Auditable Intelligence Governance Contract**
+**Auditable Enforcement and Governance for Intelligent Systems**
 
 Version: 1.0.0 | Status: Target-State Design | Last Updated: 2026-04-13
 
@@ -8,7 +8,7 @@ Version: 1.0.0 | Status: Target-State Design | Last Updated: 2026-04-13
 
 ## 1. Executive Summary
 
-AEGIS (Auditable Intelligence Governance Contract) is a Python SDK for
+AEGIS (Auditable Enforcement and Governance for Intelligent Systems) is a Python SDK for
 fail-closed governance of AI behavior at runtime. In the 1.0.0 target design,
 AEGIS governs both individual invocation attempts and multi-step workflows while
 preserving the existing invocation enforcement kernel.
