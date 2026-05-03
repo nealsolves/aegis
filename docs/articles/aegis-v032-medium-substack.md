@@ -8,7 +8,7 @@ Most enterprise AI governance does not execute. It advises.
 
 It lives in policy documents, architecture review boards, and prompt instructions. These controls sit outside the runtime path of a model call. When an invocation runs, the governance layer is not present. It is consulted afterward, if at all.
 
-AEGIS closes that gap. The Auditable Intelligence Governance Contract is a Python SDK that enforces governance at the exact point where your system meets the model. Not before it. Not after it. At the boundary.
+AEGIS closes that gap. The Auditable Enforcement and Governance for Intelligent Systems is a Python SDK that enforces governance at the exact point where your system meets the model. Not before it. Not after it. At the boundary.
 
 That positioning is deliberate. Everything in v0.3.2 flows from it.
 

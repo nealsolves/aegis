@@ -1,4 +1,4 @@
-# AEGIS — Auditable Intelligence Governance Contract
+# AEGIS — Auditable Enforcement and Governance for Intelligent Systems
 
 ![AEGIS Banner](<graphics/aegis_banner.png>)
 
