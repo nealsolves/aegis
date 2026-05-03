@@ -1,6 +1,6 @@
 # AEGIS — Auditable Intelligence Governance Contract
 
-![AEGIS Banner](<graphics/aegis banner.png>)
+![AEGIS Banner](<graphics/aegis_banner.png>)
 
 AEGIS is a Python SDK for deterministic, fail-closed governance of AI model
 invocations. It validates every invocation against a declared policy, enforces
