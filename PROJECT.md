@@ -30,8 +30,8 @@ walks through the `v0.3.x` capabilities.
 
 The source-only `v0.9.0` beta workflow governance line is available on local
 `develop`. It adds `AEGIS.open_session()`, `GovernanceSession`, starter
-scaffolds, `aegis workflow init`, `aegis workflow lint`, and
-`aegis workflow doctor`, plus operator trace/export commands. The source tree
+scaffolds, `aegis workflow init`, `aegis policy init`, `aegis workflow lint`,
+`aegis workflow doctor`, `aegis workflow trace`, and `aegis workflow export`. The source tree
 also contains the advanced optional OpenAI Agents SDK adapter at
 `aegis.openai_agents_adapter`; it requires the `openai-agents` extra and is not
 re-exported from top-level `aegis`. Bedrock and A2A remain later optional

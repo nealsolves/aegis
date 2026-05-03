@@ -19,7 +19,7 @@ Governance in AEGIS is runtime enforcement, not documentation and not prompting.
   `ProvenanceGate`, `RiskHistory`, `@governed` defaults to split enforcement
 - Current beta line: source-only `v0.9.0` workflow governance on local
   `develop`; the shipped PyPI package remains `v0.3.3`
-- Verification baseline: `1484 tests`, coverage above the `90%` CI gate
+- Verification baseline: `1572 tests`, coverage above the `90%` CI gate
 
 ## Why This Repo Exists
 
