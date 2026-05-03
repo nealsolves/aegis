@@ -108,6 +108,67 @@ def test_prepare_step_clones_agent_graph():
         assert len(root_agent.tools) == 1
 
 
+def test_prepare_step_deep_clones_handoff_targets():
+    """Nested handoff agents must not be mutated with session-bound wrappers."""
+    a = AEGIS()
+    adapter = OpenAIAgentsAdapter()
+    child_agent = Agent(name="ChildAgent", tools=[calculator])
+    root_agent = Agent(name="RootAgent", handoffs=[child_agent])
+    original_child_tools = child_agent.tools
+    original_child_tool = child_agent.tools[0]
+
+    invocation = copy.deepcopy(_BASE_INV)
+    invocation["protocol"] = "openai_agents"
+    invocation["context"] = {
+        **_BASE_INV["context"],
+        "protocol_evidence": {"openai_agents": {"root_agent": root_agent}},
+    }
+
+    with a.open_session(policy_file=None) as session:
+        binding = OpenAIAgentsParticipantBinding("p1", "RootAgent", "planner")
+        prepared = adapter.prepare_step(session, invocation, binding=binding)
+
+        cloned_child = prepared.wrapped_root_agent.handoffs[0]
+        assert cloned_child is not child_agent
+        assert cloned_child.tools[0] is not original_child_tool
+        assert child_agent.tools is original_child_tools
+        assert child_agent.tools[0] is original_child_tool
+
+
+def test_prepare_step_deep_clones_agent_as_tool_inner_agent():
+    """Agent.as_tool() inner agents must be wrapped only on the cloned graph."""
+    a = AEGIS()
+    adapter = OpenAIAgentsAdapter()
+    inner_agent = Agent(name="InnerCloneAgent", tools=[calculator])
+    outer_agent = Agent(
+        name="OuterCloneAgent",
+        tools=[inner_agent.as_tool(
+            tool_name="inner_clone_tool",
+            tool_description="Inner clone tool",
+        )],
+    )
+    original_inner_tools = inner_agent.tools
+    original_inner_tool = inner_agent.tools[0]
+
+    invocation = copy.deepcopy(_BASE_INV)
+    invocation["protocol"] = "openai_agents"
+    invocation["context"] = {
+        **_BASE_INV["context"],
+        "protocol_evidence": {"openai_agents": {"root_agent": outer_agent}},
+    }
+
+    with a.open_session(policy_file=None) as session:
+        binding = OpenAIAgentsParticipantBinding("p1", "OuterCloneAgent", "planner")
+        prepared = adapter.prepare_step(session, invocation, binding=binding)
+
+        wrapped_tool = prepared.wrapped_root_agent.tools[0]
+        cloned_inner = getattr(wrapped_tool, "_agent_instance")
+        assert cloned_inner is not inner_agent
+        assert cloned_inner.tools[0] is not original_inner_tool
+        assert inner_agent.tools is original_inner_tools
+        assert inner_agent.tools[0] is original_inner_tool
+
+
 # ---------------------------------------------------------------------------
 # function_tool wrapping tests
 # ---------------------------------------------------------------------------

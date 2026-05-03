@@ -403,12 +403,13 @@ def test_wrap_all_tools_raises_on_immutable_agent_tools():
         def tools(self, value):
             raise AttributeError("immutable")
 
-    with pytest.raises(WorkflowUnsupportedBindingError, match="immutable tools"):
-        OpenAIAgentsAdapter()._wrap_all_tools(
-            _FrozenAgent(),
-            session=MagicMock(),
-            session_result=MagicMock(),
-        )
+    with patch.object(_mod, "_make_tool_wrapper", side_effect=lambda tool, **kwargs: tool):
+        with pytest.raises(WorkflowUnsupportedBindingError, match="immutable tools"):
+            OpenAIAgentsAdapter()._wrap_all_tools(
+                _FrozenAgent(),
+                session=MagicMock(),
+                session_result=MagicMock(),
+            )
 
 
 def test_prepare_step_aborts_on_immutable_agent_tools(monkeypatch):
@@ -1065,6 +1066,53 @@ def test_record_approval_decision_deny_leaves_paused():
         assert session.state == "PAUSED"
 
 
+def test_record_approval_decision_deny_invalidates_prepared_step():
+    import aegis.openai_agents_adapter as _mod
+    from aegis import AEGIS
+    from aegis._internal.errors import InvocationValidationError
+    from aegis.openai_agents_adapter import (
+        OpenAIAgentsAdapter,
+        OpenAIAgentsParticipantBinding,
+    )
+
+    a = AEGIS()
+    adapter = OpenAIAgentsAdapter()
+    root_agent = _make_typed_agent("AgentA", "Agent")
+    invocation = copy.deepcopy(_BASE_INV)
+    invocation["protocol"] = "openai_agents"
+    invocation["context"] = {
+        **_BASE_INV["context"],
+        "protocol_evidence": {"openai_agents": {"root_agent": root_agent}},
+    }
+
+    with a.open_session(policy_file=None) as session:
+        with patch.object(_mod, "_SDK_AVAILABLE", True):
+            prepared = adapter.prepare_step(
+                session,
+                invocation,
+                binding=OpenAIAgentsParticipantBinding("p1", "AgentA", "planner"),
+            )
+            pending = adapter.pause_step(prepared, MagicMock(), [])
+            adapter.record_approval_decision(
+                pending,
+                approve=False,
+                denial_reason="not approved",
+            )
+
+            token = prepared._session_result
+            assert session.state == "PAUSED"
+            assert token._consumed is True
+            assert token._token_id not in session._pending_results
+            assert token._token_id not in session._adapter_step_states
+
+            with pytest.raises(InvocationValidationError, match="Token already consumed"):
+                adapter.complete_step(
+                    prepared,
+                    run_result=None,
+                    output={"result": "ok", "confidence": 0.9},
+                )
+
+
 def test_record_approval_decision_rejects_checkpoint_mismatch():
     from aegis import AEGIS
     from aegis.openai_agents_adapter import (
@@ -1238,3 +1286,13 @@ def test_build_step_metadata_trace_present():
     assert "t1" in meta["trace_ids"]
     assert meta["dynamic_tool_calls_count"] == 3
     assert "tool_a" in meta["dynamic_tool_call_names"]
+
+
+def test_extract_output_prefers_current_sdk_final_output():
+    from aegis.openai_agents_adapter import _extract_output
+
+    class _RunResult:
+        final_output = "final answer"
+        output = "legacy output"
+
+    assert _extract_output(_RunResult()) == {"content": "final answer"}
