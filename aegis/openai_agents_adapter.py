@@ -21,6 +21,7 @@ credentials, business state, tool execution, and provider SDK usage.
 from __future__ import annotations
 
 import dataclasses
+import copy
 import logging
 import threading
 import time
@@ -264,6 +265,51 @@ def _traverse_agent_graph(root: Any) -> list[Any]:
     return result
 
 
+def _clone_agent_graph(root: Any) -> Any:
+    """Deep-copy the SDK graph so governed wrappers never mutate host-owned agents."""
+    try:
+        cloned = copy.deepcopy(root)
+    except Exception as err:  # noqa: BLE001
+        raise WorkflowUnsupportedBindingError(
+            "OpenAI Agents graph could not be cloned without mutating host-owned "
+            "objects; governed wrappers cannot be applied safely",
+            details={
+                "agent_name": getattr(root, "name", None),
+                "agent_type": type(root).__name__,
+                "reason_code": "WORKFLOW_UNSUPPORTED_BINDING",
+            },
+        ) from err
+
+    if cloned is root:
+        raise WorkflowUnsupportedBindingError(
+            "OpenAI Agents graph clone reused the root agent object; governed "
+            "wrappers cannot be applied safely",
+            details={
+                "agent_name": getattr(root, "name", None),
+                "agent_type": type(root).__name__,
+                "reason_code": "WORKFLOW_UNSUPPORTED_BINDING",
+            },
+        )
+
+    original_agent_ids = {id(agent) for agent in _traverse_agent_graph(root)}
+    shared_agents = [
+        getattr(agent, "name", None) or type(agent).__name__
+        for agent in _traverse_agent_graph(cloned)
+        if id(agent) in original_agent_ids
+    ]
+    if shared_agents:
+        raise WorkflowUnsupportedBindingError(
+            "OpenAI Agents graph clone retained host-owned nested agents; governed "
+            "wrappers cannot be applied safely",
+            details={
+                "shared_agent_names": shared_agents,
+                "reason_code": "WORKFLOW_UNSUPPORTED_BINDING",
+            },
+        )
+
+    return cloned
+
+
 def _validate_graph(
     root: Any,
     *,
@@ -356,11 +402,11 @@ def _make_tool_wrapper(
         return tool
 
     try:
-        from agents.tool import FunctionTool
-    except ImportError:
+        from agents import FunctionTool
+    except (ImportError, AttributeError):
         try:
-            from agents import FunctionTool
-        except ImportError as err:
+            from agents.tool import FunctionTool
+        except (ImportError, AttributeError) as err:
             raise WorkflowUnsupportedBindingError(
                 "Could not load OpenAI Agents FunctionTool type; governed tool "
                 "wrapping cannot be verified",
@@ -626,10 +672,7 @@ class OpenAIAgentsAdapter:
         )
 
         # --- Clone agent graph ---
-        try:
-            cloned_root = root_agent.clone()
-        except AttributeError:
-            cloned_root = root_agent
+        cloned_root = _clone_agent_graph(root_agent)
 
         # --- Generate correlation key ---
         adapter_step_key = str(uuid.uuid4())
@@ -814,6 +857,10 @@ class OpenAIAgentsAdapter:
                 approver_id=approver_id,
                 denial_reason=denial_reason,
             )
+            session.discard_adapter_step(
+                pending._prepared._session_result,
+                rollback_authorization=True,
+            )
 
     def complete_step(
         self,
@@ -968,7 +1015,9 @@ class OpenAIAgentsAdapter:
 def _extract_output(run_result: Any) -> dict[str, Any]:
     if run_result is None:
         return {"content": None}
-    content = getattr(run_result, "output", None)
+    content = getattr(run_result, "final_output", None)
+    if content is None:
+        content = getattr(run_result, "output", None)
     if content is not None and not isinstance(content, str):
         try:
             content = str(content)
