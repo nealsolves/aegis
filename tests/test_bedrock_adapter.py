@@ -414,3 +414,34 @@ def test_adapter_cleans_up_state_on_complete_step_failure():
             )
 
         assert session._adapter_step_states.get(token_id) is None
+
+
+# ---------------------------------------------------------------------------
+# Public import boundary
+# ---------------------------------------------------------------------------
+
+def test_bedrock_adapter_not_in_aegis_top_level():
+    """BedrockTraceAdapter must not be exported from the top-level aegis package."""
+    import aegis
+    assert not hasattr(aegis, "BedrockTraceAdapter"), \
+        "aegis.BedrockTraceAdapter must not ship via the top-level package in v0.9.0"
+    assert not hasattr(aegis, "BedrockParticipantBinding"), \
+        "aegis.BedrockParticipantBinding must not ship via the top-level package in v0.9.0"
+
+
+def test_bedrock_adapter_importable_from_own_module():
+    """Adapter is importable via aegis.bedrock_adapter (direct submodule only)."""
+    from aegis.bedrock_adapter import BedrockTraceAdapter, BedrockParticipantBinding, BedrockPreparedStep
+    assert BedrockTraceAdapter is not None
+    assert BedrockParticipantBinding is not None
+    assert BedrockPreparedStep is not None
+
+
+def test_bedrock_adapter_has_explicit_submodule_exports():
+    """The direct submodule owns its public names without top-level re-export."""
+    import aegis.bedrock_adapter as mod
+    assert set(mod.__all__) == {
+        "BedrockTraceAdapter",
+        "BedrockParticipantBinding",
+        "BedrockPreparedStep",
+    }
