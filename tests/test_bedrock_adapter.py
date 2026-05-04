@@ -120,3 +120,46 @@ def test_policy_schema_rejects_disabled_bedrock_alias_identity():
     for schema in _load_schemas():
         with pytest.raises(jsonschema.ValidationError):
             jsonschema.validate(policy, schema)
+
+
+# ---------------------------------------------------------------------------
+# Import guard tests
+# ---------------------------------------------------------------------------
+
+def test_adapter_module_importable():
+    from aegis import bedrock_adapter  # noqa: F401
+    assert bedrock_adapter is not None
+
+
+def test_dataclasses_importable():
+    from aegis.bedrock_adapter import (
+        BedrockTraceAdapter,
+        BedrockParticipantBinding,
+        BedrockPreparedStep,
+    )
+    assert BedrockTraceAdapter is not None
+    assert BedrockParticipantBinding is not None
+    assert BedrockPreparedStep is not None
+
+
+def test_adapter_instantiable():
+    from aegis.bedrock_adapter import BedrockTraceAdapter
+    adapter = BedrockTraceAdapter()
+    assert adapter is not None
+
+
+def test_participant_binding_is_frozen():
+    from aegis.bedrock_adapter import BedrockParticipantBinding
+    b = BedrockParticipantBinding(
+        participant_id="p1",
+        collaborator_alias="arn:aws:bedrock:us-east-1:123456789012:agent-alias/AGENTID/ALIASID",
+        role="planner",
+    )
+    with pytest.raises((AttributeError, TypeError)):
+        b.participant_id = "other"  # type: ignore[misc]
+
+
+def test_prepared_step_is_frozen():
+    from aegis.bedrock_adapter import BedrockPreparedStep
+    import dataclasses
+    assert dataclasses.is_dataclass(BedrockPreparedStep)
