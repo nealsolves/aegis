@@ -68,6 +68,8 @@ internal_docs:
   - implementation_status.md
   - implementation_plan.md
   - docs/decisions/*
+  - docs/design/*
+  - docs/plans/*
   - docs/research/*
   - docs/audits/*
   - docs/dev/*

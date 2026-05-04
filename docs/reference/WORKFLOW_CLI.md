@@ -9,8 +9,9 @@ The beta CLI covers six workflow-adoption commands:
 - `aegis workflow trace`
 - `aegis workflow export`
 
-For `workflow lint` and `workflow doctor`, exit code `0` means no error-severity
-findings and exit code `1` means at least one error-severity finding.
+For `workflow lint`, exit code `0` means no findings and exit code `1` means at
+least one static finding. For `workflow doctor`, exit code `0` means no
+error-severity findings and exit code `1` means at least one `ERROR`.
 
 For `workflow trace` and `workflow export`, exit code `0` means success even
 when checksums are unresolved (unresolved checksums are advisory, not errors);
@@ -70,7 +71,15 @@ Static lint for governance targets. In the beta it covers:
 - public-import safety
 - impossible workflow budgets
 - invalid transition references
+- graph/topology conflicts:
+  `WORKFLOW_UNREACHABLE_STEP`, `WORKFLOW_DEAD_END_STEP`,
+  `WORKFLOW_REQUIRED_SEQUENCE_IMPOSSIBLE`, and
+  `WORKFLOW_UNBOUNDED_HANDOFF_LOOP`
 - unsupported protocol/binding references
+
+`--json` includes the stable finding keys `code`, `message`, `target_kind`, and
+`path`. PR-10d may add bounded `details` and `witness_trace` evidence. Lint does
+not emit `severity` or `next_action`; doctor owns remediation.
 
 Examples:
 
@@ -91,6 +100,11 @@ aegis workflow doctor [--kind {auto,policy,starter_dir,workflow_artifact,audit_a
 
 Runtime and evidence diagnosis for policy files, starter directories, workflow
 artifacts, and invocation audit artifacts.
+
+Doctor maps all lint findings to `ERROR`, attaches `next_action`, and adds
+evidence-aware warnings such as `WORKFLOW_SOURCE_PROVENANCE_WARNING`. That
+provenance warning is non-blocking by default and does not change doctor exit
+behavior unless another finding is `ERROR`.
 
 Examples:
 
@@ -195,6 +209,7 @@ operator inspection. Output shape:
   "integrity": {
     "total_workflow_artifacts": 1,
     "total_invocation_artifacts": 1,
+    "governance_rationale_count": 0,
     "unresolved_invocation_checksums": [],
     "unresolved_count": 0,
     "verification_guidance": "..."
@@ -202,15 +217,30 @@ operator inspection. Output shape:
 }
 ```
 
-**`audit`** — Includes only `step_id`, `enforcement_result`, and checksum per
-step. Use for compliance reporting and external audit handoff. Output shape:
+**`audit`** — Includes `step_id`, `participant_id`,
+`invocation_artifact_checksum`, `enforcement_result`, and step `metadata` when
+present. If `steps[i].metadata.governance` contains valid PR-10d rationale
+metadata, audit mode also adds a redacted `governance` convenience projection.
+Use for compliance reporting and external audit handoff. Output shape:
 
 ```json
 {
   "export_schema_version": "0.9.0",
   "export_mode": "audit",
   "generated_at": 1700000000,
-  "sessions": [{ "steps": [{ "enforcement_result": "PASS" }] }],
+  "sessions": [{
+    "steps": [{
+      "enforcement_result": "PASS",
+      "governance": {
+        "rationale": "approval_required_before_external_handoff",
+        "decision_basis": ["allowed_transitions", "approval_checkpoint"],
+        "operator_action": "approval_granted",
+        "approval_checkpoint_id": "checkpoint-123",
+        "source_ids": ["doc-001"],
+        "waiver_id": null
+      }
+    }]
+  }],
   "compliance_summary": {
     "total_sessions": 1,
     "COMPLETED": 1, "FAILED": 0, "CANCELED": 0, "INCOMPLETE": 0
@@ -222,6 +252,13 @@ step. Use for compliance reporting and external audit handoff. Output shape:
   }
 }
 ```
+
+Governance projection is sourced only from `steps[i].metadata.governance`.
+Projection keeps canonical scalar, null, and string-array values for
+`rationale`, `decision_basis`, `operator_action`, `approval_checkpoint_id`,
+`source_ids`, and `waiver_id`. Nested objects and unsupported payloads are
+dropped from the projection. Audit mode does not embed full invocation
+artifacts.
 
 `integrity.unresolved_invocation_checksums` lists any invocation artifacts
 referenced by workflow steps that were not found in the input JSONL. Investigate

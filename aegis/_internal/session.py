@@ -1133,9 +1133,10 @@ class GovernanceSession:
 
         :param session_result: Token from enforce_step_pre_call
         :param output: Model output dict
-        :param step_metadata: Optional adapter-supplied metadata stored under
+        :param step_metadata: Optional host-supplied metadata stored under
             ``steps[i]["metadata"]`` in the workflow artifact (additive only;
-            does not alter existing step keys).
+            does not alter existing step keys). AEGIS records this but does not
+            interpret it at runtime.
         :return: Invocation PASS audit artifact
         """
         self._assert_open()
@@ -1164,6 +1165,16 @@ class GovernanceSession:
                 details={
                     "token_step_id": session_result.step_id,
                     "registered_step_id": entry["step_id"],
+                },
+            )
+
+        if step_metadata is not None and not isinstance(step_metadata, dict):
+            raise InvocationValidationError(
+                "step_metadata must be a mapping when provided",
+                details={
+                    "session_id": self._session_id,
+                    "step_id": entry["step_id"],
+                    "metadata_type": type(step_metadata).__name__,
                 },
             )
 
@@ -1196,7 +1207,7 @@ class GovernanceSession:
             "invocation_artifact_checksum": inv_checksum,
         }
         if step_metadata is not None:
-            step_record["metadata"] = step_metadata
+            step_record["metadata"] = dict(step_metadata)
         self._steps.append(step_record)
         self._step_policy_files.append(entry["effective_policy_file"])
 

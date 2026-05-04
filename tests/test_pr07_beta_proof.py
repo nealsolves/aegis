@@ -157,8 +157,8 @@ class TestStandardBetaProof:
         d.mkdir()
         _generate_starter("standard", d)
         source = (d / "workflow_example.py").read_text()
-        assert "session.pause()" in source
-        assert "session.resume()" in source
+        assert "session.pause(" in source
+        assert "session.resume(" in source
 
 
 # ---------------------------------------------------------------------------

@@ -95,6 +95,8 @@ Session: <uuid>
   denied.
 - Add additional pre- and post-approval steps to model a multi-stage review
   workflow.
+- Keep the generated step metadata shape if you want `workflow export --mode audit`
+  to project approval rationale under `steps[i].governance`.
 
 ---
 
@@ -140,6 +142,19 @@ Session: <uuid>
 - Change `max_calls` in `policy.yaml` under `tools.allowed_tools` to raise or
   lower the tool budget.
 - Add additional risk scoring factors to `policy.yaml` under the `risk:` block.
+- Keep `source_ids` aligned with the generated step metadata so doctor can
+  distinguish source-backed evidence from generated context.
+
+## PR-10d Safety Notes
+
+The generated standard and regulated starters record deterministic governance
+rationale in workflow step metadata. `workflow export --mode audit` projects a
+redacted governance summary from that metadata, while `workflow doctor` warns
+when exact source-bearing metadata or memory-like context lacks `source_ids`.
+
+The internal multi-aspect `ValidatorHook` examples for PR-10d live only in the
+test suite. They are not public starter recipes and do not change the public
+beta API.
 
 ---
 

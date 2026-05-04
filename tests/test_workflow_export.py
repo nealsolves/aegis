@@ -63,6 +63,26 @@ WORKFLOW_ARTIFACT = {
 }
 
 
+GOVERNED_STEP_METADATA = {
+    "governance": {
+        "rationale": "approval_required_before_external_handoff",
+        "decision_basis": ["allowed_transitions", "approval_checkpoint"],
+        "operator_action": "approval_granted",
+        "approval_checkpoint_id": "checkpoint-123",
+        "source_ids": ["doc-001"],
+        "waiver_id": None,
+    }
+}
+
+
+def _workflow_with_governance(metadata=GOVERNED_STEP_METADATA):
+    step = {
+        **WORKFLOW_ARTIFACT["steps"][0],
+        "metadata": metadata,
+    }
+    return {**WORKFLOW_ARTIFACT, "steps": [step]}
+
+
 class TestOperatorExport:
     def test_schema_fields(self):
         result = export_workflow([WORKFLOW_ARTIFACT], [INV_ARTIFACT], "operator")
@@ -81,6 +101,7 @@ class TestOperatorExport:
         integrity = result["integrity"]
         assert integrity["total_workflow_artifacts"] == 1
         assert integrity["total_invocation_artifacts"] == 1
+        assert integrity["governance_rationale_count"] == 0
         assert integrity["unresolved_count"] == 0
         assert integrity["unresolved_invocation_checksums"] == []
 
@@ -115,9 +136,17 @@ class TestOperatorExport:
         assert required <= set(result.keys())
         integrity_keys = {
             "total_workflow_artifacts", "total_invocation_artifacts",
-            "unresolved_invocation_checksums", "unresolved_count", "verification_guidance",
+            "governance_rationale_count", "unresolved_invocation_checksums",
+            "unresolved_count", "verification_guidance",
         }
         assert integrity_keys <= set(result["integrity"].keys())
+
+    def test_operator_export_preserves_step_governance_metadata(self):
+        wa = _workflow_with_governance()
+        result = export_workflow([wa], [INV_ARTIFACT], "operator")
+        step = result["sessions"][0]["steps"][0]
+        assert step["metadata"] == GOVERNED_STEP_METADATA
+        assert result["integrity"]["governance_rationale_count"] == 1
 
 
 class TestAuditExport:
@@ -166,6 +195,44 @@ class TestAuditExport:
         step = result["sessions"][0]["steps"][0]
         step_keys = {"step_id", "participant_id", "invocation_artifact_checksum", "enforcement_result"}
         assert step_keys <= set(step.keys())
+
+    def test_audit_export_projects_redacted_governance_summary(self):
+        wa = _workflow_with_governance()
+        result = export_workflow([wa], [INV_ARTIFACT], "audit")
+        step = result["sessions"][0]["steps"][0]
+        assert step["metadata"] == GOVERNED_STEP_METADATA
+        assert step["governance"] == GOVERNED_STEP_METADATA["governance"]
+
+    def test_audit_export_drops_nested_governance_payloads_from_projection(self):
+        metadata = {
+            "governance": {
+                **GOVERNED_STEP_METADATA["governance"],
+                "decision_basis": ["allowed_transitions"],
+                "provider_payload": {"prompt": "do not project"},
+                "source_ids": ["doc-001"],
+                "nested_source_ids": [{"id": "doc-002"}],
+            }
+        }
+        wa = _workflow_with_governance(metadata)
+        result = export_workflow([wa], [INV_ARTIFACT], "audit")
+        governance = result["sessions"][0]["steps"][0]["governance"]
+        assert "provider_payload" not in governance
+        assert "nested_source_ids" not in governance
+        assert governance["decision_basis"] == ["allowed_transitions"]
+        assert governance["source_ids"] == ["doc-001"]
+
+    def test_malformed_governance_projection_is_omitted(self):
+        wa = _workflow_with_governance({"governance": {"provider_payload": {"prompt": "x"}}})
+        result = export_workflow([wa], [INV_ARTIFACT], "audit")
+        step = result["sessions"][0]["steps"][0]
+        assert "metadata" in step
+        assert "governance" not in step
+
+    def test_export_remains_compatible_when_metadata_absent(self):
+        audit = export_workflow([WORKFLOW_ARTIFACT], [INV_ARTIFACT], "audit")
+        operator = export_workflow([WORKFLOW_ARTIFACT], [INV_ARTIFACT], "operator")
+        assert "metadata" not in audit["sessions"][0]["steps"][0]
+        assert operator["integrity"]["governance_rationale_count"] == 0
 
 
 class TestExportValidation:

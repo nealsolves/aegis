@@ -14,6 +14,28 @@ from aegis._internal.presets import (
 )
 
 
+_STARTER_SAFETY_METADATA: dict[str, dict[str, object]] = {
+    "standard": {
+        "temporal_obligations": [
+            {
+                "code": "STARTER_APPROVAL_BEFORE_FINALIZATION",
+                "before": "finalize",
+                "requires": "approval_checkpoint",
+            }
+        ]
+    },
+    "regulated-high-assurance": {
+        "temporal_obligations": [
+            {
+                "code": "STARTER_SOURCE_BEFORE_SUMMARY",
+                "before": "summary",
+                "requires": "source_bound_analysis",
+            }
+        ]
+    },
+}
+
+
 # ---------------------------------------------------------------------------
 # Minimal profile
 # ---------------------------------------------------------------------------
@@ -180,17 +202,28 @@ def run_standard_workflow(policy_file: str | None = None) -> dict:
             "model_provider": "anthropic",
             "model_identifier": "claude-sonnet-4-6",
             "role": "__AIGC_ROLE__",
-        })
+        }, step_id="draft")
         output1 = _simulate_model_call("Draft a proposal for review.")
-        session.enforce_step_post_call(pre1, output1)
+        session.enforce_step_post_call(
+            pre1,
+            output1,
+            step_metadata={
+                "governance": {
+                    "rationale": "pre_approval_draft",
+                    "decision_basis": ["approval_checkpoint"],
+                    "operator_action": "not_required",
+                    "waiver_id": None,
+                }
+            },
+        )
 
         # --- Approval checkpoint ---
-        session.pause()  # OPEN -> PAUSED
+        session.pause(approval_id="starter-approval-001")  # OPEN -> PAUSED
         approved = _request_human_approval(output1["result"])
         if not approved:
             session.cancel()
             return session.finalize()
-        session.resume()  # PAUSED -> OPEN
+        session.resume(approval_id="starter-approval-001")  # PAUSED -> OPEN
 
         # --- Step 2: Post-approval work ---
         pre2 = session.enforce_step_pre_call({
@@ -201,9 +234,21 @@ def run_standard_workflow(policy_file: str | None = None) -> dict:
             "model_provider": "anthropic",
             "model_identifier": "claude-sonnet-4-6",
             "role": "__AIGC_ROLE__",
-        })
+        }, step_id="finalize")
         output2 = _simulate_model_call("Finalize the approved proposal.")
-        session.enforce_step_post_call(pre2, output2)
+        session.enforce_step_post_call(
+            pre2,
+            output2,
+            step_metadata={
+                "governance": {
+                    "rationale": "approval_required_before_finalization",
+                    "decision_basis": ["approval_checkpoint"],
+                    "operator_action": "approval_granted",
+                    "approval_checkpoint_id": "starter-approval-001",
+                    "waiver_id": None,
+                }
+            },
+        )
 
         # --- Step 3: Summary ---
         pre3 = session.enforce_step_pre_call({
@@ -214,9 +259,21 @@ def run_standard_workflow(policy_file: str | None = None) -> dict:
             "model_provider": "anthropic",
             "model_identifier": "claude-sonnet-4-6",
             "role": "__AIGC_ROLE__",
-        })
+        }, step_id="summary")
         output3 = _simulate_model_call("Generate final summary.")
-        session.enforce_step_post_call(pre3, output3)
+        session.enforce_step_post_call(
+            pre3,
+            output3,
+            step_metadata={
+                "governance": {
+                    "rationale": "post_approval_summary",
+                    "decision_basis": ["approval_checkpoint"],
+                    "operator_action": "approval_granted",
+                    "approval_checkpoint_id": "starter-approval-001",
+                    "waiver_id": None,
+                }
+            },
+        )
 
         session.complete()
 
@@ -333,9 +390,21 @@ def run_regulated_workflow(policy_file: str | None = None) -> dict:
                 "model_provider": "anthropic",
                 "model_identifier": "claude-sonnet-4-6",
                 "role": "__AIGC_ROLE__",
-            })
+            }, step_id="source_analysis")
             output1 = _simulate_model_call("Analyze these source documents.")
-            session.enforce_step_post_call(pre1, output1)
+            session.enforce_step_post_call(
+                pre1,
+                output1,
+                step_metadata={
+                    "governance": {
+                        "rationale": "source_bound_analysis",
+                        "decision_basis": ["provenance.source_ids"],
+                        "source_ids": ["doc-001", "doc-002"],
+                        "operator_action": "not_required",
+                        "waiver_id": None,
+                    }
+                },
+            )
 
             # --- Step 2: Source-bound summary ---
             pre2 = session.enforce_step_pre_call({
@@ -351,9 +420,21 @@ def run_regulated_workflow(policy_file: str | None = None) -> dict:
                 "model_provider": "anthropic",
                 "model_identifier": "claude-sonnet-4-6",
                 "role": "__AIGC_ROLE__",
-            })
+            }, step_id="summary")
             output2 = _simulate_model_call("Summarize the analysis.")
-            session.enforce_step_post_call(pre2, output2)
+            session.enforce_step_post_call(
+                pre2,
+                output2,
+                step_metadata={
+                    "governance": {
+                        "rationale": "source_bound_summary",
+                        "decision_basis": ["provenance.source_ids"],
+                        "source_ids": ["analysis-step-1"],
+                        "operator_action": "not_required",
+                        "waiver_id": None,
+                    }
+                },
+            )
 
             session.complete()
     except Exception:

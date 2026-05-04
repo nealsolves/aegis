@@ -74,6 +74,33 @@ _NEXT_ACTIONS: dict[str, str] = {
         "block. Increase max_steps in policy.yaml, or redesign the workflow to "
         "complete within the allowed number of steps."
     ),
+    "WORKFLOW_UNREACHABLE_STEP": (
+        "Update workflow.allowed_transitions so every step in "
+        "workflow.required_sequence can be reached from the first required step, "
+        "or remove the unreachable step from the required sequence."
+    ),
+    "WORKFLOW_DEAD_END_STEP": (
+        "Add a valid successor for the non-terminal step in "
+        "workflow.allowed_transitions, or shorten workflow.required_sequence so "
+        "the step is terminal."
+    ),
+    "WORKFLOW_REQUIRED_SEQUENCE_IMPOSSIBLE": (
+        "Align workflow.required_sequence with workflow.allowed_transitions by "
+        "allowing each required consecutive step pair, or reorder the required "
+        "sequence to match the declared transition graph."
+    ),
+    "WORKFLOW_UNBOUNDED_HANDOFF_LOOP": (
+        "Break the participant handoff cycle by adding workflow.max_steps, "
+        "setting workflow.escalation.require_approval_after_steps, requiring "
+        "approval for a role in the cycle, or removing one cyclic handoff."
+    ),
+    "WORKFLOW_SOURCE_PROVENANCE_WARNING": (
+        "Attach context.provenance.source_ids or "
+        "steps[i].metadata.governance.source_ids for source-bearing context. "
+        "If the step is intentionally non-evidence-bearing, mark that in step "
+        "metadata so operators can distinguish generated context from "
+        "source-backed evidence."
+    ),
     "WORKFLOW_HOOK_DENIED": (
         "A ValidatorHook returned DENY or timed out. Inspect the hook's "
         "denial_reason in the error details. If using the built-in timeout, "
@@ -158,6 +185,14 @@ def _lint_to_doctor(lint_findings: list[dict]) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 _UNSUPPORTED_PROTOCOLS = frozenset({"grpc", "websocket", "soap"})
+_MEMORY_LIKE_KEYS = frozenset({
+    "memory",
+    "memories",
+    "conversation_memory",
+    "retrieved_memory",
+    "retrieved_context",
+    "knowledge_base_context",
+})
 
 # Session-token misuse patterns from enforcement.py
 _TOKEN_MISUSE_PATTERNS = [
@@ -167,6 +202,104 @@ _TOKEN_MISUSE_PATTERNS = [
     "token not registered in this session",
     "token fields do not match minted values",
 ]
+
+
+def _has_source_ids(value: Any) -> bool:
+    if not isinstance(value, dict):
+        return False
+    source_ids = value.get("source_ids")
+    return (
+        isinstance(source_ids, list)
+        and bool(source_ids)
+        and all(isinstance(source_id, str) for source_id in source_ids)
+    )
+
+
+def _has_memory_like_key(value: Any) -> bool:
+    return isinstance(value, dict) and bool(_MEMORY_LIKE_KEYS & set(value))
+
+
+def _has_metadata_source_ids(metadata: Any) -> bool:
+    if not isinstance(metadata, dict):
+        return False
+    return (
+        _has_source_ids(metadata)
+        or _has_source_ids(metadata.get("provenance"))
+        or _has_source_ids(metadata.get("governance"))
+    )
+
+
+def _governance_requires_source_ids(governance: Any) -> bool:
+    if not isinstance(governance, dict):
+        return False
+    decision_basis = governance.get("decision_basis") or []
+    return (
+        governance.get("source_required") is True
+        or (
+            isinstance(decision_basis, list)
+            and "provenance.source_ids" in decision_basis
+        )
+    )
+
+
+def _workflow_source_provenance_warnings(artifact: dict[str, Any]) -> list[dict]:
+    findings = []
+    steps = artifact.get("steps") or []
+    if isinstance(steps, list):
+        for idx, step in enumerate(steps):
+            if not isinstance(step, dict):
+                continue
+            metadata = step.get("metadata")
+            if not isinstance(metadata, dict):
+                continue
+            governance = metadata.get("governance")
+            if (
+                _governance_requires_source_ids(governance)
+                and not _has_source_ids(governance)
+            ):
+                step_id = step.get("step_id")
+                step_label = step_id if isinstance(step_id, str) else f"index {idx}"
+                findings.append(_finding(
+                    "WORKFLOW_SOURCE_PROVENANCE_WARNING",
+                    "WARNING",
+                    "Workflow step metadata declares source-bearing governance "
+                    f"for step {step_label!r} but does not include "
+                    "metadata.governance.source_ids.",
+                    _next_action("WORKFLOW_SOURCE_PROVENANCE_WARNING"),
+                ))
+
+    if not findings:
+        metadata = artifact.get("metadata")
+        if _has_memory_like_key(metadata) and not _has_metadata_source_ids(metadata):
+            findings.append(_finding(
+                "WORKFLOW_SOURCE_PROVENANCE_WARNING",
+                "WARNING",
+                "Workflow artifact metadata includes memory-like context keys but "
+                "does not include provenance source IDs.",
+                _next_action("WORKFLOW_SOURCE_PROVENANCE_WARNING"),
+            ))
+
+    return findings
+
+
+def _audit_source_provenance_warnings(artifact: dict[str, Any]) -> list[dict]:
+    context = artifact.get("context")
+    if not _has_memory_like_key(context):
+        return []
+    context_has_sources = (
+        isinstance(context, dict)
+        and _has_source_ids(context.get("provenance"))
+    )
+    top_level_has_sources = _has_source_ids(artifact.get("provenance"))
+    if context_has_sources or top_level_has_sources:
+        return []
+    return [_finding(
+        "WORKFLOW_SOURCE_PROVENANCE_WARNING",
+        "WARNING",
+        "Audit artifact context includes memory-like fields but neither "
+        "context.provenance.source_ids nor top-level provenance.source_ids is present.",
+        _next_action("WORKFLOW_SOURCE_PROVENANCE_WARNING"),
+    )]
 
 
 def diagnose_workflow_policy(
@@ -497,6 +630,7 @@ def diagnose_workflow_artifact(path: str) -> list[dict]:
             _next_action("WORKFLOW_INVALID_TRANSITION"),
         ))
 
+    findings.extend(_workflow_source_provenance_warnings(artifact))
     return findings
 
 
@@ -570,6 +704,7 @@ def diagnose_audit_artifact(path: str) -> list[dict]:
         return findings
 
     enforcement_result = artifact.get("enforcement_result", "")
+    findings.extend(_audit_source_provenance_warnings(artifact))
     if enforcement_result == "PASS":
         return findings  # No issues
 
