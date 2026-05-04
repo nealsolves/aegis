@@ -16,6 +16,7 @@ from aegis._internal.errors import (
     SessionStateError,
 )
 from aegis._internal.sinks import emit_to_sink
+from aegis._internal.tools import validate_tool_constraints
 from aegis._internal.utils import canonical_json_bytes
 
 if TYPE_CHECKING:
@@ -223,6 +224,11 @@ class GovernanceSession:
         # for the current step. Cleared in enforce_step_post_call on success.
         self._escalation_in_progress: bool = False
 
+        # Adapter-managed step state (keyed by token_id).  Populated by
+        # external adapters (e.g. OpenAIAgentsAdapter) to track dynamic tool
+        # calls and interruption checkpoints for a given pending step.
+        self._adapter_step_states: dict[str, dict[str, Any]] = {}
+
     # ------------------------------------------------------------------
     # Public properties
     # ------------------------------------------------------------------
@@ -238,6 +244,60 @@ class GovernanceSession:
     @property
     def workflow_artifact(self) -> dict[str, Any] | None:
         return self._workflow_artifact
+
+    def protocol_constraints_for(self, protocol: str) -> dict[str, Any]:
+        """Return workflow protocol constraints for adapter-managed protocol seams."""
+        return dict((self._protocol_constraints or {}).get(protocol) or {})
+
+    def participant_for(self, participant_id: str) -> dict[str, Any] | None:
+        """Return a workflow participant declaration for adapter binding checks."""
+        participant = self._participants_by_id.get(participant_id)
+        return dict(participant) if participant is not None else None
+
+    def register_adapter_step_state(
+        self,
+        session_result: SessionPreCallResult,
+        state: dict[str, Any],
+    ) -> None:
+        """Register adapter-owned state for a pending governed step."""
+        self._assert_open()
+        self._assert_owns(session_result)
+        if session_result._token_id not in self._pending_results:
+            raise InvocationValidationError(
+                "Token not registered in this session",
+                details={"token_id": session_result._token_id},
+            )
+        self._adapter_step_states[session_result._token_id] = state
+
+    def adapter_step_state(
+        self,
+        session_result: SessionPreCallResult,
+    ) -> dict[str, Any] | None:
+        """Return adapter-owned state for a pending governed step, if present."""
+        self._assert_open()
+        self._assert_owns(session_result)
+        return self._adapter_step_states.get(session_result._token_id)
+
+    def pop_adapter_step_state(
+        self,
+        session_result: SessionPreCallResult,
+    ) -> dict[str, Any]:
+        """Remove and return adapter-owned state for a pending governed step."""
+        self._assert_open()
+        self._assert_owns(session_result)
+        return self._adapter_step_states.pop(session_result._token_id, {})
+
+    def discard_adapter_step(
+        self,
+        session_result: SessionPreCallResult,
+        *,
+        rollback_authorization: bool = False,
+    ) -> None:
+        """Invalidate an adapter-prepared pending step without running Phase B."""
+        self._discard_pending_step(
+            session_result,
+            rollback_authorization=rollback_authorization,
+        )
 
     # ------------------------------------------------------------------
     # Context manager
@@ -520,6 +580,121 @@ class GovernanceSession:
                     "this_session_id": self._session_id,
                 },
             )
+
+    def authorize_step_tool_call(
+        self,
+        session_result: SessionPreCallResult,
+        *,
+        tool_name: str,
+        tool_call_id: str | None = None,
+    ) -> None:
+        """Authorize a dynamic tool call within an open governed step (adapter seam).
+
+        Called by adapters (e.g. ``OpenAIAgentsAdapter``) for each intercepted
+        tool call.  Enforces the session tool-call budget and records summary
+        evidence.  Does NOT enforce per-step tool allow-lists — the adapter is
+        responsible for surface-level filtering before calling this method.
+
+        :param session_result: Token from ``enforce_step_pre_call``.
+        :param tool_name: Name of the tool being authorized.
+        :param tool_call_id: Optional opaque call identifier for evidence.
+        :raises SessionStateError: if the session is not OPEN or PAUSED.
+        :raises WorkflowSessionTokenInvalidError: if the token is not registered.
+        :raises InvocationValidationError: if adapter state has not been registered for this token.
+        :raises WorkflowToolBudgetExceededError: if the session budget is exhausted.
+        """
+        self._assert_open()
+        self._assert_owns(session_result)
+
+        if session_result._token_id not in self._pending_results:
+            from aegis._internal.errors import WorkflowSessionTokenInvalidError
+            raise WorkflowSessionTokenInvalidError(
+                "Token not registered in this session",
+                details={"token_id": session_result._token_id},
+            )
+
+        entry = self._pending_results[session_result._token_id]
+        adapter_state = self._adapter_step_states.get(session_result._token_id)
+        if adapter_state is None:
+            raise InvocationValidationError(
+                "authorize_step_tool_call requires adapter state to be registered; "
+                "call register_adapter_step_state before authorizing tool calls",
+                details={"token_id": session_result._token_id},
+            )
+        observed_tool_calls = list(adapter_state.get("dynamic_tool_calls") or [])
+        projected_call = {"name": tool_name, "id": tool_call_id}
+        inner = entry.get("inner")
+        effective_policy = getattr(inner, "_frozen_effective_policy", None)
+        if effective_policy is None:
+            effective_policy = getattr(inner, "effective_policy", {})
+
+        validate_tool_constraints(
+            {"tool_calls": [*observed_tool_calls, projected_call]},
+            effective_policy,
+        )
+
+        # Enforce session-level tool-call budget (real-time)
+        projected = self._total_tool_calls_consumed + 1
+        if (
+            self._max_total_tool_calls is not None
+            and projected > self._max_total_tool_calls
+        ):
+            from aegis._internal.errors import WorkflowToolBudgetExceededError
+            raise WorkflowToolBudgetExceededError(
+                f"Session tool-call budget exceeded (dynamic): "
+                f"max_total_tool_calls={self._max_total_tool_calls}, "
+                f"current={self._total_tool_calls_consumed}",
+                details={
+                    "session_id": self._session_id,
+                    "max_total_tool_calls": self._max_total_tool_calls,
+                    "total_tool_calls_consumed": self._total_tool_calls_consumed,
+                    "tool_name": tool_name,
+                },
+            )
+
+        self._total_tool_calls_consumed += 1
+
+        adapter_state["dynamic_tool_calls_count"] += 1
+        adapter_state["dynamic_tool_calls"].append({
+            "name": tool_name,
+            "tool_name": tool_name,
+            "tool_call_id": tool_call_id,
+            "authorized_at": int(time.time()),
+        })
+
+    def _discard_pending_step(
+        self,
+        session_result: SessionPreCallResult,
+        *,
+        rollback_authorization: bool = False,
+    ) -> None:
+        """Internal adapter seam: invalidate a pending step without Phase B.
+
+        ``rollback_authorization=True`` decrements ``_authorized_step_count`` only
+        when the token is still pending (not yet consumed).  It is a no-op for
+        Phase-B failure paths because ``enforce_step_post_call`` marks the token
+        consumed before raising, causing the early-return below.  This is
+        intentional: ``_authorized_step_count`` tracks steps that *passed Phase A*,
+        not steps that completed Phase B.  A failed Phase-B attempt still consumed
+        an authorization slot.
+        """
+        self._assert_open()
+        self._assert_owns(session_result)
+
+        token_id = session_result._token_id
+        if token_id in self._consumed_token_ids:
+            return
+
+        entry = self._pending_results.pop(token_id, None)
+        self._adapter_step_states.pop(token_id, None)
+        if entry is None:
+            return
+
+        object.__setattr__(session_result, "_consumed", True)
+        self._consumed_token_ids.add(token_id)
+
+        if rollback_authorization and self._authorized_step_count > 0:
+            self._authorized_step_count -= 1
 
     def enforce_step_pre_call(
         self,
@@ -936,7 +1111,8 @@ class GovernanceSession:
         }
 
         # Increment only after all checks pass — pre-call rejection must not
-        # corrupt the authorized step counter
+        # corrupt the authorized step counter.  Counts "steps authorized" (Phase A
+        # passed), not "steps completed" (Phase B passed).
         self._authorized_step_count += 1
 
         return SessionPreCallResult(
@@ -957,8 +1133,9 @@ class GovernanceSession:
 
         :param session_result: Token from enforce_step_pre_call
         :param output: Model output dict
-        :param step_metadata: Optional host-supplied step evidence stored on
-            the workflow artifact. AEGIS records this metadata but does not
+        :param step_metadata: Optional host-supplied metadata stored under
+            ``steps[i]["metadata"]`` in the workflow artifact (additive only;
+            does not alter existing step keys). AEGIS records this but does not
             interpret it at runtime.
         :return: Invocation PASS audit artifact
         """
@@ -1024,7 +1201,7 @@ class GovernanceSession:
 
         # Step record uses REGISTRY values — never trusts token fields after verification
         inv_checksum = _checksum(inv_artifact)
-        step_record = {
+        step_record: dict[str, Any] = {
             "step_id": entry["step_id"],
             "participant_id": entry["participant_id"],
             "invocation_artifact_checksum": inv_checksum,

@@ -773,6 +773,16 @@ def load_policy(
             )
         policy_path = Path(policy_file).resolve()
 
+    if "extends" in policy and not isinstance(effective_loader, FilePolicyLoader):
+        raise PolicyLoadError(
+            "Policy 'extends' is not supported with custom loaders",
+            details={
+                "policy_file": policy_file,
+                "extends": policy["extends"],
+                "loader": type(effective_loader).__name__,
+            },
+        )
+
     # Resolve inheritance BEFORE schema validation (Phase 2.6)
     if "extends" in policy:
         policy = _resolve_extends(policy, policy_path, visited)

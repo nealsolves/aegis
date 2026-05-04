@@ -1,8 +1,7 @@
 # PROJECT.md — AEGIS Repository Guide
 
 This is the repo-level orientation document for AEGIS
-(Auditable Intelligence Governance Contract). It is written for first-time
-visitors who need to understand the current state, how the runtime is
+(Auditable Enforcement and Governance for Intelligent Systems). It is written for first-time visitors who need to understand the current state, how the runtime is
 organized, and how the project evolved release by release.
 
 Use [README.md](README.md) for the quick start. Use this file for structure,
@@ -31,8 +30,12 @@ walks through the `v0.3.x` capabilities.
 
 The source-only `v0.9.0` beta workflow governance line is available on local
 `develop`. It adds `AEGIS.open_session()`, `GovernanceSession`, starter
-scaffolds, `aegis workflow init`, `aegis workflow lint`, and
-`aegis workflow doctor`. See
+scaffolds, `aegis workflow init`, `aegis policy init`, `aegis workflow lint`,
+`aegis workflow doctor`, `aegis workflow trace`, and `aegis workflow export`. The source tree
+also contains the advanced optional OpenAI Agents SDK adapter at
+`aegis.openai_agents_adapter` (PR-10c); it requires the `openai-agents` extra and is not
+re-exported from top-level `aegis`. Bedrock and A2A remain later optional
+tracks (PR-10a/10b). See
 [docs/reference/WORKFLOW_QUICKSTART.md](docs/reference/WORKFLOW_QUICKSTART.md)
 for the first-adopter path.
 
@@ -90,11 +93,20 @@ This tree focuses on the parts of the repo a new visitor is most likely to use.
 aegis/
 ├── aegis/                           Public package surface
 │   ├── __init__.py                 Stable imports
+│   ├── __main__.py                 `python -m aegis` entry point
+│   ├── cli.py                      Public console-script shim
 │   ├── enforcement.py              Public enforcement entry points
+│   ├── session.py                  v0.9.0-beta workflow session surface
 │   ├── decorators.py               Public @governed surface
 │   ├── sinks.py                    Public audit sink surface
+│   ├── presets.py                  Thin workflow preset builders
+│   ├── workflow_trace.py           Workflow timeline reconstruction helpers
+│   ├── workflow_export.py          Workflow export helpers
+│   ├── openai_agents_adapter.py    Optional advanced adapter; extra-gated
+│   ├── schemas/                    Runtime schemas packaged with the SDK
 │   └── _internal/                  Runtime implementation
 │       ├── enforcement.py          Ordered governance pipeline
+│       ├── session.py              Workflow lifecycle and step enforcement
 │       ├── policy_loader.py        Policy loading, validation, composition
 │       ├── validator.py            Role, precondition, schema checks
 │       ├── guards.py               Guard evaluation engine
@@ -103,9 +115,16 @@ aegis/
 │       ├── signing.py              Artifact signing
 │       ├── gates.py                Custom gate extension points
 │       ├── telemetry.py            OpenTelemetry integration
+│       ├── workflow_init.py        Starter scaffold generation
+│       ├── workflow_lint.py        Workflow diagnostics
+│       ├── workflow_doctor.py      Artifact and starter diagnosis
+│       ├── workflow_trace.py       Timeline reconstruction
+│       ├── workflow_export.py      Operator/audit export
 │       └── policy_testing.py       Policy test helpers
+├── examples/                       Public migration examples
 ├── policies/                       Example and reference policies
-├── schemas/                        Policy and audit artifact schemas
+├── schemas/                        Human-facing schema copies
+├── scripts/                        Maintainer validation and generation tools
 ├── tests/                          Regression, contract, and release tests
 ├── demo-app-api/                   FastAPI backend for the live demo
 ├── demo-app-react/                 React frontend for the live demo
@@ -113,6 +132,8 @@ aegis/
 │   ├── architecture/               High-level design, diagrams, threat model
 │   ├── design/                     Release design specs
 │   ├── decisions/                  ADRs for important design choices
+│   ├── plans/                      Release plans and historical plan inputs
+│   ├── audits/                     Review and audit artifacts
 │   ├── reference/                  First-adopter workflow docs (v0.9.0-beta)
 │   │   ├── WORKFLOW_QUICKSTART.md  Start here for workflow governance
 │   │   ├── TROUBLESHOOTING.md      Doctor/lint guidance and reason codes
@@ -120,11 +141,22 @@ aegis/
 │   │   ├── STARTER_RECIPES.md      Per-profile commands and customization
 │   │   ├── WORKFLOW_CLI.md         CLI reference for shipped commands
 │   │   ├── SUPPORTED_ENVIRONMENTS.md  Python/OS matrix and requirements
-│   │   └── OPERATIONS_RUNBOOK.md   Test suite and validation commands
+│   │   ├── OPERATIONS_RUNBOOK.md   Test suite and validation commands
+│   │   └── external/               Advanced optional adapter documentation
+├── RELEASE_GATES.md                v0.9.0 release-gate truth
+├── pyproject.toml                  Packaging metadata and wheel boundary
 ├── CHANGELOG.md                    User-facing release history
 ├── README.md                       First-stop overview and quick start
 └── PROJECT.md                      This repo guide
 ```
+
+The runtime wheel boundary is narrower than the repository. `pyproject.toml`
+packages `aegis` and `aegis.*`; within that boundary, `aegis/_internal/` is
+private but required by the public modules, and `aegis/schemas/` plus
+`aegis/py.typed` are package data. Top-level folders such as `docs/`, `tests/`,
+`scripts/`, `examples/`, `demo-app-api/`, `demo-app-react/`, `policies/`,
+top-level `schemas/`, and generated build/cache directories are not required
+in the runtime SDK wheel.
 
 ## Release-by-Release Narrative
 
@@ -289,8 +321,10 @@ Use the docs in this order if you are orienting yourself quickly:
 | [policies/policy_dsl_spec.md](policies/policy_dsl_spec.md) | Policy authoring reference |
 | [CHANGELOG.md](CHANGELOG.md) | Detailed release notes and patch-level history |
 
-For v0.9.0-beta workflow governance, read the first-adopter docs in the
-order listed in the [README.md workflow section](README.md#workflow-governance-v090-beta).
+For v0.9.0-beta workflow governance, read the first-adopter docs in the order
+listed in the [README.md workflow section](README.md#workflow-governance-v090-beta).
+The external adapter docs come last because adapters are advanced follow-on
+surfaces, not the default path to first success.
 
 ## Notes for Repo Readers
 

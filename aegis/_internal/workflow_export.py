@@ -269,17 +269,18 @@ def _build_audit(
                 inv = inv_by_cs.get(cs)
             else:
                 inv = None
-            step_summaries.append({
+            step_summary: dict[str, Any] = {
                 "step_id": step.get("step_id"),
                 "participant_id": step.get("participant_id"),
                 "invocation_artifact_checksum": cs,
                 "enforcement_result": inv.get("enforcement_result") if inv else None,
-            })
-            if "metadata" in step:
-                step_summaries[-1]["metadata"] = step.get("metadata")
+            }
+            if step.get("metadata") is not None:
+                step_summary["metadata"] = step["metadata"]
             governance_summary = _extract_governance_summary(step)
             if governance_summary is not None:
-                step_summaries[-1]["governance"] = governance_summary
+                step_summary["governance"] = governance_summary
+            step_summaries.append(step_summary)
         sessions.append({
             "session_id": wa.get("session_id"),
             "status": status,

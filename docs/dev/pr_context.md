@@ -48,9 +48,26 @@ no further public-surface work proceeds until the default path is repaired.
   - `aegis workflow export`
 - The default adopter path succeeds without Bedrock, A2A, or the OpenAI Agents SDK.
 - `ValidatorHook` is implemented as an internal engine capability in PR-08. It is not a public beta surface.
-- PR-10a and PR-10b source surfaces are absent from this branch.
-- PR-10c OpenAI Agents source surfaces are absent from this branch.
+- PR-10a and PR-10b have not started.
+- PR-10c is complete on local `develop` and is pending merge to `origin/develop` via PR; PR-10c source surfaces are absent from this branch.
 - PR-10d is implemented locally as pre-freeze safety hardening before PR-11.
+
+---
+
+## Boundaries
+
+- Workflow adoption is always instance-scoped through `AEGIS.open_session(...)`.
+- Invocation artifacts remain separate from workflow/session artifacts.
+- Public examples, docs, starters, presets, and demo code must use public
+  `aegis` imports only and must not import from `aegis._internal`.
+- `aegis workflow trace` and `aegis workflow export` shipped in PR-09.
+- `OpenAIAgentsAdapter` is a source-only beta surface behind the optional
+  `aegis[openai-agents]` extra. It is not re-exported from the top-level
+  `aegis` package.
+- `BedrockTraceAdapter` and `A2AAdapter` remain planned follow-on adapter
+  surfaces; their protocol evidence checks exist in the workflow runtime, but
+  no public adapter modules or extras ship until PR-10a/10b.
+- `AgentIdentity` and `AgentCapabilityManifest` remain out-of-scope for v0.9.0.
 
 ---
 
@@ -112,10 +129,36 @@ It must not add a new runtime, new transport layer, MCP governance proxy, stream
 
 ---
 
+## PR-10c Outcomes
+
+PR-10c is complete on local `develop` and is pending merge to `origin/develop` via PR. Source surfaces are absent from this branch.
+
+Ships:
+
+- `OpenAIAgentsAdapter` — governed binding for `openai-agents`, fail-closed unsupported-surface rules
+- `OpenAIAgentsParticipantBinding`, `OpenAIAgentsPreparedStep`, `OpenAIAgentsPendingApproval`, `OpenAIAgentsTracingProcessor`
+- `GovernanceSession.authorize_step_tool_call` — real-time tool-call budget enforcement and evidence recording
+- `GovernanceSession.enforce_step_post_call` extended with `step_metadata` param
+- `workflow.protocol_constraints.openai_agents` in policy DSL schema
+- `step_metadata` pass-through in `workflow trace` and `workflow export`
+- Reference doc at `docs/reference/external/OPENAI_AGENTS_ADAPTER.md`
+- optional OpenAI Agents SDK extra (`aegis[openai-agents]`)
+
+P1 issues resolved:
+
+- `_make_tool_wrapper` rejects non-`FunctionTool` types with `WorkflowUnsupportedBindingError`
+- `_wrap_all_tools` raises and aborts `prepare_step` when `agent.tools` is immutable
+- `authorize_step_tool_call` raises `InvocationValidationError` when adapter state is absent (B1 defense-in-depth)
+- `_authorized_step_count` counts Phase-A authorizations only, not Phase-B completions (B4 semantics documented)
+
+---
+
 ## Next PRs
 
 Current execution note:
 
+- PR-10c is complete on local `develop` and is being merged to `origin/develop` via PR; source surfaces absent from this branch.
+- PR-10a and PR-10b remain not started.
 - Deferred PR-10d adapter gate: Bedrock alias-backed participant identity tests remain blocked until PR-10a surfaces are present.
 - Deferred PR-10d adapter gate: A2A capability and protocol mismatch tests remain blocked until PR-10b surfaces are present.
 - Deferred PR-10d adapter gate: OpenAI Agents SDK capability mismatch, side-effecting tool, and unsupported dynamic-tool tests remain blocked until PR-10c source surfaces are present on this target branch.
