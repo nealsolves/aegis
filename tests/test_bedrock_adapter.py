@@ -14,7 +14,6 @@ from __future__ import annotations
 import json
 import pytest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _SCHEMA_PATHS = (
@@ -22,6 +21,19 @@ _SCHEMA_PATHS = (
     _REPO_ROOT / "aegis" / "schemas" / "policy_dsl.schema.json",
 )
 _POLICY = str(_REPO_ROOT / "tests" / "golden_replays" / "golden_policy_v1.yaml")
+_AGENT_ID = "AGENTID12A"
+_ALIAS_ID = "ALIASID12B"
+_VALID_ALIAS_ARN = (
+    f"arn:aws:bedrock:us-east-1:123456789012:agent-alias/{_AGENT_ID}/{_ALIAS_ID}"
+)
+_VALID_GOV_ALIAS_ARN = (
+    f"arn:aws-us-gov:bedrock:us-gov-west-1:123456789012:"
+    f"agent-alias/{_AGENT_ID}/{_ALIAS_ID}"
+)
+_OTHER_ALIAS_ARN = (
+    "arn:aws:bedrock:us-east-1:123456789012:"
+    "agent-alias/OTHERID12A/OTHALIAS1B"
+)
 
 _BASE_INV = {
     "policy_file": _POLICY,
@@ -36,6 +48,34 @@ _BASE_INV = {
 
 def _load_schemas():
     return [json.loads(path.read_text()) for path in _SCHEMA_PATHS]
+
+
+def _ids_from_alias(alias_arn):
+    return alias_arn.rsplit("/", 2)[-2:]
+
+
+def _bedrock_trace_part(trace_id="trace-abc-001", alias_arn=_VALID_ALIAS_ARN):
+    agent_id, alias_id = _ids_from_alias(alias_arn)
+    return {
+        "agentAliasId": alias_id,
+        "agentId": agent_id,
+        "agentVersion": "1",
+        "callerChain": [{"agentAliasArn": alias_arn}],
+        "collaboratorName": "CollaboratorA",
+        "sessionId": "session-1",
+        "trace": {
+            "orchestrationTrace": {
+                "invocationInput": {
+                    "agentCollaboratorInvocationInput": {
+                        "agentCollaboratorAliasArn": alias_arn,
+                        "agentCollaboratorName": "CollaboratorA",
+                    },
+                    "invocationType": "AGENT_COLLABORATOR",
+                    "traceId": trace_id,
+                }
+            }
+        },
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -152,7 +192,7 @@ def test_participant_binding_is_frozen():
     from aegis.bedrock_adapter import BedrockParticipantBinding
     b = BedrockParticipantBinding(
         participant_id="p1",
-        collaborator_alias="arn:aws:bedrock:us-east-1:123456789012:agent-alias/AGENTID/ALIASID",
+        collaborator_alias=_VALID_ALIAS_ARN,
         role="planner",
     )
     with pytest.raises((AttributeError, TypeError)):
@@ -205,6 +245,30 @@ def test_prepare_step_rejects_bare_name_alias():
             adapter.prepare_step(session, inv, binding=binding)
 
 
+def test_prepare_step_rejects_malformed_agent_alias_arn():
+    """collaborator_alias must match the Bedrock agent-alias ARN pattern."""
+    from aegis.bedrock_adapter import BedrockTraceAdapter, BedrockParticipantBinding
+    from aegis._internal.errors import WorkflowUnsupportedBindingError
+
+    adapter = BedrockTraceAdapter()
+    with _make_session() as session:
+        binding = BedrockParticipantBinding(
+            participant_id="p1",
+            collaborator_alias=(
+                "arn:aws:bedrock:us-east-1:123456789012:"
+                "agent-alias/SHORT/ALIAS"
+            ),
+            role="planner",
+        )
+        inv = dict(_BASE_INV)
+        inv["context"] = {
+            **_BASE_INV["context"],
+            "protocol_evidence": {"bedrock": {}},
+        }
+        with pytest.raises(WorkflowUnsupportedBindingError, match="agent alias ARN"):
+            adapter.prepare_step(session, inv, binding=binding)
+
+
 def test_prepare_step_accepts_arn_alias():
     """collaborator_alias as Bedrock agent alias ARN must pass binding validation."""
     from aegis.bedrock_adapter import BedrockTraceAdapter, BedrockParticipantBinding
@@ -215,7 +279,7 @@ def test_prepare_step_accepts_arn_alias():
     ) as session:
         binding = BedrockParticipantBinding(
             participant_id="p1",
-            collaborator_alias="arn:aws:bedrock:us-east-1:123456789012:agent-alias/AGENTID/ALIASID",
+            collaborator_alias=_VALID_ALIAS_ARN,
             role="planner",
         )
         inv = dict(_BASE_INV)
@@ -235,6 +299,34 @@ def test_prepare_step_accepts_arn_alias():
         )
 
 
+def test_prepare_step_accepts_partitioned_arn_alias():
+    """GovCloud/China-style AWS partitions are valid Bedrock alias ARNs."""
+    from aegis.bedrock_adapter import BedrockTraceAdapter, BedrockParticipantBinding
+
+    adapter = BedrockTraceAdapter()
+    with _make_session(
+        protocol_constraints={"bedrock": {}},
+    ) as session:
+        binding = BedrockParticipantBinding(
+            participant_id="p1",
+            collaborator_alias=_VALID_GOV_ALIAS_ARN,
+            role="planner",
+        )
+        inv = dict(_BASE_INV)
+        inv["context"] = {
+            **_BASE_INV["context"],
+            "protocol": "bedrock",
+            "protocol_evidence": {
+                "bedrock": {"alias_backed": True}
+            },
+        }
+        result = adapter.prepare_step(session, inv, binding=binding)
+        adapter.complete_step(
+            result,
+            output={"result": "ok", "confidence": 0.9},
+        )
+
+
 def test_prepare_step_rejects_conflicting_alias_backed_false():
     """Host evidence cannot claim alias_backed=False for a governed Bedrock step."""
     from aegis.bedrock_adapter import BedrockTraceAdapter, BedrockParticipantBinding
@@ -248,7 +340,7 @@ def test_prepare_step_rejects_conflicting_alias_backed_false():
     ) as session:
         binding = BedrockParticipantBinding(
             participant_id="p1",
-            collaborator_alias="arn:aws:bedrock:us-east-1:123456789012:agent-alias/AGENTID/ALIASID",
+            collaborator_alias=_VALID_ALIAS_ARN,
             role="planner",
         )
         inv = dict(_BASE_INV)
@@ -274,7 +366,7 @@ def _make_prepared_step(session, protocol_constraints=None):
     adapter = BedrockTraceAdapter()
     binding = BedrockParticipantBinding(
         participant_id="p1",
-        collaborator_alias="arn:aws:bedrock:us-east-1:123456789012:agent-alias/AGENTID/ALIASID",
+        collaborator_alias=_VALID_ALIAS_ARN,
         role="planner",
     )
     if protocol_constraints is not None:
@@ -321,6 +413,38 @@ def test_complete_step_raises_if_require_trace_and_empty_trace_parts():
             )
 
 
+def test_complete_step_rejects_malformed_trace_part_when_trace_required():
+    from aegis._internal.errors import InvocationValidationError
+
+    with _make_session(protocol_constraints={"bedrock": {"require_trace": True}}) as session:
+        adapter, prepared = _make_prepared_step(
+            session,
+            protocol_constraints={"bedrock": {"require_trace": True}},
+        )
+        with pytest.raises(InvocationValidationError, match="TracePart"):
+            adapter.complete_step(
+                prepared,
+                output={"result": "ok", "confidence": 0.9},
+                trace_parts=[{}],
+            )
+
+
+def test_complete_step_rejects_trace_parts_for_other_alias():
+    from aegis._internal.errors import WorkflowProtocolViolationError
+
+    with _make_session(protocol_constraints={"bedrock": {"require_trace": True}}) as session:
+        adapter, prepared = _make_prepared_step(
+            session,
+            protocol_constraints={"bedrock": {"require_trace": True}},
+        )
+        with pytest.raises(WorkflowProtocolViolationError, match="collaborator_alias"):
+            adapter.complete_step(
+                prepared,
+                output={"result": "ok", "confidence": 0.9},
+                trace_parts=[_bedrock_trace_part(alias_arn=_OTHER_ALIAS_ARN)],
+            )
+
+
 def test_complete_step_passes_without_trace_when_require_trace_false():
     with _make_session(protocol_constraints={"bedrock": {"require_trace": False}}) as session:
         adapter, prepared = _make_prepared_step(
@@ -342,8 +466,8 @@ def test_complete_step_passes_with_trace_parts():
             protocol_constraints={"bedrock": {"require_trace": True}},
         )
         trace_parts = [
-            {"traceId": "trace-abc-001", "type": "preProcessingTrace"},
-            {"traceId": "trace-abc-002", "type": "orchestrationTrace"},
+            _bedrock_trace_part("trace-abc-001"),
+            _bedrock_trace_part("trace-abc-002"),
         ]
         artifact = adapter.complete_step(
             prepared,
@@ -361,7 +485,7 @@ def test_complete_step_step_metadata_in_artifact():
     """step_metadata with adapter fields persists into the workflow artifact steps."""
     with _make_session(protocol_constraints={"bedrock": {}}) as session:
         adapter, prepared = _make_prepared_step(session)
-        trace_parts = [{"traceId": "trace-xyz-001", "type": "orchestrationTrace"}]
+        trace_parts = [_bedrock_trace_part("trace-xyz-001")]
         artifact = adapter.complete_step(
             prepared,
             output={"result": "ok", "confidence": 0.9},
@@ -376,7 +500,8 @@ def test_complete_step_step_metadata_in_artifact():
         assert meta.get("adapter") == "bedrock_trace"
         assert meta.get("trace_present") is True
         assert "trace-xyz-001" in (meta.get("trace_ids") or [])
-        assert meta.get("collaborator_alias") == "arn:aws:bedrock:us-east-1:123456789012:agent-alias/AGENTID/ALIASID"
+        assert meta.get("collaborator_alias") == _VALID_ALIAS_ARN
+        assert meta.get("trace_alias_matched") is True
 
 
 def test_complete_step_step_metadata_trace_absent():
@@ -431,7 +556,11 @@ def test_bedrock_adapter_not_in_aegis_top_level():
 
 def test_bedrock_adapter_importable_from_own_module():
     """Adapter is importable via aegis.bedrock_adapter (direct submodule only)."""
-    from aegis.bedrock_adapter import BedrockTraceAdapter, BedrockParticipantBinding, BedrockPreparedStep
+    from aegis.bedrock_adapter import (
+        BedrockTraceAdapter,
+        BedrockParticipantBinding,
+        BedrockPreparedStep,
+    )
     assert BedrockTraceAdapter is not None
     assert BedrockParticipantBinding is not None
     assert BedrockPreparedStep is not None
