@@ -60,7 +60,7 @@ class BedrockParticipantBinding:
     """
 
     participant_id: str
-    collaborator_alias: str  # e.g. "arn:aws:bedrock:us-east-1:123456789012:agent-alias/AGENTID/ALIASID"
+    collaborator_alias: str  # e.g. "arn:aws:bedrock:us-east-1:123456789012:agent-alias/ID/ALIASID"
     role: str
 
 
