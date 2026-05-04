@@ -77,6 +77,19 @@ no further public-surface work proceeds until the default path is repaired.
 - [x] `aegis workflow export` — operator and audit export modes with checksum integrity reporting
 - [x] operator-facing export portability and timeline reconstruction
 
+## PR-10b — A2A Adapter Gate
+
+- [x] `A2AAdapter` is optional, source-only, and importable without `a2a-sdk`
+- [x] no `A2AAdapter`, `A2AParticipantBinding`, or `A2APreparedStep` top-level `aegis` re-export is added
+- [x] `workflow.protocol_constraints.a2a` is strict in root and packaged schemas
+- [x] Agent Card compatibility is validated from `supportedInterfaces[].protocolVersion`
+- [x] only `JSONRPC` and `HTTP+JSON` are accepted governed protocol bindings
+- [x] gRPC evidence rejects through adapter and direct session protocol-boundary checks
+- [x] normative `TASK_STATE_*` values pass and shorthand or misspelled values fail
+- [x] workflow step metadata stores redacted A2A summaries without raw task payloads
+- [x] `docs/reference/external/A2A_ADAPTER.md` advanced recipe ships
+- [x] default local adopter path remains unchanged and green without A2A dependencies
+
 ## PR-10c — OpenAI Agents Adapter Gate
 
 - [x] `OpenAIAgentsAdapter` is optional, fail-closed, and ships behind the `aegis[openai-agents]` extra
@@ -102,7 +115,7 @@ PR-10d is a bounded post-adapter hardening addendum. It must improve the existin
 - [x] `WORKFLOW_SOURCE_PROVENANCE_WARNING` is doctor-only and non-blocking by default
 - [x] `workflow export` includes backward-compatible governance rationale metadata
 - [x] starter and workflow safety smoke tests pass without external dependencies
-- [x] adapter-specific gates are documented as deferred when source surfaces are absent
+- [x] A2A adapter-specific gates are covered by PR-10b fixtures; unavailable adapter surfaces remain documented as deferred when source surfaces are absent
 - [x] no public example imports from `aegis._internal`
 - [x] no new required runtime dependency is introduced
 - [x] default local adopter path remains unchanged and green
@@ -111,19 +124,19 @@ PR-10d is a bounded post-adapter hardening addendum. It must improve the existin
 Deferred PR-10d adapter gate: Bedrock alias-backed participant identity tests
 remain blocked until PR-10a surfaces are present.
 
-Deferred PR-10d adapter gate: A2A capability and protocol mismatch tests remain
-blocked until PR-10b surfaces are present.
+PR-10d A2A adapter gate: A2A capability and protocol mismatch tests are now
+covered by PR-10b fixtures.
 
-Deferred PR-10d adapter gate: OpenAI Agents SDK capability mismatch,
-side-effecting tool, and unsupported dynamic-tool tests remain blocked until
-PR-10c source surfaces are present on this target branch.
+PR-10d OpenAI Agents adapter gate: capability mismatch, side-effecting tool,
+and unsupported dynamic-tool tests are covered where PR-10c source surfaces are
+present.
 
 ## Deferred To PR-10 And Later
 
 - [x] PR-10c optional OpenAI Agents SDK adapter track — complete on local `develop`
 - [ ] PR-10a optional Bedrock adapter track
-- [ ] PR-10b optional A2A adapter track
-- [ ] research-informed PR-10d safety hardening addendum
+- [x] PR-10b optional A2A adapter track — implemented locally
+- [x] research-informed PR-10d safety hardening addendum — implemented locally
 
 ---
 

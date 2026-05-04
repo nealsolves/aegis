@@ -1,8 +1,8 @@
-# PR Context — `v0.9.0` PR-10d Research Safety Addendum
+# PR Context — `v0.9.0` PR-10b A2A Adapter
 
-Date: 2026-05-03
+Date: 2026-05-04
 Status: Implemented locally
-Active branch: `feat/v0.9-10d-research-safety-addendum`
+Active branch: `feat/v0.9-10-a2a-adapter`
 
 ---
 
@@ -48,8 +48,9 @@ no further public-surface work proceeds until the default path is repaired.
   - `aegis workflow export`
 - The default adopter path succeeds without Bedrock, A2A, or the OpenAI Agents SDK.
 - `ValidatorHook` is implemented as an internal engine capability in PR-08. It is not a public beta surface.
-- PR-10a and PR-10b have not started.
-- PR-10c is complete on local `develop` and is pending merge to `origin/develop` via PR; PR-10c source surfaces are absent from this branch.
+- PR-10a has not started.
+- PR-10b is implemented locally on `feat/v0.9-10-a2a-adapter`.
+- PR-10c is complete on local `develop` and is pending merge to `origin/develop` via PR.
 - PR-10d is implemented locally as pre-freeze safety hardening before PR-11.
 
 ---
@@ -64,74 +65,94 @@ no further public-surface work proceeds until the default path is repaired.
 - `OpenAIAgentsAdapter` is a source-only beta surface behind the optional
   `aegis[openai-agents]` extra. It is not re-exported from the top-level
   `aegis` package.
-- `BedrockTraceAdapter` and `A2AAdapter` remain planned follow-on adapter
-  surfaces; their protocol evidence checks exist in the workflow runtime, but
-  no public adapter modules or extras ship until PR-10a/10b.
+- `A2AAdapter` is a source-only beta surface under `aegis.a2a_adapter`. It is
+  not re-exported from the top-level `aegis` package and does not require
+  `a2a-sdk`.
+- `BedrockTraceAdapter` remains a planned follow-on adapter surface until the
+  PR-10a release-truth gate is closed.
 - `AgentIdentity` and `AgentCapabilityManifest` remain out-of-scope for v0.9.0.
 
 ---
 
-## PR-10d Goal
+## PR-10b Goal
 
-PR-10d converts recent agent-safety research into bounded hardening of the existing beta surfaces:
+PR-10b adds an optional source-only A2A governance adapter for host-owned A2A
+interactions:
 
-- graph/topology lint rules
-- bounded witness traces
-- temporal-check approximations using existing DSL fields
-- source and memory provenance warnings
-- workflow doctor remediation mapping
-- workflow export governance rationale metadata
-- fixture-only adapter capability/trust tests for adapter surfaces present in the branch
-- internal multi-aspect `ValidatorHook` example
-- starter safety smoke tests
+- `A2AAdapter`
+- `A2AParticipantBinding`
+- `A2APreparedStep`
+- strict `workflow.protocol_constraints.a2a` schema
+- runtime A2A protocol-boundary hardening in `GovernanceSession`
+- normative `TASK_STATE_*` validation
+- redacted A2A workflow step metadata
+- fixture-only tests and advanced host-owned usage docs
 
-It must not add a new runtime, new transport layer, MCP governance proxy, streaming governance handle, memory governance subsystem, public LLM-as-judge engine, or new required dependency.
+It must not add an A2A client, server, proxy, gateway, transport runtime, task
+store, streaming runtime, retry loop, credential manager, remote agent host, or
+new required dependency.
 
 ---
 
 ## In Scope
 
-- `aegis/_internal/workflow_lint.py`
-- `aegis/_internal/workflow_doctor.py`
-- `aegis/_internal/workflow_export.py`
 - `aegis/_internal/session.py`
-- `aegis/_internal/starter_templates.py`
-- focused PR-10d lint, doctor, export, safety-smoke, and internal ValidatorHook tests
-- release-truth and reference documentation updates
+- `aegis/a2a_adapter.py`
+- `schemas/policy_dsl.schema.json`
+- `aegis/schemas/policy_dsl.schema.json`
+- `tests/test_a2a_adapter.py`
+- `docs/reference/external/A2A_ADAPTER.md`
+- release-truth and external adapter documentation updates
 
 ---
 
 ## Out of Scope
 
 - PR-10a Bedrock implementation
-- PR-10b A2A implementation
 - PR-10c OpenAI Agents SDK implementation
+- PR-10d research-safety addendum work
 - PR-11 beta freeze
-- public `ValidatorHook` promotion
-- full memory governance
-- streaming governance
-- MCP governance proxy
-- formal model checking
+- A2A transport, auth, retries, streaming, polling, task execution, or task storage
+- gRPC support for governed v0.9.0 A2A normalization
 - new required package dependencies
 
 ---
 
 ## Exit Criteria
 
-- Graph/topology lint uses existing workflow DSL fields only and emits bounded `details` and `witness_trace`.
-- Lint findings keep stable keys and do not include `severity` or `next_action`.
-- Doctor maps every new lint and doctor-only code to severity and remediation guidance.
-- `WORKFLOW_SOURCE_PROVENANCE_WARNING` is doctor-only and non-blocking by default.
-- Workflow export projects redacted governance rationale from `steps[i].metadata.governance` and preserves integrity metadata.
-- Internal multi-aspect `ValidatorHook` examples remain tests only and are not public beta guidance.
+- `A2AAdapter` exists under `aegis.a2a_adapter` and is not re-exported from top-level `aegis`.
+- Base import succeeds without `a2a-sdk`.
+- A2A policy schema is strict in root and packaged schema copies.
+- Compatibility is validated from `supportedInterfaces[].protocolVersion`.
+- `JSONRPC` and `HTTP+JSON` are the only accepted governed bindings.
+- gRPC evidence fails closed in adapter and direct session checks.
+- Normative `TASK_STATE_*` values pass and shorthand or misspelled values fail.
+- Step metadata contains redacted A2A summaries and no raw task payloads.
 - The implementation preserves the AEGIS ownership boundary: host owns execution; AEGIS governs and emits evidence.
 - The default local adopter path remains unchanged and optional adapters stay optional.
 
 ---
 
+## PR-10b Outcomes
+
+Ships:
+
+- `A2AAdapter` — governed binding for host-owned A2A interactions
+- `A2AParticipantBinding` and `A2APreparedStep`
+- strict `workflow.protocol_constraints.a2a` schema with `protocol_version`, `allowed_protocol_bindings`, and `require_task_state`
+- direct `GovernanceSession` A2A protocol checks for callers that bypass the adapter
+- gRPC rejection with typed workflow protocol violations
+- normative `TASK_STATE_*` acceptance and shorthand/misspelling rejection
+- redacted workflow step metadata for task ID, context ID, state, terminal flag, artifact/history counts, and update counts
+- fixture-only adapter tests in `tests/test_a2a_adapter.py`
+- reference doc at `docs/reference/external/A2A_ADAPTER.md`
+- no required A2A SDK, protobuf, transport, or gRPC dependency
+
+---
+
 ## PR-10c Outcomes
 
-PR-10c is complete on local `develop` and is pending merge to `origin/develop` via PR. Source surfaces are absent from this branch.
+PR-10c is complete on local `develop` and is pending merge to `origin/develop` via PR.
 
 Ships:
 
@@ -157,9 +178,9 @@ P1 issues resolved:
 
 Current execution note:
 
-- PR-10c is complete on local `develop` and is being merged to `origin/develop` via PR; source surfaces absent from this branch.
-- PR-10a and PR-10b remain not started.
+- PR-10b is implemented locally and ready for the PR-10b verification gate.
+- PR-10c is complete on local `develop` and is being merged to `origin/develop` via PR.
+- PR-10a remains not started.
 - Deferred PR-10d adapter gate: Bedrock alias-backed participant identity tests remain blocked until PR-10a surfaces are present.
-- Deferred PR-10d adapter gate: A2A capability and protocol mismatch tests remain blocked until PR-10b surfaces are present.
-- Deferred PR-10d adapter gate: OpenAI Agents SDK capability mismatch, side-effecting tool, and unsupported dynamic-tool tests remain blocked until PR-10c source surfaces are present on this target branch.
+- PR-10d A2A capability and protocol mismatch gate is now covered by PR-10b fixtures.
 - PR-11 follows after PR-10d gates and any required adapter sequencing decisions are satisfied.
