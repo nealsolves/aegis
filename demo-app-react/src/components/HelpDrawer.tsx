@@ -20,6 +20,7 @@ const LABS_LABEL: Record<number, string> = {
   8: 'Lab 8 — Governed Knowledge Base',
   9: 'Lab 9 — Governed vs. Ungoverned',
   10: 'Lab 10 — Split Enforcement Explorer',
+  11: 'Lab 11 — Workflow Governance',
 }
 
 export default function HelpDrawer({ labId, isOpen, onClose }: Props) {
@@ -27,10 +28,11 @@ export default function HelpDrawer({ labId, isOpen, onClose }: Props) {
   const closeButtonRef = useRef<HTMLButtonElement>(null)
   const drawerRef = useRef<HTMLDivElement>(null)
   const prevFocusRef = useRef<HTMLElement | null>(null)
-  const [glossaryOpen, setGlossaryOpen] = useState(false)
+  const [glossaryState, setGlossaryState] = useState({ labId, open: false })
 
   const lab = helpContent[labId] ?? helpContent[1]
   const isDark = theme === 'dark'
+  const glossaryOpen = glossaryState.labId === labId ? glossaryState.open : false
 
   // Focus close button on open; handle Escape and Tab focus trap
   useEffect(() => {
@@ -65,11 +67,6 @@ export default function HelpDrawer({ labId, isOpen, onClose }: Props) {
       prevFocusRef.current?.focus()
     }
   }, [isOpen, onClose])
-
-  // Reset glossary when lab changes
-  useEffect(() => {
-    setGlossaryOpen(false)
-  }, [labId])
 
   if (!isOpen) return null
 
@@ -370,7 +367,7 @@ export default function HelpDrawer({ labId, isOpen, onClose }: Props) {
               <button
                 aria-label="Glossary"
                 aria-expanded={glossaryOpen}
-                onClick={() => setGlossaryOpen(v => !v)}
+                onClick={() => setGlossaryState({ labId, open: !glossaryOpen })}
                 style={{
                   width: '100%',
                   background: glossaryBtnBg,

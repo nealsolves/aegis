@@ -17,7 +17,7 @@ export const IBM_COLORS = {
 
 export type IBMColor = keyof typeof IBM_COLORS
 
-/** Map a lab number (1–10) to its IBM accent color */
+/** Map a lab number (1-11) to its IBM accent color */
 export const LAB_COLORS: Record<number, string> = {
   1:  IBM_COLORS.blue60,
   2:  IBM_COLORS.magenta40,
@@ -29,4 +29,5 @@ export const LAB_COLORS: Record<number, string> = {
   8:  IBM_COLORS.green40,
   9:  IBM_COLORS.orange40,
   10: IBM_COLORS.red40,
+  11: IBM_COLORS.purple40,
 }

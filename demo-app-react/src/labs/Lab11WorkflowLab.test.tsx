@@ -44,6 +44,7 @@ beforeEach(() => {
     buildApiState(),
     buildApiState(),
     buildApiState(),
+    buildApiState(),
   ])
 })
 
@@ -83,6 +84,7 @@ describe('Lab11WorkflowLab', () => {
       buildApiState({ loading: true }),
       buildApiState(),
       buildApiState(),
+      buildApiState(),
     ])
 
     render(<Lab11WorkflowLab />)
@@ -101,6 +103,7 @@ describe('Lab11WorkflowLab', () => {
       buildApiState(),
       buildApiState(),
       buildApiState({ call: diagnoseCall }),
+      buildApiState(),
     ])
 
     render(<Lab11WorkflowLab />)
@@ -109,5 +112,56 @@ describe('Lab11WorkflowLab', () => {
 
     expect(diagnoseCall).toHaveBeenCalledWith('/api/workflow/v090/diagnose')
     expect(await screen.findByText(/trigger failure first to generate a workflow run/i)).toBeInTheDocument()
+  })
+
+  it('calls the workflow trace endpoint from Evidence View', async () => {
+    const traceCall = vi.fn(async () => ({
+      traces: [{
+        trace_schema_version: '0.9.0',
+        session_id: 'session-1',
+        status: 'COMPLETED',
+        step_count: 2,
+        unresolved_checksums: [],
+        steps: [{
+          sequence: 1,
+          step_id: 'step-1',
+          resolved: true,
+          invocation_artifact_checksum: 'abc123',
+          invocation_summary: {
+            enforcement_result: 'PASS',
+            model_provider: 'anthropic',
+            model_identifier: 'claude-sonnet-4-6',
+            role: 'ai-assistant',
+          },
+        }],
+      }],
+      artifact: {
+        workflow_schema_version: '0.9.0',
+        artifact_type: 'workflow',
+        session_id: 'session-1',
+        policy_file: 'policy.yaml',
+        status: 'COMPLETED',
+        started_at: 1,
+        finalized_at: 2,
+        steps: [],
+        invocation_audit_checksums: [],
+        failure_summary: null,
+        metadata: {},
+      },
+    }))
+
+    mockUseApiStates([
+      buildApiState(),
+      buildApiState(),
+      buildApiState(),
+      buildApiState({ call: traceCall }),
+    ])
+
+    render(<Lab11WorkflowLab />)
+    fireEvent.click(screen.getByRole('button', { name: /evidence view/i }))
+    fireEvent.click(screen.getByRole('button', { name: /build evidence trace/i }))
+
+    expect(traceCall).toHaveBeenCalledWith('/api/workflow/v090/trace')
+    expect(await screen.findByText(/resolved invocation steps/i)).toBeInTheDocument()
   })
 })

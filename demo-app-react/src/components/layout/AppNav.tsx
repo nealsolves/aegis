@@ -9,11 +9,11 @@ export default function AppNav() {
       style={{ background: 'var(--bg-nav)', borderColor: 'rgba(255,255,255,0.07)' }}
     >
       <span className="font-mono font-light text-xs tracking-widest" style={{ color: 'var(--ibm-cyan-30)' }}>
-        aigc <span style={{ color: 'rgba(255,255,255,0.3)' }}>//</span> sdk
+        aegis <span style={{ color: 'rgba(255,255,255,0.3)' }}>//</span> sdk
       </span>
       <div className="flex-1" />
       <a
-        href="https://github.com/nealsolves/aigc"
+        href="https://github.com/nealsolves/aegis"
         target="_blank"
         rel="noopener noreferrer"
         className="transition-colors"

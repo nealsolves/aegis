@@ -67,7 +67,6 @@ export default function Lab1RiskScoring() {
     callDetail(`/api/scenarios/${key}`).then(res => {
       if (!cancelled && res) setScenarioDetail(res)
     })
-    setArtifact(null)
     return () => { cancelled = true }
   }, [scenarioIdx]) // eslint-disable-line react-hooks/exhaustive-deps
 

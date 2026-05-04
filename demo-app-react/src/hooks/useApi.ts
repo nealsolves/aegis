@@ -11,6 +11,7 @@ export function useApi<T = unknown>() {
   const abortController = useRef<AbortController | null>(null)
 
   useEffect(() => {
+    isMounted.current = true
     return () => {
       isMounted.current = false
       // Cancel any in-flight requests on unmount

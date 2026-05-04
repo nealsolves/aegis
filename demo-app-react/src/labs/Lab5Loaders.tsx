@@ -61,7 +61,7 @@ export default function Lab5Loaders() {
       }
     })
     return () => { cancelled = true }
-  }, [])
+  }, [callPolicies])
 
   const loadFilesystem = async () => {
     const gen = ++loadGenRef.current

@@ -1,8 +1,8 @@
 # AEGIS Interactive Demo
 
-Interactive companion to the [AEGIS SDK](https://github.com/nealsolves/aegis) — seven
-hands-on labs for the M2 governance capabilities plus an architecture guide
-covering the enforcement pipeline and decorator defaults (updated for v0.3.3).
+Interactive companion to the [AEGIS SDK](https://github.com/nealsolves/aegis) — eleven
+hands-on labs for the governance capabilities plus an architecture guide covering
+the enforcement pipeline, decorator defaults, and workflow governance surfaces.
 
 **Live demo:** [https://nealsolves.github.io/aegis/](https://nealsolves.github.io/aegis/)
 
@@ -17,6 +17,10 @@ covering the enforcement pipeline and decorator defaults (updated for v0.3.3).
 | 5 | Loaders & Versioning — pluggable `PolicyLoader`; policy date enforcement |
 | 6 | Custom Gates — `EnforcementGate` plugins at all four pipeline insertion points |
 | 7 | Compliance Dashboard — compliance export from a JSONL audit trail |
+| 8 | Governed Knowledge Base — provenance enforcement for sourced answers |
+| 9 | Governed vs Ungoverned — side-by-side evidence comparison |
+| 10 | Split Enforcement — Phase A/Phase B trace explorer |
+| 11 | Workflow Lab — v0.9.0 workflow governance, diagnosis, and trace evidence |
 
 ## Architecture
 
@@ -26,6 +30,15 @@ The demo has two deployed components:
 - **FastAPI backend** (`demo-app-api/`) — deployed on Render at `https://aegis-2oaf.onrender.com`. The React app calls this backend for all lab enforcement, signing, chaining, composition, and loader operations. No user API keys are required.
 
 ## Development
+
+Start the API:
+
+```bash
+cd demo-app-api
+python -m uvicorn main:app --reload --port 8000
+```
+
+Start the React app:
 
 ```bash
 cd demo-app-react

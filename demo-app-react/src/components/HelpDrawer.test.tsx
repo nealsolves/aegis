@@ -38,6 +38,10 @@ describe('HelpDrawer', () => {
 
     renderDrawer(true, vi.fn(), 10)
     expect(screen.getByText('Lab 10 — Split Enforcement Explorer')).toBeInTheDocument()
+
+    renderDrawer(true, vi.fn(), 11)
+    expect(screen.getByText('Lab 11 — Workflow Governance')).toBeInTheDocument()
+    expect(screen.getByText('Workflow Governance Guide')).toBeInTheDocument()
   })
 
   it('shows at least one step title', () => {

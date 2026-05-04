@@ -37,7 +37,7 @@ export const helpContent: Record<number, LabHelp> = {
       'Read Component View first to see where AEGIS sits in the call path.',
       'Move to Enforcement Pipeline next to understand the exact gate order.',
       'Use Key Boundaries to separate core enforcement from signing, AuditChain, and compliance export.',
-      'Then open Labs 1-7 to study one capability at a time.',
+      'Then open Labs 1-11 to study one capability at a time.',
     ],
     steps: [
       {
@@ -411,7 +411,7 @@ export const helpContent: Record<number, LabHelp> = {
     whyItMatters:
       'Governance only matters if someone can inspect the record afterward. The compliance dashboard shows what an analyst or auditor can actually do with AEGIS evidence once the SDK has produced it.',
     whatThisLabShows: [
-      'Every enforcement run in Labs 1-6 can feed a live session audit trail.',
+      'Every invocation artifact from Labs 1-6 and 8-10 can feed a live session audit trail.',
       'Sample mode is an explicit teaching aid, not a silent default data source.',
       'The UI mirrors the compliance export workflow with filterable records, downloadable JSON and CSV, and CLI equivalents.',
     ],
@@ -425,7 +425,7 @@ export const helpContent: Record<number, LabHelp> = {
       {
         title: 'Build your audit log',
         instruction:
-          'Run enforcement in any lab from Labs 1-6 to add records to the session audit trail. If no records exist yet, click Load Sample Data to explore the dashboard with fixture records.',
+          'Run enforcement in any invocation lab to add records to the session audit trail. Workflow artifacts from Lab 11 are intentionally kept separate from invocation audit history. If no records exist yet, click Load Sample Data to explore the dashboard with fixture records.',
       },
       {
         title: 'Filter records',
@@ -621,6 +621,63 @@ export const helpContent: Record<number, LabHelp> = {
       { term: 'Phase B', definition: 'Post-output validation phase. Runs pre_output, schema, postconditions, post_output, and risk scoring after the model returns output.' },
       { term: 'split_pre_call_only', definition: 'enforcement_mode value when Phase A blocked the call. Phase B never ran.' },
       { term: 'split', definition: 'enforcement_mode value when both Phase A and Phase B ran as part of split enforcement.' },
+    ],
+  },
+  11: {
+    title: 'Workflow Governance Guide',
+    overview:
+      'This lab introduces workflow-level governance for multi-step AI sessions. Instead of looking ' +
+      'only at one invocation artifact, it shows the session artifact that correlates governed steps, ' +
+      'failure diagnostics, governed-versus-ungoverned workflow output, and trace evidence reconstructed from JSONL audit records.',
+    whyItMatters:
+      'Real AI systems often run as workflows: draft, pause for approval, resume, validate, and complete. ' +
+      'Workflow governance proves that each governed step belongs to a session and gives operators a way to diagnose and repair failed runs.',
+    whatThisLabShows: [
+      'Minimal and standard sessions created with AEGIS.open_session().',
+      'A failure-and-fix path that uses workflow doctor findings and reruns the repaired regulated starter.',
+      'A governed-versus-ungoverned workflow comparison where only the governed path emits workflow evidence.',
+      'A trace view built from a JSONL audit sink and aegis workflow trace.',
+    ],
+    howToNavigate: [
+      'Start with Run Minimal, then Run Standard, to compare two-step and three-step completed sessions.',
+      'Use Failure & Fix to trigger a regulated starter failure, diagnose it, then apply the repaired source and rerun.',
+      'Open Governed vs Ungoverned to compare workflow artifacts against raw output without governance.',
+      'Use Evidence View to build a trace and confirm that invocation checksums resolve back to governed steps.',
+    ],
+    steps: [
+      {
+        title: 'Run a completed workflow',
+        instruction:
+          'Click Run Minimal or Run Standard. The API opens a real AEGIS workflow session, enforces each step, completes the session, and returns a workflow artifact with status, step count, and invocation audit checksums.',
+      },
+      {
+        title: 'Trigger and diagnose a failure',
+        instruction:
+          'Switch to Failure & Fix and click Trigger Failure. The demo generates a regulated starter, removes required provenance source IDs, then captures the failed workflow artifact and run_id for diagnosis.',
+      },
+      {
+        title: 'Apply the repair path',
+        instruction:
+          'Run Doctor Diagnosis to inspect workflow doctor findings, then click Apply Fix & Rerun. The API restores the original starter source for that run_id and reruns the regulated workflow to completion.',
+      },
+      {
+        title: 'Compare governance coverage',
+        instruction:
+          'Use Governed vs Ungoverned to run the same prompt with and without workflow governance. The governed side carries session status and correlated steps; the ungoverned side is raw output with no audit trail.',
+      },
+      {
+        title: 'Build evidence trace',
+        instruction:
+          'Use Evidence View and click Build Evidence Trace. The API writes a governed session to a temporary JSONL sink, runs aegis workflow trace, and returns resolved step evidence plus the workflow artifact.',
+      },
+    ],
+    takeaway:
+      'Workflow governance connects individual invocation controls into session-level evidence that can be diagnosed, repaired, traced, and compared.',
+    glossary: [
+      { term: 'Workflow artifact', definition: 'A session-level audit record with workflow status, step IDs, invocation artifact checksums, and failure summary data.' },
+      { term: 'run_id', definition: 'An opaque ID returned by the intentional failure path so the same starter directory can be diagnosed and repaired.' },
+      { term: 'workflow doctor', definition: 'The diagnostic command used by the demo to explain why a workflow starter failed policy validation.' },
+      { term: 'workflow trace', definition: 'A reconstructed timeline produced from JSONL audit records that resolves workflow steps to invocation artifacts.' },
     ],
   },
 }

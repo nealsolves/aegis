@@ -106,7 +106,11 @@ export default function Lab6CustomGates() {
 
   // Auto-load gate info on mount for the default gate
   useEffect(() => {
-    loadGateInfo(gateName)
+    let cancelled = false
+    callInfo(`/api/gate/${gateNameRef.current}`).then(res => {
+      if (!cancelled && res) setGateInfo(res)
+    })
+    return () => { cancelled = true }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const run = async () => {

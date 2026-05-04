@@ -33,8 +33,35 @@ interface WorkflowRunResponse {
 }
 
 interface CompareResponse {
-  governed: { artifact: WorkflowArtifact | null }
-  ungoverned: { artifact: Record<string, unknown> | null }
+  governed: { artifact: WorkflowArtifact | null; error: string | null }
+  ungoverned: { artifact: Record<string, unknown> | null; error: string | null }
+}
+
+interface WorkflowTraceStep {
+  sequence: number
+  step_id: string
+  resolved: boolean
+  invocation_artifact_checksum: string
+  invocation_summary?: {
+    enforcement_result?: string
+    model_provider?: string
+    model_identifier?: string
+    role?: string
+  }
+}
+
+interface WorkflowTrace {
+  trace_schema_version: string
+  session_id: string
+  status: string
+  step_count: number
+  unresolved_checksums: string[]
+  steps: WorkflowTraceStep[]
+}
+
+interface TraceResponse {
+  traces: WorkflowTrace[]
+  artifact: WorkflowArtifact | null
 }
 
 interface DiagnosisFinding {
@@ -78,9 +105,10 @@ function severityColor(severity: string): string {
 // ── component ────────────────────────────────────────────────────────────────
 
 export default function Lab11WorkflowLab() {
-  const { call: callApi, loading } = useApi<WorkflowRunResponse>()
+  const { call: callApi, loading, error: runError } = useApi<WorkflowRunResponse>()
   const compareApi  = useApi<CompareResponse>()
   const diagnoseApi = useApi<DiagnoseResponse>()
+  const traceApi    = useApi<TraceResponse>()
 
   const [activeTab, setActiveTab] = useState<Tab>('start-here')
 
@@ -97,6 +125,9 @@ export default function Lab11WorkflowLab() {
 
   // Governed vs Ungoverned tab
   const [compareResult, setCompareResult]   = useState<CompareResponse | null>(null)
+
+  // Evidence View tab
+  const [traceResult, setTraceResult]       = useState<TraceResponse | null>(null)
 
   // ── handlers ────────────────────────────────────────────────────────────────
 
@@ -126,6 +157,8 @@ export default function Lab11WorkflowLab() {
   }
 
   const runDoctorDiagnosis = async () => {
+    setFindings([])
+    setDiagnoseSource('')
     const path = lastFailureRunId
       ? `/api/workflow/v090/diagnose?run_id=${lastFailureRunId}`
       : '/api/workflow/v090/diagnose'
@@ -150,6 +183,14 @@ export default function Lab11WorkflowLab() {
   const runCompare = async () => {
     const res = await compareApi.call('/api/workflow/v090/compare', {})
     if (res) setCompareResult(res)
+  }
+
+  const runEvidenceTrace = async () => {
+    const res = await traceApi.call('/api/workflow/v090/trace')
+    if (res) {
+      setTraceResult(res)
+      if (res.artifact) setLastArtifact(res.artifact)
+    }
   }
 
   // ── render ──────────────────────────────────────────────────────────────────
@@ -206,6 +247,12 @@ export default function Lab11WorkflowLab() {
               {loading ? 'Running…' : 'Run Standard'}
             </button>
           </div>
+
+          {runError && (
+            <p className="text-xs mb-2" style={{ color: IBM_COLORS.red40 }}>
+              {runError}
+            </p>
+          )}
 
           {runResult && (
             <>
@@ -277,6 +324,12 @@ export default function Lab11WorkflowLab() {
               {loading ? 'Running…' : 'Apply Fix & Rerun'}
             </button>
           </div>
+
+          {runError && (
+            <p className="text-xs mb-2" style={{ color: IBM_COLORS.red40 }}>
+              {runError}
+            </p>
+          )}
 
           {failureResult && (
             <div className="mb-4">
@@ -398,6 +451,11 @@ export default function Lab11WorkflowLab() {
                     <StatusBadge status={compareResult.governed.artifact.status} />
                   )}
                 </div>
+                {compareResult.governed.error && (
+                  <p className="text-xs mb-2" style={{ color: IBM_COLORS.red40 }}>
+                    {compareResult.governed.error}
+                  </p>
+                )}
                 <CodeBlock
                   code={JSON.stringify(compareResult.governed.artifact ?? {}, null, 2)}
                   label="governed workflow artifact"
@@ -417,6 +475,11 @@ export default function Lab11WorkflowLab() {
                     no governance
                   </span>
                 </div>
+                {compareResult.ungoverned.error && (
+                  <p className="text-xs mb-2" style={{ color: IBM_COLORS.red40 }}>
+                    {compareResult.ungoverned.error}
+                  </p>
+                )}
                 <CodeBlock
                   code={JSON.stringify(compareResult.ungoverned.artifact ?? {}, null, 2)}
                   label="raw output (no governance)"
@@ -431,8 +494,67 @@ export default function Lab11WorkflowLab() {
       {activeTab === 'evidence-view' && (
         <div>
           <p className="text-sm mb-3" style={{ color: 'var(--text-secondary)' }}>
-            Workflow artifact from the most recent workflow run.
+            Reconstruct a governed workflow trace from a JSONL audit sink.
           </p>
+
+          <button
+            role="button"
+            className="px-4 py-1.5 rounded text-sm font-medium text-white disabled:opacity-50 mb-4"
+            style={{ background: IBM_COLORS.purple40 }}
+            onClick={runEvidenceTrace}
+            disabled={traceApi.loading}
+          >
+            {traceApi.loading ? 'Tracing…' : 'Build Evidence Trace'}
+          </button>
+
+          {traceApi.error && (
+            <p className="text-xs mb-2" style={{ color: IBM_COLORS.red40 }}>
+              {traceApi.error}
+            </p>
+          )}
+
+          {traceResult?.traces?.[0] && (
+            <div className="mb-4">
+              <div className="grid grid-cols-3 gap-2 mb-4">
+                <MetricCard
+                  value={traceResult.traces[0].status}
+                  label="trace status"
+                  color={traceResult.traces[0].status === 'COMPLETED' ? IBM_COLORS.green40 : IBM_COLORS.red40}
+                />
+                <MetricCard
+                  value={String(traceResult.traces[0].step_count)}
+                  label="trace steps"
+                  color={IBM_COLORS.purple40}
+                />
+                <MetricCard
+                  value={String(traceResult.traces[0].unresolved_checksums.length)}
+                  label="unresolved links"
+                  color={traceResult.traces[0].unresolved_checksums.length === 0 ? IBM_COLORS.green40 : IBM_COLORS.red40}
+                />
+              </div>
+
+              <div className="rounded border p-3 mb-4" style={{ borderColor: 'var(--border-ui)' }}>
+                <p className="text-xs font-semibold uppercase mb-2" style={{ color: IBM_COLORS.purple40 }}>
+                  Resolved invocation steps
+                </p>
+                <div className="flex flex-col gap-2">
+                  {traceResult.traces[0].steps.map(step => (
+                    <div key={step.step_id} className="text-xs font-mono flex flex-wrap gap-x-3 gap-y-1" style={{ color: 'var(--text-secondary)' }}>
+                      <span style={{ color: IBM_COLORS.purple40 }}>#{step.sequence}</span>
+                      <span>{step.invocation_summary?.enforcement_result ?? 'UNKNOWN'}</span>
+                      <span>{step.invocation_summary?.model_provider ?? 'model'} / {step.invocation_summary?.model_identifier ?? 'unknown'}</span>
+                      <span>{step.resolved ? 'resolved' : 'unresolved'}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <CodeBlock
+                code={JSON.stringify(traceResult.traces[0], null, 2)}
+                label="workflow trace"
+              />
+            </div>
+          )}
 
           {lastArtifact ? (
             <>
