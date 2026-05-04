@@ -212,13 +212,13 @@ Never push directly to remote `develop` or `main` — always use PRs for remote 
 
 **Do NOT open or merge a PR from `origin/develop` → `origin/main` until `v0.9.0` is formally declared a GO.**
 
-During active `v0.9.0` development (PR-01 through PR-10c), all remote merges target `origin/develop` only. The `origin/develop` → `origin/main` PR is opened only after all v0.9.0 release gates are satisfied (see `docs/plans/AEGIS V0.9.0 IMPLEMENTATION_PLAN.md` — Release Gates section).
+During active `v0.9.0` development (PR-01 through PR-10d), all remote merges target `origin/develop` only. The `origin/develop` -> `origin/main` PR is opened only after all v0.9.0 release gates are satisfied (see `docs/plans/AEGIS V0.9.0 IMPLEMENTATION_PLAN.md` — Release Gates section).
 
 The final release sequence is:
-1. All PR-01 through PR-10c work is merged to `origin/develop`
+1. All PR-01 through PR-10d work is merged to `origin/develop`
 2. PR-11 (`feat/v0.9-11-beta-freeze`) lands — public API snapshot tests, full CI matrix, all stop-ship gates pass
 3. A `release/v0.9.0` branch is cut from `feat/v0.9-11-beta-freeze`
-4. **Only then**: PR from `origin/develop` → `origin/main` is opened and merged
+4. **Only then**: PR from `origin/develop` -> `origin/main` is opened and merged
 
 ### `v0.9.0` PR Structure
 
@@ -238,7 +238,8 @@ All `v0.9.0` feature branches follow the naming convention `feat/v0.9-NN-descrip
 | PR-10a | `feat/v0.9-10-bedrock-adapter` | `BedrockTraceAdapter`, alias-backed identity, fail-closed on missing trace |
 | PR-10b | `feat/v0.9-10-a2a-adapter` | `A2AAdapter`, `TASK_STATE_*` validation, gRPC rejection |
 | PR-10c | `feat/v0.9-10-openai-agents-adapter` | `OpenAIAgentsAdapter`, governed binding for `openai-agents`, fail-closed unsupported-surface rules |
-| PR-11 | `feat/v0.9-11-beta-freeze` → `release/v0.9.0` | API snapshot tests, full CI matrix, all gates — triggers `origin/main` PR |
+| PR-10d | `feat/v0.9-10d-research-safety-addendum` | research-informed lint, doctor, export, safety-smoke, and adapter-fixture hardening |
+| PR-11 | `feat/v0.9-11-beta-freeze` -> `release/v0.9.0` | API snapshot tests, full CI matrix, all gates — triggers `origin/main` PR |
 
 PR-07 is a mandatory stop-ship checkpoint. If the golden-path validation fails there, no new public-surface work proceeds until the default adoption path is repaired.
 

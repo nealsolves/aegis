@@ -11,8 +11,8 @@
 
 - PR-01 through PR-09 are complete.
 - PR-10a and PR-10b have not started.
-- PR-10c is being worked on local `develop` and has not been pushed to `origin/develop` yet.
-- PR-10d is now proposed as a bounded research-informed safety addendum after PR-10a/b/c and before PR-11.
+- PR-10c surfaces are not present on this target branch.
+- PR-10d is implemented locally as a bounded research-informed safety addendum before PR-11.
 - PR-11 has not started.
 
 | Track | Status | Notes |
@@ -26,8 +26,8 @@
 | Beta proof | complete | Clean-env proof, real failure/diagnosis/fix/rerun flow, and demo parity are in place |
 | Engine hardening | complete | Budgets, transitions, protocol constraints, approvals, handoffs, and internal validator hooks are hardened |
 | Exports and ops | complete | `aegis workflow trace` and `aegis workflow export` ship on `develop` |
-| Optional adapters | partial local work | PR-10a and PR-10b not started; PR-10c is in local `develop` work and not yet pushed to `origin/develop` |
-| Research safety addendum | proposed | PR-10d adds graph/topology lint, doctor remediation, export rationale, and safety smoke tests |
+| Optional adapters | deferred on this branch | PR-10a, PR-10b, and PR-10c source surfaces are absent from the PR-10d target branch |
+| Research safety addendum | implemented locally | PR-10d adds graph/topology lint, doctor remediation, export rationale, and safety smoke tests |
 | Beta freeze | not started | Begins in PR-11 |
 
 ---
@@ -58,8 +58,8 @@
 | PR-09 | `feat/v0.9-09-exports-and-ops` | complete | Trace, export, and operator polish |
 | PR-10a | `feat/v0.9-10-bedrock-adapter` | not started | Optional Bedrock adapter with alias-backed identity rules |
 | PR-10b | `feat/v0.9-10-a2a-adapter` | not started | Optional A2A adapter with strict wire-contract rules |
-| PR-10c | `feat/v0.9-10-openai-agents-adapter` | local work in progress | Optional OpenAI Agents SDK adapter is being worked on local `develop`; not yet pushed to `origin/develop` |
-| PR-10d | `feat/v0.9-10d-research-safety-addendum` | proposed | Research-informed lint, doctor, export, safety smoke, and adapter-fixture hardening |
+| PR-10c | `feat/v0.9-10-openai-agents-adapter` | absent from target branch | Optional OpenAI Agents SDK adapter surfaces are not available for PR-10d fixture gates here |
+| PR-10d | `feat/v0.9-10d-research-safety-addendum` | implemented locally | Research-informed lint, doctor, export, safety smoke, and adapter-fixture hardening |
 | PR-11 | `feat/v0.9-11-beta-freeze` -> `release/v0.9.0` | not started | Public API freeze, beta gate verification, and release cut |
 
 ---
@@ -94,13 +94,23 @@
 - [x] public re-exports for workflow-step exceptions raised by public methods
 - [x] deterministic session token cleanup on failed Phase B attempts
 
-## PR-10d Proposed Deliverables
+## PR-10d Deliverables
 
-- [ ] graph/topology lint rules with bounded witness traces
-- [ ] temporal-check approximations using existing DSL fields only
-- [ ] source and memory provenance warnings without adding full memory governance
-- [ ] backward-compatible workflow export governance rationale metadata
-- [ ] fixture-only adapter-informed capability and trust tests after PR-10a/b/c land
-- [ ] internal multi-aspect `ValidatorHook` example without public promotion
-- [ ] starter and workflow safety smoke tests with no external services
-- [ ] release docs confirming PR-10d does not change the default local adopter path
+- [x] graph/topology lint rules with bounded witness traces
+- [x] temporal-check approximations use existing DSL fields and starter metadata only
+- [x] source and memory provenance warnings live in doctor without adding full memory governance
+- [x] backward-compatible workflow export governance rationale metadata
+- [x] adapter-informed fixture gates are deferred because PR-10a, PR-10b, and PR-10c source surfaces are absent from this branch
+- [x] internal multi-aspect `ValidatorHook` example without public promotion
+- [x] starter and workflow safety smoke tests with no external services
+- [x] release docs confirm PR-10d does not change the default local adopter path
+
+Deferred PR-10d adapter gate: Bedrock alias-backed participant identity tests
+remain blocked until PR-10a surfaces are present.
+
+Deferred PR-10d adapter gate: A2A capability and protocol mismatch tests remain
+blocked until PR-10b surfaces are present.
+
+Deferred PR-10d adapter gate: OpenAI Agents SDK capability mismatch,
+side-effecting tool, and unsupported dynamic-tool tests remain blocked until
+PR-10c source surfaces are present on this target branch.

@@ -25,12 +25,18 @@ aegis workflow lint policy.yaml
 aegis workflow lint governance/
 ```
 
-Lint exits `0` when no error-severity findings are present and exits `1` when
-at least one error-severity finding is present.
+Lint exits `0` when no findings are present and exits `1` when one or more
+static findings are present.
 
 In the beta, lint covers policy schema validity, starter integrity,
 public-import safety, impossible workflow budgets, invalid transition
-references, and unsupported binding references.
+references, graph/topology conflicts, handoff cycles, and unsupported binding
+references.
+
+`aegis workflow lint --json` may include bounded `details` and `witness_trace`
+fields for static evidence. Lint findings do not include `severity` or
+`next_action`; `aegis workflow doctor` remains the owner of severity and
+remediation guidance.
 
 ## Frozen First-User Reason Codes
 
@@ -89,6 +95,50 @@ public-boundary violations.
 
 Fix: regenerate the starter with `aegis workflow init --profile <profile>` or
 repair the specific file called out by the finding.
+
+## PR-10d Static Workflow Lint Codes
+
+These codes are emitted by `workflow lint` when existing workflow DSL fields
+prove a structural problem. Doctor promotes them to `ERROR` and attaches the
+next action.
+
+### `WORKFLOW_UNREACHABLE_STEP`
+
+Symptom: a step in `workflow.required_sequence` cannot be reached from the
+first required step through `workflow.allowed_transitions`.
+
+Fix: add the missing transition path or remove the unreachable required step.
+
+### `WORKFLOW_DEAD_END_STEP`
+
+Symptom: a non-terminal required step has no valid declared successor in
+`workflow.allowed_transitions`.
+
+Fix: add a valid successor transition or make the step terminal by shortening
+the required sequence.
+
+### `WORKFLOW_REQUIRED_SEQUENCE_IMPOSSIBLE`
+
+Symptom: consecutive required steps conflict with the transition graph.
+
+Fix: align `workflow.required_sequence` and `workflow.allowed_transitions` so
+each required pair is allowed.
+
+### `WORKFLOW_UNBOUNDED_HANDOFF_LOOP`
+
+Symptom: `workflow.handoffs` contains a participant cycle without `max_steps`,
+`require_approval_after_steps`, or an approval-required role in the cycle.
+
+Fix: add a step budget, add an approval break, or remove a cyclic handoff.
+
+### `WORKFLOW_SOURCE_PROVENANCE_WARNING`
+
+Symptom: doctor sees source-bearing governance metadata or memory-like context
+without exact `source_ids` evidence.
+
+Fix: attach `context.provenance.source_ids` for audit artifacts or
+`steps[i].metadata.governance.source_ids` for workflow steps. This warning is
+non-blocking by default; doctor exits `0` unless another finding is `ERROR`.
 
 ## Regulated Failure-And-Fix Flow
 

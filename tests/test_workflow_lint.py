@@ -222,7 +222,12 @@ class TestLintPolicy:
         )
         p = _write(tmp_path, "budget.yaml", content)
         findings = lint_policy(p)
-        assert any(f["code"] == "WORKFLOW_STEP_BUDGET_EXCEEDED" for f in findings)
+        budget = next(f for f in findings if f["code"] == "WORKFLOW_STEP_BUDGET_EXCEEDED")
+        assert budget["details"] == {
+            "required_sequence_length": 2,
+            "max_steps": 1,
+            "conflicting_rule": "workflow.max_steps",
+        }
 
     def test_allowed_transitions_unknown_step_returns_transition_finding(self, tmp_path):
         content = (
@@ -276,6 +281,194 @@ class TestLintPolicy:
     def test_nonexistent_file_returns_load_error(self):
         findings = lint_policy("/nonexistent/policy.yaml")
         assert any(f["code"] == "POLICY_LOAD_ERROR" for f in findings)
+
+    def test_unreachable_declared_step_returns_graph_finding(self, tmp_path):
+        content = (
+            MINIMAL_VALID_POLICY
+            + "workflow:\n"
+            + "  required_sequence: [collect, draft, review]\n"
+            + "  allowed_transitions:\n"
+            + "    collect: [draft]\n"
+            + "    draft: []\n"
+            + "    review: []\n"
+        )
+        p = _write(tmp_path, "unreachable.yaml", content)
+        findings = lint_policy(p)
+        finding = next(f for f in findings if f["code"] == "WORKFLOW_UNREACHABLE_STEP")
+        assert finding["details"]["declared_step"] == "review"
+        assert finding["details"]["start_step"] == "collect"
+        assert finding["witness_trace"][-1] == {
+            "kind": "blocked_step",
+            "step_id": "review",
+            "reason": "not_reachable_from_start",
+        }
+
+    def test_unreachable_witness_trace_is_bounded(self, tmp_path):
+        required = [f"s{i}" for i in range(12)] + ["isolated"]
+        transitions = "\n".join(
+            f"    s{i}: [s{i + 1}]" for i in range(11)
+        )
+        content = (
+            MINIMAL_VALID_POLICY
+            + "workflow:\n"
+            + "  required_sequence:\n"
+            + "\n".join(f"    - {step}" for step in required)
+            + "\n"
+            + "  allowed_transitions:\n"
+            + transitions
+            + "\n    isolated: []\n"
+        )
+        p = _write(tmp_path, "bounded_trace.yaml", content)
+        findings = lint_policy(p)
+        finding = next(f for f in findings if f["code"] == "WORKFLOW_UNREACHABLE_STEP")
+        assert len(finding["witness_trace"]) <= 8
+        assert any(event.get("truncated") is True for event in finding["witness_trace"])
+        assert finding["witness_trace"][-1]["kind"] == "blocked_step"
+
+    def test_dead_end_non_terminal_step_returns_graph_finding(self, tmp_path):
+        content = (
+            MINIMAL_VALID_POLICY
+            + "workflow:\n"
+            + "  required_sequence: [draft, review]\n"
+            + "  allowed_transitions:\n"
+            + "    draft: []\n"
+            + "    review: []\n"
+        )
+        p = _write(tmp_path, "dead_end.yaml", content)
+        findings = lint_policy(p)
+        finding = next(f for f in findings if f["code"] == "WORKFLOW_DEAD_END_STEP")
+        assert finding["details"]["step_id"] == "draft"
+        assert finding["details"]["remaining_required_steps"] == ["review"]
+
+    def test_required_sequence_transition_conflict_returns_graph_finding(self, tmp_path):
+        content = (
+            MINIMAL_VALID_POLICY
+            + "workflow:\n"
+            + "  required_sequence: [collect, draft, review]\n"
+            + "  allowed_transitions:\n"
+            + "    collect: [review]\n"
+            + "    draft: [review]\n"
+            + "    review: []\n"
+        )
+        p = _write(tmp_path, "impossible.yaml", content)
+        findings = lint_policy(p)
+        finding = next(
+            f for f in findings if f["code"] == "WORKFLOW_REQUIRED_SEQUENCE_IMPOSSIBLE"
+        )
+        assert finding["details"]["from_step"] == "collect"
+        assert finding["details"]["required_next_step"] == "draft"
+        assert finding["details"]["allowed_next_steps"] == ["review"]
+
+    def test_unknown_transition_references_skip_graph_topology(self, tmp_path):
+        content = (
+            MINIMAL_VALID_POLICY
+            + "workflow:\n"
+            + "  required_sequence: [step-a, step-b]\n"
+            + "  allowed_transitions:\n"
+            + "    step-a: [step-c]\n"
+        )
+        p = _write(tmp_path, "unknown_skip.yaml", content)
+        findings = lint_policy(p)
+        codes = {f["code"] for f in findings}
+        assert "WORKFLOW_INVALID_TRANSITION" in codes
+        assert "WORKFLOW_UNREACHABLE_STEP" not in codes
+        assert "WORKFLOW_DEAD_END_STEP" not in codes
+        assert "WORKFLOW_REQUIRED_SEQUENCE_IMPOSSIBLE" not in codes
+
+    def test_unbounded_handoff_cycle_returns_graph_finding(self, tmp_path):
+        content = (
+            MINIMAL_VALID_POLICY
+            + "workflow:\n"
+            + "  participants:\n"
+            + "    - id: researcher\n"
+            + "      roles: [research]\n"
+            + "    - id: reviewer\n"
+            + "      roles: [review]\n"
+            + "  handoffs:\n"
+            + "    - from: researcher\n"
+            + "      to: reviewer\n"
+            + "    - from: reviewer\n"
+            + "      to: researcher\n"
+        )
+        p = _write(tmp_path, "handoff_loop.yaml", content)
+        findings = lint_policy(p)
+        finding = next(f for f in findings if f["code"] == "WORKFLOW_UNBOUNDED_HANDOFF_LOOP")
+        assert finding["details"]["cycle"] == ["researcher", "reviewer", "researcher"]
+        assert finding["details"]["budget_rule"] is None
+
+    def test_handoff_cycle_with_max_steps_has_no_unbounded_loop_finding(self, tmp_path):
+        content = (
+            MINIMAL_VALID_POLICY
+            + "workflow:\n"
+            + "  max_steps: 4\n"
+            + "  participants:\n"
+            + "    - id: a\n"
+            + "    - id: b\n"
+            + "  handoffs:\n"
+            + "    - from: a\n"
+            + "      to: b\n"
+            + "    - from: b\n"
+            + "      to: a\n"
+        )
+        p = _write(tmp_path, "bounded_loop.yaml", content)
+        findings = lint_policy(p)
+        assert not any(f["code"] == "WORKFLOW_UNBOUNDED_HANDOFF_LOOP" for f in findings)
+
+    def test_handoff_cycle_with_approval_after_steps_has_no_unbounded_loop_finding(self, tmp_path):
+        content = (
+            MINIMAL_VALID_POLICY
+            + "workflow:\n"
+            + "  escalation:\n"
+            + "    require_approval_after_steps: 2\n"
+            + "  participants:\n"
+            + "    - id: a\n"
+            + "    - id: b\n"
+            + "  handoffs:\n"
+            + "    - from: a\n"
+            + "      to: b\n"
+            + "    - from: b\n"
+            + "      to: a\n"
+        )
+        p = _write(tmp_path, "approval_loop.yaml", content)
+        findings = lint_policy(p)
+        assert not any(f["code"] == "WORKFLOW_UNBOUNDED_HANDOFF_LOOP" for f in findings)
+
+    def test_handoff_cycle_with_approval_role_break_has_no_unbounded_loop_finding(self, tmp_path):
+        content = (
+            MINIMAL_VALID_POLICY
+            + "workflow:\n"
+            + "  escalation:\n"
+            + "    require_approval_for_roles: [review]\n"
+            + "  participants:\n"
+            + "    - id: researcher\n"
+            + "      roles: [research]\n"
+            + "    - id: reviewer\n"
+            + "      roles: [review]\n"
+            + "  handoffs:\n"
+            + "    - from: researcher\n"
+            + "      to: reviewer\n"
+            + "    - from: reviewer\n"
+            + "      to: researcher\n"
+        )
+        p = _write(tmp_path, "role_break_loop.yaml", content)
+        findings = lint_policy(p)
+        assert not any(f["code"] == "WORKFLOW_UNBOUNDED_HANDOFF_LOOP" for f in findings)
+
+    def test_lint_findings_do_not_include_doctor_fields(self, tmp_path):
+        content = (
+            MINIMAL_VALID_POLICY
+            + "workflow:\n"
+            + "  required_sequence: [draft, review]\n"
+            + "  allowed_transitions:\n"
+            + "    draft: []\n"
+            + "    review: []\n"
+        )
+        p = _write(tmp_path, "no_doctor_fields.yaml", content)
+        findings = lint_policy(p)
+        assert findings
+        for finding in findings:
+            assert "severity" not in finding
+            assert "next_action" not in finding
 
 
 # ---------------------------------------------------------------------------

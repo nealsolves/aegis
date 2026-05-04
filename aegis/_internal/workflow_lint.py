@@ -40,6 +40,7 @@ _POLICY_SCHEMA: dict | None = None
 _WORKFLOW_SCHEMA: dict | None = None
 _AUDIT_SCHEMA: dict | None = None
 _UNSUPPORTED_PROTOCOLS = frozenset({"grpc", "websocket", "soap"})
+_MAX_WITNESS_TRACE_EVENTS = 8
 
 
 def _policy_schema() -> dict:
@@ -67,11 +68,387 @@ def _audit_schema() -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Finding constructor
+# Finding constructor and bounded evidence helpers
 # ---------------------------------------------------------------------------
 
-def _finding(code: str, message: str, target_kind: str, path: str) -> dict:
-    return {"code": code, "message": message, "target_kind": target_kind, "path": path}
+def _json_safe(value: Any) -> Any:
+    """Return a JSON-serializable copy of deterministic lint evidence."""
+    return json.loads(json.dumps(value, default=str))
+
+
+def _event_dict(event: Any) -> dict[str, Any]:
+    if isinstance(event, dict):
+        return dict(event)
+    return {"kind": "evidence", "value": event}
+
+
+def _bounded_witness_trace(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    safe_events = [_event_dict(event) for event in _json_safe(events)]
+    if len(safe_events) <= _MAX_WITNESS_TRACE_EVENTS:
+        return safe_events
+    capped = safe_events[:_MAX_WITNESS_TRACE_EVENTS]
+    capped[-1] = {**capped[-1], "truncated": True}
+    return capped
+
+
+def _bounded_witness_trace_with_final(
+    events: list[dict[str, Any]],
+    final_event: dict[str, Any],
+) -> list[dict[str, Any]]:
+    safe_events = [_event_dict(event) for event in _json_safe(events)]
+    safe_final = _event_dict(_json_safe(final_event))
+    if len(safe_events) < _MAX_WITNESS_TRACE_EVENTS:
+        return safe_events + [safe_final]
+    prefix = safe_events[: max(0, _MAX_WITNESS_TRACE_EVENTS - 1)]
+    if prefix:
+        prefix[-1] = {**prefix[-1], "truncated": True}
+    return prefix + [safe_final]
+
+
+def _finding(
+    code: str,
+    message: str,
+    target_kind: str,
+    path: str,
+    *,
+    details: dict[str, Any] | None = None,
+    witness_trace: list[dict[str, Any]] | None = None,
+) -> dict:
+    finding = {"code": code, "message": message, "target_kind": target_kind, "path": path}
+    if details:
+        finding["details"] = _json_safe(details)
+    if witness_trace:
+        finding["witness_trace"] = _bounded_witness_trace(witness_trace)
+    return finding
+
+
+# ---------------------------------------------------------------------------
+# Workflow graph/topology lint helpers
+# ---------------------------------------------------------------------------
+
+def _normalize_required_sequence(workflow: dict[str, Any]) -> list[str]:
+    required_sequence = workflow.get("required_sequence")
+    if not isinstance(required_sequence, list):
+        return []
+    return [step for step in required_sequence if isinstance(step, str)]
+
+
+def _normalize_transition_graph(workflow: dict[str, Any]) -> dict[str, list[str]]:
+    allowed_transitions = workflow.get("allowed_transitions")
+    if not isinstance(allowed_transitions, dict):
+        return {}
+    graph: dict[str, list[str]] = {}
+    for from_step, to_steps in allowed_transitions.items():
+        if not isinstance(from_step, str) or not isinstance(to_steps, list):
+            continue
+        graph[from_step] = sorted({to_step for to_step in to_steps if isinstance(to_step, str)})
+    return dict(sorted(graph.items()))
+
+
+def _find_reachable_steps(
+    start_step: str,
+    transitions: dict[str, list[str]],
+) -> tuple[set[str], list[dict[str, Any]]]:
+    reachable = {start_step}
+    witness_trace: list[dict[str, Any]] = []
+    queue = [start_step]
+
+    while queue:
+        current = queue.pop(0)
+        for next_step in transitions.get(current, []):
+            if next_step in reachable:
+                continue
+            reachable.add(next_step)
+            queue.append(next_step)
+            witness_trace.append({
+                "kind": "transition",
+                "from_step": current,
+                "to_step": next_step,
+                "reason": "reachable",
+            })
+
+    return reachable, _bounded_witness_trace(witness_trace)
+
+
+def _first_required_sequence_transition_conflict(
+    required_sequence: list[str],
+    transitions: dict[str, list[str]],
+) -> dict[str, Any] | None:
+    for current_step, next_step in zip(required_sequence, required_sequence[1:]):
+        allowed_next_steps = transitions.get(current_step, [])
+        if next_step not in allowed_next_steps:
+            return {
+                "from_step": current_step,
+                "required_next_step": next_step,
+                "allowed_next_steps": allowed_next_steps,
+            }
+    return None
+
+
+def _participant_roles(workflow: dict[str, Any]) -> dict[str, set[str]]:
+    participants = workflow.get("participants") or []
+    roles_by_id: dict[str, set[str]] = {}
+    if not isinstance(participants, list):
+        return roles_by_id
+    for participant in participants:
+        if not isinstance(participant, dict):
+            continue
+        participant_id = participant.get("id")
+        if not isinstance(participant_id, str):
+            continue
+        roles = {
+            role for role in (participant.get("roles") or []) if isinstance(role, str)
+        }
+        roles_by_id[participant_id] = roles
+    return roles_by_id
+
+
+def _find_unbounded_handoff_cycle(
+    workflow: dict[str, Any],
+) -> dict[str, Any] | None:
+    if workflow.get("max_steps") is not None:
+        return None
+
+    escalation = workflow.get("escalation") or {}
+    if not isinstance(escalation, dict):
+        escalation = {}
+    if escalation.get("require_approval_after_steps") is not None:
+        return None
+
+    approval_roles = {
+        role
+        for role in (escalation.get("require_approval_for_roles") or [])
+        if isinstance(role, str)
+    }
+    roles_by_id = _participant_roles(workflow)
+
+    handoffs = workflow.get("handoffs") or []
+    if not isinstance(handoffs, list):
+        return None
+
+    graph: dict[str, set[str]] = {}
+    for handoff in handoffs:
+        if not isinstance(handoff, dict):
+            continue
+        from_participant = handoff.get("from")
+        to_participant = handoff.get("to")
+        if not isinstance(from_participant, str) or not isinstance(to_participant, str):
+            continue
+        graph.setdefault(from_participant, set()).add(to_participant)
+        graph.setdefault(to_participant, set())
+
+    def _cycle_has_approval_break(cycle: list[str]) -> bool:
+        cycle_roles: set[str] = set()
+        for participant_id in cycle[:-1]:
+            cycle_roles.update(roles_by_id.get(participant_id, set()))
+        return bool(approval_roles & cycle_roles)
+
+    def _dfs(node: str, path: list[str]) -> list[str] | None:
+        for next_node in sorted(graph.get(node, set())):
+            if next_node in path:
+                cycle = path[path.index(next_node):] + [next_node]
+                if not _cycle_has_approval_break(cycle):
+                    return cycle
+                continue
+            result = _dfs(next_node, path + [next_node])
+            if result is not None:
+                return result
+        return None
+
+    for start_node in sorted(graph):
+        cycle = _dfs(start_node, [start_node])
+        if cycle is not None:
+            participants = list(dict.fromkeys(cycle[:-1]))
+            return {
+                "participants": participants,
+                "cycle": cycle,
+                "budget_rule": None,
+                "approval_break": None,
+            }
+
+    return None
+
+
+def _ordered_reachable_steps(
+    reachable: set[str],
+    required_sequence: list[str],
+) -> list[str]:
+    required_set = set(required_sequence)
+    ordered = [step for step in required_sequence if step in reachable]
+    ordered.extend(sorted(step for step in reachable if step not in required_set))
+    return ordered
+
+
+def _known_predecessors(step_id: str, transitions: dict[str, list[str]]) -> list[str]:
+    return sorted(
+        from_step for from_step, to_steps in transitions.items() if step_id in to_steps
+    )
+
+
+def _has_unknown_transition_step_refs(
+    workflow: dict[str, Any],
+    declared_steps: set[str],
+) -> bool:
+    allowed_transitions = workflow.get("allowed_transitions") or {}
+    if not isinstance(allowed_transitions, dict) or not declared_steps:
+        return False
+    for from_step, to_steps in allowed_transitions.items():
+        if isinstance(from_step, str) and from_step not in declared_steps:
+            return True
+        if not isinstance(to_steps, list):
+            continue
+        if any(isinstance(to_step, str) and to_step not in declared_steps for to_step in to_steps):
+            return True
+    return False
+
+
+def _has_unknown_handoff_participant_refs(workflow: dict[str, Any]) -> bool:
+    participants = workflow.get("participants") or []
+    participant_ids = {
+        participant.get("id")
+        for participant in participants
+        if isinstance(participant, dict) and isinstance(participant.get("id"), str)
+    }
+    handoffs = workflow.get("handoffs") or []
+    if not participant_ids or not isinstance(handoffs, list):
+        return False
+    for handoff in handoffs:
+        if not isinstance(handoff, dict):
+            continue
+        for endpoint_key in ("from", "to"):
+            endpoint = handoff.get(endpoint_key)
+            if isinstance(endpoint, str) and endpoint not in participant_ids:
+                return True
+    return False
+
+
+def _lint_workflow_graph(
+    workflow: dict[str, Any],
+    *,
+    target_kind: str,
+    path: Path,
+) -> list[dict]:
+    findings: list[dict] = []
+    required_sequence = _normalize_required_sequence(workflow)
+    transitions = _normalize_transition_graph(workflow)
+    declared_steps = set(required_sequence)
+
+    if (
+        required_sequence
+        and transitions
+        and not _has_unknown_transition_step_refs(workflow, declared_steps)
+    ):
+        start_step = required_sequence[0]
+        reachable, traversal_trace = _find_reachable_steps(start_step, transitions)
+
+        unreachable_step = next(
+            (step for step in required_sequence if step not in reachable),
+            None,
+        )
+        if unreachable_step is not None:
+            findings.append(_finding(
+                "WORKFLOW_UNREACHABLE_STEP",
+                f"workflow.required_sequence declares step {unreachable_step!r} "
+                "but it is not reachable from the start step through "
+                "workflow.allowed_transitions.",
+                target_kind,
+                str(path),
+                details={
+                    "declared_step": unreachable_step,
+                    "start_step": start_step,
+                    "known_predecessors": _known_predecessors(unreachable_step, transitions),
+                    "reachable_steps": _ordered_reachable_steps(reachable, required_sequence),
+                },
+                witness_trace=_bounded_witness_trace_with_final(
+                    traversal_trace,
+                    {
+                        "kind": "blocked_step",
+                        "step_id": unreachable_step,
+                        "reason": "not_reachable_from_start",
+                    },
+                ),
+            ))
+
+        for index, step_id in enumerate(required_sequence[:-1]):
+            valid_next_steps = [
+                step for step in transitions.get(step_id, []) if step in set(required_sequence)
+            ]
+            if valid_next_steps:
+                continue
+            findings.append(_finding(
+                "WORKFLOW_DEAD_END_STEP",
+                f"workflow.allowed_transitions gives non-terminal step {step_id!r} "
+                "no valid next step, so later required steps cannot run.",
+                target_kind,
+                str(path),
+                details={
+                    "step_id": step_id,
+                    "valid_next_steps": valid_next_steps,
+                    "remaining_required_steps": required_sequence[index + 1:],
+                },
+                witness_trace=[{
+                    "kind": "dead_end",
+                    "step_id": step_id,
+                    "reason": "no_declared_successor",
+                }],
+            ))
+
+        conflict = _first_required_sequence_transition_conflict(
+            required_sequence,
+            transitions,
+        )
+        if conflict is not None:
+            findings.append(_finding(
+                "WORKFLOW_REQUIRED_SEQUENCE_IMPOSSIBLE",
+                f"workflow.required_sequence requires {conflict['from_step']!r} "
+                f"before {conflict['required_next_step']!r}, but "
+                "workflow.allowed_transitions does not allow that transition.",
+                target_kind,
+                str(path),
+                details={
+                    "required_sequence": required_sequence,
+                    "conflicting_rule": f"allowed_transitions.{conflict['from_step']}",
+                    "from_step": conflict["from_step"],
+                    "required_next_step": conflict["required_next_step"],
+                    "allowed_next_steps": conflict["allowed_next_steps"],
+                },
+                witness_trace=[
+                    {
+                        "kind": "required_pair",
+                        "from_step": conflict["from_step"],
+                        "to_step": conflict["required_next_step"],
+                        "reason": "required_sequence",
+                    },
+                    {
+                        "kind": "transition_missing",
+                        "from_step": conflict["from_step"],
+                        "to_step": conflict["required_next_step"],
+                        "reason": "not_allowed_by_allowed_transitions",
+                    },
+                ],
+            ))
+
+    handoff_cycle = (
+        None
+        if _has_unknown_handoff_participant_refs(workflow)
+        else _find_unbounded_handoff_cycle(workflow)
+    )
+    if handoff_cycle is not None:
+        findings.append(_finding(
+            "WORKFLOW_UNBOUNDED_HANDOFF_LOOP",
+            "workflow.handoffs allows a participant cycle without max_steps "
+            "or an approval break.",
+            target_kind,
+            str(path),
+            details=handoff_cycle,
+            witness_trace=[{
+                "kind": "handoff_cycle",
+                "cycle": handoff_cycle["cycle"],
+                "reason": "no_budget_or_approval_break",
+            }],
+        ))
+
+    return findings
 
 
 # ---------------------------------------------------------------------------
@@ -245,6 +622,11 @@ def lint_policy(path: str, *, target_kind: str = "policy") -> list[dict]:
                 "the declared sequence cannot complete within the configured budget.",
                 target_kind,
                 str(p),
+                details={
+                    "required_sequence_length": len(required_sequence),
+                    "max_steps": workflow["max_steps"],
+                    "conflicting_rule": "workflow.max_steps",
+                },
             ))
 
         declared_steps = {
@@ -319,6 +701,12 @@ def lint_policy(path: str, *, target_kind: str = "policy") -> list[dict]:
                 target_kind,
                 str(p),
             ))
+
+        findings.extend(_lint_workflow_graph(
+            workflow,
+            target_kind=target_kind,
+            path=p,
+        ))
 
     return findings
 

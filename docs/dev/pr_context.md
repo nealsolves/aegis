@@ -1,7 +1,7 @@
 # PR Context — `v0.9.0` PR-10d Research Safety Addendum
 
 Date: 2026-05-03
-Status: Proposed
+Status: Implemented locally
 Active branch: `feat/v0.9-10d-research-safety-addendum`
 
 ---
@@ -48,9 +48,9 @@ no further public-surface work proceeds until the default path is repaired.
   - `aegis workflow export`
 - The default adopter path succeeds without Bedrock, A2A, or the OpenAI Agents SDK.
 - `ValidatorHook` is implemented as an internal engine capability in PR-08. It is not a public beta surface.
-- PR-10a and PR-10b have not started.
-- PR-10c is being worked on local `develop` and has not been pushed to `origin/develop` yet.
-- PR-10d remains proposed pre-freeze work before PR-11.
+- PR-10a and PR-10b source surfaces are absent from this branch.
+- PR-10c OpenAI Agents source surfaces are absent from this branch.
+- PR-10d is implemented locally as pre-freeze safety hardening before PR-11.
 
 ---
 
@@ -64,7 +64,7 @@ PR-10d converts recent agent-safety research into bounded hardening of the exist
 - source and memory provenance warnings
 - workflow doctor remediation mapping
 - workflow export governance rationale metadata
-- fixture-only adapter capability/trust tests after PR-10a/b/c
+- fixture-only adapter capability/trust tests for adapter surfaces present in the branch
 - internal multi-aspect `ValidatorHook` example
 - starter safety smoke tests
 
@@ -74,16 +74,13 @@ It must not add a new runtime, new transport layer, MCP governance proxy, stream
 
 ## In Scope
 
-- `docs/plans/v0.9.0_PR-10d_RESEARCH_SAFETY_ADDENDUM_PLAN.md`
-- `RELEASE_GATES.md` PR-10d branch map and exit gates
-- `implementation_status.md` PR-10d status and deliverables
-- `docs/dev/pr_context.md` alignment to PR-10d
-- Future implementation work listed in the PR-10d addendum plan:
-  - `aegis/_internal/workflow_lint.py`
-  - `aegis/_internal/workflow_doctor.py`
-  - `aegis/_internal/workflow_export.py`
-  - starter templates and safety smoke tests
-  - fixture-only optional adapter tests after PR-10a/b/c land
+- `aegis/_internal/workflow_lint.py`
+- `aegis/_internal/workflow_doctor.py`
+- `aegis/_internal/workflow_export.py`
+- `aegis/_internal/session.py`
+- `aegis/_internal/starter_templates.py`
+- focused PR-10d lint, doctor, export, safety-smoke, and internal ValidatorHook tests
+- release-truth and reference documentation updates
 
 ---
 
@@ -104,11 +101,14 @@ It must not add a new runtime, new transport layer, MCP governance proxy, stream
 
 ## Exit Criteria
 
-- PR-10d plan is present and linked from release-truth docs.
-- Release gates include PR-10d after PR-10a/b/c and before PR-11.
-- Implementation status includes PR-10d as proposed/not started.
-- The plan preserves the AEGIS ownership boundary: host owns execution; AEGIS governs and emits evidence.
-- The plan preserves the default local adopter path and keeps optional adapters optional.
+- Graph/topology lint uses existing workflow DSL fields only and emits bounded `details` and `witness_trace`.
+- Lint findings keep stable keys and do not include `severity` or `next_action`.
+- Doctor maps every new lint and doctor-only code to severity and remediation guidance.
+- `WORKFLOW_SOURCE_PROVENANCE_WARNING` is doctor-only and non-blocking by default.
+- Workflow export projects redacted governance rationale from `steps[i].metadata.governance` and preserves integrity metadata.
+- Internal multi-aspect `ValidatorHook` examples remain tests only and are not public beta guidance.
+- The implementation preserves the AEGIS ownership boundary: host owns execution; AEGIS governs and emits evidence.
+- The default local adopter path remains unchanged and optional adapters stay optional.
 
 ---
 
@@ -116,7 +116,7 @@ It must not add a new runtime, new transport layer, MCP governance proxy, stream
 
 Current execution note:
 
-- PR-10c is in local `develop` work and should be pushed/reviewed when ready.
-- PR-10a and PR-10b remain not started.
-- PR-10d should remain a post-adapter hardening addendum, landing after the adapter surfaces it needs to test are visible to the target branch.
-- PR-11 follows after PR-10a, PR-10b, PR-10c, and PR-10d gates are satisfied.
+- Deferred PR-10d adapter gate: Bedrock alias-backed participant identity tests remain blocked until PR-10a surfaces are present.
+- Deferred PR-10d adapter gate: A2A capability and protocol mismatch tests remain blocked until PR-10b surfaces are present.
+- Deferred PR-10d adapter gate: OpenAI Agents SDK capability mismatch, side-effecting tool, and unsupported dynamic-tool tests remain blocked until PR-10c source surfaces are present on this target branch.
+- PR-11 follows after PR-10d gates and any required adapter sequencing decisions are satisfied.

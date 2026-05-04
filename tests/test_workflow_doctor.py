@@ -12,6 +12,7 @@ from aegis._internal.workflow_doctor import (
     diagnose_workflow_artifact,
     diagnose_audit_artifact,
     diagnose_target,
+    _NEXT_ACTIONS,
 )
 
 
@@ -248,6 +249,54 @@ class TestDiagnoseWorkflowPolicy:
         findings = diagnose_workflow_policy(p)
         assert findings == []
 
+    def test_new_graph_lint_codes_map_to_error_and_exact_next_action(self, tmp_path):
+        cases = {
+            "WORKFLOW_UNREACHABLE_STEP": (
+                MINIMAL_VALID_POLICY
+                + "workflow:\n"
+                + "  required_sequence: [collect, draft, review]\n"
+                + "  allowed_transitions:\n"
+                + "    collect: [draft]\n"
+                + "    draft: []\n"
+                + "    review: []\n"
+            ),
+            "WORKFLOW_DEAD_END_STEP": (
+                MINIMAL_VALID_POLICY
+                + "workflow:\n"
+                + "  required_sequence: [draft, review]\n"
+                + "  allowed_transitions:\n"
+                + "    draft: []\n"
+                + "    review: []\n"
+            ),
+            "WORKFLOW_REQUIRED_SEQUENCE_IMPOSSIBLE": (
+                MINIMAL_VALID_POLICY
+                + "workflow:\n"
+                + "  required_sequence: [collect, draft]\n"
+                + "  allowed_transitions:\n"
+                + "    collect: []\n"
+                + "    draft: []\n"
+            ),
+            "WORKFLOW_UNBOUNDED_HANDOFF_LOOP": (
+                MINIMAL_VALID_POLICY
+                + "workflow:\n"
+                + "  participants:\n"
+                + "    - id: a\n"
+                + "    - id: b\n"
+                + "  handoffs:\n"
+                + "    - from: a\n"
+                + "      to: b\n"
+                + "    - from: b\n"
+                + "      to: a\n"
+            ),
+        }
+        for code, content in cases.items():
+            p = _write(tmp_path, f"{code}.yaml", content)
+            findings = diagnose_workflow_policy(p, now=date(2025, 6, 1))
+            matching = [f for f in findings if f["code"] == code]
+            assert matching, f"missing {code}: {findings}"
+            assert matching[0]["severity"] == "ERROR"
+            assert matching[0]["next_action"] == _NEXT_ACTIONS[code]
+
 
 # ---------------------------------------------------------------------------
 # Starter directory doctor
@@ -346,6 +395,47 @@ class TestDiagnoseWorkflowArtifact:
         findings = diagnose_workflow_artifact(str(p))
         _assert_finding_shape(findings)
 
+    def test_source_required_governance_without_sources_warns(self, tmp_path):
+        artifact = _make_valid_workflow_artifact(status="COMPLETED")
+        artifact["steps"][0]["metadata"] = {
+            "governance": {
+                "rationale": "source_bound_summary",
+                "decision_basis": ["provenance.source_ids"],
+            }
+        }
+        p = tmp_path / "wf_source_warning.json"
+        p.write_text(json.dumps(artifact))
+        findings = diagnose_workflow_artifact(str(p))
+        matching = [
+            f for f in findings if f["code"] == "WORKFLOW_SOURCE_PROVENANCE_WARNING"
+        ]
+        assert matching
+        assert matching[0]["severity"] == "WARNING"
+        assert matching[0]["next_action"] == _NEXT_ACTIONS["WORKFLOW_SOURCE_PROVENANCE_WARNING"]
+        assert not any(f["severity"] == "ERROR" for f in findings)
+
+    def test_source_ids_suppress_workflow_provenance_warning(self, tmp_path):
+        artifact = _make_valid_workflow_artifact(status="COMPLETED")
+        artifact["steps"][0]["metadata"] = {
+            "governance": {
+                "rationale": "source_bound_summary",
+                "decision_basis": ["provenance.source_ids"],
+                "source_ids": ["doc-001"],
+            }
+        }
+        p = tmp_path / "wf_source_ok.json"
+        p.write_text(json.dumps(artifact))
+        findings = diagnose_workflow_artifact(str(p))
+        assert not any(f["code"] == "WORKFLOW_SOURCE_PROVENANCE_WARNING" for f in findings)
+
+    def test_memory_like_workflow_metadata_without_sources_warns(self, tmp_path):
+        artifact = _make_valid_workflow_artifact(status="COMPLETED")
+        artifact["metadata"] = {"retrieved_context": {"chunk": "summary"}}
+        p = tmp_path / "wf_memory_warning.json"
+        p.write_text(json.dumps(artifact))
+        findings = diagnose_workflow_artifact(str(p))
+        assert any(f["code"] == "WORKFLOW_SOURCE_PROVENANCE_WARNING" for f in findings)
+
 
 # ---------------------------------------------------------------------------
 # Audit artifact doctor
@@ -361,6 +451,48 @@ class TestDiagnoseAuditArtifact:
         p.write_text(json.dumps(artifact))
         findings = diagnose_audit_artifact(str(p))
         assert findings == []
+
+    def test_memory_like_audit_context_without_sources_warns_without_error(self, tmp_path):
+        artifact = _base_audit_artifact()
+        artifact["enforcement_result"] = "PASS"
+        artifact["failure_gate"] = None
+        artifact["failure_reason"] = None
+        artifact["context"] = {"conversation_memory": {"turns": 3}}
+        p = tmp_path / "audit_memory_warning.json"
+        p.write_text(json.dumps(artifact))
+        findings = diagnose_audit_artifact(str(p))
+        matching = [
+            f for f in findings if f["code"] == "WORKFLOW_SOURCE_PROVENANCE_WARNING"
+        ]
+        assert matching
+        assert matching[0]["severity"] == "WARNING"
+        assert not any(f["severity"] == "ERROR" for f in findings)
+
+    def test_context_source_ids_suppress_audit_provenance_warning(self, tmp_path):
+        artifact = _base_audit_artifact()
+        artifact["enforcement_result"] = "PASS"
+        artifact["failure_gate"] = None
+        artifact["failure_reason"] = None
+        artifact["context"] = {
+            "retrieved_memory": {"chunk": "x"},
+            "provenance": {"source_ids": ["doc-001"]},
+        }
+        p = tmp_path / "audit_context_sources.json"
+        p.write_text(json.dumps(artifact))
+        findings = diagnose_audit_artifact(str(p))
+        assert not any(f["code"] == "WORKFLOW_SOURCE_PROVENANCE_WARNING" for f in findings)
+
+    def test_top_level_source_ids_suppress_audit_provenance_warning(self, tmp_path):
+        artifact = _base_audit_artifact()
+        artifact["enforcement_result"] = "PASS"
+        artifact["failure_gate"] = None
+        artifact["failure_reason"] = None
+        artifact["context"] = {"knowledge_base_context": {"chunk": "x"}}
+        artifact["provenance"] = {"source_ids": ["doc-001"]}
+        p = tmp_path / "audit_top_sources.json"
+        p.write_text(json.dumps(artifact))
+        findings = diagnose_audit_artifact(str(p))
+        assert not any(f["code"] == "WORKFLOW_SOURCE_PROVENANCE_WARNING" for f in findings)
 
     def test_provenance_failure_emits_source_required(self, tmp_path):
         artifact = _base_audit_artifact()

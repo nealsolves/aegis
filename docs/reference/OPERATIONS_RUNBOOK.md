@@ -14,6 +14,13 @@ npm --prefix demo-app-react test
 npm --prefix demo-app-react run build
 ```
 
+PR-10d focused local check:
+
+```bash
+python -m pytest tests/test_workflow_lint.py tests/test_workflow_doctor.py tests/test_workflow_export.py tests/test_pr10d_research_safety_addendum.py tests/test_validator_hook_internal_examples.py
+python -m pytest tests/test_v090_contract_freeze.py tests/test_public_api.py
+```
+
 ## Clean-Environment Beta Proof
 
 Run the stop-ship harness:
@@ -75,11 +82,17 @@ output.
 aegis workflow export --input audit.jsonl --mode operator --output operator_export.json
 ```
 
+PR-10d adds `integrity.governance_rationale_count`, the number of steps with a
+valid `steps[i].metadata.governance` summary.
+
 ### When to use `aegis workflow export --mode audit`
 
 Use `audit` mode for compliance handoff or external audit. Each step includes
-only `step_id`, `participant_id`, `invocation_artifact_checksum`, and
-`enforcement_result`. No raw invocation payload is included.
+`step_id`, `participant_id`, `invocation_artifact_checksum`,
+`enforcement_result`, and step `metadata` when present. PR-10d also projects a
+redacted `governance` summary from `steps[i].metadata.governance` when the
+metadata uses canonical scalar, null, or string-array values. No full
+invocation artifact is included.
 
 ```bash
 aegis workflow export --input audit.jsonl --mode audit --output audit_export.json
@@ -100,6 +113,26 @@ Both commands exit `0` even when checksums are unresolved — the gap is advisor
 evidence, not an enforcement failure. The enforcement decision was already made
 at the session layer.
 
+## PR-10d Provenance And Adapter Gates
+
+`workflow lint --json` may include bounded `details` and `witness_trace`
+evidence for graph/topology failures. Lint does not emit `severity` or
+`next_action`; doctor owns remediation and maps lint findings to `ERROR`.
+
+`WORKFLOW_SOURCE_PROVENANCE_WARNING` is doctor-only and non-blocking by
+default. It warns when exact source-bearing governance metadata or memory-like
+context lacks `source_ids`.
+
+Deferred PR-10d adapter gate: Bedrock alias-backed participant identity tests
+remain blocked until PR-10a surfaces are present.
+
+Deferred PR-10d adapter gate: A2A capability and protocol mismatch tests remain
+blocked until PR-10b surfaces are present.
+
+Deferred PR-10d adapter gate: OpenAI Agents SDK capability mismatch and
+unsupported dynamic-tool tests remain blocked until PR-10c surfaces are present
+on this target branch.
+
 ## Beta Scope Boundaries
 
 Not in the current beta surface:
@@ -110,3 +143,6 @@ Not in the current beta surface:
 - `BedrockTraceAdapter`
 - `A2AAdapter`
 - gRPC workflow transport support
+
+The PR-10d `ValidatorHook` examples are internal tests only and are not public
+integration guidance.

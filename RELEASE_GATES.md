@@ -81,22 +81,33 @@ no further public-surface work proceeds until the default path is repaired.
 
 PR-10d is a bounded post-adapter hardening addendum. It must improve the existing beta surfaces without reopening product scope.
 
-- [ ] graph/topology lint rules are deterministic and test-backed
-- [ ] every new finding has a stable code, plain-English explanation, and next action
-- [ ] witness traces are bounded and useful for invalid path diagnosis
-- [ ] `workflow doctor` maps new findings to remediation guidance
-- [ ] `workflow export` includes backward-compatible governance rationale metadata
-- [ ] starter safety smoke tests pass without external dependencies
-- [ ] adapter-informed tests use fixtures only and do not require provider credentials
-- [ ] no public example imports from `aegis._internal`
-- [ ] no new required runtime dependency is introduced
-- [ ] default local adopter path remains unchanged and green
-- [ ] base package smoke still passes
+- [x] graph/topology lint rules are deterministic and test-backed
+- [x] every new lint finding has a stable code, plain-English explanation, and bounded evidence where applicable
+- [x] lint findings do not include `severity` or `next_action`; doctor owns remediation
+- [x] witness traces are bounded and useful for invalid path diagnosis
+- [x] `workflow doctor` maps new lint and doctor-only findings to remediation guidance
+- [x] `WORKFLOW_SOURCE_PROVENANCE_WARNING` is doctor-only and non-blocking by default
+- [x] `workflow export` includes backward-compatible governance rationale metadata
+- [x] starter and workflow safety smoke tests pass without external dependencies
+- [x] adapter-specific gates are documented as deferred when source surfaces are absent
+- [x] no public example imports from `aegis._internal`
+- [x] no new required runtime dependency is introduced
+- [x] default local adopter path remains unchanged and green
+- [x] base package smoke still passes
+
+Deferred PR-10d adapter gate: Bedrock alias-backed participant identity tests
+remain blocked until PR-10a surfaces are present.
+
+Deferred PR-10d adapter gate: A2A capability and protocol mismatch tests remain
+blocked until PR-10b surfaces are present.
+
+Deferred PR-10d adapter gate: OpenAI Agents SDK capability mismatch,
+side-effecting tool, and unsupported dynamic-tool tests remain blocked until
+PR-10c source surfaces are present on this target branch.
 
 ## Deferred To PR-10 And Later
 
 - [ ] optional Bedrock, A2A, and OpenAI Agents SDK adapter tracks
-- [ ] research-informed PR-10d safety hardening addendum
 
 ---
 

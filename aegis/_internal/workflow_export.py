@@ -24,6 +24,54 @@ _AUDIT_GUIDANCE = (
     "investigate with 'aegis workflow doctor'."
 )
 
+_GOVERNANCE_SUMMARY_KEYS = frozenset({
+    "rationale",
+    "decision_basis",
+    "operator_action",
+    "approval_checkpoint_id",
+    "source_ids",
+    "waiver_id",
+})
+
+
+def _is_scalar_or_null(value: Any) -> bool:
+    return value is None or (
+        isinstance(value, (str, int, float, bool)) and not isinstance(value, bool)
+    ) or isinstance(value, str) or isinstance(value, bool)
+
+
+def _redact_governance(governance: dict[str, Any]) -> dict[str, Any]:
+    summary: dict[str, Any] = {}
+    for key in sorted(_GOVERNANCE_SUMMARY_KEYS):
+        if key not in governance:
+            continue
+        value = governance[key]
+        if _is_scalar_or_null(value):
+            summary[key] = value
+        elif isinstance(value, list) and all(isinstance(item, str) for item in value):
+            summary[key] = list(value)
+    return summary
+
+
+def _extract_governance_summary(step: dict[str, Any]) -> dict[str, Any] | None:
+    metadata = step.get("metadata")
+    if not isinstance(metadata, dict):
+        return None
+    governance = metadata.get("governance")
+    if not isinstance(governance, dict):
+        return None
+    summary = _redact_governance(governance)
+    return summary or None
+
+
+def _governance_rationale_count(workflow_artifacts: list[dict[str, Any]]) -> int:
+    count = 0
+    for wa in workflow_artifacts:
+        for step in wa.get("steps", []):
+            if isinstance(step, dict) and _extract_governance_summary(step) is not None:
+                count += 1
+    return count
+
 
 def export_workflow(
     workflow_artifacts: list[dict[str, Any]],
@@ -187,6 +235,7 @@ def _build_operator(
         "integrity": {
             "total_workflow_artifacts": len(workflow_artifacts),
             "total_invocation_artifacts": total_invocation_artifacts,
+            "governance_rationale_count": _governance_rationale_count(workflow_artifacts),
             "unresolved_invocation_checksums": unresolved,
             "unresolved_count": len(unresolved),
             "verification_guidance": _OPERATOR_GUIDANCE,
@@ -226,6 +275,11 @@ def _build_audit(
                 "invocation_artifact_checksum": cs,
                 "enforcement_result": inv.get("enforcement_result") if inv else None,
             })
+            if "metadata" in step:
+                step_summaries[-1]["metadata"] = step.get("metadata")
+            governance_summary = _extract_governance_summary(step)
+            if governance_summary is not None:
+                step_summaries[-1]["governance"] = governance_summary
         sessions.append({
             "session_id": wa.get("session_id"),
             "status": status,

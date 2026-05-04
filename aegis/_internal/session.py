@@ -950,11 +950,16 @@ class GovernanceSession:
         self,
         session_result: SessionPreCallResult,
         output: dict[str, Any],
+        *,
+        step_metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Enforce Phase B governance for one workflow step.
 
         :param session_result: Token from enforce_step_pre_call
         :param output: Model output dict
+        :param step_metadata: Optional host-supplied step evidence stored on
+            the workflow artifact. AEGIS records this metadata but does not
+            interpret it at runtime.
         :return: Invocation PASS audit artifact
         """
         self._assert_open()
@@ -986,6 +991,16 @@ class GovernanceSession:
                 },
             )
 
+        if step_metadata is not None and not isinstance(step_metadata, dict):
+            raise InvocationValidationError(
+                "step_metadata must be a mapping when provided",
+                details={
+                    "session_id": self._session_id,
+                    "step_id": entry["step_id"],
+                    "metadata_type": type(step_metadata).__name__,
+                },
+            )
+
         try:
             # Phase B FIRST — output validation
             inv_artifact = self._aigc.enforce_post_call(entry["inner"], output)
@@ -1009,11 +1024,14 @@ class GovernanceSession:
 
         # Step record uses REGISTRY values — never trusts token fields after verification
         inv_checksum = _checksum(inv_artifact)
-        self._steps.append({
+        step_record = {
             "step_id": entry["step_id"],
             "participant_id": entry["participant_id"],
             "invocation_artifact_checksum": inv_checksum,
-        })
+        }
+        if step_metadata is not None:
+            step_record["metadata"] = dict(step_metadata)
+        self._steps.append(step_record)
         self._step_policy_files.append(entry["effective_policy_file"])
 
         # Advance tracking state for sequence, transitions, and handoffs
