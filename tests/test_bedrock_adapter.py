@@ -574,3 +574,80 @@ def test_bedrock_adapter_has_explicit_submodule_exports():
         "BedrockParticipantBinding",
         "BedrockPreparedStep",
     }
+
+
+# ---------------------------------------------------------------------------
+# P1 Bug fixes: alias correlation correctness
+# ---------------------------------------------------------------------------
+
+def test_complete_step_rejects_trace_part_with_alias_only_in_caller_chain():
+    """callerChain contains upstream forwarders, not emitter identity.
+
+    A trace part where the bound alias appears only in callerChain (i.e. it was
+    the calling agent, not the emitting agent) must be rejected. Accepting it
+    would let a downstream agent's trace part pass correlation checks just
+    because the bound collaborator called it.
+    """
+    from aegis._internal.errors import WorkflowProtocolViolationError
+
+    # A trace part where _VALID_ALIAS_ARN appears ONLY in callerChain.
+    # The emitting agent is _OTHER_ALIAS_ARN (agentId/agentAliasId and
+    # agentCollaboratorAliasArn inside trace content).
+    other_agent_id, other_alias_id = _ids_from_alias(_OTHER_ALIAS_ARN)
+    caller_chain_only_part = {
+        "agentAliasId": other_alias_id,          # emitter is OTHER
+        "agentId": other_agent_id,               # emitter is OTHER
+        "agentVersion": "1",
+        "callerChain": [{"agentAliasArn": _VALID_ALIAS_ARN}],  # bound alias here only
+        "collaboratorName": "DownstreamAgent",
+        "sessionId": "session-1",
+        "trace": {
+            "orchestrationTrace": {
+                "invocationInput": {
+                    "agentCollaboratorInvocationInput": {
+                        "agentCollaboratorAliasArn": _OTHER_ALIAS_ARN,  # emitter is OTHER
+                        "agentCollaboratorName": "DownstreamAgent",
+                    },
+                    "invocationType": "AGENT_COLLABORATOR",
+                    "traceId": "trace-downstream-001",
+                }
+            }
+        },
+    }
+
+    with _make_session(protocol_constraints={"bedrock": {"require_trace": True}}) as session:
+        adapter, prepared = _make_prepared_step(
+            session,
+            protocol_constraints={"bedrock": {"require_trace": True}},
+        )
+        with pytest.raises(WorkflowProtocolViolationError, match="collaborator_alias"):
+            adapter.complete_step(
+                prepared,
+                output={"result": "ok", "confidence": 0.9},
+                trace_parts=[caller_chain_only_part],
+            )
+
+
+def test_complete_step_rejects_mixed_list_with_one_matching_part():
+    """A mixed trace_parts list must be rejected even if one part matches.
+
+    Accepting a mixed list allows unrelated trace parts (and their traceIds)
+    to be ingested into step metadata, corrupting workflow evidence. Every
+    supplied trace part must correlate to the bound collaborator alias.
+    """
+    from aegis._internal.errors import WorkflowProtocolViolationError
+
+    matching_part = _bedrock_trace_part("trace-match-001", alias_arn=_VALID_ALIAS_ARN)
+    mismatched_part = _bedrock_trace_part("trace-other-001", alias_arn=_OTHER_ALIAS_ARN)
+
+    with _make_session(protocol_constraints={"bedrock": {"require_trace": True}}) as session:
+        adapter, prepared = _make_prepared_step(
+            session,
+            protocol_constraints={"bedrock": {"require_trace": True}},
+        )
+        with pytest.raises(WorkflowProtocolViolationError, match="collaborator_alias"):
+            adapter.complete_step(
+                prepared,
+                output={"result": "ok", "confidence": 0.9},
+                trace_parts=[matching_part, mismatched_part],
+            )

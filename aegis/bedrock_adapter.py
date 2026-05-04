@@ -116,7 +116,10 @@ def _extract_alias_arns(value: Any) -> list[str]:
 
 
 def _trace_part_matches_alias(part: dict[str, Any], collaborator_alias: str) -> bool:
-    if collaborator_alias in _extract_alias_arns(part):
+    # Check alias ARNs inside trace content only — callerChain holds upstream
+    # forwarding agents and must not be used for emitter correlation.
+    trace_content = part.get("trace")
+    if isinstance(trace_content, dict) and collaborator_alias in _extract_alias_arns(trace_content):
         return True
 
     alias_ids = _agent_alias_ids(collaborator_alias)
@@ -447,22 +450,22 @@ class BedrockTraceAdapter:
                     adapter_step_key=adapter_step_key,
                 )
 
-            trace_ids.extend(_extract_trace_ids(trace_member))
-            if collaborator_alias and _trace_part_matches_alias(part, collaborator_alias):
-                alias_matched = True
+            if collaborator_alias and not _trace_part_matches_alias(part, collaborator_alias):
+                raise WorkflowProtocolViolationError(
+                    "Bedrock trace_parts do not correlate to the bound collaborator_alias",
+                    details={
+                        "session_id": session.session_id,
+                        "step_id": session_result.step_id,
+                        "protocol": "bedrock",
+                        "adapter_step_key": adapter_step_key,
+                        "collaborator_alias": collaborator_alias,
+                        "trace_part_index": index,
+                        "reason_code": "WORKFLOW_PROTOCOL_TRACE_ALIAS_MISMATCH",
+                    },
+                )
 
-        if trace_parts and collaborator_alias and not alias_matched:
-            raise WorkflowProtocolViolationError(
-                "Bedrock trace_parts do not correlate to the bound collaborator_alias",
-                details={
-                    "session_id": session.session_id,
-                    "step_id": session_result.step_id,
-                    "protocol": "bedrock",
-                    "adapter_step_key": adapter_step_key,
-                    "collaborator_alias": collaborator_alias,
-                    "reason_code": "WORKFLOW_PROTOCOL_TRACE_ALIAS_MISMATCH",
-                },
-            )
+            trace_ids.extend(_extract_trace_ids(trace_member))
+            alias_matched = True
 
         return {
             "trace_present": bool(trace_parts),
