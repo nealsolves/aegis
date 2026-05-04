@@ -163,3 +163,101 @@ def test_prepared_step_is_frozen():
     from aegis.bedrock_adapter import BedrockPreparedStep
     import dataclasses
     assert dataclasses.is_dataclass(BedrockPreparedStep)
+
+
+# ---------------------------------------------------------------------------
+# Helpers for session-integrated tests
+# ---------------------------------------------------------------------------
+
+def _make_session(policy_file=None, participants=None, protocol_constraints=None):
+    """Build a GovernanceSession with optional injected constraints."""
+    import aegis as _aegis
+    session = _aegis.AEGIS().open_session(policy_file=policy_file)
+    if protocol_constraints is not None:
+        session._protocol_constraints = protocol_constraints
+    if participants is not None:
+        session._participants_by_id = {p["id"]: p for p in participants}
+    return session
+
+
+# ---------------------------------------------------------------------------
+# Alias-backed identity enforcement
+# ---------------------------------------------------------------------------
+
+def test_prepare_step_rejects_bare_name_alias():
+    """collaborator_alias must be a Bedrock agent alias ARN, not a bare name."""
+    from aegis.bedrock_adapter import BedrockTraceAdapter, BedrockParticipantBinding
+    from aegis._internal.errors import WorkflowUnsupportedBindingError
+
+    adapter = BedrockTraceAdapter()
+    with _make_session() as session:
+        binding = BedrockParticipantBinding(
+            participant_id="p1",
+            collaborator_alias="MyCollaborator",  # bare name — must reject
+            role="planner",
+        )
+        inv = dict(_BASE_INV)
+        inv["context"] = {
+            **_BASE_INV["context"],
+            "protocol_evidence": {"bedrock": {}},
+        }
+        with pytest.raises(WorkflowUnsupportedBindingError, match="collaborator_alias"):
+            adapter.prepare_step(session, inv, binding=binding)
+
+
+def test_prepare_step_accepts_arn_alias():
+    """collaborator_alias as Bedrock agent alias ARN must pass binding validation."""
+    from aegis.bedrock_adapter import BedrockTraceAdapter, BedrockParticipantBinding
+
+    adapter = BedrockTraceAdapter()
+    with _make_session(
+        protocol_constraints={"bedrock": {}},
+    ) as session:
+        binding = BedrockParticipantBinding(
+            participant_id="p1",
+            collaborator_alias="arn:aws:bedrock:us-east-1:123456789012:agent-alias/AGENTID/ALIASID",
+            role="planner",
+        )
+        inv = dict(_BASE_INV)
+        inv["context"] = {
+            **_BASE_INV["context"],
+            "protocol": "bedrock",
+            "protocol_evidence": {
+                "bedrock": {"alias_backed": True}
+            },
+        }
+        result = adapter.prepare_step(session, inv, binding=binding)
+        assert result._session_result is not None
+        assert result._adapter_step_key is not None
+        adapter.complete_step(
+            result,
+            output={"result": "ok", "confidence": 0.9},
+        )
+
+
+def test_prepare_step_rejects_conflicting_alias_backed_false():
+    """Host evidence cannot claim alias_backed=False for a governed Bedrock step."""
+    from aegis.bedrock_adapter import BedrockTraceAdapter, BedrockParticipantBinding
+    from aegis._internal.errors import WorkflowProtocolViolationError
+
+    adapter = BedrockTraceAdapter()
+    participants = [{"id": "p1", "roles": ["planner"], "protocols": ["bedrock"]}]
+    with _make_session(
+        protocol_constraints={"bedrock": {}},
+        participants=participants,
+    ) as session:
+        binding = BedrockParticipantBinding(
+            participant_id="p1",
+            collaborator_alias="arn:aws:bedrock:us-east-1:123456789012:agent-alias/AGENTID/ALIASID",
+            role="planner",
+        )
+        inv = dict(_BASE_INV)
+        inv["context"] = {
+            **_BASE_INV["context"],
+            "protocol": "bedrock",
+            "protocol_evidence": {
+                "bedrock": {"alias_backed": False},  # explicitly false — must reject
+            },
+        }
+        with pytest.raises(WorkflowProtocolViolationError, match="alias_backed=False"):
+            adapter.prepare_step(session, inv, binding=binding)
