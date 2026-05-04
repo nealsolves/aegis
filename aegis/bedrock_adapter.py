@@ -20,12 +20,14 @@ retries, credentials, business state, and tool execution.
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from aegis._internal.errors import (
+from aegis import (
     InvocationValidationError,
+    WorkflowParticipantMismatchError,
     WorkflowProtocolViolationError,
     WorkflowUnsupportedBindingError,
 )
@@ -36,13 +38,92 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _ADAPTER_VERSION = "0.9.0-beta"
+_AGENT_ALIAS_ARN_RE = re.compile(
+    r"^arn:aws(?:-[^:]+)?:bedrock:"
+    r"(?P<region>[a-z0-9-]{1,20}):"
+    r"(?P<account>[0-9]{12}):"
+    r"agent-alias/"
+    r"(?P<agent_id>[0-9A-Za-z]{10})/"
+    r"(?P<alias_id>[0-9A-Za-z]{10})$"
+)
+_TRACE_UNION_KEYS = frozenset({
+    "customOrchestrationTrace",
+    "failureTrace",
+    "guardrailTrace",
+    "orchestrationTrace",
+    "postProcessingTrace",
+    "preProcessingTrace",
+    "routingClassifierTrace",
+})
+_TRACE_ID_KEYS = frozenset({"traceId", "trace_id"})
+_ALIAS_ARN_KEYS = frozenset({"agentAliasArn", "agentCollaboratorAliasArn"})
 
 
 def _is_alias_backed_reference(alias: Any) -> bool:
     """Return True for Bedrock agent alias ARN references."""
     if not isinstance(alias, str):
         return False
-    return alias.startswith("arn:aws:bedrock:")
+    return _AGENT_ALIAS_ARN_RE.fullmatch(alias) is not None
+
+
+def _agent_alias_ids(alias: str) -> tuple[str, str] | None:
+    """Return ``(agent_id, alias_id)`` for a valid Bedrock agent alias ARN."""
+    match = _AGENT_ALIAS_ARN_RE.fullmatch(alias)
+    if match is None:
+        return None
+    return match.group("agent_id"), match.group("alias_id")
+
+
+def _dedupe(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if value not in seen:
+            seen.add(value)
+            result.append(value)
+    return result
+
+
+def _walk_mappings(value: Any):
+    """Yield dict nodes from a nested parsed Bedrock response."""
+    if isinstance(value, dict):
+        yield value
+        for child in value.values():
+            yield from _walk_mappings(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _walk_mappings(child)
+
+
+def _extract_trace_ids(value: Any) -> list[str]:
+    trace_ids: list[str] = []
+    for mapping in _walk_mappings(value):
+        for key in _TRACE_ID_KEYS:
+            trace_id = mapping.get(key)
+            if isinstance(trace_id, str) and trace_id:
+                trace_ids.append(trace_id)
+    return _dedupe(trace_ids)
+
+
+def _extract_alias_arns(value: Any) -> list[str]:
+    aliases: list[str] = []
+    for mapping in _walk_mappings(value):
+        for key in _ALIAS_ARN_KEYS:
+            alias = mapping.get(key)
+            if isinstance(alias, str) and alias:
+                aliases.append(alias)
+    return _dedupe(aliases)
+
+
+def _trace_part_matches_alias(part: dict[str, Any], collaborator_alias: str) -> bool:
+    if collaborator_alias in _extract_alias_arns(part):
+        return True
+
+    alias_ids = _agent_alias_ids(collaborator_alias)
+    if alias_ids is None:
+        return False
+    agent_id, alias_id = alias_ids
+    return part.get("agentId") == agent_id and part.get("agentAliasId") == alias_id
 
 
 # ---------------------------------------------------------------------------
@@ -54,13 +135,13 @@ class BedrockParticipantBinding:
     """Binds a Bedrock collaborator alias to an AEGIS participant identity and role.
 
     ``collaborator_alias`` must be a Bedrock agent alias ARN
-    (e.g. ``arn:aws:bedrock:us-east-1:123456789012:agent-alias/AGENTID/ALIASID``)
+    (e.g. ``arn:aws:bedrock:us-east-1:123456789012:agent-alias/AGENTID12A/ALIASID12B``)
     — not a bare ``collaboratorName``. Name-only evidence is descriptive and
     insufficient for governed authorization.
     """
 
     participant_id: str
-    collaborator_alias: str  # e.g. "arn:aws:bedrock:us-east-1:123456789012:agent-alias/ID/ALIASID"
+    collaborator_alias: str
     role: str
 
 
@@ -98,9 +179,10 @@ class BedrockTraceAdapter:
         """Validate binding and evidence, inject context, call pre-call enforcement.
 
         :param session: Owning GovernanceSession.
-        :param invocation: AEGIS invocation dict. Must include
-            ``context.protocol_evidence.bedrock`` with ``alias_backed=True``
-            when the participant declares the ``bedrock`` protocol.
+        :param invocation: AEGIS invocation dict. If the host supplies
+            ``context.protocol_evidence.bedrock.alias_backed``, it must not be
+            ``False``; the adapter stamps ``alias_backed=True`` on the enriched
+            invocation passed to pre-call enforcement.
         :param binding: Participant binding for the collaborator.
         :param step_id: Optional step ID; auto-generated when absent.
         :return: ``BedrockPreparedStep`` — pass to ``complete_step()``.
@@ -156,7 +238,8 @@ class BedrockTraceAdapter:
         if alias == binding.participant_id or not _is_alias_backed_reference(alias):
             raise WorkflowUnsupportedBindingError(
                 "BedrockParticipantBinding.collaborator_alias must be a Bedrock agent alias ARN "
-                "(arn:aws:bedrock:...), not a bare collaboratorName",
+                "(arn:aws[-partition]:bedrock:<region>:<account>:agent-alias/<10>/<10>), "
+                "not a bare collaboratorName",
                 details={
                     "collaborator_alias": alias,
                     "participant_id": binding.participant_id,
@@ -169,7 +252,6 @@ class BedrockTraceAdapter:
         if part:
             allowed_roles = part.get("roles")
             if allowed_roles and binding.role not in allowed_roles:
-                from aegis._internal.errors import WorkflowParticipantMismatchError
                 raise WorkflowParticipantMismatchError(
                     f"binding.role={binding.role!r} not in participant "
                     f"{binding.participant_id!r} allowed roles: {allowed_roles}",
@@ -254,7 +336,17 @@ class BedrockTraceAdapter:
 
         adapter_state = session.pop_adapter_step_state(session_result)
         try:
-            if adapter_state.get("require_trace") and not trace_parts:
+            trace_summary = self._summarize_trace_parts(
+                trace_parts,
+                collaborator_alias=adapter_state.get("collaborator_alias"),
+                session=session,
+                session_result=session_result,
+                adapter_step_key=adapter_step_key,
+            )
+            if (
+                adapter_state.get("require_trace")
+                and trace_summary["trace_parts_count"] == 0
+            ):
                 raise WorkflowProtocolViolationError(
                     "require_trace=true but no trace_parts were supplied to complete_step()",
                     details={
@@ -268,7 +360,7 @@ class BedrockTraceAdapter:
 
             step_metadata = self._build_step_metadata(
                 adapter_step_key=adapter_step_key,
-                trace_parts=trace_parts or [],
+                trace_summary=trace_summary,
                 adapter_state=adapter_state,
             )
 
@@ -281,11 +373,130 @@ class BedrockTraceAdapter:
             session.discard_adapter_step(session_result)
             raise
 
+    def _summarize_trace_parts(
+        self,
+        trace_parts: list[dict[str, Any]] | None,
+        *,
+        collaborator_alias: str | None,
+        session: "GovernanceSession",
+        session_result: Any,
+        adapter_step_key: str,
+    ) -> dict[str, Any]:
+        """Validate Bedrock TracePart shape and return safe summary fields."""
+        if trace_parts is None:
+            return {
+                "trace_present": False,
+                "trace_parts_count": 0,
+                "trace_ids": [],
+                "trace_alias_matched": False,
+            }
+
+        if not isinstance(trace_parts, list):
+            raise InvocationValidationError(
+                "trace_parts must be a list of parsed Bedrock TracePart dicts",
+                details={
+                    "session_id": session.session_id,
+                    "step_id": session_result.step_id,
+                    "protocol": "bedrock",
+                    "adapter_step_key": adapter_step_key,
+                    "reason_code": "WORKFLOW_PROTOCOL_TRACE_INVALID",
+                },
+            )
+
+        trace_ids: list[str] = []
+        alias_matched = False
+        for index, part in enumerate(trace_parts):
+            if not isinstance(part, dict):
+                raise self._invalid_trace_part_error(
+                    index,
+                    "trace part must be a dict",
+                    session=session,
+                    session_result=session_result,
+                    adapter_step_key=adapter_step_key,
+                )
+
+            trace = part.get("trace")
+            if not isinstance(trace, dict):
+                raise self._invalid_trace_part_error(
+                    index,
+                    "TracePart must contain a trace mapping",
+                    session=session,
+                    session_result=session_result,
+                    adapter_step_key=adapter_step_key,
+                )
+
+            union_members = [
+                key for key in _TRACE_UNION_KEYS if trace.get(key) is not None
+            ]
+            if len(union_members) != 1:
+                raise self._invalid_trace_part_error(
+                    index,
+                    "TracePart.trace must contain exactly one Bedrock Trace union member",
+                    session=session,
+                    session_result=session_result,
+                    adapter_step_key=adapter_step_key,
+                )
+
+            trace_member = trace[union_members[0]]
+            if not isinstance(trace_member, dict):
+                raise self._invalid_trace_part_error(
+                    index,
+                    "TracePart.trace union member must be a dict",
+                    session=session,
+                    session_result=session_result,
+                    adapter_step_key=adapter_step_key,
+                )
+
+            trace_ids.extend(_extract_trace_ids(trace_member))
+            if collaborator_alias and _trace_part_matches_alias(part, collaborator_alias):
+                alias_matched = True
+
+        if trace_parts and collaborator_alias and not alias_matched:
+            raise WorkflowProtocolViolationError(
+                "Bedrock trace_parts do not correlate to the bound collaborator_alias",
+                details={
+                    "session_id": session.session_id,
+                    "step_id": session_result.step_id,
+                    "protocol": "bedrock",
+                    "adapter_step_key": adapter_step_key,
+                    "collaborator_alias": collaborator_alias,
+                    "reason_code": "WORKFLOW_PROTOCOL_TRACE_ALIAS_MISMATCH",
+                },
+            )
+
+        return {
+            "trace_present": bool(trace_parts),
+            "trace_parts_count": len(trace_parts),
+            "trace_ids": _dedupe(trace_ids),
+            "trace_alias_matched": alias_matched,
+        }
+
+    def _invalid_trace_part_error(
+        self,
+        index: int,
+        reason: str,
+        *,
+        session: "GovernanceSession",
+        session_result: Any,
+        adapter_step_key: str,
+    ) -> InvocationValidationError:
+        return InvocationValidationError(
+            f"trace_parts[{index}] is not a valid Bedrock TracePart: {reason}",
+            details={
+                "session_id": session.session_id,
+                "step_id": session_result.step_id,
+                "protocol": "bedrock",
+                "adapter_step_key": adapter_step_key,
+                "trace_part_index": index,
+                "reason_code": "WORKFLOW_PROTOCOL_TRACE_INVALID",
+            },
+        )
+
     def _build_step_metadata(
         self,
         *,
         adapter_step_key: str,
-        trace_parts: list[dict[str, Any]],
+        trace_summary: dict[str, Any],
         adapter_state: dict[str, Any],
     ) -> dict[str, Any]:
         """Build normalized evidence summary. No raw prompts, args, or outputs."""
@@ -294,16 +505,13 @@ class BedrockTraceAdapter:
             "adapter_version": _ADAPTER_VERSION,
             "adapter_step_key": adapter_step_key,
             "collaborator_alias": adapter_state.get("collaborator_alias"),
-            "trace_present": bool(trace_parts),
-            "trace_parts_count": len(trace_parts),
+            "trace_present": trace_summary["trace_present"],
+            "trace_parts_count": trace_summary["trace_parts_count"],
+            "trace_alias_matched": trace_summary["trace_alias_matched"],
         }
 
-        if trace_parts:
-            trace_ids = [
-                t.get("traceId") or t.get("trace_id")
-                for t in trace_parts
-                if t.get("traceId") or t.get("trace_id")
-            ]
+        trace_ids = trace_summary.get("trace_ids") or []
+        if trace_ids:
             meta["trace_ids"] = trace_ids
 
         return meta
