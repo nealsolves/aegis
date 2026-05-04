@@ -261,3 +261,93 @@ def test_prepare_step_rejects_conflicting_alias_backed_false():
         }
         with pytest.raises(WorkflowProtocolViolationError, match="alias_backed=False"):
             adapter.prepare_step(session, inv, binding=binding)
+
+
+# ---------------------------------------------------------------------------
+# Missing trace enforcement
+# ---------------------------------------------------------------------------
+
+def _make_prepared_step(session, protocol_constraints=None):
+    """Helper: run prepare_step with minimal valid state, return (adapter, prepared)."""
+    from aegis.bedrock_adapter import BedrockTraceAdapter, BedrockParticipantBinding
+
+    adapter = BedrockTraceAdapter()
+    binding = BedrockParticipantBinding(
+        participant_id="p1",
+        collaborator_alias="arn:aws:bedrock:us-east-1:123456789012:agent-alias/AGENTID/ALIASID",
+        role="planner",
+    )
+    if protocol_constraints is not None:
+        session._protocol_constraints = protocol_constraints
+    inv = dict(_BASE_INV)
+    inv["context"] = {
+        **_BASE_INV["context"],
+        "protocol": "bedrock",
+        "protocol_evidence": {"bedrock": {"alias_backed": True}},
+    }
+    prepared = adapter.prepare_step(session, inv, binding=binding)
+    return adapter, prepared
+
+
+def test_complete_step_raises_if_require_trace_and_no_trace_parts():
+    from aegis._internal.errors import WorkflowProtocolViolationError
+
+    with _make_session(protocol_constraints={"bedrock": {"require_trace": True}}) as session:
+        adapter, prepared = _make_prepared_step(
+            session,
+            protocol_constraints={"bedrock": {"require_trace": True}},
+        )
+        with pytest.raises(WorkflowProtocolViolationError, match="require_trace"):
+            adapter.complete_step(
+                prepared,
+                output={"result": "ok", "confidence": 0.9},
+                trace_parts=None,
+            )
+
+
+def test_complete_step_raises_if_require_trace_and_empty_trace_parts():
+    from aegis._internal.errors import WorkflowProtocolViolationError
+
+    with _make_session(protocol_constraints={"bedrock": {"require_trace": True}}) as session:
+        adapter, prepared = _make_prepared_step(
+            session,
+            protocol_constraints={"bedrock": {"require_trace": True}},
+        )
+        with pytest.raises(WorkflowProtocolViolationError, match="require_trace"):
+            adapter.complete_step(
+                prepared,
+                output={"result": "ok", "confidence": 0.9},
+                trace_parts=[],
+            )
+
+
+def test_complete_step_passes_without_trace_when_require_trace_false():
+    with _make_session(protocol_constraints={"bedrock": {"require_trace": False}}) as session:
+        adapter, prepared = _make_prepared_step(
+            session,
+            protocol_constraints={"bedrock": {"require_trace": False}},
+        )
+        artifact = adapter.complete_step(
+            prepared,
+            output={"result": "ok", "confidence": 0.9},
+            trace_parts=None,
+        )
+        assert artifact["enforcement_result"] == "PASS"
+
+
+def test_complete_step_passes_with_trace_parts():
+    with _make_session(protocol_constraints={"bedrock": {"require_trace": True}}) as session:
+        adapter, prepared = _make_prepared_step(
+            session,
+            protocol_constraints={"bedrock": {"require_trace": True}},
+        )
+        trace_parts = [
+            {"traceId": "trace-abc-001", "type": "preProcessingTrace"},
+            {"traceId": "trace-abc-002", "type": "orchestrationTrace"},
+        ]
+        artifact = adapter.complete_step(
+            prepared,
+            output={"result": "ok", "confidence": 0.9},
+            trace_parts=trace_parts,
+        )
+        assert artifact["enforcement_result"] == "PASS"
