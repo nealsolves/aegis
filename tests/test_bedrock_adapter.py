@@ -651,3 +651,54 @@ def test_complete_step_rejects_mixed_list_with_one_matching_part():
                 output={"result": "ok", "confidence": 0.9},
                 trace_parts=[matching_part, mismatched_part],
             )
+
+
+def test_complete_step_rejects_trace_part_with_bound_alias_as_invocation_target():
+    """agentCollaboratorAliasArn identifies an invocation target, not the emitter.
+
+    An orchestrator agent (different from the bound collaborator) emits a trace
+    part whose agentCollaboratorAliasArn equals the bound alias because it is
+    calling the bound collaborator. The emitter envelope (agentId/agentAliasId)
+    belongs to the orchestrator. This part must be rejected — the bound alias
+    appearing as an invocation target inside trace content is not emitter
+    identity and must never satisfy alias correlation.
+    """
+    from aegis._internal.errors import WorkflowProtocolViolationError
+
+    other_agent_id, other_alias_id = _ids_from_alias(_OTHER_ALIAS_ARN)
+    # Orchestrator emitting a trace that calls the bound collaborator.
+    # Emitter envelope is _OTHER_ALIAS_ARN. Bound alias appears only in
+    # agentCollaboratorAliasArn (the invocation target), not as emitter.
+    orchestrator_emits_call_to_bound = {
+        "agentAliasId": other_alias_id,    # emitter is OTHER (the orchestrator)
+        "agentId": other_agent_id,         # emitter is OTHER (the orchestrator)
+        "agentVersion": "1",
+        "collaboratorName": "OrchestratorAgent",
+        "sessionId": "session-1",
+        "trace": {
+            "orchestrationTrace": {
+                "invocationInput": {
+                    "agentCollaboratorInvocationInput": {
+                        # Bound alias here — but this is the TARGET of the call,
+                        # not the emitter of this trace part.
+                        "agentCollaboratorAliasArn": _VALID_ALIAS_ARN,
+                        "agentCollaboratorName": "BoundCollaborator",
+                    },
+                    "invocationType": "AGENT_COLLABORATOR",
+                    "traceId": "trace-orchestrator-001",
+                }
+            }
+        },
+    }
+
+    with _make_session(protocol_constraints={"bedrock": {"require_trace": True}}) as session:
+        adapter, prepared = _make_prepared_step(
+            session,
+            protocol_constraints={"bedrock": {"require_trace": True}},
+        )
+        with pytest.raises(WorkflowProtocolViolationError, match="collaborator_alias"):
+            adapter.complete_step(
+                prepared,
+                output={"result": "ok", "confidence": 0.9},
+                trace_parts=[orchestrator_emits_call_to_bound],
+            )

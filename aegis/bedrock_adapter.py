@@ -56,7 +56,6 @@ _TRACE_UNION_KEYS = frozenset({
     "routingClassifierTrace",
 })
 _TRACE_ID_KEYS = frozenset({"traceId", "trace_id"})
-_ALIAS_ARN_KEYS = frozenset({"agentAliasArn", "agentCollaboratorAliasArn"})
 
 
 def _is_alias_backed_reference(alias: Any) -> bool:
@@ -105,23 +104,11 @@ def _extract_trace_ids(value: Any) -> list[str]:
     return _dedupe(trace_ids)
 
 
-def _extract_alias_arns(value: Any) -> list[str]:
-    aliases: list[str] = []
-    for mapping in _walk_mappings(value):
-        for key in _ALIAS_ARN_KEYS:
-            alias = mapping.get(key)
-            if isinstance(alias, str) and alias:
-                aliases.append(alias)
-    return _dedupe(aliases)
-
-
 def _trace_part_matches_alias(part: dict[str, Any], collaborator_alias: str) -> bool:
-    # Check alias ARNs inside trace content only — callerChain holds upstream
-    # forwarding agents and must not be used for emitter correlation.
-    trace_content = part.get("trace")
-    if isinstance(trace_content, dict) and collaborator_alias in _extract_alias_arns(trace_content):
-        return True
-
+    # Emitter identity is established exclusively via the TracePart envelope
+    # fields agentId and agentAliasId. Alias ARNs inside trace content
+    # (agentCollaboratorAliasArn, agentAliasArn in callerChain) identify
+    # invocation targets or upstream forwarders — never the emitter.
     alias_ids = _agent_alias_ids(collaborator_alias)
     if alias_ids is None:
         return False
