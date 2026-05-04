@@ -279,10 +279,36 @@ class BedrockTraceAdapter:
         })
         enriched_proto["bedrock"] = enriched_bedrock_ev
         enriched_ctx["protocol_evidence"] = enriched_proto
+        # Reject a conflicting top-level protocol; the adapter owns this seam.
+        top_level_protocol = enriched.get("protocol")
+        if top_level_protocol is not None and top_level_protocol != "bedrock":
+            raise WorkflowProtocolViolationError(
+                f"invocation['protocol']={top_level_protocol!r} conflicts with BedrockTraceAdapter; "
+                "remove the top-level 'protocol' key or set it to 'bedrock'",
+                details={
+                    "protocol": top_level_protocol,
+                    "participant_id": binding.participant_id,
+                    "reason_code": "WORKFLOW_PROTOCOL_CONFLICT",
+                },
+            )
+        enriched["protocol"] = "bedrock"
         enriched_ctx["protocol"] = "bedrock"
         enriched["context"] = enriched_ctx
-        if not enriched.get("role"):
-            enriched["role"] = binding.role
+
+        # binding.role is authoritative — reject explicit mismatches.
+        explicit_role = enriched.get("role")
+        if explicit_role is not None and explicit_role != binding.role:
+            raise WorkflowParticipantMismatchError(
+                f"invocation['role']={explicit_role!r} conflicts with binding.role={binding.role!r}; "
+                "BedrockParticipantBinding is the authoritative role source",
+                details={
+                    "invocation_role": explicit_role,
+                    "binding_role": binding.role,
+                    "participant_id": binding.participant_id,
+                    "reason_code": "WORKFLOW_PARTICIPANT_ROLE_MISMATCH",
+                },
+            )
+        enriched["role"] = binding.role
 
         # --- Pre-call enforcement ---
         session_result = session.enforce_step_pre_call(

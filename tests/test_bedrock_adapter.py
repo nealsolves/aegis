@@ -789,6 +789,100 @@ def test_complete_step_discards_token_on_key_mismatch():
         )
 
 
+def test_prepare_step_rejects_conflicting_top_level_protocol():
+    """A caller-supplied invocation['protocol'] != 'bedrock' must be rejected.
+
+    Without this guard, GovernanceSession prefers the top-level value and the
+    step can pass under a different protocol's constraints entirely (P1).
+    """
+    from aegis.bedrock_adapter import BedrockTraceAdapter, BedrockParticipantBinding
+    from aegis._internal.errors import WorkflowProtocolViolationError
+
+    adapter = BedrockTraceAdapter()
+    with _make_session(protocol_constraints={"local": {}}) as session:
+        binding = BedrockParticipantBinding(
+            participant_id="p1",
+            collaborator_alias=_VALID_ALIAS_ARN,
+            role="planner",
+        )
+        inv = dict(_BASE_INV)
+        inv["protocol"] = "local"  # conflicting top-level protocol
+        inv["context"] = {
+            **_BASE_INV["context"],
+            "protocol_evidence": {"bedrock": {"alias_backed": True}},
+        }
+        with pytest.raises(WorkflowProtocolViolationError, match="conflicts with BedrockTraceAdapter"):
+            adapter.prepare_step(session, inv, binding=binding)
+
+
+def test_prepare_step_stamps_top_level_protocol_bedrock():
+    """Adapter must write enriched['protocol'] = 'bedrock' so GovernanceSession
+    uses the correct protocol key regardless of context-only stamping (P1).
+    """
+    from aegis.bedrock_adapter import BedrockTraceAdapter, BedrockParticipantBinding
+
+    adapter = BedrockTraceAdapter()
+    captured: list[dict] = []
+
+    class _CapturingSession:
+        session_id = "test-session"
+        _protocol_constraints = {"bedrock": {}}
+        _participants_by_id: dict = {}
+
+        def protocol_constraints_for(self, protocol):
+            return self._protocol_constraints.get(protocol, {})
+
+        def participant_for(self, pid):
+            return None
+
+        def enforce_step_pre_call(self, inv, *, step_id, participant_id):
+            captured.append(dict(inv))
+            raise RuntimeError("stop after capture")
+
+    inv = dict(_BASE_INV)
+    inv["context"] = {
+        **_BASE_INV["context"],
+        "protocol_evidence": {"bedrock": {"alias_backed": True}},
+    }
+    binding = BedrockParticipantBinding(
+        participant_id="p1",
+        collaborator_alias=_VALID_ALIAS_ARN,
+        role="planner",
+    )
+    session = _CapturingSession()
+    with pytest.raises(RuntimeError, match="stop after capture"):
+        adapter.prepare_step(session, inv, binding=binding)  # type: ignore[arg-type]
+
+    assert len(captured) == 1
+    assert captured[0].get("protocol") == "bedrock"
+
+
+def test_prepare_step_rejects_invocation_role_differing_from_binding():
+    """An explicit invocation['role'] that differs from binding.role must raise.
+
+    Without this guard a caller can bind 'planner' but govern the step as
+    'verifier', bypassing role enforcement (P2).
+    """
+    from aegis.bedrock_adapter import BedrockTraceAdapter, BedrockParticipantBinding
+    from aegis._internal.errors import WorkflowParticipantMismatchError
+
+    adapter = BedrockTraceAdapter()
+    with _make_session(protocol_constraints={"bedrock": {}}) as session:
+        binding = BedrockParticipantBinding(
+            participant_id="p1",
+            collaborator_alias=_VALID_ALIAS_ARN,
+            role="planner",
+        )
+        inv = dict(_BASE_INV)
+        inv["role"] = "verifier"  # differs from binding.role
+        inv["context"] = {
+            **_BASE_INV["context"],
+            "protocol_evidence": {"bedrock": {"alias_backed": True}},
+        }
+        with pytest.raises(WorkflowParticipantMismatchError, match="conflicts with binding\\.role"):
+            adapter.prepare_step(session, inv, binding=binding)
+
+
 def test_prepare_step_raises_structured_error_when_context_is_non_dict():
     """If invocation['context'] is a truthy non-dict (e.g. a string), the
     adapter must raise InvocationValidationError — not AttributeError — before
