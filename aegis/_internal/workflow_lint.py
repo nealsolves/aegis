@@ -335,7 +335,6 @@ def _lint_workflow_graph(
 
     if (
         required_sequence
-        and transitions
         and not _has_unknown_transition_step_refs(workflow, declared_steps)
     ):
         start_step = required_sequence[0]

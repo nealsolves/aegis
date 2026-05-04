@@ -325,6 +325,19 @@ class TestLintPolicy:
         assert any(event.get("truncated") is True for event in finding["witness_trace"])
         assert finding["witness_trace"][-1]["kind"] == "blocked_step"
 
+    def test_empty_transition_map_with_required_sequence_still_runs_topology(self, tmp_path):
+        # allowed_transitions: {} is falsey — must not skip topology checks (P1 regression)
+        content = (
+            MINIMAL_VALID_POLICY
+            + "workflow:\n"
+            + "  required_sequence: [draft, review]\n"
+            + "  allowed_transitions: {}\n"
+        )
+        p = _write(tmp_path, "empty_transitions.yaml", content)
+        findings = lint_policy(p)
+        codes = {f["code"] for f in findings}
+        assert "WORKFLOW_DEAD_END_STEP" in codes or "WORKFLOW_REQUIRED_SEQUENCE_IMPOSSIBLE" in codes
+
     def test_dead_end_non_terminal_step_returns_graph_finding(self, tmp_path):
         content = (
             MINIMAL_VALID_POLICY
