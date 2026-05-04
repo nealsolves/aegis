@@ -247,7 +247,28 @@
           "description": "Named protocol evidence requirements enforced at workflow runtime",
           "properties": {
             "local": {"type": "object", "additionalProperties": true},
-            "bedrock": {"type": "object", "additionalProperties": true},
+            "bedrock": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Bedrock trace adapter constraints (source-only beta)",
+              "properties": {
+                "require_trace": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "require_alias_backed_identity": {
+                  "type": "boolean",
+                  "const": true,
+                  "default": true
+                },
+                "require_alias": {
+                  "type": "boolean",
+                  "const": true,
+                  "default": true,
+                  "description": "Deprecated compatibility alias for require_alias_backed_identity"
+                }
+              }
+            },
             "a2a": {"type": "object", "additionalProperties": true},
             "openai_agents": {
               "type": "object",
