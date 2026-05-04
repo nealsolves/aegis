@@ -330,8 +330,12 @@ class BedrockTraceAdapter:
         session_result = prepared._session_result
         adapter_step_key = prepared._adapter_step_key
 
-        adapter_state = session.pop_adapter_step_state(session_result)
-        if adapter_state.get("adapter_step_key") != adapter_step_key:
+        # Peek before popping: if the key doesn't match, discard the pending
+        # pre-call token before raising so the caller cannot use it to complete
+        # the raw session token while bypassing Bedrock trace/alias checks.
+        adapter_state = session.adapter_step_state(session_result)
+        if (adapter_state or {}).get("adapter_step_key") != adapter_step_key:
+            session.discard_adapter_step(session_result)
             raise WorkflowProtocolViolationError(
                 "complete_step() called without valid adapter state: "
                 "this BedrockPreparedStep has no registered Bedrock adapter state, "
@@ -344,6 +348,7 @@ class BedrockTraceAdapter:
                     "reason_code": "WORKFLOW_PROTOCOL_ADAPTER_STATE_MISSING",
                 },
             )
+        adapter_state = session.pop_adapter_step_state(session_result)
         try:
             trace_summary = self._summarize_trace_parts(
                 trace_parts,

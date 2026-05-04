@@ -748,6 +748,47 @@ def test_complete_step_rejects_absent_adapter_state():
             )
 
 
+def test_complete_step_discards_token_on_key_mismatch():
+    """P2: complete_step must discard the pre-call token on adapter_step_key mismatch.
+
+    Before the fix, pop_adapter_step_state removed the state before the key
+    check, leaving an unconsumed session token in _pending_results.  A caller
+    that caught the error could then call enforce_step_post_call directly and
+    bypass all Bedrock trace/alias checks.  After the fix the token must be
+    consumed (not completable) on the error path.
+    """
+    from aegis.bedrock_adapter import BedrockPreparedStep
+    from aegis._internal.errors import WorkflowProtocolViolationError
+
+    with _make_session(protocol_constraints={"bedrock": {"require_trace": True}}) as session:
+        adapter, prepared = _make_prepared_step(
+            session,
+            protocol_constraints={"bedrock": {"require_trace": True}},
+        )
+        session_result = prepared._session_result
+        token_id = session_result._token_id
+
+        # Forge a prepared step with a mismatched adapter_step_key.
+        forged = BedrockPreparedStep(
+            _session_result=prepared._session_result,
+            _adapter_step_key="00000000-0000-0000-0000-000000000000",
+            _session=session,
+        )
+
+        with pytest.raises(WorkflowProtocolViolationError, match="adapter state"):
+            adapter.complete_step(
+                forged,
+                output={"result": "ok", "confidence": 0.9},
+                trace_parts=[_bedrock_trace_part()],
+            )
+
+        # Token must be consumed — the bypass window is closed.
+        assert token_id not in session._pending_results, (
+            "pending token still present after key-mismatch rejection — "
+            "bypass window is open"
+        )
+
+
 def test_prepare_step_raises_structured_error_when_context_is_non_dict():
     """If invocation['context'] is a truthy non-dict (e.g. a string), the
     adapter must raise InvocationValidationError — not AttributeError — before
