@@ -355,6 +355,33 @@ def test_prepare_step_rejects_conflicting_alias_backed_false():
             adapter.prepare_step(session, inv, binding=binding)
 
 
+@pytest.mark.parametrize("falsey_non_dict", [[], "", 0, False])
+def test_prepare_step_rejects_falsey_non_dict_protocol_evidence(falsey_non_dict):
+    """Falsey non-dict protocol_evidence must raise InvocationValidationError.
+
+    A bare ``or {}`` coerces falsey values to an empty mapping before the type
+    check, silently accepting malformed evidence.  An explicit None-check must
+    be used instead so that callers supplying e.g. [] get a hard error.
+    """
+    from aegis.bedrock_adapter import BedrockTraceAdapter, BedrockParticipantBinding
+    from aegis._internal.errors import InvocationValidationError
+
+    adapter = BedrockTraceAdapter()
+    with _make_session(protocol_constraints={"bedrock": {}}) as session:
+        binding = BedrockParticipantBinding(
+            participant_id="p1",
+            collaborator_alias=_VALID_ALIAS_ARN,
+            role="planner",
+        )
+        inv = dict(_BASE_INV)
+        inv["context"] = {
+            **_BASE_INV["context"],
+            "protocol_evidence": falsey_non_dict,
+        }
+        with pytest.raises(InvocationValidationError, match="protocol_evidence"):
+            adapter.prepare_step(session, inv, binding=binding)
+
+
 # ---------------------------------------------------------------------------
 # Missing trace enforcement
 # ---------------------------------------------------------------------------

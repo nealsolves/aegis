@@ -197,15 +197,22 @@ class BedrockTraceAdapter:
             )
 
         # --- Extract and validate bedrock evidence ---
-        ctx = invocation.get("context")
-        if ctx is not None and not isinstance(ctx, dict):
+        ctx_value = invocation.get("context")
+        if ctx_value is None:
+            ctx: dict[str, Any] = {}
+        elif isinstance(ctx_value, dict):
+            ctx = ctx_value
+        else:
             raise InvocationValidationError(
-                "invocation['context'] must be a dict or absent",
+                "invocation context must be a dict",
                 details={"reason_code": "WORKFLOW_UNSUPPORTED_BINDING"},
             )
-        ctx = ctx or {}
-        proto_evidence = ctx.get("protocol_evidence") or {}
-        if not isinstance(proto_evidence, dict):
+        proto_value = ctx.get("protocol_evidence")
+        if proto_value is None:
+            proto_evidence: dict[str, Any] = {}
+        elif isinstance(proto_value, dict):
+            proto_evidence = proto_value
+        else:
             raise InvocationValidationError(
                 "invocation context['protocol_evidence'] must be a dict",
                 details={"reason_code": "WORKFLOW_UNSUPPORTED_BINDING"},
