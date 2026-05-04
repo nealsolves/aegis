@@ -600,6 +600,7 @@ class GovernanceSession:
         :param tool_call_id: Optional opaque call identifier for evidence.
         :raises SessionStateError: if the session is not OPEN or PAUSED.
         :raises WorkflowSessionTokenInvalidError: if the token is not registered.
+        :raises InvocationValidationError: if adapter state has not been registered for this token.
         :raises WorkflowToolBudgetExceededError: if the session budget is exhausted.
         """
         self._assert_open()
@@ -614,9 +615,13 @@ class GovernanceSession:
 
         entry = self._pending_results[session_result._token_id]
         adapter_state = self._adapter_step_states.get(session_result._token_id)
-        observed_tool_calls = list(
-            (adapter_state or {}).get("dynamic_tool_calls") or []
-        )
+        if adapter_state is None:
+            raise InvocationValidationError(
+                "authorize_step_tool_call requires adapter state to be registered; "
+                "call register_adapter_step_state before authorizing tool calls",
+                details={"token_id": session_result._token_id},
+            )
+        observed_tool_calls = list(adapter_state.get("dynamic_tool_calls") or [])
         projected_call = {"name": tool_name, "id": tool_call_id}
         inner = entry.get("inner")
         effective_policy = getattr(inner, "_frozen_effective_policy", None)
@@ -649,15 +654,13 @@ class GovernanceSession:
 
         self._total_tool_calls_consumed += 1
 
-        # Update adapter-managed state (summary evidence only)
-        if adapter_state is not None:
-            adapter_state["dynamic_tool_calls_count"] += 1
-            adapter_state["dynamic_tool_calls"].append({
-                "name": tool_name,
-                "tool_name": tool_name,
-                "tool_call_id": tool_call_id,
-                "authorized_at": int(time.time()),
-            })
+        adapter_state["dynamic_tool_calls_count"] += 1
+        adapter_state["dynamic_tool_calls"].append({
+            "name": tool_name,
+            "tool_name": tool_name,
+            "tool_call_id": tool_call_id,
+            "authorized_at": int(time.time()),
+        })
 
     def _discard_pending_step(
         self,
@@ -665,7 +668,16 @@ class GovernanceSession:
         *,
         rollback_authorization: bool = False,
     ) -> None:
-        """Internal adapter seam: invalidate a pending step without Phase B."""
+        """Internal adapter seam: invalidate a pending step without Phase B.
+
+        ``rollback_authorization=True`` decrements ``_authorized_step_count`` only
+        when the token is still pending (not yet consumed).  It is a no-op for
+        Phase-B failure paths because ``enforce_step_post_call`` marks the token
+        consumed before raising, causing the early-return below.  This is
+        intentional: ``_authorized_step_count`` tracks steps that *passed Phase A*,
+        not steps that completed Phase B.  A failed Phase-B attempt still consumed
+        an authorization slot.
+        """
         self._assert_open()
         self._assert_owns(session_result)
 
@@ -1099,7 +1111,8 @@ class GovernanceSession:
         }
 
         # Increment only after all checks pass — pre-call rejection must not
-        # corrupt the authorized step counter
+        # corrupt the authorized step counter.  Counts "steps authorized" (Phase A
+        # passed), not "steps completed" (Phase B passed).
         self._authorized_step_count += 1
 
         return SessionPreCallResult(

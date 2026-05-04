@@ -33,9 +33,9 @@ The source-only `v0.9.0` beta workflow governance line is available on local
 scaffolds, `aegis workflow init`, `aegis policy init`, `aegis workflow lint`,
 `aegis workflow doctor`, `aegis workflow trace`, and `aegis workflow export`. The source tree
 also contains the advanced optional OpenAI Agents SDK adapter at
-`aegis.openai_agents_adapter`; it requires the `openai-agents` extra and is not
+`aegis.openai_agents_adapter` (PR-10c); it requires the `openai-agents` extra and is not
 re-exported from top-level `aegis`. Bedrock and A2A remain later optional
-tracks. See
+tracks (PR-10a/10b). See
 [docs/reference/WORKFLOW_QUICKSTART.md](docs/reference/WORKFLOW_QUICKSTART.md)
 for the first-adopter path.
 

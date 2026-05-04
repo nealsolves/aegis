@@ -77,6 +77,19 @@ no further public-surface work proceeds until the default path is repaired.
 - [x] `aegis workflow export` — operator and audit export modes with checksum integrity reporting
 - [x] operator-facing export portability and timeline reconstruction
 
+## PR-10c — OpenAI Agents Adapter Gate
+
+- [x] `OpenAIAgentsAdapter` is optional, fail-closed, and ships behind the `aegis[openai-agents]` extra
+- [x] the default local adopter path is unchanged and green without `openai-agents` installed
+- [x] participant binding, duplicate-name rejection, and trace-required enforcement are tested with fixtures only
+- [x] `GovernanceSession.authorize_step_tool_call` enforces tool budgets and allowlists in real time
+- [x] adapter state must be registered before tool authorization — absent state raises `InvocationValidationError`
+- [x] `_authorized_step_count` counts Phase-A authorizations; Phase-B failure does not roll it back
+- [x] unsupported surfaces reject explicitly with typed `WorkflowUnsupportedBindingError`
+- [x] function-tool and `Agent.as_tool(...)` wrapper governance tests pass
+- [x] import-guard tests confirm `openai-agents` is not a required base dependency
+- [x] `docs/reference/external/OPENAI_AGENTS_ADAPTER.md` advanced recipe ships
+
 ## PR-10d — Research Safety Addendum Gate
 
 PR-10d is a bounded post-adapter hardening addendum. It must improve the existing beta surfaces without reopening product scope.
@@ -95,7 +108,9 @@ PR-10d is a bounded post-adapter hardening addendum. It must improve the existin
 
 ## Deferred To PR-10 And Later
 
-- [ ] optional Bedrock, A2A, and OpenAI Agents SDK adapter tracks
+- [x] PR-10c optional OpenAI Agents SDK adapter track — complete on local `develop`
+- [ ] PR-10a optional Bedrock adapter track
+- [ ] PR-10b optional A2A adapter track
 - [ ] research-informed PR-10d safety hardening addendum
 
 ---

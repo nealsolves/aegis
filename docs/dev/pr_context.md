@@ -49,7 +49,7 @@ no further public-surface work proceeds until the default path is repaired.
 - The default adopter path succeeds without Bedrock, A2A, or the OpenAI Agents SDK.
 - `ValidatorHook` is implemented as an internal engine capability in PR-08. It is not a public beta surface.
 - PR-10a and PR-10b have not started.
-- PR-10c is being worked on local `develop` and has not been pushed to `origin/develop` yet.
+- PR-10c is complete on local `develop` and is pending merge to `origin/develop` via PR.
 - PR-10d remains proposed pre-freeze work before PR-11.
 
 ---
@@ -156,8 +156,9 @@ PR-10b remains planned:
 
 ## PR-10c Outcomes
 
-PR-10c is in local `develop` work and has not been pushed to `origin/develop` yet.
-When complete it will ship:
+PR-10c is complete on local `develop` and is pending merge to `origin/develop` via PR.
+
+Ships:
 
 - `OpenAIAgentsAdapter` — governed binding for `openai-agents`, fail-closed unsupported-surface rules
 - `OpenAIAgentsParticipantBinding`, `OpenAIAgentsPreparedStep`, `OpenAIAgentsPendingApproval`, `OpenAIAgentsTracingProcessor`
@@ -168,10 +169,12 @@ When complete it will ship:
 - Reference doc at `docs/reference/external/OPENAI_AGENTS_ADAPTER.md`
 - optional OpenAI Agents SDK extra (`aegis[openai-agents]`)
 
-P1 issues resolved before push:
+P1 issues resolved:
 
-- **P1**: `_make_tool_wrapper` now rejects non-`FunctionTool` types with `WorkflowUnsupportedBindingError` — fixed
-- **P1**: `_wrap_all_tools` now raises and aborts `prepare_step` when `agent.tools` is immutable — fixed
+- `_make_tool_wrapper` rejects non-`FunctionTool` types with `WorkflowUnsupportedBindingError`
+- `_wrap_all_tools` raises and aborts `prepare_step` when `agent.tools` is immutable
+- `authorize_step_tool_call` raises `InvocationValidationError` when adapter state is absent (B1 defense-in-depth)
+- `_authorized_step_count` counts Phase-A authorizations only, not Phase-B completions (B4 semantics documented)
 
 ---
 
@@ -189,7 +192,7 @@ P1 issues resolved before push:
 
 Current execution note:
 
-- PR-10c is in local `develop` work and should be pushed/reviewed when ready (after P1 fixes).
+- PR-10c is complete on local `develop` and is being merged to `origin/develop` via PR.
 - PR-10a and PR-10b remain not started.
 - PR-10d should remain a post-adapter hardening addendum, landing after the adapter surfaces it needs to test are visible to the target branch.
 - PR-11 follows after PR-10a, PR-10b, PR-10c, and PR-10d gates are satisfied.

@@ -787,6 +787,50 @@ def test_authorize_step_tool_call_rejects_unregistered_token():
             session.authorize_step_tool_call(fake, tool_name="tool")
 
 
+def test_authorize_step_tool_call_raises_when_adapter_state_missing():
+    """B1 defense-in-depth: token registered but adapter state absent must raise, not silently skip evidence."""
+    from aegis import AEGIS
+    from aegis._internal.errors import InvocationValidationError
+
+    a = AEGIS()
+    with a.open_session(policy_file=None) as session:
+        r = session.enforce_step_pre_call(_BASE_INV)
+        # Deliberately do NOT register adapter state — simulates an adapter protocol violation.
+        with pytest.raises(InvocationValidationError, match="adapter state"):
+            session.authorize_step_tool_call(r, tool_name="my_tool")
+
+
+# ---------------------------------------------------------------------------
+# _authorized_step_count semantics — "authorized" not "completed"
+# ---------------------------------------------------------------------------
+
+def test_authorized_step_count_not_rolled_back_on_phase_b_failure():
+    """B4: _authorized_step_count counts steps that passed Phase A, regardless of Phase B outcome.
+
+    This is intentional — it tracks the authorization decision, not the outcome.
+    rollback_authorization in _discard_pending_step is a no-op on Phase-B failure
+    paths because enforce_step_post_call marks the token consumed before raising,
+    causing _discard_pending_step to return early.
+    """
+    from aegis import AEGIS
+    from aegis._internal.errors import InvocationValidationError
+
+    a = AEGIS()
+    with a.open_session(policy_file=None) as session:
+        r = session.enforce_step_pre_call(_BASE_INV)
+        assert session._authorized_step_count == 1
+
+        # Phase B with invalid output causes enforce_step_post_call to raise.
+        with pytest.raises(Exception):
+            session.enforce_step_post_call(r, {"invalid": "missing confidence"})
+
+        # Authorization count remains 1 — the step was authorized.
+        # This is the documented semantics: authorized != completed.
+        assert session._authorized_step_count == 1
+        # Token is consumed and cannot be reused.
+        assert r._token_id in session._consumed_token_ids
+
+
 # ---------------------------------------------------------------------------
 # enforce_step_post_call step_metadata persistence
 # ---------------------------------------------------------------------------
