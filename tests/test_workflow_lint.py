@@ -336,7 +336,8 @@ class TestLintPolicy:
         p = _write(tmp_path, "empty_transitions.yaml", content)
         findings = lint_policy(p)
         codes = {f["code"] for f in findings}
-        assert "WORKFLOW_DEAD_END_STEP" in codes or "WORKFLOW_REQUIRED_SEQUENCE_IMPOSSIBLE" in codes
+        assert "WORKFLOW_DEAD_END_STEP" in codes
+        assert "WORKFLOW_REQUIRED_SEQUENCE_IMPOSSIBLE" in codes
 
     def test_dead_end_non_terminal_step_returns_graph_finding(self, tmp_path):
         content = (
