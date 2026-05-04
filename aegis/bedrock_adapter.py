@@ -197,7 +197,13 @@ class BedrockTraceAdapter:
             )
 
         # --- Extract and validate bedrock evidence ---
-        ctx = invocation.get("context") or {}
+        ctx = invocation.get("context")
+        if ctx is not None and not isinstance(ctx, dict):
+            raise InvocationValidationError(
+                "invocation['context'] must be a dict or absent",
+                details={"reason_code": "WORKFLOW_UNSUPPORTED_BINDING"},
+            )
+        ctx = ctx or {}
         proto_evidence = ctx.get("protocol_evidence") or {}
         if not isinstance(proto_evidence, dict):
             raise InvocationValidationError(
@@ -325,6 +331,19 @@ class BedrockTraceAdapter:
         adapter_step_key = prepared._adapter_step_key
 
         adapter_state = session.pop_adapter_step_state(session_result)
+        if adapter_state.get("adapter_step_key") != adapter_step_key:
+            raise WorkflowProtocolViolationError(
+                "complete_step() called without valid adapter state: "
+                "this BedrockPreparedStep has no registered Bedrock adapter state, "
+                "was already completed, or was not produced by prepare_step()",
+                details={
+                    "session_id": session.session_id,
+                    "step_id": session_result.step_id,
+                    "protocol": "bedrock",
+                    "adapter_step_key": adapter_step_key,
+                    "reason_code": "WORKFLOW_PROTOCOL_ADAPTER_STATE_MISSING",
+                },
+            )
         try:
             trace_summary = self._summarize_trace_parts(
                 trace_parts,

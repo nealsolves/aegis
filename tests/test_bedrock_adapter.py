@@ -702,3 +702,68 @@ def test_complete_step_rejects_trace_part_with_bound_alias_as_invocation_target(
                 output={"result": "ok", "confidence": 0.9},
                 trace_parts=[orchestrator_emits_call_to_bound],
             )
+
+
+# ---------------------------------------------------------------------------
+# P1/P2 fixes: state integrity and context type validation
+# ---------------------------------------------------------------------------
+
+def test_complete_step_rejects_absent_adapter_state():
+    """complete_step must reject a BedrockPreparedStep whose adapter state was
+    never registered (or was already consumed), not silently bypass Bedrock
+    controls. Without this guard, require_trace and alias correlation are
+    both skipped because adapter_state defaults to an empty dict.
+    """
+    from aegis._internal.errors import WorkflowProtocolViolationError
+
+    with _make_session(protocol_constraints={"bedrock": {"require_trace": True}}) as session:
+        adapter, prepared = _make_prepared_step(
+            session,
+            protocol_constraints={"bedrock": {"require_trace": True}},
+        )
+        # Consume the adapter state as the first complete_step call would.
+        # A second call to complete_step on the same prepared step must be
+        # rejected because the state is absent, not silently pass.
+        adapter.complete_step(
+            prepared,
+            output={"result": "ok", "confidence": 0.9},
+            trace_parts=[_bedrock_trace_part()],
+        )
+
+    # Outside the context manager, attempt to forge a second completion using
+    # a reconstructed BedrockPreparedStep that has no registered adapter state.
+    with _make_session(protocol_constraints={"bedrock": {"require_trace": True}}) as fresh_session:
+        adapter2, prepared2 = _make_prepared_step(
+            fresh_session,
+            protocol_constraints={"bedrock": {"require_trace": True}},
+        )
+        # Pop the state so that the next call has an empty-dict default.
+        fresh_session.pop_adapter_step_state(prepared2._session_result)
+
+        with pytest.raises(WorkflowProtocolViolationError, match="adapter state"):
+            adapter2.complete_step(
+                prepared2,
+                output={"result": "ok", "confidence": 0.9},
+                trace_parts=[_bedrock_trace_part()],
+            )
+
+
+def test_prepare_step_raises_structured_error_when_context_is_non_dict():
+    """If invocation['context'] is a truthy non-dict (e.g. a string), the
+    adapter must raise InvocationValidationError — not AttributeError — before
+    any .get() call is attempted on the non-mapping value.
+    """
+    from aegis.bedrock_adapter import BedrockTraceAdapter, BedrockParticipantBinding
+    from aegis._internal.errors import InvocationValidationError
+
+    adapter = BedrockTraceAdapter()
+    with _make_session(protocol_constraints={"bedrock": {}}) as session:
+        binding = BedrockParticipantBinding(
+            participant_id="p1",
+            collaborator_alias=_VALID_ALIAS_ARN,
+            role="planner",
+        )
+        inv = dict(_BASE_INV)
+        inv["context"] = "bedrock"  # truthy non-dict — the crash scenario
+        with pytest.raises(InvocationValidationError, match="context"):
+            adapter.prepare_step(session, inv, binding=binding)
