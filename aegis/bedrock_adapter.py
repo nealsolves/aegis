@@ -283,8 +283,8 @@ class BedrockTraceAdapter:
         top_level_protocol = enriched.get("protocol")
         if top_level_protocol is not None and top_level_protocol != "bedrock":
             raise WorkflowProtocolViolationError(
-                f"invocation['protocol']={top_level_protocol!r} conflicts with BedrockTraceAdapter; "
-                "remove the top-level 'protocol' key or set it to 'bedrock'",
+                f"invocation['protocol']={top_level_protocol!r} conflicts with "
+                "BedrockTraceAdapter; remove the top-level 'protocol' key or set it to 'bedrock'",
                 details={
                     "protocol": top_level_protocol,
                     "participant_id": binding.participant_id,
@@ -299,7 +299,8 @@ class BedrockTraceAdapter:
         explicit_role = enriched.get("role")
         if explicit_role is not None and explicit_role != binding.role:
             raise WorkflowParticipantMismatchError(
-                f"invocation['role']={explicit_role!r} conflicts with binding.role={binding.role!r}; "
+                f"invocation['role']={explicit_role!r} conflicts with "
+                f"binding.role={binding.role!r}; "
                 "BedrockParticipantBinding is the authoritative role source",
                 details={
                     "invocation_role": explicit_role,
