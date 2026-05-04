@@ -351,3 +351,66 @@ def test_complete_step_passes_with_trace_parts():
             trace_parts=trace_parts,
         )
         assert artifact["enforcement_result"] == "PASS"
+
+
+# ---------------------------------------------------------------------------
+# Step metadata persistence
+# ---------------------------------------------------------------------------
+
+def test_complete_step_step_metadata_in_artifact():
+    """step_metadata with adapter fields persists into the workflow artifact steps."""
+    with _make_session(protocol_constraints={"bedrock": {}}) as session:
+        adapter, prepared = _make_prepared_step(session)
+        trace_parts = [{"traceId": "trace-xyz-001", "type": "orchestrationTrace"}]
+        artifact = adapter.complete_step(
+            prepared,
+            output={"result": "ok", "confidence": 0.9},
+            trace_parts=trace_parts,
+        )
+        assert artifact["enforcement_result"] == "PASS"
+
+        steps = session._steps
+        assert len(steps) >= 1
+        last_step = steps[-1]
+        meta = last_step.get("metadata") or {}
+        assert meta.get("adapter") == "bedrock_trace"
+        assert meta.get("trace_present") is True
+        assert "trace-xyz-001" in (meta.get("trace_ids") or [])
+        assert meta.get("collaborator_alias") == "arn:aws:bedrock:us-east-1:123456789012:agent-alias/AGENTID/ALIASID"
+
+
+def test_complete_step_step_metadata_trace_absent():
+    """When trace_parts is not supplied, trace_present=False in metadata."""
+    with _make_session(protocol_constraints={"bedrock": {}}) as session:
+        adapter, prepared = _make_prepared_step(session)
+        adapter.complete_step(
+            prepared,
+            output={"result": "ok", "confidence": 0.9},
+            trace_parts=None,
+        )
+        steps = session._steps
+        last_step = steps[-1]
+        meta = last_step.get("metadata") or {}
+        assert meta.get("trace_present") is False
+        assert meta.get("trace_parts_count") == 0
+
+
+def test_adapter_cleans_up_state_on_complete_step_failure():
+    """If complete_step raises, adapter step state is discarded."""
+    from aegis._internal.errors import WorkflowProtocolViolationError
+
+    with _make_session(protocol_constraints={"bedrock": {"require_trace": True}}) as session:
+        adapter, prepared = _make_prepared_step(
+            session,
+            protocol_constraints={"bedrock": {"require_trace": True}},
+        )
+        token_id = prepared._session_result._token_id
+
+        with pytest.raises(WorkflowProtocolViolationError):
+            adapter.complete_step(
+                prepared,
+                output={"result": "ok", "confidence": 0.9},
+                trace_parts=None,
+            )
+
+        assert session._adapter_step_states.get(token_id) is None
