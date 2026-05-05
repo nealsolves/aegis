@@ -881,6 +881,50 @@ def test_session_rejects_invalid_a2a_protocol_evidence(evidence):
             session.enforce_step_pre_call(_direct_a2a_inv(evidence))
 
 
+@pytest.mark.parametrize(
+    "protocol_binding,expected_type",
+    [
+        (["JSONRPC"], "list"),
+        ({"binding": "JSONRPC"}, "dict"),
+    ],
+)
+def test_session_rejects_non_string_a2a_interface_protocol_binding(
+    protocol_binding, expected_type
+):
+    from aegis._internal.errors import WorkflowProtocolViolationError
+
+    evidence = {
+        "supportedInterfaces": [
+            {"protocolBinding": protocol_binding, "protocolVersion": "1.0"}
+        ]
+    }
+    with _make_session(protocol_constraints={"a2a": {}}) as session:
+        with pytest.raises(WorkflowProtocolViolationError) as exc_info:
+            session.enforce_step_pre_call(_direct_a2a_inv(evidence))
+    assert exc_info.value.details.get("reason_code") == (
+        "WORKFLOW_PROTOCOL_A2A_BINDING_REQUIRED"
+    )
+    assert exc_info.value.details.get("protocol_binding_type") == expected_type
+
+
+def test_session_rejects_non_string_a2a_top_level_protocol_binding():
+    from aegis._internal.errors import WorkflowProtocolViolationError
+
+    evidence = {
+        "protocolBinding": ["JSONRPC"],
+        "supportedInterfaces": [
+            {"protocolBinding": "JSONRPC", "protocolVersion": "1.0"}
+        ],
+    }
+    with _make_session(protocol_constraints={"a2a": {}}) as session:
+        with pytest.raises(WorkflowProtocolViolationError) as exc_info:
+            session.enforce_step_pre_call(_direct_a2a_inv(evidence))
+    assert exc_info.value.details.get("reason_code") == (
+        "WORKFLOW_PROTOCOL_A2A_BINDING_REQUIRED"
+    )
+    assert exc_info.value.details.get("protocol_binding_type") == "list"
+
+
 def test_session_honors_allowed_a2a_protocol_bindings():
     from aegis._internal.errors import WorkflowProtocolViolationError
 

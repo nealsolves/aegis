@@ -222,6 +222,14 @@ def _raise_a2a_protocol_error(
     raise WorkflowProtocolViolationError(message, details=details)
 
 
+def _a2a_binding_is_grpc(value: Any) -> bool:
+    return isinstance(value, str) and value.casefold() in _A2A_GRPC_BINDINGS
+
+
+def _a2a_transport_is_grpc(value: Any) -> bool:
+    return isinstance(value, str) and value.casefold() == "grpc"
+
+
 def _validate_a2a_protocol_evidence(
     evidence: Any,
     constraints: dict[str, Any],
@@ -243,13 +251,10 @@ def _validate_a2a_protocol_evidence(
             reason_code="WORKFLOW_PROTOCOL_A2A_COMPATIBILITY_REQUIRED",
         )
 
-    def _cf(v: Any) -> Any:
-        return v.casefold() if isinstance(v, str) else v
-
     if (
-        _cf(evidence.get("transport")) == "grpc"
-        or _cf(evidence.get("selected_protocol_binding")) in _A2A_GRPC_BINDINGS
-        or _cf(evidence.get("protocolBinding")) in _A2A_GRPC_BINDINGS
+        _a2a_transport_is_grpc(evidence.get("transport"))
+        or _a2a_binding_is_grpc(evidence.get("selected_protocol_binding"))
+        or _a2a_binding_is_grpc(evidence.get("protocolBinding"))
     ):
         _raise_a2a_protocol_error(
             "gRPC transport is not supported for a2a in v0.9.0",
@@ -261,9 +266,27 @@ def _validate_a2a_protocol_evidence(
             extra_details={"transport": evidence.get("transport")},
         )
 
+    _camel_binding = evidence.get("protocolBinding")
+    if "protocolBinding" in evidence and _camel_binding is not None and not isinstance(
+        _camel_binding, str
+    ):
+        _raise_a2a_protocol_error(
+            "A2A evidence protocolBinding must be a string",
+            session_id=session_id,
+            step_id=step_id,
+            required_version=required_version,
+            allowed_bindings=allowed_bindings,
+            reason_code="WORKFLOW_PROTOCOL_A2A_BINDING_REQUIRED",
+            extra_details={
+                "protocol_binding_type": type(_camel_binding).__name__,
+            },
+        )
+
     for _binding_key in ("selected_protocol_binding", "protocol_binding"):
         _selected = evidence.get(_binding_key)
-        if _selected is not None and _selected not in allowed_bindings:
+        if _selected is not None and (
+            not isinstance(_selected, str) or _selected not in allowed_bindings
+        ):
             _raise_a2a_protocol_error(
                 f"A2A evidence {_binding_key}={_selected!r} is not in allowed_protocol_bindings",
                 session_id=session_id,
@@ -271,7 +294,10 @@ def _validate_a2a_protocol_evidence(
                 required_version=required_version,
                 allowed_bindings=allowed_bindings,
                 reason_code="WORKFLOW_PROTOCOL_A2A_BINDING_REQUIRED",
-                extra_details={_binding_key: _selected},
+                extra_details={
+                    _binding_key: _selected,
+                    f"{_binding_key}_type": type(_selected).__name__,
+                },
             )
 
     interfaces = evidence.get("supportedInterfaces")
@@ -297,6 +323,20 @@ def _validate_a2a_protocol_evidence(
                 reason_code="WORKFLOW_PROTOCOL_A2A_COMPATIBILITY_REQUIRED",
                 extra_details={"interface_index": index},
             )
+        binding = interface.get("protocolBinding")
+        if "protocolBinding" in interface and not isinstance(binding, str):
+            _raise_a2a_protocol_error(
+                "A2A supportedInterfaces[].protocolBinding must be a string",
+                session_id=session_id,
+                step_id=step_id,
+                required_version=required_version,
+                allowed_bindings=allowed_bindings,
+                reason_code="WORKFLOW_PROTOCOL_A2A_BINDING_REQUIRED",
+                extra_details={
+                    "interface_index": index,
+                    "protocol_binding_type": type(binding).__name__,
+                },
+            )
 
     # Second pass: scan ALL interfaces for gRPC markers before accepting any
     # binding. A gRPC entry at the required version (or the only interface) is
@@ -306,8 +346,8 @@ def _validate_a2a_protocol_evidence(
         binding = interface.get("protocolBinding")
         version = interface.get("protocolVersion")
         has_grpc_marker = (
-            _cf(binding) in _A2A_GRPC_BINDINGS
-            or _cf(interface.get("transport")) == "grpc"
+            _a2a_binding_is_grpc(binding)
+            or _a2a_transport_is_grpc(interface.get("transport"))
         )
         if has_grpc_marker and (version == required_version or len(interfaces) == 1):
             _raise_a2a_protocol_error(
