@@ -1152,3 +1152,92 @@ def test_session_rejects_mixed_case_grpc_transport_in_evidence(transport_value):
     with _make_session(protocol_constraints={"a2a": {}}) as session:
         with pytest.raises(WorkflowProtocolViolationError):
             session.enforce_step_pre_call(_direct_a2a_inv(evidence))
+
+
+# ---------------------------------------------------------------------------
+# P2 (new): validate ALL interfaces before accepting — interface-order bypass
+# ---------------------------------------------------------------------------
+
+def test_validate_agent_card_rejects_grpc_after_valid_jsonrpc():
+    """P2: JSONRPC first, then gRPC at required_version — must reject the whole card."""
+    from aegis._internal.errors import WorkflowProtocolViolationError
+    from aegis.a2a_adapter import _validate_agent_card
+
+    card = {
+        **_AGENT_CARD_JSONRPC,
+        "supportedInterfaces": [
+            {"protocolBinding": "JSONRPC", "protocolVersion": "1.0"},
+            {"protocolBinding": "grpc", "protocolVersion": "1.0"},
+        ],
+    }
+    constraints = {
+        "protocol_version": "1.0",
+        "allowed_protocol_bindings": ["JSONRPC", "HTTP+JSON"],
+    }
+    with pytest.raises(WorkflowProtocolViolationError):
+        _validate_agent_card(card, constraints)
+
+
+@pytest.mark.parametrize("grpc_binding", ["grpc", "GRPC", "gRPC"])
+def test_validate_agent_card_rejects_grpc_after_valid_http_json(grpc_binding):
+    """P2: HTTP+JSON first, then gRPC at required_version — must reject."""
+    from aegis._internal.errors import WorkflowProtocolViolationError
+    from aegis.a2a_adapter import _validate_agent_card
+
+    card = {
+        **_AGENT_CARD_JSONRPC,
+        "supportedInterfaces": [
+            {"protocolBinding": "HTTP+JSON", "protocolVersion": "1.0"},
+            {"protocolBinding": grpc_binding, "protocolVersion": "1.0"},
+        ],
+    }
+    constraints = {
+        "protocol_version": "1.0",
+        "allowed_protocol_bindings": ["JSONRPC", "HTTP+JSON"],
+    }
+    with pytest.raises(WorkflowProtocolViolationError):
+        _validate_agent_card(card, constraints)
+
+
+def test_session_rejects_grpc_after_valid_jsonrpc_in_supported_interfaces():
+    """P2: direct A2A evidence with JSONRPC first, gRPC at required_version second."""
+    from aegis._internal.errors import WorkflowProtocolViolationError
+
+    evidence = {
+        "supportedInterfaces": [
+            {"protocolBinding": "JSONRPC", "protocolVersion": "1.0"},
+            {"protocolBinding": "grpc", "protocolVersion": "1.0"},
+        ]
+    }
+    with _make_session(protocol_constraints={"a2a": {}}) as session:
+        with pytest.raises(WorkflowProtocolViolationError):
+            session.enforce_step_pre_call(_direct_a2a_inv(evidence))
+
+
+@pytest.mark.parametrize("grpc_binding", ["grpc", "GRPC", "gRPC"])
+def test_session_rejects_grpc_transport_after_valid_binding_in_supported_interfaces(grpc_binding):
+    """P2: gRPC via transport field in a later interface must still be caught."""
+    from aegis._internal.errors import WorkflowProtocolViolationError
+
+    evidence = {
+        "supportedInterfaces": [
+            {"protocolBinding": "JSONRPC", "protocolVersion": "1.0"},
+            {"protocolBinding": "JSONRPC", "protocolVersion": "1.0", "transport": grpc_binding},
+        ]
+    }
+    with _make_session(protocol_constraints={"a2a": {}}) as session:
+        with pytest.raises(WorkflowProtocolViolationError):
+            session.enforce_step_pre_call(_direct_a2a_inv(evidence))
+
+
+def test_session_accepts_older_version_grpc_with_valid_required_version_fallback():
+    """Session path: gRPC at old version + JSONRPC at required version = accepted."""
+    evidence = {
+        "supportedInterfaces": [
+            {"protocolBinding": "GRPC", "protocolVersion": "0.3"},
+            {"protocolBinding": "JSONRPC", "protocolVersion": "1.0"},
+        ]
+    }
+    with _make_session(protocol_constraints={"a2a": {}}) as session:
+        token = session.enforce_step_pre_call(_direct_a2a_inv(evidence))
+        session.discard_adapter_step(token, rollback_authorization=True)

@@ -9,7 +9,7 @@ import logging
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, NoReturn
 
 from aegis._internal.errors import (
     InvocationValidationError,
@@ -207,7 +207,7 @@ def _raise_a2a_protocol_error(
     allowed_bindings: list[str],
     reason_code: str,
     extra_details: dict[str, Any] | None = None,
-) -> None:
+) -> NoReturn:
     from aegis._internal.errors import WorkflowProtocolViolationError
     details: dict[str, Any] = {
         "session_id": session_id,
@@ -285,7 +285,7 @@ def _validate_a2a_protocol_evidence(
             reason_code="WORKFLOW_PROTOCOL_A2A_COMPATIBILITY_REQUIRED",
         )
 
-    version_match_seen = False
+    # First pass: validate structure before anything else.
     for index, interface in enumerate(interfaces):
         if not isinstance(interface, dict):
             _raise_a2a_protocol_error(
@@ -298,15 +298,17 @@ def _validate_a2a_protocol_evidence(
                 extra_details={"interface_index": index},
             )
 
+    # Second pass: scan ALL interfaces for gRPC markers before accepting any
+    # binding. A gRPC entry at the required version (or the only interface) is
+    # rejected regardless of position. An older-version gRPC entry alongside a
+    # valid non-gRPC required-version entry is allowed — it will not be selected.
+    for index, interface in enumerate(interfaces):
         binding = interface.get("protocolBinding")
         version = interface.get("protocolVersion")
         has_grpc_marker = (
             _cf(binding) in _A2A_GRPC_BINDINGS
             or _cf(interface.get("transport")) == "grpc"
         )
-        # A gRPC interface at the required version (or the only interface) is
-        # rejected. A gRPC interface at an *older* version alongside a valid
-        # non-gRPC interface is intentionally skipped — it is not selected.
         if has_grpc_marker and (version == required_version or len(interfaces) == 1):
             _raise_a2a_protocol_error(
                 "gRPC transport is not supported for a2a in v0.9.0",
@@ -318,6 +320,10 @@ def _validate_a2a_protocol_evidence(
                 extra_details={"interface_index": index},
             )
 
+    version_match_seen = False
+    for interface in interfaces:
+        binding = interface.get("protocolBinding")
+        version = interface.get("protocolVersion")
         if version == required_version:
             version_match_seen = True
             if binding in allowed_bindings:

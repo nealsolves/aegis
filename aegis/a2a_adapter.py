@@ -79,6 +79,10 @@ _TERMINAL_TASK_STATES = frozenset({
 })
 
 
+def _cf(value: Any) -> Any:
+    return value.casefold() if isinstance(value, str) else value
+
+
 def _is_scalar(value: Any) -> bool:
     return value is None or isinstance(value, (str, int, float, bool))
 
@@ -340,8 +344,9 @@ def _validate_agent_card(
         "allowed_protocol_bindings",
         ["JSONRPC", "HTTP+JSON"],
     )
-    version_match_seen = False
 
+    # First pass: validate structure and normalize into plain dicts.
+    interface_dicts: list[dict[str, Any]] = []
     for index, interface in enumerate(interfaces):
         if not isinstance(interface, MappingABC):
             raise InvocationValidationError(
@@ -351,26 +356,31 @@ def _validate_agent_card(
                     "reason_code": "WORKFLOW_PROTOCOL_A2A_AGENT_CARD_INVALID",
                 },
             )
-        interface_dict = dict(interface)
+        interface_dicts.append(dict(interface))
+
+    # Second pass: scan ALL interfaces for gRPC markers before accepting any
+    # binding. A gRPC entry at the required version (or the only interface) is
+    # rejected regardless of its position. An older-version gRPC entry
+    # alongside a valid non-gRPC required-version entry is allowed — it will
+    # simply not be selected.
+    for index, interface_dict in enumerate(interface_dicts):
         binding = interface_dict.get("protocolBinding")
         version = interface_dict.get("protocolVersion")
-        _binding_cf = binding.casefold() if isinstance(binding, str) else binding
-        _transport_cf = interface_dict.get("transport")
-        _transport_cf = _transport_cf.casefold() if isinstance(_transport_cf, str) else _transport_cf
         has_grpc_marker = (
-            _binding_cf in _GRPC_BINDINGS
-            or _transport_cf == "grpc"
+            _cf(binding) in _GRPC_BINDINGS
+            or _cf(interface_dict.get("transport")) == "grpc"
         )
-        # A gRPC interface at the required version (or the only interface) is
-        # rejected. A gRPC interface at an *older* version alongside a valid
-        # non-gRPC interface is intentionally skipped — it is not selected.
-        if has_grpc_marker and (version == required_version or len(interfaces) == 1):
+        if has_grpc_marker and (version == required_version or len(interface_dicts) == 1):
             raise _workflow_protocol_error(
                 "gRPC transport is not supported for governed A2A in v0.9.0",
                 reason_code="WORKFLOW_PROTOCOL_GRPC_UNSUPPORTED",
                 details={"interface_index": index},
             )
 
+    version_match_seen = False
+    for interface_dict in interface_dicts:
+        binding = interface_dict.get("protocolBinding")
+        version = interface_dict.get("protocolVersion")
         if version == required_version:
             version_match_seen = True
             if binding in allowed_bindings:
