@@ -1083,9 +1083,26 @@ class GovernanceSession:
         # 5E: Protocol constraints enforcement
         if self._protocol_constraints is not None:
             from aegis._internal.errors import WorkflowProtocolViolationError
-            _protocol = invocation.get("protocol") or (
-                invocation.get("context") or {}
-            ).get("protocol")
+            _ctx = invocation.get("context") or {}
+            _top_protocol = invocation.get("protocol")
+            _context_protocol = _ctx.get("protocol")
+            if (
+                _top_protocol is not None
+                and _context_protocol is not None
+                and _top_protocol != _context_protocol
+            ):
+                raise WorkflowProtocolViolationError(
+                    "Conflicting protocol declarations in invocation['protocol'] "
+                    "and invocation['context']['protocol']",
+                    details={
+                        "session_id": self._session_id,
+                        "step_id": resolved_step_id,
+                        "protocol": _top_protocol,
+                        "context_protocol": _context_protocol,
+                        "reason_code": "WORKFLOW_PROTOCOL_CONFLICT",
+                    },
+                )
+            _protocol = _top_protocol or _context_protocol
             if _protocol is None:
                 raise WorkflowProtocolViolationError(
                     "protocol_constraints declared but no protocol specified in invocation "
@@ -1107,7 +1124,6 @@ class GovernanceSession:
                         "declared_protocols": list(self._protocol_constraints),
                     },
                 )
-            _ctx = invocation.get("context") or {}
             _proto_evidence = _ctx.get("protocol_evidence")
             if not isinstance(_proto_evidence, dict) or _protocol not in _proto_evidence:
                 raise WorkflowProtocolViolationError(

@@ -389,6 +389,14 @@ def test_validate_task_envelope_accepts_every_normative_task_state():
         "done",                  # not in spec
         "input_required",        # underscore instead of hyphen
         "auth_required",         # underscore instead of hyphen
+        "submitted",             # JSON wire shorthand
+        "working",
+        "completed",
+        "failed",
+        "canceled",
+        "input-required",
+        "rejected",
+        "auth-required",
     ],
 )
 def test_validate_task_envelope_rejects_shorthand_or_misspelled_states(state):
@@ -400,61 +408,39 @@ def test_validate_task_envelope_rejects_shorthand_or_misspelled_states(state):
 
 
 # ---------------------------------------------------------------------------
-# P1: JSON wire value acceptance for JSON transports
+# P1: JSON wire shorthand values are rejected
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize(
-    "json_state,expected_proto",
+    "json_state",
     [
-        ("submitted", "TASK_STATE_SUBMITTED"),
-        ("working", "TASK_STATE_WORKING"),
-        ("completed", "TASK_STATE_COMPLETED"),
-        ("failed", "TASK_STATE_FAILED"),
-        ("canceled", "TASK_STATE_CANCELED"),
-        ("input-required", "TASK_STATE_INPUT_REQUIRED"),
-        ("rejected", "TASK_STATE_REJECTED"),
-        ("auth-required", "TASK_STATE_AUTH_REQUIRED"),
+        "submitted",
+        "working",
+        "completed",
+        "failed",
+        "canceled",
+        "input-required",
+        "rejected",
+        "auth-required",
     ],
 )
-def test_validate_task_envelope_accepts_json_wire_values_and_normalizes(
-    json_state, expected_proto
-):
+def test_validate_task_envelope_rejects_json_wire_shorthand_states(json_state):
+    from aegis._internal.errors import WorkflowProtocolViolationError
     from aegis.a2a_adapter import _validate_task_envelope
 
-    task = {"id": "t1", "status": {"state": json_state}}
-    result = _validate_task_envelope(task)
-    assert result["status"]["state"] == expected_proto
+    with pytest.raises(WorkflowProtocolViolationError):
+        _validate_task_envelope({"id": "t1", "status": {"state": json_state}})
 
 
-def test_validate_task_envelope_json_completed_is_terminal():
-    from aegis.a2a_adapter import _task_summary, _validate_task_envelope
-
-    task = {"id": "t1", "contextId": "ctx-1", "status": {"state": "completed"}, "artifacts": []}
-    normalized = _validate_task_envelope(task)
-    summary = _task_summary(normalized)
-    assert summary["task_state"] == "TASK_STATE_COMPLETED"
-    assert summary["terminal"] is True
-
-
-def test_validate_task_envelope_json_working_is_not_terminal():
-    from aegis.a2a_adapter import _task_summary, _validate_task_envelope
-
-    task = {"id": "t1", "status": {"state": "working"}}
-    normalized = _validate_task_envelope(task)
-    summary = _task_summary(normalized)
-    assert summary["task_state"] == "TASK_STATE_WORKING"
-    assert summary["terminal"] is False
-
-
-def test_validate_task_updates_accepts_json_wire_values_and_normalizes():
+def test_validate_task_updates_rejects_json_wire_shorthand_states():
+    from aegis._internal.errors import WorkflowProtocolViolationError
     from aegis.a2a_adapter import _validate_task_updates
 
-    summary = _validate_task_updates([
-        {"status": {"state": "working"}},
-        {"status": {"state": "completed"}},
-    ])
-    assert summary["status_update_count"] == 2
-    assert summary["latest_task_state"] == "TASK_STATE_COMPLETED"
+    with pytest.raises(WorkflowProtocolViolationError):
+        _validate_task_updates([
+            {"status": {"state": "TASK_STATE_WORKING"}},
+            {"status": {"state": "completed"}},
+        ])
 
 
 @pytest.mark.parametrize(
@@ -475,7 +461,8 @@ def test_validate_task_envelope_still_rejects_non_spec_states(bad_state):
         _validate_task_envelope({"status": {"state": bad_state}})
 
 
-def test_complete_step_with_json_wire_task_state_normalizes_metadata():
+def test_complete_step_rejects_json_wire_task_state():
+    from aegis._internal.errors import WorkflowProtocolViolationError
     from aegis.a2a_adapter import A2AAdapter
 
     adapter = A2AAdapter()
@@ -488,11 +475,8 @@ def test_complete_step_with_json_wire_task_state_normalizes_metadata():
     }
     with _make_session(protocol_constraints={"a2a": {}}) as session:
         prepared = _prepare(adapter=adapter, session=session)
-        adapter.complete_step(prepared, dict(_GOOD_OUTPUT), task_envelope=json_task)
-        metadata = session._steps[-1]["metadata"]
-
-    assert metadata["task_state"] == "TASK_STATE_COMPLETED"
-    assert metadata["terminal"] is True
+        with pytest.raises(WorkflowProtocolViolationError):
+            adapter.complete_step(prepared, dict(_GOOD_OUTPUT), task_envelope=json_task)
 
 
 @pytest.mark.parametrize(
@@ -527,7 +511,7 @@ def test_validate_task_updates_counts_and_rejects_invalid_state():
         _validate_task_updates([{"status": {"state": "done"}}])
 
 
-def test_validate_task_updates_caps_at_max_summaries():
+def test_validate_task_updates_returns_actual_count_beyond_max_summaries():
     from aegis.a2a_adapter import _MAX_TASK_UPDATE_SUMMARIES, _validate_task_updates
 
     updates = [
@@ -535,7 +519,7 @@ def test_validate_task_updates_caps_at_max_summaries():
         for _ in range(_MAX_TASK_UPDATE_SUMMARIES + 10)
     ]
     summary = _validate_task_updates(updates)
-    assert summary["status_update_count"] == _MAX_TASK_UPDATE_SUMMARIES
+    assert summary["status_update_count"] == _MAX_TASK_UPDATE_SUMMARIES + 10
 
 
 def test_validate_agent_card_accepts_grpc_at_wrong_version_with_valid_fallback():
@@ -1014,6 +998,24 @@ def test_prepare_step_rejects_non_a2a_protocol_in_context():
             )
 
 
+def test_prepare_step_rejects_conflicting_top_level_and_context_protocol():
+    from aegis._internal.errors import WorkflowUnsupportedBindingError
+    from aegis.a2a_adapter import A2AAdapter
+
+    inv = copy.deepcopy(_BASE_INV)
+    inv["protocol"] = "a2a"
+    inv["context"] = {**inv["context"], "protocol": "bedrock"}
+
+    with _make_session(protocol_constraints={"a2a": {}}) as session:
+        with pytest.raises(WorkflowUnsupportedBindingError):
+            A2AAdapter().prepare_step(
+                session,
+                inv,
+                binding=_binding(),
+                agent_card=copy.deepcopy(_AGENT_CARD_JSONRPC),
+            )
+
+
 def test_prepare_step_accepts_explicit_a2a_protocol():
     from aegis.a2a_adapter import A2AAdapter
 
@@ -1066,16 +1068,21 @@ def test_validate_task_updates_rejects_non_mapping_beyond_cap():
         _validate_task_updates(valid + [object()])
 
 
-def test_validate_task_updates_caps_metadata_but_returns_correct_latest_state():
+def test_validate_task_updates_returns_actual_counts_and_latest_state_beyond_cap():
     from aegis.a2a_adapter import _MAX_TASK_UPDATE_SUMMARIES, _validate_task_updates
 
     updates = [
         {"status": {"state": "TASK_STATE_WORKING"}}
-        for _ in range(_MAX_TASK_UPDATE_SUMMARIES + 5)
+        for _ in range(_MAX_TASK_UPDATE_SUMMARIES)
     ]
+    updates.extend([
+        {"status": {"state": "TASK_STATE_COMPLETED"}},
+        {"artifacts": [{"artifactId": "a1"}, {"artifactId": "a2"}]},
+    ])
     summary = _validate_task_updates(updates)
-    assert summary["status_update_count"] == _MAX_TASK_UPDATE_SUMMARIES
-    assert summary["latest_task_state"] == "TASK_STATE_WORKING"
+    assert summary["status_update_count"] == _MAX_TASK_UPDATE_SUMMARIES + 1
+    assert summary["latest_task_state"] == "TASK_STATE_COMPLETED"
+    assert summary["artifact_update_count"] == 2
 
 
 # ---------------------------------------------------------------------------

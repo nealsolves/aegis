@@ -59,18 +59,6 @@ _TASK_STATES = frozenset({
     "TASK_STATE_REJECTED",
     "TASK_STATE_AUTH_REQUIRED",
 })
-# JSON wire values used by JSONRPC and HTTP+JSON transports (A2A spec §4).
-# Maps to the canonical proto enum name stored in governance artifacts.
-_JSON_TO_TASK_STATE: dict[str, str] = {
-    "submitted": "TASK_STATE_SUBMITTED",
-    "working": "TASK_STATE_WORKING",
-    "completed": "TASK_STATE_COMPLETED",
-    "failed": "TASK_STATE_FAILED",
-    "canceled": "TASK_STATE_CANCELED",
-    "input-required": "TASK_STATE_INPUT_REQUIRED",
-    "rejected": "TASK_STATE_REJECTED",
-    "auth-required": "TASK_STATE_AUTH_REQUIRED",
-}
 _TERMINAL_TASK_STATES = frozenset({
     "TASK_STATE_COMPLETED",
     "TASK_STATE_FAILED",
@@ -407,16 +395,15 @@ def _validate_task_state(state: Any, *, label: str) -> str:
             reason_code="WORKFLOW_PROTOCOL_A2A_TASK_STATE_INVALID",
             details={"task_state": state},
         )
-    normalized = _JSON_TO_TASK_STATE.get(state, state)
-    if normalized not in _TASK_STATES:
+    if state not in _TASK_STATES:
         raise _workflow_protocol_error(
             f"{label} must be one of the normative TASK_STATE_* values",
             reason_code="WORKFLOW_PROTOCOL_A2A_TASK_STATE_INVALID",
             details={"task_state": state},
         )
-    if normalized == "TASK_STATE_UNSPECIFIED":
+    if state == "TASK_STATE_UNSPECIFIED":
         logger.warning("A2A task state TASK_STATE_UNSPECIFIED received")
-    return normalized
+    return state
 
 
 def _validate_task_envelope(
@@ -528,16 +515,14 @@ def _validate_task_updates(
                 status.get("state"),
                 label=f"task_updates[{index}].status.state",
             )
-            if index < _MAX_TASK_UPDATE_SUMMARIES:
-                latest_task_state = raw_state
-                status_update_count += 1
+            status_update_count += 1
+            latest_task_state = raw_state
 
-        if index < _MAX_TASK_UPDATE_SUMMARIES:
-            if "artifact" in update_map:
-                artifact_update_count += 1
-            elif "artifacts" in update_map:
-                artifacts = update_map.get("artifacts")
-                artifact_update_count += len(artifacts) if isinstance(artifacts, list) else 1
+        if "artifact" in update_map:
+            artifact_update_count += 1
+        elif "artifacts" in update_map:
+            artifacts = update_map.get("artifacts")
+            artifact_update_count += len(artifacts) if isinstance(artifacts, list) else 1
 
     return {
         "status_update_count": status_update_count,
@@ -656,12 +641,17 @@ class A2AAdapter:
             "request_metadata": _redacted_request_metadata(request_metadata),
         }
 
-        existing_protocol = invocation.get("protocol") or ctx_raw.get("protocol")
-        if existing_protocol is not None and existing_protocol != "a2a":
+        for protocol_field, existing_protocol in (
+            ("protocol", invocation.get("protocol")),
+            ("context.protocol", ctx_raw.get("protocol")),
+        ):
+            if existing_protocol is None or existing_protocol == "a2a":
+                continue
             raise WorkflowUnsupportedBindingError(
-                f"invocation declares protocol={existing_protocol!r}; "
+                f"invocation declares {protocol_field}={existing_protocol!r}; "
                 "A2AAdapter cannot enrich a non-A2A invocation",
                 details={
+                    "protocol_field": protocol_field,
                     "existing_protocol": existing_protocol,
                     "reason_code": "WORKFLOW_UNSUPPORTED_BINDING",
                 },
