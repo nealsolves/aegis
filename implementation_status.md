@@ -2,15 +2,16 @@
 
 **Target Version:** `0.9.0` Beta
 **Baseline Version:** `0.3.3`
-**Active Branch:** `feat/v0.9-10d-research-safety-addendum`
-**Last Updated:** 2026-05-03
+**Active Branch:** `feat/v0.9-10-a2a-adapter`
+**Last Updated:** 2026-05-04
 
 ---
 
 ## Overall Progress
 
 - PR-01 through PR-09 are complete.
-- PR-10a and PR-10b have not started.
+- PR-10a has not started.
+- PR-10b is implemented locally on `feat/v0.9-10-a2a-adapter`.
 - PR-10c is complete on local `develop` and is pending merge to `origin/develop` via PR.
 - PR-10d is implemented locally as a bounded research-informed safety addendum before PR-11.
 - PR-11 has not started.
@@ -26,7 +27,7 @@
 | Beta proof | complete | Clean-env proof, real failure/diagnosis/fix/rerun flow, and demo parity are in place |
 | Engine hardening | complete | Budgets, transitions, protocol constraints, approvals, handoffs, and internal validator hooks are hardened |
 | Exports and ops | complete | `aegis workflow trace` and `aegis workflow export` ship on `develop` |
-| Optional adapters | partial | PR-10a and PR-10b not started; PR-10c complete on local `develop`, pending `origin/develop` merge; PR-10c surfaces absent from this branch |
+| Optional adapters | partial | PR-10b implemented locally; PR-10a not started; PR-10c complete on local `develop`, pending `origin/develop` merge |
 | Research safety addendum | implemented locally | PR-10d adds graph/topology lint, doctor remediation, export rationale, and safety smoke tests |
 | Beta freeze | not started | Begins in PR-11 |
 
@@ -57,8 +58,8 @@
 | PR-08 | `feat/v0.9-08-engine-hardening` | complete | Sequencing, approvals, budgets, transitions, handoffs, protocol rules, and internal validator hooks |
 | PR-09 | `feat/v0.9-09-exports-and-ops` | complete | Trace, export, and operator polish |
 | PR-10a | `feat/v0.9-10-bedrock-adapter` | not started | Optional Bedrock adapter with alias-backed identity rules |
-| PR-10b | `feat/v0.9-10-a2a-adapter` | not started | Optional A2A adapter with strict wire-contract rules |
-| PR-10c | `feat/v0.9-10-openai-agents-adapter` | complete | Optional OpenAI Agents SDK adapter ships on local `develop`; pending merge to `origin/develop` via PR; surfaces absent from this branch |
+| PR-10b | `feat/v0.9-10-a2a-adapter` | implemented locally | Optional A2A adapter with strict wire-contract rules |
+| PR-10c | `feat/v0.9-10-openai-agents-adapter` | complete | Optional OpenAI Agents SDK adapter ships on local `develop`; pending merge to `origin/develop` via PR |
 | PR-10d | `feat/v0.9-10d-research-safety-addendum` | implemented locally | Research-informed lint, doctor, export, safety smoke, and adapter-fixture hardening |
 | PR-11 | `feat/v0.9-11-beta-freeze` -> `release/v0.9.0` | not started | Public API freeze, beta gate verification, and release cut |
 
@@ -110,13 +111,27 @@
 - [x] `docs/reference/external/OPENAI_AGENTS_ADAPTER.md` advanced recipe
 - [x] default local adopter path unchanged and green without `openai-agents` installed
 
+## PR-10b Deliverables
+
+- [x] `A2AAdapter` public submodule with no top-level `aegis` re-export
+- [x] no required `a2a-sdk`, protobuf, or transport dependency
+- [x] strict `workflow.protocol_constraints.a2a` policy schema in root and packaged schemas
+- [x] runtime A2A protocol checks use `supportedInterfaces[].protocolVersion`
+- [x] `JSONRPC` and `HTTP+JSON` are the only accepted governed bindings
+- [x] gRPC evidence rejects with typed workflow protocol violations
+- [x] normative `TASK_STATE_*` values are accepted and shorthand/misspelled states reject
+- [x] workflow step metadata stores redacted A2A summaries only
+- [x] fixture-only tests ship in `tests/test_a2a_adapter.py`
+- [x] `docs/reference/external/A2A_ADAPTER.md` advanced recipe
+- [x] default local adopter path remains unchanged and green without A2A dependencies
+
 ## PR-10d Deliverables
 
 - [x] graph/topology lint rules with bounded witness traces
 - [x] temporal-check approximations use existing DSL fields and starter metadata only
 - [x] source and memory provenance warnings live in doctor without adding full memory governance
 - [x] backward-compatible workflow export governance rationale metadata
-- [x] adapter-informed fixture gates are deferred because PR-10a, PR-10b, and PR-10c source surfaces are absent from this branch
+- [x] A2A adapter-informed fixture gates are covered by PR-10b tests; unavailable adapter surfaces remain deferred until their source surfaces are present
 - [x] internal multi-aspect `ValidatorHook` example without public promotion
 - [x] starter and workflow safety smoke tests with no external services
 - [x] release docs confirm PR-10d does not change the default local adopter path
@@ -124,9 +139,9 @@
 Deferred PR-10d adapter gate: Bedrock alias-backed participant identity tests
 remain blocked until PR-10a surfaces are present.
 
-Deferred PR-10d adapter gate: A2A capability and protocol mismatch tests remain
-blocked until PR-10b surfaces are present.
+PR-10d A2A adapter gate: A2A capability and protocol mismatch tests are now
+covered by PR-10b fixtures.
 
-Deferred PR-10d adapter gate: OpenAI Agents SDK capability mismatch,
-side-effecting tool, and unsupported dynamic-tool tests remain blocked until
-PR-10c source surfaces are present on this target branch.
+PR-10d OpenAI Agents adapter gate: capability mismatch, side-effecting tool,
+and unsupported dynamic-tool tests are covered where PR-10c source surfaces are
+present.

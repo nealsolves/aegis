@@ -8,8 +8,9 @@ import hashlib
 import logging
 import time
 import uuid
+from collections.abc import Mapping as MappingABC
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, NoReturn
 
 from aegis._internal.errors import (
     InvocationValidationError,
@@ -56,6 +57,10 @@ _VALID_TRANSITIONS: dict[str, set[str]] = {
     STATE_CANCELED: set(),
     STATE_FINALIZED: set(),
 }
+
+_A2A_PROTOCOL_VERSION = "1.0"
+_A2A_ALLOWED_PROTOCOL_BINDINGS = frozenset({"JSONRPC", "HTTP+JSON"})
+_A2A_GRPC_BINDINGS = frozenset({"grpc"})
 
 
 # ---------------------------------------------------------------------------
@@ -117,6 +122,282 @@ def _compute_policy_file(
         return next(iter(unique))
     # Rule 3: heterogeneous
     return None
+
+
+def _a2a_protocol_constraints(
+    raw_constraints: Any,
+    *,
+    session_id: str,
+    step_id: str,
+) -> dict[str, Any]:
+    """Resolve A2A protocol constraints and fail closed on malformed values."""
+    if not isinstance(raw_constraints, dict):
+        from aegis._internal.errors import WorkflowProtocolViolationError
+        raise WorkflowProtocolViolationError(
+            "A2A protocol constraints must be a mapping",
+            details={
+                "session_id": session_id,
+                "step_id": step_id,
+                "protocol": "a2a",
+                "reason_code": "WORKFLOW_PROTOCOL_A2A_CONSTRAINTS_INVALID",
+            },
+        )
+
+    version = raw_constraints.get("protocol_version", _A2A_PROTOCOL_VERSION)
+    allowed = raw_constraints.get(
+        "allowed_protocol_bindings",
+        ["JSONRPC", "HTTP+JSON"],
+    )
+    require_task_state = raw_constraints.get("require_task_state", True)
+
+    if version != _A2A_PROTOCOL_VERSION:
+        from aegis._internal.errors import WorkflowProtocolViolationError
+        raise WorkflowProtocolViolationError(
+            "A2A protocol_version must be '1.0'",
+            details={
+                "session_id": session_id,
+                "step_id": step_id,
+                "protocol": "a2a",
+                "protocol_version": version,
+                "reason_code": "WORKFLOW_PROTOCOL_A2A_CONSTRAINTS_INVALID",
+            },
+        )
+    allowed_bindings_valid = False
+    if isinstance(allowed, (list, tuple)) and allowed:
+        allowed_list = list(allowed)
+        allowed_bindings_valid = (
+            all(isinstance(binding, str) for binding in allowed_list)
+            and len(set(allowed_list)) == len(allowed_list)
+            and all(binding in _A2A_ALLOWED_PROTOCOL_BINDINGS for binding in allowed_list)
+        )
+    if not allowed_bindings_valid:
+        from aegis._internal.errors import WorkflowProtocolViolationError
+        raise WorkflowProtocolViolationError(
+            "A2A allowed_protocol_bindings must contain unique JSONRPC or HTTP+JSON values",
+            details={
+                "session_id": session_id,
+                "step_id": step_id,
+                "protocol": "a2a",
+                "allowed_protocol_bindings": allowed,
+                "reason_code": "WORKFLOW_PROTOCOL_A2A_CONSTRAINTS_INVALID",
+            },
+        )
+    if not isinstance(require_task_state, bool):
+        from aegis._internal.errors import WorkflowProtocolViolationError
+        raise WorkflowProtocolViolationError(
+            "A2A require_task_state must be a boolean",
+            details={
+                "session_id": session_id,
+                "step_id": step_id,
+                "protocol": "a2a",
+                "require_task_state": require_task_state,
+                "reason_code": "WORKFLOW_PROTOCOL_A2A_CONSTRAINTS_INVALID",
+            },
+        )
+
+    return {
+        "protocol_version": version,
+        "allowed_protocol_bindings": list(allowed),
+        "require_task_state": require_task_state,
+    }
+
+
+def _raise_a2a_protocol_error(
+    message: str,
+    *,
+    session_id: str,
+    step_id: str,
+    required_version: str,
+    allowed_bindings: list[str],
+    reason_code: str,
+    extra_details: dict[str, Any] | None = None,
+) -> NoReturn:
+    from aegis._internal.errors import WorkflowProtocolViolationError
+    details: dict[str, Any] = {
+        "session_id": session_id,
+        "step_id": step_id,
+        "protocol": "a2a",
+        "required_protocol_version": required_version,
+        "allowed_protocol_bindings": allowed_bindings,
+        "reason_code": reason_code,
+    }
+    if extra_details:
+        details.update(extra_details)
+    raise WorkflowProtocolViolationError(message, details=details)
+
+
+def _a2a_binding_is_grpc(value: Any) -> bool:
+    return isinstance(value, str) and value.casefold() in _A2A_GRPC_BINDINGS
+
+
+def _a2a_transport_is_grpc(value: Any) -> bool:
+    return isinstance(value, str) and value.casefold() == "grpc"
+
+
+def _validate_a2a_protocol_evidence(
+    evidence: Any,
+    constraints: dict[str, Any],
+    *,
+    session_id: str,
+    step_id: str,
+) -> None:
+    """Validate A2A evidence for callers that bypass A2AAdapter."""
+    required_version = constraints["protocol_version"]
+    allowed_bindings = constraints["allowed_protocol_bindings"]
+
+    if not isinstance(evidence, dict):
+        _raise_a2a_protocol_error(
+            "A2A protocol evidence must be a mapping",
+            session_id=session_id,
+            step_id=step_id,
+            required_version=required_version,
+            allowed_bindings=allowed_bindings,
+            reason_code="WORKFLOW_PROTOCOL_A2A_COMPATIBILITY_REQUIRED",
+        )
+
+    if (
+        _a2a_transport_is_grpc(evidence.get("transport"))
+        or _a2a_binding_is_grpc(evidence.get("selected_protocol_binding"))
+        or _a2a_binding_is_grpc(evidence.get("protocol_binding"))
+        or _a2a_binding_is_grpc(evidence.get("protocolBinding"))
+    ):
+        _raise_a2a_protocol_error(
+            "gRPC transport is not supported for a2a in v0.9.0",
+            session_id=session_id,
+            step_id=step_id,
+            required_version=required_version,
+            allowed_bindings=allowed_bindings,
+            reason_code="WORKFLOW_PROTOCOL_GRPC_UNSUPPORTED",
+            extra_details={"transport": evidence.get("transport")},
+        )
+
+    _camel_binding = evidence.get("protocolBinding")
+    if "protocolBinding" in evidence and _camel_binding is not None and not isinstance(
+        _camel_binding, str
+    ):
+        _raise_a2a_protocol_error(
+            "A2A evidence protocolBinding must be a string",
+            session_id=session_id,
+            step_id=step_id,
+            required_version=required_version,
+            allowed_bindings=allowed_bindings,
+            reason_code="WORKFLOW_PROTOCOL_A2A_BINDING_REQUIRED",
+            extra_details={
+                "protocol_binding_type": type(_camel_binding).__name__,
+            },
+        )
+
+    for _binding_key in (
+        "selected_protocol_binding",
+        "protocol_binding",
+        "protocolBinding",
+    ):
+        _selected = evidence.get(_binding_key)
+        if _selected is not None and (
+            not isinstance(_selected, str) or _selected not in allowed_bindings
+        ):
+            _raise_a2a_protocol_error(
+                f"A2A evidence {_binding_key}={_selected!r} is not in allowed_protocol_bindings",
+                session_id=session_id,
+                step_id=step_id,
+                required_version=required_version,
+                allowed_bindings=allowed_bindings,
+                reason_code="WORKFLOW_PROTOCOL_A2A_BINDING_REQUIRED",
+                extra_details={
+                    _binding_key: _selected,
+                    f"{_binding_key}_type": type(_selected).__name__,
+                },
+            )
+
+    interfaces = evidence.get("supportedInterfaces")
+    if not isinstance(interfaces, list) or not interfaces:
+        _raise_a2a_protocol_error(
+            "A2A evidence must include a non-empty supportedInterfaces list",
+            session_id=session_id,
+            step_id=step_id,
+            required_version=required_version,
+            allowed_bindings=allowed_bindings,
+            reason_code="WORKFLOW_PROTOCOL_A2A_COMPATIBILITY_REQUIRED",
+        )
+
+    # First pass: validate structure before anything else.
+    for index, interface in enumerate(interfaces):
+        if not isinstance(interface, dict):
+            _raise_a2a_protocol_error(
+                "A2A supportedInterfaces entries must be mappings",
+                session_id=session_id,
+                step_id=step_id,
+                required_version=required_version,
+                allowed_bindings=allowed_bindings,
+                reason_code="WORKFLOW_PROTOCOL_A2A_COMPATIBILITY_REQUIRED",
+                extra_details={"interface_index": index},
+            )
+        binding = interface.get("protocolBinding")
+        if "protocolBinding" in interface and not isinstance(binding, str):
+            _raise_a2a_protocol_error(
+                "A2A supportedInterfaces[].protocolBinding must be a string",
+                session_id=session_id,
+                step_id=step_id,
+                required_version=required_version,
+                allowed_bindings=allowed_bindings,
+                reason_code="WORKFLOW_PROTOCOL_A2A_BINDING_REQUIRED",
+                extra_details={
+                    "interface_index": index,
+                    "protocol_binding_type": type(binding).__name__,
+                },
+            )
+
+    # Second pass: scan ALL interfaces for gRPC markers before accepting any
+    # binding. A gRPC entry at the required version (or the only interface) is
+    # rejected regardless of position. An older-version gRPC entry alongside a
+    # valid non-gRPC required-version entry is allowed — it will not be selected.
+    for index, interface in enumerate(interfaces):
+        binding = interface.get("protocolBinding")
+        version = interface.get("protocolVersion")
+        has_grpc_marker = (
+            _a2a_binding_is_grpc(binding)
+            or _a2a_transport_is_grpc(interface.get("transport"))
+        )
+        if has_grpc_marker and (version == required_version or len(interfaces) == 1):
+            _raise_a2a_protocol_error(
+                "gRPC transport is not supported for a2a in v0.9.0",
+                session_id=session_id,
+                step_id=step_id,
+                required_version=required_version,
+                allowed_bindings=allowed_bindings,
+                reason_code="WORKFLOW_PROTOCOL_GRPC_UNSUPPORTED",
+                extra_details={"interface_index": index},
+            )
+
+    version_match_seen = False
+    for interface in interfaces:
+        binding = interface.get("protocolBinding")
+        version = interface.get("protocolVersion")
+        if version == required_version:
+            version_match_seen = True
+            if binding in allowed_bindings:
+                return
+
+    if not version_match_seen:
+        _raise_a2a_protocol_error(
+            "A2A evidence must include supportedInterfaces[] entry with "
+            f"protocolVersion == {required_version!r}",
+            session_id=session_id,
+            step_id=step_id,
+            required_version=required_version,
+            allowed_bindings=allowed_bindings,
+            reason_code="WORKFLOW_PROTOCOL_A2A_COMPATIBILITY_REQUIRED",
+        )
+
+    _raise_a2a_protocol_error(
+        "A2A evidence must include supportedInterfaces[] entry with an allowed "
+        "protocolBinding",
+        session_id=session_id,
+        step_id=step_id,
+        required_version=required_version,
+        allowed_bindings=allowed_bindings,
+        reason_code="WORKFLOW_PROTOCOL_A2A_BINDING_REQUIRED",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -245,9 +526,14 @@ class GovernanceSession:
     def workflow_artifact(self) -> dict[str, Any] | None:
         return self._workflow_artifact
 
-    def protocol_constraints_for(self, protocol: str) -> dict[str, Any]:
+    def protocol_constraints_for(self, protocol: str) -> Any:
         """Return workflow protocol constraints for adapter-managed protocol seams."""
-        return dict((self._protocol_constraints or {}).get(protocol) or {})
+        constraints = (self._protocol_constraints or {}).get(protocol)
+        if constraints is None:
+            return {}
+        if not isinstance(constraints, dict):
+            return constraints
+        return dict(constraints)
 
     def participant_for(self, participant_id: str) -> dict[str, Any] | None:
         """Return a workflow participant declaration for adapter binding checks."""
@@ -846,9 +1132,41 @@ class GovernanceSession:
         # 5E: Protocol constraints enforcement
         if self._protocol_constraints is not None:
             from aegis._internal.errors import WorkflowProtocolViolationError
-            _protocol = invocation.get("protocol") or (
-                invocation.get("context") or {}
-            ).get("protocol")
+            _ctx_value = invocation.get("context")
+            if _ctx_value is None:
+                _ctx = {}
+            elif isinstance(_ctx_value, MappingABC):
+                _ctx = _ctx_value
+            else:
+                raise WorkflowProtocolViolationError(
+                    "invocation['context'] must be a mapping when "
+                    "protocol_constraints are declared",
+                    details={
+                        "session_id": self._session_id,
+                        "step_id": resolved_step_id,
+                        "context_type": type(_ctx_value).__name__,
+                        "reason_code": "WORKFLOW_PROTOCOL_CONTEXT_INVALID",
+                    },
+                )
+            _top_protocol = invocation.get("protocol")
+            _context_protocol = _ctx.get("protocol")
+            if (
+                _top_protocol is not None
+                and _context_protocol is not None
+                and _top_protocol != _context_protocol
+            ):
+                raise WorkflowProtocolViolationError(
+                    "Conflicting protocol declarations in invocation['protocol'] "
+                    "and invocation['context']['protocol']",
+                    details={
+                        "session_id": self._session_id,
+                        "step_id": resolved_step_id,
+                        "protocol": _top_protocol,
+                        "context_protocol": _context_protocol,
+                        "reason_code": "WORKFLOW_PROTOCOL_CONFLICT",
+                    },
+                )
+            _protocol = _top_protocol or _context_protocol
             if _protocol is None:
                 raise WorkflowProtocolViolationError(
                     "protocol_constraints declared but no protocol specified in invocation "
@@ -870,7 +1188,6 @@ class GovernanceSession:
                         "declared_protocols": list(self._protocol_constraints),
                     },
                 )
-            _ctx = invocation.get("context") or {}
             _proto_evidence = _ctx.get("protocol_evidence")
             if not isinstance(_proto_evidence, dict) or _protocol not in _proto_evidence:
                 raise WorkflowProtocolViolationError(
@@ -916,30 +1233,20 @@ class GovernanceSession:
                                 },
                             )
             elif _protocol == "a2a":
-                # gRPC transport is out of scope for v0.9.0
-                if _evidence_for_protocol.get("transport") == "grpc":
-                    raise WorkflowProtocolViolationError(
-                        "gRPC transport is not supported for a2a in v0.9.0",
-                        details={
-                            "session_id": self._session_id,
-                            "protocol": "a2a",
-                            "transport": "grpc",
-                        },
-                    )
-                # Require supportedInterfaces with protocolVersion "1.0"
-                _interfaces = _evidence_for_protocol.get("supportedInterfaces") or []
-                if not any(
-                    isinstance(i, dict) and i.get("protocolVersion") == "1.0"
-                    for i in _interfaces
-                ):
-                    raise WorkflowProtocolViolationError(
-                        "A2A evidence must include supportedInterfaces[] entry with "
-                        "protocolVersion == '1.0'",
-                        details={
-                            "session_id": self._session_id,
-                            "protocol": "a2a",
-                        },
-                    )
+                _raw_a2a_constraints = self._protocol_constraints.get("a2a")
+                if _raw_a2a_constraints is None:
+                    _raw_a2a_constraints = {}
+                _a2a_constraints = _a2a_protocol_constraints(
+                    _raw_a2a_constraints,
+                    session_id=self._session_id,
+                    step_id=resolved_step_id,
+                )
+                _validate_a2a_protocol_evidence(
+                    _evidence_for_protocol,
+                    _a2a_constraints,
+                    session_id=self._session_id,
+                    step_id=resolved_step_id,
+                )
 
         # 5F: Handoffs enforcement
         if (

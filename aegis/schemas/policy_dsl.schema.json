@@ -269,7 +269,29 @@
                 }
               }
             },
-            "a2a": {"type": "object", "additionalProperties": true},
+            "a2a": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "A2A adapter constraints (source-only beta)",
+              "properties": {
+                "protocol_version": {
+                  "type": "string",
+                  "const": "1.0",
+                  "default": "1.0"
+                },
+                "allowed_protocol_bindings": {
+                  "type": "array",
+                  "items": {"type": "string", "enum": ["JSONRPC", "HTTP+JSON"]},
+                  "uniqueItems": true,
+                  "minItems": 1,
+                  "default": ["JSONRPC", "HTTP+JSON"]
+                },
+                "require_task_state": {
+                  "type": "boolean",
+                  "default": true
+                }
+              }
+            },
             "openai_agents": {
               "type": "object",
               "additionalProperties": false,

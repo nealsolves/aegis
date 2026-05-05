@@ -45,6 +45,44 @@ def test_unknown_protocol_section_rejected():
             s.enforce_step_pre_call(inv)
 
 
+def test_conflicting_top_level_and_context_protocol_rejected():
+    """Protocol declarations must agree when both invocation locations are set."""
+    inv = dict(_BASE_INV)
+    inv["protocol"] = "a2a"
+    inv["context"] = {
+        **inv["context"],
+        "protocol": "bedrock",
+        "protocol_evidence": {
+            "a2a": {
+                "supportedInterfaces": [
+                    {"protocolBinding": "JSONRPC", "protocolVersion": "1.0"}
+                ]
+            },
+            "bedrock": {"alias_backed": True},
+        },
+    }
+    s = _session({"a2a": {}, "bedrock": {}})
+    with pytest.raises(WorkflowProtocolViolationError) as exc_info:
+        with s:
+            s.enforce_step_pre_call(inv)
+    assert exc_info.value.details.get("reason_code") == "WORKFLOW_PROTOCOL_CONFLICT"
+
+
+@pytest.mark.parametrize("context", [["not", "a", "mapping"], [], "", 0])
+def test_protocol_constraints_reject_non_mapping_context(context):
+    """Malformed context should fail closed, not raise a raw AttributeError."""
+    inv = dict(_BASE_INV)
+    inv["protocol"] = "a2a"
+    inv["context"] = context
+    s = _session({"a2a": {}})
+    with pytest.raises(WorkflowProtocolViolationError) as exc_info:
+        with s:
+            s.enforce_step_pre_call(inv)
+    assert exc_info.value.details.get("reason_code") == (
+        "WORKFLOW_PROTOCOL_CONTEXT_INVALID"
+    )
+
+
 def test_participant_protocol_mismatch_rejected():
     """Protocol not in participant's protocols list raises."""
     inv = dict(_BASE_INV)
