@@ -59,6 +59,18 @@ _TASK_STATES = frozenset({
     "TASK_STATE_REJECTED",
     "TASK_STATE_AUTH_REQUIRED",
 })
+# JSON wire values used by JSONRPC and HTTP+JSON transports (A2A spec §4).
+# Maps to the canonical proto enum name stored in governance artifacts.
+_JSON_TO_TASK_STATE: dict[str, str] = {
+    "submitted": "TASK_STATE_SUBMITTED",
+    "working": "TASK_STATE_WORKING",
+    "completed": "TASK_STATE_COMPLETED",
+    "failed": "TASK_STATE_FAILED",
+    "canceled": "TASK_STATE_CANCELED",
+    "input-required": "TASK_STATE_INPUT_REQUIRED",
+    "rejected": "TASK_STATE_REJECTED",
+    "auth-required": "TASK_STATE_AUTH_REQUIRED",
+}
 _TERMINAL_TASK_STATES = frozenset({
     "TASK_STATE_COMPLETED",
     "TASK_STATE_FAILED",
@@ -379,15 +391,22 @@ def _validate_agent_card(
 
 
 def _validate_task_state(state: Any, *, label: str) -> str:
-    if not isinstance(state, str) or state not in _TASK_STATES:
+    if not isinstance(state, str):
         raise _workflow_protocol_error(
             f"{label} must be one of the normative TASK_STATE_* values",
             reason_code="WORKFLOW_PROTOCOL_A2A_TASK_STATE_INVALID",
             details={"task_state": state},
         )
-    if state == "TASK_STATE_UNSPECIFIED":
+    normalized = _JSON_TO_TASK_STATE.get(state, state)
+    if normalized not in _TASK_STATES:
+        raise _workflow_protocol_error(
+            f"{label} must be one of the normative TASK_STATE_* values",
+            reason_code="WORKFLOW_PROTOCOL_A2A_TASK_STATE_INVALID",
+            details={"task_state": state},
+        )
+    if normalized == "TASK_STATE_UNSPECIFIED":
         logger.warning("A2A task state TASK_STATE_UNSPECIFIED received")
-    return state
+    return normalized
 
 
 def _validate_task_envelope(
@@ -423,7 +442,12 @@ def _validate_task_envelope(
             "A2A task_envelope.status.state is required",
             reason_code="WORKFLOW_PROTOCOL_A2A_TASK_STATE_REQUIRED",
         )
-    _validate_task_state(status.get("state"), label="task_envelope.status.state")
+    normalized_state = _validate_task_state(
+        status.get("state"), label="task_envelope.status.state"
+    )
+    if status.get("state") != normalized_state:
+        task_map = dict(task_map)
+        task_map["status"] = {**status, "state": normalized_state}
     return task_map
 
 
