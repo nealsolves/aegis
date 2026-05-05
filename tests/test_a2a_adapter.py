@@ -348,6 +348,37 @@ def test_validate_agent_card_rejects_invalid_compatibility(card):
         _validate_agent_card(card, constraints)
 
 
+@pytest.mark.parametrize(
+    "protocol_binding,expected_type",
+    [
+        (["JSONRPC"], "list"),
+        ({"binding": "JSONRPC"}, "dict"),
+    ],
+)
+def test_validate_agent_card_rejects_non_string_protocol_binding(
+    protocol_binding, expected_type
+):
+    from aegis._internal.errors import WorkflowProtocolViolationError
+    from aegis.a2a_adapter import _validate_agent_card
+
+    card = {
+        **_AGENT_CARD_JSONRPC,
+        "supportedInterfaces": [
+            {"protocolBinding": protocol_binding, "protocolVersion": "1.0"}
+        ],
+    }
+    constraints = {
+        "protocol_version": "1.0",
+        "allowed_protocol_bindings": ["JSONRPC", "HTTP+JSON"],
+    }
+    with pytest.raises(WorkflowProtocolViolationError) as exc_info:
+        _validate_agent_card(card, constraints)
+    assert exc_info.value.details.get("reason_code") == (
+        "WORKFLOW_PROTOCOL_A2A_BINDING_REQUIRED"
+    )
+    assert exc_info.value.details.get("protocol_binding_type") == expected_type
+
+
 def test_agent_card_version_alone_is_ignored():
     from aegis._internal.errors import WorkflowProtocolViolationError
     from aegis.a2a_adapter import _validate_agent_card
@@ -610,6 +641,30 @@ def test_prepare_step_rejects_participant_protocol_mismatch():
                 binding=_binding(),
                 agent_card=copy.deepcopy(_AGENT_CARD_JSONRPC),
             )
+
+
+def test_prepare_step_rejects_malformed_agent_card_protocol_binding():
+    from aegis._internal.errors import WorkflowProtocolViolationError
+    from aegis.a2a_adapter import A2AAdapter
+
+    card = {
+        **_AGENT_CARD_JSONRPC,
+        "supportedInterfaces": [
+            {"protocolBinding": {"binding": "JSONRPC"}, "protocolVersion": "1.0"}
+        ],
+    }
+    with _make_session(protocol_constraints={"a2a": {}}) as session:
+        with pytest.raises(WorkflowProtocolViolationError) as exc_info:
+            A2AAdapter().prepare_step(
+                session,
+                copy.deepcopy(_BASE_INV),
+                binding=_binding(),
+                agent_card=card,
+            )
+    assert exc_info.value.details.get("reason_code") == (
+        "WORKFLOW_PROTOCOL_A2A_BINDING_REQUIRED"
+    )
+    assert exc_info.value.details.get("protocol_binding_type") == "dict"
 
 
 def test_prepare_step_rejects_binding_name_role_and_participant_role_mismatch():

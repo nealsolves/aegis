@@ -67,8 +67,12 @@ _TERMINAL_TASK_STATES = frozenset({
 })
 
 
-def _cf(value: Any) -> Any:
-    return value.casefold() if isinstance(value, str) else value
+def _binding_is_grpc(value: Any) -> bool:
+    return isinstance(value, str) and value.casefold() in _GRPC_BINDINGS
+
+
+def _transport_is_grpc(value: Any) -> bool:
+    return isinstance(value, str) and value.casefold() == "grpc"
 
 
 def _is_scalar(value: Any) -> bool:
@@ -344,6 +348,16 @@ def _validate_agent_card(
                     "reason_code": "WORKFLOW_PROTOCOL_A2A_AGENT_CARD_INVALID",
                 },
             )
+        binding = interface.get("protocolBinding")
+        if "protocolBinding" in interface and not isinstance(binding, str):
+            raise _workflow_protocol_error(
+                "A2A Agent Card supportedInterfaces[].protocolBinding must be a string",
+                reason_code="WORKFLOW_PROTOCOL_A2A_BINDING_REQUIRED",
+                details={
+                    "interface_index": index,
+                    "protocol_binding_type": type(binding).__name__,
+                },
+            )
         interface_dicts.append(dict(interface))
 
     # Second pass: scan ALL interfaces for gRPC markers before accepting any
@@ -355,8 +369,8 @@ def _validate_agent_card(
         binding = interface_dict.get("protocolBinding")
         version = interface_dict.get("protocolVersion")
         has_grpc_marker = (
-            _cf(binding) in _GRPC_BINDINGS
-            or _cf(interface_dict.get("transport")) == "grpc"
+            _binding_is_grpc(binding)
+            or _transport_is_grpc(interface_dict.get("transport"))
         )
         if has_grpc_marker and (version == required_version or len(interface_dicts) == 1):
             raise _workflow_protocol_error(
