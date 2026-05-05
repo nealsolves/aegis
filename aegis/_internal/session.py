@@ -1132,15 +1132,19 @@ class GovernanceSession:
         # 5E: Protocol constraints enforcement
         if self._protocol_constraints is not None:
             from aegis._internal.errors import WorkflowProtocolViolationError
-            _ctx = invocation.get("context") or {}
-            if not isinstance(_ctx, MappingABC):
+            _ctx_value = invocation.get("context")
+            if _ctx_value is None:
+                _ctx = {}
+            elif isinstance(_ctx_value, MappingABC):
+                _ctx = _ctx_value
+            else:
                 raise WorkflowProtocolViolationError(
                     "invocation['context'] must be a mapping when "
                     "protocol_constraints are declared",
                     details={
                         "session_id": self._session_id,
                         "step_id": resolved_step_id,
-                        "context_type": type(_ctx).__name__,
+                        "context_type": type(_ctx_value).__name__,
                         "reason_code": "WORKFLOW_PROTOCOL_CONTEXT_INVALID",
                     },
                 )

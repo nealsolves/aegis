@@ -68,11 +68,12 @@ def test_conflicting_top_level_and_context_protocol_rejected():
     assert exc_info.value.details.get("reason_code") == "WORKFLOW_PROTOCOL_CONFLICT"
 
 
-def test_protocol_constraints_reject_non_mapping_context():
+@pytest.mark.parametrize("context", [["not", "a", "mapping"], [], "", 0])
+def test_protocol_constraints_reject_non_mapping_context(context):
     """Malformed context should fail closed, not raise a raw AttributeError."""
     inv = dict(_BASE_INV)
     inv["protocol"] = "a2a"
-    inv["context"] = ["not", "a", "mapping"]
+    inv["context"] = context
     s = _session({"a2a": {}})
     with pytest.raises(WorkflowProtocolViolationError) as exc_info:
         with s:
