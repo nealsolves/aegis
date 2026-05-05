@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 _ADAPTER_VERSION = "0.9.0-beta"
 _PROTOCOL_VERSION = "1.0"
 _SUPPORTED_PROTOCOL_BINDINGS = frozenset({"JSONRPC", "HTTP+JSON"})
-_GRPC_BINDINGS = frozenset({"GRPC", "grpc"})
+_GRPC_BINDINGS = frozenset({"grpc"})
 _SECRET_KEY_FRAGMENTS = (
     "authorization",
     "credential",
@@ -342,9 +342,12 @@ def _validate_agent_card(
         interface_dict = dict(interface)
         binding = interface_dict.get("protocolBinding")
         version = interface_dict.get("protocolVersion")
+        _binding_cf = binding.casefold() if isinstance(binding, str) else binding
+        _transport_cf = interface_dict.get("transport")
+        _transport_cf = _transport_cf.casefold() if isinstance(_transport_cf, str) else _transport_cf
         has_grpc_marker = (
-            binding in _GRPC_BINDINGS
-            or interface_dict.get("transport") == "grpc"
+            _binding_cf in _GRPC_BINDINGS
+            or _transport_cf == "grpc"
         )
         # A gRPC interface at the required version (or the only interface) is
         # rejected. A gRPC interface at an *older* version alongside a valid
@@ -472,8 +475,6 @@ def _validate_task_updates(
     latest_task_state: str | None = None
 
     for index, update in enumerate(task_updates):
-        if index >= _MAX_TASK_UPDATE_SUMMARIES:
-            break
         update_map = _to_mapping(update, label=f"task_updates[{index}]")
         status = update_map.get("status")
         if "status" in update_map:
@@ -489,17 +490,20 @@ def _validate_task_updates(
                     reason_code="WORKFLOW_PROTOCOL_A2A_TASK_STATE_REQUIRED",
                     details={"update_index": index},
                 )
-            latest_task_state = _validate_task_state(
+            raw_state = _validate_task_state(
                 status.get("state"),
                 label=f"task_updates[{index}].status.state",
             )
-            status_update_count += 1
+            if index < _MAX_TASK_UPDATE_SUMMARIES:
+                latest_task_state = raw_state
+                status_update_count += 1
 
-        if "artifact" in update_map:
-            artifact_update_count += 1
-        elif "artifacts" in update_map:
-            artifacts = update_map.get("artifacts")
-            artifact_update_count += len(artifacts) if isinstance(artifacts, list) else 1
+        if index < _MAX_TASK_UPDATE_SUMMARIES:
+            if "artifact" in update_map:
+                artifact_update_count += 1
+            elif "artifacts" in update_map:
+                artifacts = update_map.get("artifacts")
+                artifact_update_count += len(artifacts) if isinstance(artifacts, list) else 1
 
     return {
         "status_update_count": status_update_count,
@@ -617,6 +621,17 @@ class A2AAdapter:
             "skills": _summarize_skills(card),
             "request_metadata": _redacted_request_metadata(request_metadata),
         }
+
+        existing_protocol = invocation.get("protocol") or ctx_raw.get("protocol")
+        if existing_protocol is not None and existing_protocol != "a2a":
+            raise WorkflowUnsupportedBindingError(
+                f"invocation declares protocol={existing_protocol!r}; "
+                "A2AAdapter cannot enrich a non-A2A invocation",
+                details={
+                    "existing_protocol": existing_protocol,
+                    "reason_code": "WORKFLOW_UNSUPPORTED_BINDING",
+                },
+            )
 
         enriched = dict(invocation)
         ctx = dict(ctx_raw)

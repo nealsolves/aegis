@@ -59,7 +59,7 @@ _VALID_TRANSITIONS: dict[str, set[str]] = {
 
 _A2A_PROTOCOL_VERSION = "1.0"
 _A2A_ALLOWED_PROTOCOL_BINDINGS = frozenset({"JSONRPC", "HTTP+JSON"})
-_A2A_GRPC_BINDINGS = frozenset({"GRPC", "grpc"})
+_A2A_GRPC_BINDINGS = frozenset({"grpc"})
 
 
 # ---------------------------------------------------------------------------
@@ -243,10 +243,13 @@ def _validate_a2a_protocol_evidence(
             reason_code="WORKFLOW_PROTOCOL_A2A_COMPATIBILITY_REQUIRED",
         )
 
+    def _cf(v: Any) -> Any:
+        return v.casefold() if isinstance(v, str) else v
+
     if (
-        evidence.get("transport") == "grpc"
-        or evidence.get("selected_protocol_binding") in _A2A_GRPC_BINDINGS
-        or evidence.get("protocolBinding") in _A2A_GRPC_BINDINGS
+        _cf(evidence.get("transport")) == "grpc"
+        or _cf(evidence.get("selected_protocol_binding")) in _A2A_GRPC_BINDINGS
+        or _cf(evidence.get("protocolBinding")) in _A2A_GRPC_BINDINGS
     ):
         _raise_a2a_protocol_error(
             "gRPC transport is not supported for a2a in v0.9.0",
@@ -285,8 +288,8 @@ def _validate_a2a_protocol_evidence(
         binding = interface.get("protocolBinding")
         version = interface.get("protocolVersion")
         has_grpc_marker = (
-            binding in _A2A_GRPC_BINDINGS
-            or interface.get("transport") == "grpc"
+            _cf(binding) in _A2A_GRPC_BINDINGS
+            or _cf(interface.get("transport")) == "grpc"
         )
         # A gRPC interface at the required version (or the only interface) is
         # rejected. A gRPC interface at an *older* version alongside a valid
