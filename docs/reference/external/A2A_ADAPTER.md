@@ -141,13 +141,13 @@ Only `TASK_STATE_COMPLETED`, `TASK_STATE_FAILED`, `TASK_STATE_CANCELED`, and
 
 ## Failure Examples
 
-Shorthand task states fail:
+Non-spec task states fail:
 
 ```python
 adapter.complete_step(
     prepared,
     output,
-    task_envelope={"status": {"state": "completed"}},
+    task_envelope={"status": {"state": "done"}},
 )
 ```
 

@@ -924,6 +924,58 @@ def test_session_requires_protocol_evidence_when_a2a_constraints_declared():
             session.enforce_step_pre_call(inv)
 
 
+@pytest.mark.parametrize("binding_key", ["selected_protocol_binding", "protocol_binding"])
+def test_session_rejects_disallowed_selected_a2a_binding(binding_key):
+    """P2: evidence with an explicit disallowed binding must be rejected even when
+    a supportedInterfaces entry would otherwise satisfy the allowed list."""
+    from aegis._internal.errors import WorkflowProtocolViolationError
+
+    evidence = {
+        binding_key: "HTTP+JSON",
+        "supportedInterfaces": [
+            {"protocolBinding": "JSONRPC", "protocolVersion": "1.0"}
+        ],
+    }
+    with _make_session(
+        protocol_constraints={"a2a": {"allowed_protocol_bindings": ["JSONRPC"]}}
+    ) as session:
+        with pytest.raises(WorkflowProtocolViolationError):
+            session.enforce_step_pre_call(_direct_a2a_inv(evidence))
+
+
+def test_session_accepts_selected_binding_when_in_allowed_list():
+    """P2: evidence with selected_protocol_binding matching an allowed binding is accepted."""
+    evidence = {
+        "selected_protocol_binding": "JSONRPC",
+        "supportedInterfaces": [
+            {"protocolBinding": "JSONRPC", "protocolVersion": "1.0"}
+        ],
+    }
+    with _make_session(
+        protocol_constraints={"a2a": {"allowed_protocol_bindings": ["JSONRPC"]}}
+    ) as session:
+        token = session.enforce_step_pre_call(_direct_a2a_inv(evidence))
+        session.discard_adapter_step(token, rollback_authorization=True)
+
+
+def test_session_rejects_when_second_binding_key_is_disallowed():
+    """P2: when both binding keys are present and the second is disallowed, still rejects."""
+    from aegis._internal.errors import WorkflowProtocolViolationError
+
+    evidence = {
+        "selected_protocol_binding": "JSONRPC",   # allowed
+        "protocol_binding": "HTTP+JSON",           # disallowed
+        "supportedInterfaces": [
+            {"protocolBinding": "JSONRPC", "protocolVersion": "1.0"}
+        ],
+    }
+    with _make_session(
+        protocol_constraints={"a2a": {"allowed_protocol_bindings": ["JSONRPC"]}}
+    ) as session:
+        with pytest.raises(WorkflowProtocolViolationError):
+            session.enforce_step_pre_call(_direct_a2a_inv(evidence))
+
+
 # ---------------------------------------------------------------------------
 # P2: protocol conflict rejection in prepare_step
 # ---------------------------------------------------------------------------

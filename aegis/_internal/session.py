@@ -261,6 +261,19 @@ def _validate_a2a_protocol_evidence(
             extra_details={"transport": evidence.get("transport")},
         )
 
+    for _binding_key in ("selected_protocol_binding", "protocol_binding"):
+        _selected = evidence.get(_binding_key)
+        if _selected is not None and _selected not in allowed_bindings:
+            _raise_a2a_protocol_error(
+                f"A2A evidence {_binding_key}={_selected!r} is not in allowed_protocol_bindings",
+                session_id=session_id,
+                step_id=step_id,
+                required_version=required_version,
+                allowed_bindings=allowed_bindings,
+                reason_code="WORKFLOW_PROTOCOL_A2A_BINDING_REQUIRED",
+                extra_details={_binding_key: _selected},
+            )
+
     interfaces = evidence.get("supportedInterfaces")
     if not isinstance(interfaces, list) or not interfaces:
         _raise_a2a_protocol_error(
