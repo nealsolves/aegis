@@ -156,7 +156,12 @@ def _redacted_request_metadata(
     for key, value in metadata.items():
         key_text = str(key)
         key_lower = key_text.lower()
-        if any(fragment in key_lower for fragment in _SECRET_KEY_FRAGMENTS):
+        key_compact = "".join(ch for ch in key_lower if ch.isalnum())
+        if any(
+            fragment in key_lower
+            or fragment.replace("_", "") in key_compact
+            for fragment in _SECRET_KEY_FRAGMENTS
+        ):
             continue
         if not _is_scalar(value):
             continue
@@ -286,12 +291,15 @@ def _a2a_constraints(session: "GovernanceSession") -> dict[str, Any]:
             reason_code="WORKFLOW_PROTOCOL_A2A_CONSTRAINTS_INVALID",
             details={"protocol_version": version},
         )
-    if (
-        not isinstance(allowed, (list, tuple))
-        or not allowed
-        or len(set(allowed)) != len(allowed)
-        or any(binding not in _SUPPORTED_PROTOCOL_BINDINGS for binding in allowed)
-    ):
+    allowed_bindings_valid = False
+    if isinstance(allowed, (list, tuple)) and allowed:
+        allowed_list = list(allowed)
+        allowed_bindings_valid = (
+            all(isinstance(binding, str) for binding in allowed_list)
+            and len(set(allowed_list)) == len(allowed_list)
+            and all(binding in _SUPPORTED_PROTOCOL_BINDINGS for binding in allowed_list)
+        )
+    if not allowed_bindings_valid:
         raise _workflow_protocol_error(
             "A2A allowed_protocol_bindings must contain unique JSONRPC or HTTP+JSON values",
             reason_code="WORKFLOW_PROTOCOL_A2A_CONSTRAINTS_INVALID",

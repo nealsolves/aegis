@@ -254,6 +254,7 @@ def test_request_metadata_redaction_drops_secrets_and_bounds_strings():
     metadata = {
         "Authorization": "Bearer secret",
         "access_token": "secret",
+        "X-API-Key": "secret",
         "api_key": "secret",
         "credential": "secret",
         "password": "secret",
@@ -270,6 +271,7 @@ def test_request_metadata_redaction_drops_secrets_and_bounds_strings():
     assert "nested" not in redacted
     assert "Authorization" not in redacted
     assert "access_token" not in redacted
+    assert "X-API-Key" not in redacted
     assert redacted["long"].endswith("...[truncated]")
     assert len(redacted["long"]) > 128
 
@@ -624,6 +626,26 @@ def test_prepare_step_success_with_explicit_http_json_constraints():
             dict(_GOOD_OUTPUT),
             task_envelope=copy.deepcopy(_TASK_COMPLETED),
         )
+
+
+@pytest.mark.parametrize("allowed", [[["JSONRPC"]], [{"binding": "JSONRPC"}]])
+def test_prepare_step_rejects_malformed_allowed_protocol_binding_entries(allowed):
+    from aegis._internal.errors import WorkflowProtocolViolationError
+    from aegis.a2a_adapter import A2AAdapter
+
+    with _make_session(
+        protocol_constraints={"a2a": {"allowed_protocol_bindings": allowed}}
+    ) as session:
+        with pytest.raises(WorkflowProtocolViolationError) as exc_info:
+            A2AAdapter().prepare_step(
+                session,
+                copy.deepcopy(_BASE_INV),
+                binding=_binding(),
+                agent_card=copy.deepcopy(_AGENT_CARD_JSONRPC),
+            )
+    assert exc_info.value.details.get("reason_code") == (
+        "WORKFLOW_PROTOCOL_A2A_CONSTRAINTS_INVALID"
+    )
 
 
 def test_prepare_step_rejects_participant_protocol_mismatch():
@@ -997,6 +1019,32 @@ def test_session_honors_allowed_a2a_protocol_bindings():
             session.enforce_step_pre_call(_direct_a2a_inv(evidence))
 
 
+@pytest.mark.parametrize(
+    "allowed",
+    [
+        [["JSONRPC"]],
+        [{"binding": "JSONRPC"}],
+        ["JSONRPC", {"binding": "HTTP+JSON"}],
+    ],
+)
+def test_session_rejects_malformed_a2a_allowed_protocol_binding_entries(allowed):
+    from aegis._internal.errors import WorkflowProtocolViolationError
+
+    evidence = {
+        "supportedInterfaces": [
+            {"protocolBinding": "JSONRPC", "protocolVersion": "1.0"}
+        ]
+    }
+    with _make_session(
+        protocol_constraints={"a2a": {"allowed_protocol_bindings": allowed}}
+    ) as session:
+        with pytest.raises(WorkflowProtocolViolationError) as exc_info:
+            session.enforce_step_pre_call(_direct_a2a_inv(evidence))
+    assert exc_info.value.details.get("reason_code") == (
+        "WORKFLOW_PROTOCOL_A2A_CONSTRAINTS_INVALID"
+    )
+
+
 def test_session_requires_protocol_evidence_when_a2a_constraints_declared():
     from aegis._internal.errors import WorkflowProtocolViolationError
 
@@ -1007,8 +1055,11 @@ def test_session_requires_protocol_evidence_when_a2a_constraints_declared():
             session.enforce_step_pre_call(inv)
 
 
-@pytest.mark.parametrize("binding_key", ["selected_protocol_binding", "protocol_binding"])
-def test_session_rejects_disallowed_selected_a2a_binding(binding_key):
+@pytest.mark.parametrize(
+    "binding_key",
+    ["selected_protocol_binding", "protocol_binding", "protocolBinding"],
+)
+def test_session_rejects_disallowed_explicit_a2a_binding(binding_key):
     """P2: evidence with an explicit disallowed binding must be rejected even when
     a supportedInterfaces entry would otherwise satisfy the allowed list."""
     from aegis._internal.errors import WorkflowProtocolViolationError
@@ -1163,7 +1214,7 @@ def test_validate_task_updates_rejects_non_mapping_beyond_cap():
         for _ in range(_MAX_TASK_UPDATE_SUMMARIES)
     ]
 
-    with pytest.raises((InvocationValidationError, Exception)):
+    with pytest.raises(InvocationValidationError):
         _validate_task_updates(valid + [object()])
 
 
@@ -1230,19 +1281,28 @@ def test_validate_agent_card_rejects_mixed_case_grpc_transport(transport_value):
         _validate_agent_card(card, constraints)
 
 
+@pytest.mark.parametrize(
+    "binding_key",
+    ["selected_protocol_binding", "protocol_binding", "protocolBinding"],
+)
 @pytest.mark.parametrize("grpc_binding", ["GRPC", "grpc", "gRPC", "Grpc"])
-def test_session_rejects_mixed_case_grpc_in_selected_binding(grpc_binding):
+def test_session_rejects_mixed_case_grpc_in_top_level_binding(
+    binding_key, grpc_binding
+):
     from aegis._internal.errors import WorkflowProtocolViolationError
 
     evidence = {
-        "selected_protocol_binding": grpc_binding,
+        binding_key: grpc_binding,
         "supportedInterfaces": [
             {"protocolBinding": "JSONRPC", "protocolVersion": "1.0"}
         ],
     }
     with _make_session(protocol_constraints={"a2a": {}}) as session:
-        with pytest.raises(WorkflowProtocolViolationError):
+        with pytest.raises(WorkflowProtocolViolationError) as exc_info:
             session.enforce_step_pre_call(_direct_a2a_inv(evidence))
+    assert exc_info.value.details.get("reason_code") == (
+        "WORKFLOW_PROTOCOL_GRPC_UNSUPPORTED"
+    )
 
 
 @pytest.mark.parametrize("transport_value", ["grpc", "GRPC", "gRPC"])

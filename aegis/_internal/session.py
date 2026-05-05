@@ -8,6 +8,7 @@ import hashlib
 import logging
 import time
 import uuid
+from collections.abc import Mapping as MappingABC
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, ClassVar, NoReturn
 
@@ -161,12 +162,15 @@ def _a2a_protocol_constraints(
                 "reason_code": "WORKFLOW_PROTOCOL_A2A_CONSTRAINTS_INVALID",
             },
         )
-    if (
-        not isinstance(allowed, (list, tuple))
-        or not allowed
-        or len(set(allowed)) != len(list(allowed))
-        or any(binding not in _A2A_ALLOWED_PROTOCOL_BINDINGS for binding in allowed)
-    ):
+    allowed_bindings_valid = False
+    if isinstance(allowed, (list, tuple)) and allowed:
+        allowed_list = list(allowed)
+        allowed_bindings_valid = (
+            all(isinstance(binding, str) for binding in allowed_list)
+            and len(set(allowed_list)) == len(allowed_list)
+            and all(binding in _A2A_ALLOWED_PROTOCOL_BINDINGS for binding in allowed_list)
+        )
+    if not allowed_bindings_valid:
         from aegis._internal.errors import WorkflowProtocolViolationError
         raise WorkflowProtocolViolationError(
             "A2A allowed_protocol_bindings must contain unique JSONRPC or HTTP+JSON values",
@@ -254,6 +258,7 @@ def _validate_a2a_protocol_evidence(
     if (
         _a2a_transport_is_grpc(evidence.get("transport"))
         or _a2a_binding_is_grpc(evidence.get("selected_protocol_binding"))
+        or _a2a_binding_is_grpc(evidence.get("protocol_binding"))
         or _a2a_binding_is_grpc(evidence.get("protocolBinding"))
     ):
         _raise_a2a_protocol_error(
@@ -282,7 +287,11 @@ def _validate_a2a_protocol_evidence(
             },
         )
 
-    for _binding_key in ("selected_protocol_binding", "protocol_binding"):
+    for _binding_key in (
+        "selected_protocol_binding",
+        "protocol_binding",
+        "protocolBinding",
+    ):
         _selected = evidence.get(_binding_key)
         if _selected is not None and (
             not isinstance(_selected, str) or _selected not in allowed_bindings
@@ -1124,6 +1133,17 @@ class GovernanceSession:
         if self._protocol_constraints is not None:
             from aegis._internal.errors import WorkflowProtocolViolationError
             _ctx = invocation.get("context") or {}
+            if not isinstance(_ctx, MappingABC):
+                raise WorkflowProtocolViolationError(
+                    "invocation['context'] must be a mapping when "
+                    "protocol_constraints are declared",
+                    details={
+                        "session_id": self._session_id,
+                        "step_id": resolved_step_id,
+                        "context_type": type(_ctx).__name__,
+                        "reason_code": "WORKFLOW_PROTOCOL_CONTEXT_INVALID",
+                    },
+                )
             _top_protocol = invocation.get("protocol")
             _context_protocol = _ctx.get("protocol")
             if (
