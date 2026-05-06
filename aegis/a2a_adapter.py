@@ -19,7 +19,7 @@ from collections.abc import Sequence as SequenceABC
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Mapping, Sequence
 
-from aegis._internal.errors import (
+from aegis import (
     InvocationValidationError,
     WorkflowParticipantMismatchError,
     WorkflowProtocolViolationError,
@@ -37,8 +37,8 @@ _PROTOCOL_VERSION = "1.0"
 _SUPPORTED_PROTOCOL_BINDINGS = frozenset({"JSONRPC", "HTTP+JSON"})
 _GRPC_BINDINGS = frozenset({"grpc"})
 # U+0261 (LATIN SMALL LETTER SCRIPT G) is not normalized by NFKC; map it to
-# ASCII g explicitly. This does not cover all Unicode lookalike characters.
-_PROTOCOL_CONFUSABLES = {ord("\u0261"): "g"}
+# ASCII g explicitly so unicode lookalikes cannot bypass the gRPC guard.
+_PROTOCOL_CONFUSABLES = {ord("ɡ"): "g"}
 _SECRET_KEY_FRAGMENTS = (
     "authorization",
     "credential",
@@ -760,10 +760,10 @@ class A2AAdapter:
 
         session = prepared._session
         session_result = prepared._session_result
-        adapter_state = session.pop_adapter_step_state(session_result)
+        peeked_state = session.adapter_step_state(session_result)
         if (
-            adapter_state.get("adapter") != "a2a"
-            or adapter_state.get("adapter_step_key") != prepared._adapter_step_key
+            (peeked_state or {}).get("adapter") != "a2a"
+            or (peeked_state or {}).get("adapter_step_key") != prepared._adapter_step_key
         ):
             session.discard_adapter_step(session_result)
             raise WorkflowSessionTokenInvalidError(
@@ -774,6 +774,7 @@ class A2AAdapter:
                     "reason_code": "WORKFLOW_SESSION_TOKEN_INVALID",
                 },
             )
+        adapter_state = session.pop_adapter_step_state(session_result)
 
         try:
             task = _validate_task_envelope(

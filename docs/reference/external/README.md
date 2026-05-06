@@ -10,5 +10,3 @@ Planned follow-on docs:
 - `BEDROCK_ADAPTER.md` — `BedrockTraceAdapter` usage and alias-backed identity requirements
 
 These are advanced optional materials. Complete the local workflow quickstart first.
-For package-vs-source status, see
-[the release matrix](../RELEASE_MATRIX.md).
