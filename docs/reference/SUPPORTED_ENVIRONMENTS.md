@@ -1,5 +1,8 @@
 # AEGIS Supported Environments (v0.9.0 Beta)
 
+For package-vs-source release status and exact refs, see
+[RELEASE_MATRIX.md](RELEASE_MATRIX.md).
+
 ## Python versions
 
 | Version | Status |

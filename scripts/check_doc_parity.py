@@ -415,10 +415,18 @@ def check_link_hygiene(manifest: dict) -> list[str]:
     """Fail on broken local markdown links in non-internal docs."""
     errors: list[str] = []
     internal_patterns = manifest.get("internal_docs", [])
+    maintained_external_docs = {
+        "docs/reference/external/README.md",
+        "docs/reference/external/A2A_ADAPTER.md",
+        "docs/reference/external/OPENAI_AGENTS_ADAPTER.md",
+        "docs/reference/external/BEDROCK_ADAPTER.md",
+    }
 
     for path in collect_md_files():
         rel = str(path.relative_to(REPO_ROOT))
         if is_internal_doc(rel, internal_patterns):
+            continue
+        if rel.startswith("docs/reference/external/") and rel not in maintained_external_docs:
             continue
         text = path.read_text(encoding="utf-8")
 
@@ -728,6 +736,8 @@ def check_implementation_truth(manifest: dict) -> list[str]:
       - aegis/_internal/audit.py  (AUDIT_SCHEMA_VERSION)
       - README.md  ("Current release:" line)
       - CHANGELOG.md  (first versioned section header)
+      - implementation_status.md  (Baseline Version)
+      - docs/reference/RELEASE_MATRIX.md  (package release and source beta)
 
     Fails if any source disagrees with the manifest or with each other.
     """
@@ -836,6 +846,54 @@ def check_implementation_truth(manifest: dict) -> list[str]:
     else:
         errors.append("[impl-truth] CHANGELOG.md not found")
 
+    # 6. implementation_status.md — baseline package release must match.
+    impl_status_path = REPO_ROOT / "implementation_status.md"
+    if impl_status_path.exists():
+        text = impl_status_path.read_text(encoding="utf-8")
+        m = re.search(r"\*\*Baseline Version:\*\*\s*`([^`]+)`", text)
+        if m:
+            baseline_version = m.group(1)
+            if baseline_version != manifest_version:
+                errors.append(
+                    f"[impl-truth] implementation_status.md Baseline Version "
+                    f"'{baseline_version}' != manifest version '{manifest_version}'"
+                )
+        else:
+            errors.append(
+                "[impl-truth] implementation_status.md: could not find "
+                "'Baseline Version' line"
+            )
+    else:
+        errors.append("[impl-truth] implementation_status.md not found")
+
+    # 7. Release matrix — the canonical table must distinguish PyPI truth from
+    #    the source-only beta and repeat the installable package version.
+    release_matrix_path = REPO_ROOT / "docs" / "reference" / "RELEASE_MATRIX.md"
+    if release_matrix_path.exists():
+        text = release_matrix_path.read_text(encoding="utf-8")
+        m = re.search(r"Current package release is `([^`]+)`", text)
+        if m:
+            matrix_version = m.group(1)
+            if matrix_version != manifest_version:
+                errors.append(
+                    f"[impl-truth] RELEASE_MATRIX.md current package release "
+                    f"'{matrix_version}' != manifest version '{manifest_version}'"
+                )
+        else:
+            errors.append(
+                "[impl-truth] RELEASE_MATRIX.md: could not find "
+                "'Current package release is' line"
+            )
+        if "v0.9.0 source-only beta" not in text:
+            errors.append(
+                "[impl-truth] RELEASE_MATRIX.md: missing "
+                "'v0.9.0 source-only beta' channel"
+            )
+        if "PyPI" not in text:
+            errors.append("[impl-truth] RELEASE_MATRIX.md: missing PyPI channel")
+    else:
+        errors.append("[impl-truth] docs/reference/RELEASE_MATRIX.md not found")
+
     return errors
 
 
@@ -937,6 +995,9 @@ _V090_HISTORICAL_PLANS = [
     "docs/plans/AEGIS V0.9.0 IMPLEMENTATION_PLAN_DRAFT_ORIG.md",
     "docs/plans/AEGIS_v0.9.0_IMPLEMENTATION_PLAN_UPDATED.md",
 ]
+_V090_DOCS_ONLY_PLAN_DRAFTS = {
+    "docs/plans/v0.9.0_ADAPTER_LAB_IMPLEMENTATION_PLAN.md",
+}
 _V090_ALL_EXPECTED_PLANS = [_V090_CANONICAL_PLAN, *_V090_HISTORICAL_PLANS]
 _SUPERSEDED_PLAN_RE = re.compile(r"superseded|historical input only", re.I)
 
@@ -965,11 +1026,14 @@ def check_v090_plan_truth() -> list[str]:
 
     discovered = []
     for path in plans_dir.glob("*.md"):
+        rel = str(path.relative_to(REPO_ROOT))
+        if rel in _V090_DOCS_ONLY_PLAN_DRAFTS:
+            continue
         lower_name = path.name.lower()
         if "0.9.0" not in lower_name:
             continue
         if "implementation_plan" in lower_name or lower_name == "0.9.0 plan backup.md":
-            discovered.append(str(path.relative_to(REPO_ROOT)))
+            discovered.append(rel)
     discovered = sorted(discovered)
 
     expected = set(_V090_ALL_EXPECTED_PLANS)
@@ -1903,7 +1967,7 @@ def check_v090_pr05_contract() -> list[str]:
     _has_pr_range = any(
         f"PR-01 through PR-0{n} are complete" in _impl_text
         for n in range(8, 10)  # 8 or 9
-    )
+    ) or "PR-01 through PR-10d are present" in _impl_text
     if not _has_pr_range or "Starters and migration" not in _impl_text:
         errors.append(
             f"{pfx} implementation_status.md: missing PR-01 through PR-08 complete"

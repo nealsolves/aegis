@@ -17,18 +17,17 @@ Beta-only surfaces currently available from source:
 
 - `AEGIS.open_session(...)`, `GovernanceSession`, `SessionPreCallResult`
 - `aegis workflow init`, `aegis policy init`, `aegis workflow lint`,
-  `aegis workflow doctor`
+  `aegis workflow doctor`, `aegis workflow trace`, `aegis workflow export`
 - starter scaffolds, migration docs, beta proof harness, and workflow demo lab
+- optional source-only adapter submodules: `aegis.bedrock_adapter`,
+  `aegis.a2a_adapter`, and `aegis.openai_agents_adapter`
 
 Still deferred beyond the current beta public surface:
 
-- `aegis workflow trace`
-- `aegis workflow export`
 - `AgentIdentity`
 - `AgentCapabilityManifest`
 - `ValidatorHook` as a public API
-- `BedrockTraceAdapter`
-- `A2AAdapter`
+- top-level `aegis` re-exports for optional adapter classes
 
 ### Added
 
@@ -83,7 +82,9 @@ Still deferred beyond the current beta public surface:
   execution model for `v0.3.3+`. Existing call sites that omit `pre_call_enforcement`
   will now run in split mode.
 - Release-facing runtime docs now advertise the current verification baseline:
-  `1484 tests`, coverage above the `90%` CI gate, and audit schema `v1.4`.
+  `1816 base-package tests`, plus `19` optional OpenAI Agents integration tests
+  when the `openai-agents` extra is installed, coverage above the `90%` CI gate,
+  and audit schema `v1.4`.
 
   **Migration:** No change required for call sites that already pass
   `pre_call_enforcement=True`. Call sites that rely on unified mode must add

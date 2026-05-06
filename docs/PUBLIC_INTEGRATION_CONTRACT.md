@@ -6,8 +6,9 @@ extension points, and a troubleshooting/FAQ section.
 
 It describes the current public runtime surface for the shipped `v0.3.3`
 package and CLI plus the source-only `v0.9.0` beta workflow surface that lives
-on local `develop`. The target-state `1.0.0` architecture contract, including
-later adapters and exports, is captured separately in
+on source refs named in the
+[release matrix](reference/RELEASE_MATRIX.md). The target-state `1.0.0`
+architecture contract is captured separately in
 [docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md](architecture/AEGIS_HIGH_LEVEL_DESIGN.md).
 
 The following surfaces are available in the source-only `v0.9.0` beta line and
@@ -21,20 +22,23 @@ for the fastest path to a working workflow with these surfaces.
 
 Also available in the source-only `v0.9.0` beta line: `aegis workflow init`,
 `aegis policy init`, `aegis workflow lint`, `aegis workflow doctor`,
+`aegis workflow trace`, `aegis workflow export`,
 `aegis.presets.MinimalPreset`, `aegis.presets.StandardPreset`,
 `aegis.presets.RegulatedHighAssurancePreset`, `WorkflowStarterIntegrityError`,
 and `docs/migration.md` (migration guide from invocation-only to workflow
 governance). This is beta, not yet stable.
 
+Optional adapter classes are source-only beta submodule surfaces, not top-level
+`aegis` exports: `aegis.bedrock_adapter.BedrockTraceAdapter`,
+`aegis.a2a_adapter.A2AAdapter`, and
+`aegis.openai_agents_adapter.OpenAIAgentsAdapter`. Do not describe them as PyPI
+release surfaces until a package release actually ships them.
+
 The following surfaces remain planned-only beyond `v0.9.0` beta and are not
 part of the `v0.3.3` artifact or the current beta public surface:
-`AgentIdentity`, `AgentCapabilityManifest`, `ValidatorHook`,
-`BedrockTraceAdapter`, and `A2AAdapter`. Do not build integrations against
-those names until they ship through the public package exports, instance API,
-CLI surface, and contract tests.
-
-`aegis workflow trace` and `aegis workflow export` shipped in PR-09 and are part
-of the current beta CLI surface.
+`AgentIdentity`, `AgentCapabilityManifest`, and `ValidatorHook` as public APIs.
+Do not build integrations against those names until they ship through the
+public package exports, instance API, CLI surface, and contract tests.
 
 All public examples, starter packs, presets, demo code, and docs snippets
 must use public `aegis` imports only and must not depend on `aegis._internal`.

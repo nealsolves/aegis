@@ -121,8 +121,8 @@ PR-10d is a bounded post-adapter hardening addendum. It must improve the existin
 - [x] default local adopter path remains unchanged and green
 - [x] base package smoke still passes
 
-Deferred PR-10d adapter gate: Bedrock alias-backed participant identity tests
-remain blocked until PR-10a surfaces are present.
+PR-10d Bedrock adapter gate: Bedrock alias-backed participant identity tests
+are covered where PR-10a source surfaces are present.
 
 PR-10d A2A adapter gate: A2A capability and protocol mismatch tests are now
 covered by PR-10b fixtures.
@@ -133,10 +133,10 @@ present.
 
 ## Deferred To PR-10 And Later
 
-- [x] PR-10c optional OpenAI Agents SDK adapter track — complete on local `develop`
-- [ ] PR-10a optional Bedrock adapter track
-- [x] PR-10b optional A2A adapter track — implemented locally
-- [x] research-informed PR-10d safety hardening addendum — implemented locally
+- [x] PR-10a optional Bedrock adapter track — source present locally
+- [x] PR-10b optional A2A adapter track — source present locally
+- [x] PR-10c optional OpenAI Agents SDK adapter track — source present locally
+- [x] research-informed PR-10d safety hardening addendum — source present locally
 
 ---
 

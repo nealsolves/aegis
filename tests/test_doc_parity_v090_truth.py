@@ -127,6 +127,110 @@ def test_v090_release_truth_rejects_row_level_pr_branch_mismatch(tmp_path, monke
     assert "docs/dev/pr_context.md: PR-01 row maps to" in joined, errors
 
 
+def _seed_impl_truth_repo(
+    root: Path,
+    *,
+    version: str = "0.3.3",
+    baseline_version: str = "0.3.3",
+    matrix_version: str = "0.3.3",
+    include_source_beta: bool = True,
+) -> None:
+    _write_file(
+        root,
+        "pyproject.toml",
+        f"""
+        [project]
+        version = "{version}"
+        """,
+    )
+    _write_file(root, "aegis/__init__.py", f'__version__ = "{version}"')
+    _write_file(
+        root,
+        "aegis/_internal/audit.py",
+        'AUDIT_SCHEMA_VERSION = "1.4"',
+    )
+    _write_file(root, "README.md", f"- Current release: `v{version}`")
+    _write_file(root, "CHANGELOG.md", f"## [{version}] — 2026-04-10")
+    _write_file(
+        root,
+        "implementation_status.md",
+        f"**Baseline Version:** `{baseline_version}`",
+    )
+    source_beta = (
+        "| Local source beta | `v0.9.0 source-only beta` | source checkout |\n"
+        if include_source_beta
+        else ""
+    )
+    _write_file(
+        root,
+        "docs/reference/RELEASE_MATRIX.md",
+        f"""
+        # Release Matrix
+
+        - Current package release is `{matrix_version}`.
+
+        | Channel | Version label | Distribution |
+        | --- | --- | --- |
+        | PyPI | `{matrix_version}` | package |
+        {source_beta}
+        """,
+    )
+
+
+def test_implementation_truth_accepts_release_matrix_and_status(
+    tmp_path, monkeypatch
+):
+    module = _load_doc_parity_module()
+    monkeypatch.setattr(module, "REPO_ROOT", tmp_path)
+    _seed_impl_truth_repo(tmp_path)
+
+    assert module.check_implementation_truth(
+        {"version": "0.3.3", "audit_schema_version": "1.4"}
+    ) == []
+
+
+def test_implementation_truth_rejects_release_matrix_package_drift(
+    tmp_path, monkeypatch
+):
+    module = _load_doc_parity_module()
+    monkeypatch.setattr(module, "REPO_ROOT", tmp_path)
+    _seed_impl_truth_repo(tmp_path, matrix_version="0.3.2")
+
+    errors = module.check_implementation_truth(
+        {"version": "0.3.3", "audit_schema_version": "1.4"}
+    )
+
+    assert any("RELEASE_MATRIX.md current package release" in error for error in errors)
+
+
+def test_implementation_truth_rejects_missing_source_beta_matrix_channel(
+    tmp_path, monkeypatch
+):
+    module = _load_doc_parity_module()
+    monkeypatch.setattr(module, "REPO_ROOT", tmp_path)
+    _seed_impl_truth_repo(tmp_path, include_source_beta=False)
+
+    errors = module.check_implementation_truth(
+        {"version": "0.3.3", "audit_schema_version": "1.4"}
+    )
+
+    assert any("v0.9.0 source-only beta" in error for error in errors)
+
+
+def test_implementation_truth_rejects_implementation_status_baseline_drift(
+    tmp_path, monkeypatch
+):
+    module = _load_doc_parity_module()
+    monkeypatch.setattr(module, "REPO_ROOT", tmp_path)
+    _seed_impl_truth_repo(tmp_path, baseline_version="0.3.2")
+
+    errors = module.check_implementation_truth(
+        {"version": "0.3.3", "audit_schema_version": "1.4"}
+    )
+
+    assert any("implementation_status.md Baseline Version" in error for error in errors)
+
+
 _CANONICAL_PLAN_REL = "docs/plans/AEGIS V0.9.0 IMPLEMENTATION_PLAN.md"
 _HISTORICAL_PLAN_RELS = [
     "docs/plans/0.9.0 plan backup.md",
@@ -171,6 +275,24 @@ def test_v090_plan_truth_accepts_one_canonical_and_marked_stale_variants(
     assert module.check_v090_plan_truth() == []
 
 
+def test_v090_plan_truth_ignores_docs_only_adapter_lab_draft(tmp_path, monkeypatch):
+    module = _load_doc_parity_module()
+    monkeypatch.setattr(module, "REPO_ROOT", tmp_path)
+
+    _seed_plan_truth_repo(
+        tmp_path,
+        canonical_content=_CANONICAL_PLAN_CONTENT,
+        stale_content=_HISTORICAL_PLAN_CONTENT,
+    )
+    _write_file(
+        tmp_path,
+        "docs/plans/v0.9.0_ADAPTER_LAB_IMPLEMENTATION_PLAN.md",
+        "# AEGIS v0.9.0 Adapter Lab Implementation Plan\n\nDocs-only draft.\n",
+    )
+
+    assert module.check_v090_plan_truth() == []
+
+
 def test_v090_plan_truth_rejects_stale_plan_missing_supersession_banner(
     tmp_path, monkeypatch
 ):
@@ -188,6 +310,38 @@ def test_v090_plan_truth_rejects_stale_plan_missing_supersession_banner(
     errors = module.check_v090_plan_truth()
     joined = "\n".join(errors)
     assert "stale plan is not marked superseded" in joined, errors
+
+
+def test_link_hygiene_skips_unmaintained_external_reference_docs(
+    tmp_path, monkeypatch
+):
+    module = _load_doc_parity_module()
+    monkeypatch.setattr(module, "REPO_ROOT", tmp_path)
+
+    _write_file(
+        tmp_path,
+        "docs/reference/external/what-is-bedrock.md",
+        "# External Reference\n\nBroken external-source sibling [Models](models.md).\n",
+    )
+
+    assert module.check_link_hygiene({"internal_docs": []}) == []
+
+
+def test_link_hygiene_still_checks_maintained_external_adapter_docs(
+    tmp_path, monkeypatch
+):
+    module = _load_doc_parity_module()
+    monkeypatch.setattr(module, "REPO_ROOT", tmp_path)
+
+    _write_file(
+        tmp_path,
+        "docs/reference/external/A2A_ADAPTER.md",
+        "# A2A Adapter\n\nBroken maintained doc link [Missing](missing.md).\n",
+    )
+
+    errors = module.check_link_hygiene({"internal_docs": []})
+
+    assert any("A2A_ADAPTER.md" in error and "missing.md" in error for error in errors)
 
 
 def test_v090_release_truth_rejects_uncoupled_freeze_and_go_statements(tmp_path, monkeypatch):

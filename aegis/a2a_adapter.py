@@ -12,6 +12,7 @@ task polling, task execution, and business state.
 from __future__ import annotations
 
 import logging
+import unicodedata
 import uuid
 from collections.abc import Mapping as MappingABC
 from collections.abc import Sequence as SequenceABC
@@ -35,6 +36,9 @@ _ADAPTER_VERSION = "0.9.0-beta"
 _PROTOCOL_VERSION = "1.0"
 _SUPPORTED_PROTOCOL_BINDINGS = frozenset({"JSONRPC", "HTTP+JSON"})
 _GRPC_BINDINGS = frozenset({"grpc"})
+# U+0261 (LATIN SMALL LETTER SCRIPT G) is not normalized by NFKC; map it to
+# ASCII g explicitly. This does not cover all Unicode lookalike characters.
+_PROTOCOL_CONFUSABLES = {ord("\u0261"): "g"}
 _SECRET_KEY_FRAGMENTS = (
     "authorization",
     "credential",
@@ -68,11 +72,19 @@ _TERMINAL_TASK_STATES = frozenset({
 
 
 def _binding_is_grpc(value: Any) -> bool:
-    return isinstance(value, str) and value.casefold() in _GRPC_BINDINGS
+    if not isinstance(value, str):
+        return False
+    normalized = unicodedata.normalize("NFKC", value).casefold()
+    normalized = normalized.translate(_PROTOCOL_CONFUSABLES)
+    return normalized in _GRPC_BINDINGS
 
 
 def _transport_is_grpc(value: Any) -> bool:
-    return isinstance(value, str) and value.casefold() == "grpc"
+    if not isinstance(value, str):
+        return False
+    normalized = unicodedata.normalize("NFKC", value).casefold()
+    normalized = normalized.translate(_PROTOCOL_CONFUSABLES)
+    return normalized == "grpc"
 
 
 def _is_scalar(value: Any) -> bool:
@@ -385,6 +397,20 @@ def _validate_agent_card(
                 "gRPC transport is not supported for governed A2A in v0.9.0",
                 reason_code="WORKFLOW_PROTOCOL_GRPC_UNSUPPORTED",
                 details={"interface_index": index},
+            )
+        if (
+            version == required_version
+            and isinstance(binding, str)
+            and binding not in _SUPPORTED_PROTOCOL_BINDINGS
+        ):
+            raise _workflow_protocol_error(
+                "A2A Agent Card supportedInterfaces[].protocolBinding must be "
+                "JSONRPC or HTTP+JSON for the governed protocol version",
+                reason_code="WORKFLOW_PROTOCOL_A2A_BINDING_REQUIRED",
+                details={
+                    "interface_index": index,
+                    "protocol_binding": binding,
+                },
             )
 
     version_match_seen = False
