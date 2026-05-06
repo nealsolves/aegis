@@ -1407,3 +1407,114 @@ def test_session_accepts_older_version_grpc_with_valid_required_version_fallback
     with _make_session(protocol_constraints={"a2a": {}}) as session:
         token = session.enforce_step_pre_call(_direct_a2a_inv(evidence))
         session.discard_adapter_step(token, rollback_authorization=True)
+
+
+# ---------------------------------------------------------------------------
+# P1: confusable-safe gRPC detection (unicode lookalike bypass)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("lookalike_binding", ["ɡrpc", "ɡRPC"])
+def test_validate_agent_card_rejects_unicode_lookalike_grpc_binding(lookalike_binding):
+    """U+0261 (LATIN SMALL LETTER SCRIPT G) must be treated as gRPC and rejected."""
+    from aegis._internal.errors import WorkflowProtocolViolationError
+    from aegis.a2a_adapter import _validate_agent_card
+
+    card = {
+        **_AGENT_CARD_JSONRPC,
+        "supportedInterfaces": [
+            {"protocolBinding": lookalike_binding, "protocolVersion": "1.0"},
+        ],
+    }
+    constraints = {
+        "protocol_version": "1.0",
+        "allowed_protocol_bindings": ["JSONRPC", "HTTP+JSON"],
+    }
+    with pytest.raises(WorkflowProtocolViolationError):
+        _validate_agent_card(card, constraints)
+
+
+@pytest.mark.parametrize("lookalike_transport", ["ɡrpc", "ɡRPC"])
+def test_validate_agent_card_rejects_unicode_lookalike_grpc_transport(lookalike_transport):
+    """U+0261 in the transport field must be caught as a gRPC marker."""
+    from aegis._internal.errors import WorkflowProtocolViolationError
+    from aegis.a2a_adapter import _validate_agent_card
+
+    card = {
+        **_AGENT_CARD_JSONRPC,
+        "supportedInterfaces": [
+            {
+                "protocolBinding": "JSONRPC",
+                "protocolVersion": "1.0",
+                "transport": lookalike_transport,
+            },
+        ],
+    }
+    constraints = {
+        "protocol_version": "1.0",
+        "allowed_protocol_bindings": ["JSONRPC", "HTTP+JSON"],
+    }
+    with pytest.raises(WorkflowProtocolViolationError):
+        _validate_agent_card(card, constraints)
+
+
+@pytest.mark.parametrize("lookalike_binding", ["ɡrpc", "ɡRPC"])
+def test_session_rejects_unicode_lookalike_grpc_in_top_level_binding(lookalike_binding):
+    """Session path: U+0261 lookalike in top-level binding must be caught."""
+    from aegis._internal.errors import WorkflowProtocolViolationError
+
+    evidence = {
+        "selected_protocol_binding": lookalike_binding,
+        "supportedInterfaces": [
+            {"protocolBinding": "JSONRPC", "protocolVersion": "1.0"}
+        ],
+    }
+    with _make_session(protocol_constraints={"a2a": {}}) as session:
+        with pytest.raises(WorkflowProtocolViolationError):
+            session.enforce_step_pre_call(_direct_a2a_inv(evidence))
+
+
+# ---------------------------------------------------------------------------
+# P1: mixed required-version bindings — interface-order bypass
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("bad_binding", ["websocket", "mqtt", "amqp"])
+def test_validate_agent_card_rejects_unsupported_binding_at_required_version(bad_binding):
+    """A non-gRPC unsupported binding at required_version must be rejected even when
+    a valid binding appears earlier in the list."""
+    from aegis._internal.errors import WorkflowProtocolViolationError
+    from aegis.a2a_adapter import _validate_agent_card
+
+    card = {
+        **_AGENT_CARD_JSONRPC,
+        "supportedInterfaces": [
+            {"protocolBinding": "JSONRPC", "protocolVersion": "1.0"},
+            {"protocolBinding": bad_binding, "protocolVersion": "1.0"},
+        ],
+    }
+    constraints = {
+        "protocol_version": "1.0",
+        "allowed_protocol_bindings": ["JSONRPC", "HTTP+JSON"],
+    }
+    with pytest.raises(WorkflowProtocolViolationError) as exc_info:
+        _validate_agent_card(card, constraints)
+    assert exc_info.value.details.get("reason_code") == "WORKFLOW_PROTOCOL_A2A_BINDING_REQUIRED"
+
+
+@pytest.mark.parametrize("bad_binding", ["websocket", "mqtt"])
+def test_session_rejects_unsupported_binding_at_required_version_in_supported_interfaces(
+    bad_binding,
+):
+    """Session path: an unsupported (non-gRPC) binding at required_version must be
+    rejected even when a valid binding precedes it in supportedInterfaces."""
+    from aegis._internal.errors import WorkflowProtocolViolationError
+
+    evidence = {
+        "supportedInterfaces": [
+            {"protocolBinding": "JSONRPC", "protocolVersion": "1.0"},
+            {"protocolBinding": bad_binding, "protocolVersion": "1.0"},
+        ]
+    }
+    with _make_session(protocol_constraints={"a2a": {}}) as session:
+        with pytest.raises(WorkflowProtocolViolationError) as exc_info:
+            session.enforce_step_pre_call(_direct_a2a_inv(evidence))
+    assert exc_info.value.details.get("reason_code") == "WORKFLOW_PROTOCOL_A2A_BINDING_REQUIRED"

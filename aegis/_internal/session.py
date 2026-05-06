@@ -7,6 +7,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import time
+import unicodedata
 import uuid
 from collections.abc import Mapping as MappingABC
 from dataclasses import dataclass, field
@@ -61,6 +62,9 @@ _VALID_TRANSITIONS: dict[str, set[str]] = {
 _A2A_PROTOCOL_VERSION = "1.0"
 _A2A_ALLOWED_PROTOCOL_BINDINGS = frozenset({"JSONRPC", "HTTP+JSON"})
 _A2A_GRPC_BINDINGS = frozenset({"grpc"})
+# U+0261 (LATIN SMALL LETTER SCRIPT G) is not normalized by NFKC; map it to
+# ASCII g explicitly so unicode lookalikes cannot bypass the gRPC guard.
+_A2A_GRPC_CHAR_MAP = {ord("ɡ"): "g"}
 
 
 # ---------------------------------------------------------------------------
@@ -227,11 +231,19 @@ def _raise_a2a_protocol_error(
 
 
 def _a2a_binding_is_grpc(value: Any) -> bool:
-    return isinstance(value, str) and value.casefold() in _A2A_GRPC_BINDINGS
+    if not isinstance(value, str):
+        return False
+    normalized = unicodedata.normalize("NFKC", value).casefold()
+    normalized = normalized.translate(_A2A_GRPC_CHAR_MAP)
+    return normalized in _A2A_GRPC_BINDINGS
 
 
 def _a2a_transport_is_grpc(value: Any) -> bool:
-    return isinstance(value, str) and value.casefold() == "grpc"
+    if not isinstance(value, str):
+        return False
+    normalized = unicodedata.normalize("NFKC", value).casefold()
+    normalized = normalized.translate(_A2A_GRPC_CHAR_MAP)
+    return normalized == "grpc"
 
 
 def _validate_a2a_protocol_evidence(
@@ -367,6 +379,24 @@ def _validate_a2a_protocol_evidence(
                 allowed_bindings=allowed_bindings,
                 reason_code="WORKFLOW_PROTOCOL_GRPC_UNSUPPORTED",
                 extra_details={"interface_index": index},
+            )
+        if (
+            version == required_version
+            and isinstance(binding, str)
+            and binding not in _A2A_ALLOWED_PROTOCOL_BINDINGS
+        ):
+            _raise_a2a_protocol_error(
+                "A2A evidence supportedInterfaces[].protocolBinding must be "
+                "JSONRPC or HTTP+JSON for the governed protocol version",
+                session_id=session_id,
+                step_id=step_id,
+                required_version=required_version,
+                allowed_bindings=allowed_bindings,
+                reason_code="WORKFLOW_PROTOCOL_A2A_BINDING_REQUIRED",
+                extra_details={
+                    "interface_index": index,
+                    "protocol_binding": binding,
+                },
             )
 
     version_match_seen = False
