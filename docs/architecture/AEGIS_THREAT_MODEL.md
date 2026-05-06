@@ -16,8 +16,7 @@ AEGIS must guarantee:
 
 1. governance enforcement occurs before irreversible actions
 2. enforcement decisions are deterministic
-3. governance artifacts are checksum-based, with optional signing and audit
-   chaining for tamper-evidence
+3. governance artifacts are tamper-evident
 4. enforcement cannot be bypassed through trivial manipulation
 5. extensions cannot weaken core governance guarantees
 
@@ -40,25 +39,6 @@ External Systems
 All AI invocation governance must pass through this boundary.
 
 Anything outside the enforcement boundary is considered untrusted.
-
-AEGIS does not sandbox hostile in-process Python code, contain malicious
-dependencies, isolate tenants, protect secrets placed into audit context by the
-host, or replace provider/runtime/network security controls.
-
-## Agentic Risk Boundary
-
-| Risk area | AEGIS stance |
-|---|---|
-| Agent goal hijack | Partially mitigated through deterministic policy, intent-bound workflow evidence, and host/tool controls. AEGIS does not make natural-language inputs intrinsically trustworthy. |
-| Tool misuse | Current name/count controls are not mature tool governance. Deeper argument, destination, side-effect, approval, descriptor, and result checks are beta hardening targets. |
-| Identity and privilege abuse | AEGIS validates participant and step evidence supplied by the host. It does not issue credentials or own IAM. |
-| Agentic supply chain | AEGIS can pin and validate policy, tool, adapter, and descriptor metadata. It does not make third-party code safe. |
-| Unexpected code execution | Out of scope except for blocking or requiring approval for code-execution tools. AEGIS is not a sandbox. |
-| Memory and context poisoning | AEGIS can require provenance and redact or hash audit context. It does not operate a memory quarantine or vector DB security layer. |
-| Insecure inter-agent communication | Adapter-boundary validation is in scope. Transport security, mTLS, and remote protocol operation are host-owned. |
-| Cascading failures | Budgets, sequence checks, circuit-breaker-style failures, and workflow traces are in scope. |
-| Human-agent trust exploitation | Approval evidence shape is in scope. Human training and organizational approval staffing are out of scope. |
-| Rogue agents | Capability manifests, revocation, and quarantine guidance are in scope. Autonomous agent containment is host-owned. |
 
 ---
 
@@ -395,8 +375,7 @@ AEGIS provides the following guarantees:
 * deterministic governance enforcement
 * fail-closed security model
 * provable enforcement boundary
-* checksum-based audit artifacts, with optional signing and audit chaining for
-  tamper-evidence
+* tamper-evident audit artifacts
 * plugin-safe extension architecture
 
 These guarantees make AEGIS suitable for environments requiring:

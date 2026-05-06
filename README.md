@@ -5,8 +5,7 @@
 AEGIS is a Python SDK for deterministic, fail-closed governance of AI model
 invocations. It validates every invocation against a declared policy, enforces
 role and schema constraints, evaluates optional custom gates and risk scoring,
-and emits checksum-based audit artifacts for every pass or fail path, with
-optional signing and audit chaining for tamper-evidence.
+and emits a tamper-evident audit artifact for every pass or fail path.
 
 Governance in AEGIS is runtime enforcement, not documentation and not prompting.
 
@@ -15,25 +14,12 @@ Governance in AEGIS is runtime enforcement, not documentation and not prompting.
 - Package: `pip install aegis`
 - Import: `import aegis`
 - Current release: `v0.3.3` on `2026-04-10`
-- Release matrix: [docs/reference/RELEASE_MATRIX.md](docs/reference/RELEASE_MATRIX.md)
 - Current release scope: invocation governance plus workflow-aware provenance
   and lineage groundwork, audit schema `v1.4`, `AuditLineage`,
   `ProvenanceGate`, `RiskHistory`, `@governed` defaults to split enforcement
-- Current beta line: source-only `v0.9.0` workflow governance; the shipped PyPI
-  package remains `v0.3.3`
-- Verification baseline: `1816 base-package tests`, plus `19` optional
-  OpenAI Agents integration tests when the `openai-agents` extra is installed;
-  coverage remains above the `90%` CI gate
-
-## Threat Model
-
-AEGIS protects against accidental bypass, misconfiguration, missing policy
-inputs, invalid roles, invalid schemas, unsupported workflow transitions,
-ordinary split-token replay, and host integration mistakes.
-
-AEGIS does not sandbox hostile in-process Python code, contain malicious
-dependencies, isolate tenants, protect secrets placed into audit context by the
-host, or replace provider/runtime/network security controls.
+- Current beta line: source-only `v0.9.0` workflow governance on local
+  `develop`; the shipped PyPI package remains `v0.3.3`
+- Verification baseline: `1572 tests`, coverage above the `90%` CI gate
 
 ## Why This Repo Exists
 
@@ -65,24 +51,22 @@ Since v0.3.3, split enforcement is the default — Phase A runs before the model
 call, Phase B validates output after. Pass `pre_call_enforcement=False` for the
 legacy unified mode (deprecated).
 
-The source-only `v0.9.0` beta line adds workflow governance
+The source-only `v0.9.0` beta line on local `develop` adds workflow governance
 built around `AEGIS.open_session(...)`, `GovernanceSession`,
 `SessionPreCallResult`, `aegis workflow init`, `aegis policy init`,
 `aegis workflow lint`, `aegis workflow doctor`, `aegis workflow trace`, and
 `aegis workflow export`. No external API keys are required for the default
-adopter path. The currently shipped PyPI package remains `v0.3.3`.
-
-Optional Bedrock, A2A, and OpenAI Agents adapters are source-only beta
-submodules. They are not re-exported from top-level `aegis`; the OpenAI Agents
-adapter requires `aegis[openai-agents]`. See the
-[release matrix](docs/reference/RELEASE_MATRIX.md) for exact channel and ref
-status. The target-state architecture is captured in
+adopter path. The currently shipped PyPI package remains `v0.3.3`. Optional
+Bedrock and A2A adapters remain later tracks. The optional OpenAI Agents SDK
+adapter is present in the source-only beta under `aegis.openai_agents_adapter`;
+it requires `aegis[openai-agents]` and is not re-exported from top-level
+`aegis`. The target-state architecture is captured in
 `docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md`.
 
 ## Workflow Governance (v0.9.0 Beta)
 
-Workflow governance is available in the source-only `v0.9.0` beta line. No
-external API keys are required. Install from source, then:
+Workflow governance is available in the source-only `v0.9.0` beta line on
+local `develop`. No external API keys are required. Install from source, then:
 
 ```bash
 aegis workflow init --profile minimal
@@ -273,8 +257,6 @@ aegis/
 ├── session.py                     v0.9.0-beta workflow session surface
 ├── workflow_trace.py              v0.9.0-beta trace helpers
 ├── workflow_export.py             v0.9.0-beta export helpers
-├── bedrock_adapter.py             Optional source-only Bedrock adapter
-├── a2a_adapter.py                 Optional source-only A2A adapter
 ├── openai_agents_adapter.py       Optional source-only OpenAI Agents adapter
 ├── schemas/                       Runtime JSON Schemas packaged with the SDK
 └── _internal/                     Private implementation used by public modules

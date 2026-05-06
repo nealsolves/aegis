@@ -21,22 +21,21 @@ The shipped runtime supports:
 - split enforcement through `enforce_pre_call()` and `enforce_post_call()`
 - typed fail-closed validation for invocation shape, role, preconditions, tool
   constraints, output schema, postconditions, and optional risk scoring
-- checksum-based audit artifacts, with optional signing and audit chaining for
-  tamper-evidence
+- tamper-evident audit artifacts with optional signing
 - pluggable audit sinks, policy loaders, custom gates, telemetry, and policy
   testing helpers
 
 The demo surface in this repo is a React frontend plus FastAPI backend that
 walks through the `v0.3.x` capabilities.
 
-The source-only `v0.9.0` beta workflow governance line is available from source
-refs named in [docs/reference/RELEASE_MATRIX.md](docs/reference/RELEASE_MATRIX.md).
-It adds `AEGIS.open_session()`, `GovernanceSession`, starter
+The source-only `v0.9.0` beta workflow governance line is available on local
+`develop`. It adds `AEGIS.open_session()`, `GovernanceSession`, starter
 scaffolds, `aegis workflow init`, `aegis policy init`, `aegis workflow lint`,
-`aegis workflow doctor`, `aegis workflow trace`, and `aegis workflow export`.
-The source tree also contains advanced optional Bedrock, A2A, and OpenAI
-Agents adapter submodules. They are not re-exported from top-level `aegis`;
-the OpenAI Agents adapter requires the `openai-agents` extra. See
+`aegis workflow doctor`, `aegis workflow trace`, and `aegis workflow export`. The source tree
+also contains the advanced optional OpenAI Agents SDK adapter at
+`aegis.openai_agents_adapter` (PR-10c); it requires the `openai-agents` extra and is not
+re-exported from top-level `aegis`. Bedrock and A2A remain later optional
+tracks (PR-10a/10b). See
 [docs/reference/WORKFLOW_QUICKSTART.md](docs/reference/WORKFLOW_QUICKSTART.md)
 for the first-adopter path.
 
