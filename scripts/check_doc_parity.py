@@ -938,6 +938,11 @@ _V090_HISTORICAL_PLANS = [
     "docs/plans/AEGIS_v0.9.0_IMPLEMENTATION_PLAN_UPDATED.md",
 ]
 _V090_ALL_EXPECTED_PLANS = [_V090_CANONICAL_PLAN, *_V090_HISTORICAL_PLANS]
+# docs-only drafts that contain "implementation_plan" in their name but are
+# not implementation plans and must not trigger the one-canonical-plan check
+_V090_DOCS_ONLY_PLAN_DRAFTS = {
+    "docs/plans/v0.9.0_ADAPTER_LAB_IMPLEMENTATION_PLAN.md",
+}
 _SUPERSEDED_PLAN_RE = re.compile(r"superseded|historical input only", re.I)
 
 
@@ -965,11 +970,14 @@ def check_v090_plan_truth() -> list[str]:
 
     discovered = []
     for path in plans_dir.glob("*.md"):
+        rel = str(path.relative_to(REPO_ROOT))
+        if rel in _V090_DOCS_ONLY_PLAN_DRAFTS:
+            continue
         lower_name = path.name.lower()
         if "0.9.0" not in lower_name:
             continue
         if "implementation_plan" in lower_name or lower_name == "0.9.0 plan backup.md":
-            discovered.append(str(path.relative_to(REPO_ROOT)))
+            discovered.append(rel)
     discovered = sorted(discovered)
 
     expected = set(_V090_ALL_EXPECTED_PLANS)
