@@ -12,14 +12,13 @@ task polling, task execution, and business state.
 from __future__ import annotations
 
 import logging
-import unicodedata
 import uuid
 from collections.abc import Mapping as MappingABC
 from collections.abc import Sequence as SequenceABC
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Mapping, Sequence
 
-from aegis._internal.errors import (
+from aegis import (
     InvocationValidationError,
     WorkflowParticipantMismatchError,
     WorkflowProtocolViolationError,
@@ -36,9 +35,6 @@ _ADAPTER_VERSION = "0.9.0-beta"
 _PROTOCOL_VERSION = "1.0"
 _SUPPORTED_PROTOCOL_BINDINGS = frozenset({"JSONRPC", "HTTP+JSON"})
 _GRPC_BINDINGS = frozenset({"grpc"})
-# U+0261 (LATIN SMALL LETTER SCRIPT G) is not normalized by NFKC; map it to
-# ASCII g explicitly. This does not cover all Unicode lookalike characters.
-_PROTOCOL_CONFUSABLES = {ord("\u0261"): "g"}
 _SECRET_KEY_FRAGMENTS = (
     "authorization",
     "credential",
@@ -72,19 +68,11 @@ _TERMINAL_TASK_STATES = frozenset({
 
 
 def _binding_is_grpc(value: Any) -> bool:
-    if not isinstance(value, str):
-        return False
-    normalized = unicodedata.normalize("NFKC", value).casefold()
-    normalized = normalized.translate(_PROTOCOL_CONFUSABLES)
-    return normalized in _GRPC_BINDINGS
+    return isinstance(value, str) and value.casefold() in _GRPC_BINDINGS
 
 
 def _transport_is_grpc(value: Any) -> bool:
-    if not isinstance(value, str):
-        return False
-    normalized = unicodedata.normalize("NFKC", value).casefold()
-    normalized = normalized.translate(_PROTOCOL_CONFUSABLES)
-    return normalized == "grpc"
+    return isinstance(value, str) and value.casefold() == "grpc"
 
 
 def _is_scalar(value: Any) -> bool:
@@ -397,20 +385,6 @@ def _validate_agent_card(
                 "gRPC transport is not supported for governed A2A in v0.9.0",
                 reason_code="WORKFLOW_PROTOCOL_GRPC_UNSUPPORTED",
                 details={"interface_index": index},
-            )
-        if (
-            version == required_version
-            and isinstance(binding, str)
-            and binding not in _SUPPORTED_PROTOCOL_BINDINGS
-        ):
-            raise _workflow_protocol_error(
-                "A2A Agent Card supportedInterfaces[].protocolBinding must be "
-                "JSONRPC or HTTP+JSON for the governed protocol version",
-                reason_code="WORKFLOW_PROTOCOL_A2A_BINDING_REQUIRED",
-                details={
-                    "interface_index": index,
-                    "protocol_binding": binding,
-                },
             )
 
     version_match_seen = False
@@ -760,10 +734,10 @@ class A2AAdapter:
 
         session = prepared._session
         session_result = prepared._session_result
-        adapter_state = session.pop_adapter_step_state(session_result)
+        peeked_state = session.adapter_step_state(session_result)
         if (
-            adapter_state.get("adapter") != "a2a"
-            or adapter_state.get("adapter_step_key") != prepared._adapter_step_key
+            (peeked_state or {}).get("adapter") != "a2a"
+            or (peeked_state or {}).get("adapter_step_key") != prepared._adapter_step_key
         ):
             session.discard_adapter_step(session_result)
             raise WorkflowSessionTokenInvalidError(
@@ -774,6 +748,7 @@ class A2AAdapter:
                     "reason_code": "WORKFLOW_SESSION_TOKEN_INVALID",
                 },
             )
+        adapter_state = session.pop_adapter_step_state(session_result)
 
         try:
             task = _validate_task_envelope(

@@ -7,7 +7,6 @@ from __future__ import annotations
 import hashlib
 import logging
 import time
-import unicodedata
 import uuid
 from collections.abc import Mapping as MappingABC
 from dataclasses import dataclass, field
@@ -62,9 +61,6 @@ _VALID_TRANSITIONS: dict[str, set[str]] = {
 _A2A_PROTOCOL_VERSION = "1.0"
 _A2A_ALLOWED_PROTOCOL_BINDINGS = frozenset({"JSONRPC", "HTTP+JSON"})
 _A2A_GRPC_BINDINGS = frozenset({"grpc"})
-# U+0261 (LATIN SMALL LETTER SCRIPT G) is not normalized by NFKC; map it to
-# ASCII g explicitly. This does not cover all Unicode lookalike characters.
-_A2A_PROTOCOL_CONFUSABLES = {ord("\u0261"): "g"}
 
 
 # ---------------------------------------------------------------------------
@@ -231,19 +227,11 @@ def _raise_a2a_protocol_error(
 
 
 def _a2a_binding_is_grpc(value: Any) -> bool:
-    if not isinstance(value, str):
-        return False
-    normalized = unicodedata.normalize("NFKC", value).casefold()
-    normalized = normalized.translate(_A2A_PROTOCOL_CONFUSABLES)
-    return normalized in _A2A_GRPC_BINDINGS
+    return isinstance(value, str) and value.casefold() in _A2A_GRPC_BINDINGS
 
 
 def _a2a_transport_is_grpc(value: Any) -> bool:
-    if not isinstance(value, str):
-        return False
-    normalized = unicodedata.normalize("NFKC", value).casefold()
-    normalized = normalized.translate(_A2A_PROTOCOL_CONFUSABLES)
-    return normalized == "grpc"
+    return isinstance(value, str) and value.casefold() == "grpc"
 
 
 def _validate_a2a_protocol_evidence(
@@ -379,24 +367,6 @@ def _validate_a2a_protocol_evidence(
                 allowed_bindings=allowed_bindings,
                 reason_code="WORKFLOW_PROTOCOL_GRPC_UNSUPPORTED",
                 extra_details={"interface_index": index},
-            )
-        if (
-            version == required_version
-            and isinstance(binding, str)
-            and binding not in _A2A_ALLOWED_PROTOCOL_BINDINGS
-        ):
-            _raise_a2a_protocol_error(
-                "A2A supportedInterfaces[].protocolBinding must be JSONRPC or "
-                "HTTP+JSON for the governed protocol version",
-                session_id=session_id,
-                step_id=step_id,
-                required_version=required_version,
-                allowed_bindings=allowed_bindings,
-                reason_code="WORKFLOW_PROTOCOL_A2A_BINDING_REQUIRED",
-                extra_details={
-                    "interface_index": index,
-                    "protocol_binding": binding,
-                },
             )
 
     version_match_seen = False
@@ -1350,7 +1320,21 @@ class GovernanceSession:
             enriched["policy_file"] = self._policy_file
         effective_policy_file: str | None = enriched.get("policy_file")
 
-        ctx: dict[str, Any] = dict(enriched.get("context") or {})
+        _ctx_raw = enriched.get("context")
+        if _ctx_raw is None:
+            ctx: dict[str, Any] = {}
+        elif isinstance(_ctx_raw, MappingABC):
+            ctx = dict(_ctx_raw)
+        else:
+            raise InvocationValidationError(
+                "invocation['context'] must be a mapping",
+                details={
+                    "session_id": self._session_id,
+                    "step_id": resolved_step_id,
+                    "context_type": type(_ctx_raw).__name__,
+                    "reason_code": "WORKFLOW_PROTOCOL_CONTEXT_INVALID",
+                },
+            )
         ctx["session_id"] = self._session_id
         ctx["step_id"] = resolved_step_id
         if participant_id is not None:

@@ -495,22 +495,23 @@ class BedrockTraceAdapter:
                     adapter_step_key=adapter_step_key,
                 )
 
-            if collaborator_alias and not _trace_part_matches_alias(part, collaborator_alias):
-                raise WorkflowProtocolViolationError(
-                    "Bedrock trace_parts do not correlate to the bound collaborator_alias",
-                    details={
-                        "session_id": session.session_id,
-                        "step_id": session_result.step_id,
-                        "protocol": "bedrock",
-                        "adapter_step_key": adapter_step_key,
-                        "collaborator_alias": collaborator_alias,
-                        "trace_part_index": index,
-                        "reason_code": "WORKFLOW_PROTOCOL_TRACE_ALIAS_MISMATCH",
-                    },
-                )
+            if collaborator_alias:
+                if not _trace_part_matches_alias(part, collaborator_alias):
+                    raise WorkflowProtocolViolationError(
+                        "Bedrock trace_parts do not correlate to the bound collaborator_alias",
+                        details={
+                            "session_id": session.session_id,
+                            "step_id": session_result.step_id,
+                            "protocol": "bedrock",
+                            "adapter_step_key": adapter_step_key,
+                            "collaborator_alias": collaborator_alias,
+                            "trace_part_index": index,
+                            "reason_code": "WORKFLOW_PROTOCOL_TRACE_ALIAS_MISMATCH",
+                        },
+                    )
+                alias_matched = True
 
             trace_ids.extend(_extract_trace_ids(trace_member))
-            alias_matched = True
 
         return {
             "trace_present": bool(trace_parts),
