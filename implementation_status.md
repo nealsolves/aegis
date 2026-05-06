@@ -2,18 +2,18 @@
 
 **Target Version:** `0.9.0` Beta
 **Baseline Version:** `0.3.3`
-**Active Branch:** `feat/v0.9-10-a2a-adapter`
-**Last Updated:** 2026-05-04
+**Active Branch:** `feature/v0.9-release-truth-governance-hardening`
+**Local develop ref:** `9e84d34db79414e1f8db3101735f9ea4fbe3e854`
+**Local origin/develop ref:** `9e84d34db79414e1f8db3101735f9ea4fbe3e854`
+**Last Updated:** 2026-05-05
 
 ---
 
 ## Overall Progress
 
-- PR-01 through PR-09 are complete.
-- PR-10a has not started.
-- PR-10b is implemented locally on `feat/v0.9-10-a2a-adapter`.
-- PR-10c is complete on local `develop` and is pending merge to `origin/develop` via PR.
-- PR-10d is implemented locally as a bounded research-informed safety addendum before PR-11.
+- PR-01 through PR-10d are present in the local `develop` snapshot named above.
+- The shipped PyPI package and runtime metadata remain `0.3.3`.
+- The `v0.9.0` beta is source-only until PR-11 and a real release cut.
 - PR-11 has not started.
 
 | Track | Status | Notes |
@@ -27,7 +27,7 @@
 | Beta proof | complete | Clean-env proof, real failure/diagnosis/fix/rerun flow, and demo parity are in place |
 | Engine hardening | complete | Budgets, transitions, protocol constraints, approvals, handoffs, and internal validator hooks are hardened |
 | Exports and ops | complete | `aegis workflow trace` and `aegis workflow export` ship on `develop` |
-| Optional adapters | partial | PR-10b implemented locally; PR-10a not started; PR-10c complete on local `develop`, pending `origin/develop` merge |
+| Optional adapters | source-only beta | Bedrock, A2A, and OpenAI Agents adapter submodules are present in source; none are top-level `aegis` re-exports |
 | Research safety addendum | implemented locally | PR-10d adds graph/topology lint, doctor remediation, export rationale, and safety smoke tests |
 | Beta freeze | not started | Begins in PR-11 |
 
@@ -57,10 +57,10 @@
 | PR-07 | `feat/v0.9-07-beta-proof` | complete | Mandatory stop-ship proof for quickstart, diagnosis, fix, rerun, and demo parity |
 | PR-08 | `feat/v0.9-08-engine-hardening` | complete | Sequencing, approvals, budgets, transitions, handoffs, protocol rules, and internal validator hooks |
 | PR-09 | `feat/v0.9-09-exports-and-ops` | complete | Trace, export, and operator polish |
-| PR-10a | `feat/v0.9-10-bedrock-adapter` | not started | Optional Bedrock adapter with alias-backed identity rules |
-| PR-10b | `feat/v0.9-10-a2a-adapter` | implemented locally | Optional A2A adapter with strict wire-contract rules |
-| PR-10c | `feat/v0.9-10-openai-agents-adapter` | complete | Optional OpenAI Agents SDK adapter ships on local `develop`; pending merge to `origin/develop` via PR |
-| PR-10d | `feat/v0.9-10d-research-safety-addendum` | implemented locally | Research-informed lint, doctor, export, safety smoke, and adapter-fixture hardening |
+| PR-10a | `feat/v0.9-10-bedrock-adapter` | source present locally | Optional Bedrock adapter with alias-backed identity rules |
+| PR-10b | `feat/v0.9-10-a2a-adapter` | source present locally | Optional A2A adapter with strict wire-contract rules |
+| PR-10c | `feat/v0.9-10-openai-agents-adapter` | source present locally | Optional OpenAI Agents SDK adapter with governed binding and fail-closed unsupported-surface rules |
+| PR-10d | `feat/v0.9-10d-research-safety-addendum` | source present locally | Research-informed lint, doctor, export, safety smoke, and adapter-fixture hardening |
 | PR-11 | `feat/v0.9-11-beta-freeze` -> `release/v0.9.0` | not started | Public API freeze, beta gate verification, and release cut |
 
 ---
@@ -136,8 +136,8 @@
 - [x] starter and workflow safety smoke tests with no external services
 - [x] release docs confirm PR-10d does not change the default local adopter path
 
-Deferred PR-10d adapter gate: Bedrock alias-backed participant identity tests
-remain blocked until PR-10a surfaces are present.
+PR-10d Bedrock adapter gate: Bedrock alias-backed participant identity tests
+are covered where PR-10a source surfaces are present.
 
 PR-10d A2A adapter gate: A2A capability and protocol mismatch tests are now
 covered by PR-10b fixtures.

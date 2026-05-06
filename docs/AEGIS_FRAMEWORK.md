@@ -224,7 +224,7 @@ action to proceed.
 
 ---
 
-## 3. Check: Tamper-Evident Audit Trail
+## 3. Check: Audit Trail Integrity
 
 Check produces the evidence layer. Every enforcement attempt should leave a
 record that can be inspected, persisted, and verified.
@@ -287,7 +287,8 @@ This made Check more operationally safe without changing its core role.
 - custom-gate metadata preservation in emitted artifacts
 
 At this point, Check was no longer just a structured log record. It became a
-tamper-evident evidence package that could be validated and exported.
+checksum-based evidence package that can add tamper-evidence through signing
+and hash-chained export.
 
 #### `v0.3.2`: split-mode evidence and post-release hardening
 

@@ -1239,7 +1239,10 @@ def test_validate_task_updates_returns_actual_counts_and_latest_state_beyond_cap
 # P3: gRPC casefold rejection
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("grpc_binding", ["GRPC", "grpc", "gRPC", "Grpc", "GrPC"])
+@pytest.mark.parametrize(
+    "grpc_binding",
+    ["GRPC", "grpc", "gRPC", "Grpc", "GrPC", "\u0261rpc"],
+)
 def test_validate_agent_card_rejects_mixed_case_grpc_bindings(grpc_binding):
     from aegis._internal.errors import WorkflowProtocolViolationError
     from aegis.a2a_adapter import _validate_agent_card
@@ -1258,7 +1261,7 @@ def test_validate_agent_card_rejects_mixed_case_grpc_bindings(grpc_binding):
         _validate_agent_card(card, constraints)
 
 
-@pytest.mark.parametrize("transport_value", ["grpc", "GRPC", "gRPC"])
+@pytest.mark.parametrize("transport_value", ["grpc", "GRPC", "gRPC", "\u0261rpc"])
 def test_validate_agent_card_rejects_mixed_case_grpc_transport(transport_value):
     from aegis._internal.errors import WorkflowProtocolViolationError
     from aegis.a2a_adapter import _validate_agent_card
@@ -1285,7 +1288,7 @@ def test_validate_agent_card_rejects_mixed_case_grpc_transport(transport_value):
     "binding_key",
     ["selected_protocol_binding", "protocol_binding", "protocolBinding"],
 )
-@pytest.mark.parametrize("grpc_binding", ["GRPC", "grpc", "gRPC", "Grpc"])
+@pytest.mark.parametrize("grpc_binding", ["GRPC", "grpc", "gRPC", "Grpc", "\u0261rpc"])
 def test_session_rejects_mixed_case_grpc_in_top_level_binding(
     binding_key, grpc_binding
 ):
@@ -1305,7 +1308,7 @@ def test_session_rejects_mixed_case_grpc_in_top_level_binding(
     )
 
 
-@pytest.mark.parametrize("transport_value", ["grpc", "GRPC", "gRPC"])
+@pytest.mark.parametrize("transport_value", ["grpc", "GRPC", "gRPC", "\u0261rpc"])
 def test_session_rejects_mixed_case_grpc_transport_in_evidence(transport_value):
     from aegis._internal.errors import WorkflowProtocolViolationError
 
@@ -1344,7 +1347,34 @@ def test_validate_agent_card_rejects_grpc_after_valid_jsonrpc():
         _validate_agent_card(card, constraints)
 
 
-@pytest.mark.parametrize("grpc_binding", ["grpc", "GRPC", "gRPC"])
+@pytest.mark.parametrize("unsupported_binding", ["websocket", "mqtt", "jsonrpc"])
+def test_validate_agent_card_rejects_unsupported_required_version_binding_after_valid_fallback(
+    unsupported_binding,
+):
+    """A required-version unsupported binding cannot hide behind an earlier valid interface."""
+    from aegis._internal.errors import WorkflowProtocolViolationError
+    from aegis.a2a_adapter import _validate_agent_card
+
+    card = {
+        **_AGENT_CARD_JSONRPC,
+        "supportedInterfaces": [
+            {"protocolBinding": "JSONRPC", "protocolVersion": "1.0"},
+            {"protocolBinding": unsupported_binding, "protocolVersion": "1.0"},
+        ],
+    }
+    constraints = {
+        "protocol_version": "1.0",
+        "allowed_protocol_bindings": ["JSONRPC", "HTTP+JSON"],
+    }
+    with pytest.raises(WorkflowProtocolViolationError) as exc_info:
+        _validate_agent_card(card, constraints)
+
+    assert exc_info.value.details.get("reason_code") == (
+        "WORKFLOW_PROTOCOL_A2A_BINDING_REQUIRED"
+    )
+
+
+@pytest.mark.parametrize("grpc_binding", ["grpc", "GRPC", "gRPC", "\u0261rpc"])
 def test_validate_agent_card_rejects_grpc_after_valid_http_json(grpc_binding):
     """P2: HTTP+JSON first, then gRPC at required_version — must reject."""
     from aegis._internal.errors import WorkflowProtocolViolationError
@@ -1365,14 +1395,15 @@ def test_validate_agent_card_rejects_grpc_after_valid_http_json(grpc_binding):
         _validate_agent_card(card, constraints)
 
 
-def test_session_rejects_grpc_after_valid_jsonrpc_in_supported_interfaces():
+@pytest.mark.parametrize("grpc_binding", ["grpc", "\u0261rpc"])
+def test_session_rejects_grpc_after_valid_jsonrpc_in_supported_interfaces(grpc_binding):
     """P2: direct A2A evidence with JSONRPC first, gRPC at required_version second."""
     from aegis._internal.errors import WorkflowProtocolViolationError
 
     evidence = {
         "supportedInterfaces": [
             {"protocolBinding": "JSONRPC", "protocolVersion": "1.0"},
-            {"protocolBinding": "grpc", "protocolVersion": "1.0"},
+            {"protocolBinding": grpc_binding, "protocolVersion": "1.0"},
         ]
     }
     with _make_session(protocol_constraints={"a2a": {}}) as session:
@@ -1380,7 +1411,29 @@ def test_session_rejects_grpc_after_valid_jsonrpc_in_supported_interfaces():
             session.enforce_step_pre_call(_direct_a2a_inv(evidence))
 
 
-@pytest.mark.parametrize("grpc_binding", ["grpc", "GRPC", "gRPC"])
+@pytest.mark.parametrize("unsupported_binding", ["websocket", "mqtt", "jsonrpc"])
+def test_session_rejects_unsupported_required_version_binding_after_valid_fallback(
+    unsupported_binding,
+):
+    """Direct session A2A evidence rejects unsupported required-version interfaces."""
+    from aegis._internal.errors import WorkflowProtocolViolationError
+
+    evidence = {
+        "supportedInterfaces": [
+            {"protocolBinding": "JSONRPC", "protocolVersion": "1.0"},
+            {"protocolBinding": unsupported_binding, "protocolVersion": "1.0"},
+        ]
+    }
+    with _make_session(protocol_constraints={"a2a": {}}) as session:
+        with pytest.raises(WorkflowProtocolViolationError) as exc_info:
+            session.enforce_step_pre_call(_direct_a2a_inv(evidence))
+
+    assert exc_info.value.details.get("reason_code") == (
+        "WORKFLOW_PROTOCOL_A2A_BINDING_REQUIRED"
+    )
+
+
+@pytest.mark.parametrize("grpc_binding", ["grpc", "GRPC", "gRPC", "\u0261rpc"])
 def test_session_rejects_grpc_transport_after_valid_binding_in_supported_interfaces(grpc_binding):
     """P2: gRPC via transport field in a later interface must still be caught."""
     from aegis._internal.errors import WorkflowProtocolViolationError
