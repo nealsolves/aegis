@@ -1518,3 +1518,46 @@ def test_session_rejects_unsupported_binding_at_required_version_in_supported_in
         with pytest.raises(WorkflowProtocolViolationError) as exc_info:
             session.enforce_step_pre_call(_direct_a2a_inv(evidence))
     assert exc_info.value.details.get("reason_code") == "WORKFLOW_PROTOCOL_A2A_BINDING_REQUIRED"
+
+
+# ---------------------------------------------------------------------------
+# Session-path confusable gRPC in interface transport field
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("lookalike_transport", ["ɡrpc", "ɡRPC"])
+def test_session_rejects_unicode_lookalike_grpc_in_interface_transport(lookalike_transport):
+    """Session path: U+0261 lookalike in an interface transport field must be caught
+    by _a2a_transport_is_grpc in session.py — separate code path from the adapter."""
+    from aegis._internal.errors import WorkflowProtocolViolationError
+
+    evidence = {
+        "supportedInterfaces": [
+            {
+                "protocolBinding": "JSONRPC",
+                "protocolVersion": "1.0",
+                "transport": lookalike_transport,
+            }
+        ]
+    }
+    with _make_session(protocol_constraints={"a2a": {}}) as session:
+        with pytest.raises(WorkflowProtocolViolationError):
+            session.enforce_step_pre_call(_direct_a2a_inv(evidence))
+
+
+# ---------------------------------------------------------------------------
+# WORKFLOW_PROTOCOL_CONTEXT_INVALID — non-mapping context, no protocol_constraints
+# ---------------------------------------------------------------------------
+
+def test_session_rejects_non_mapping_context_without_protocol_constraints():
+    """enforce_step_pre_call must raise InvocationValidationError with
+    WORKFLOW_PROTOCOL_CONTEXT_INVALID when invocation context is not a mapping,
+    even on a session with no protocol_constraints configured."""
+    from aegis._internal.errors import InvocationValidationError
+
+    inv = copy.deepcopy(_BASE_INV)
+    inv["context"] = "not-a-mapping"
+
+    with _make_session() as session:
+        with pytest.raises(InvocationValidationError) as exc_info:
+            session.enforce_step_pre_call(inv)
+    assert exc_info.value.details.get("reason_code") == "WORKFLOW_PROTOCOL_CONTEXT_INVALID"

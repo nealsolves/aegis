@@ -415,10 +415,18 @@ def check_link_hygiene(manifest: dict) -> list[str]:
     """Fail on broken local markdown links in non-internal docs."""
     errors: list[str] = []
     internal_patterns = manifest.get("internal_docs", [])
+    maintained_external_docs = {
+        "docs/reference/external/README.md",
+        "docs/reference/external/A2A_ADAPTER.md",
+        "docs/reference/external/OPENAI_AGENTS_ADAPTER.md",
+        "docs/reference/external/BEDROCK_ADAPTER.md",
+    }
 
     for path in collect_md_files():
         rel = str(path.relative_to(REPO_ROOT))
         if is_internal_doc(rel, internal_patterns):
+            continue
+        if rel.startswith("docs/reference/external/") and rel not in maintained_external_docs:
             continue
         text = path.read_text(encoding="utf-8")
 
@@ -835,6 +843,54 @@ def check_implementation_truth(manifest: dict) -> list[str]:
             )
     else:
         errors.append("[impl-truth] CHANGELOG.md not found")
+
+    # 6. implementation_status.md — baseline package release must match.
+    impl_status_path = REPO_ROOT / "implementation_status.md"
+    if impl_status_path.exists():
+        text = impl_status_path.read_text(encoding="utf-8")
+        m = re.search(r"\*\*Baseline Version:\*\*\s*`([^`]+)`", text)
+        if m:
+            baseline_version = m.group(1)
+            if baseline_version != manifest_version:
+                errors.append(
+                    f"[impl-truth] implementation_status.md Baseline Version "
+                    f"'{baseline_version}' != manifest version '{manifest_version}'"
+                )
+        else:
+            errors.append(
+                "[impl-truth] implementation_status.md: could not find "
+                "'Baseline Version' line"
+            )
+    else:
+        errors.append("[impl-truth] implementation_status.md not found")
+
+    # 7. Release matrix — the canonical table must distinguish PyPI truth from
+    #    the source-only beta and repeat the installable package version.
+    release_matrix_path = REPO_ROOT / "docs" / "reference" / "RELEASE_MATRIX.md"
+    if release_matrix_path.exists():
+        text = release_matrix_path.read_text(encoding="utf-8")
+        m = re.search(r"Current package release is `([^`]+)`", text)
+        if m:
+            matrix_version = m.group(1)
+            if matrix_version != manifest_version:
+                errors.append(
+                    f"[impl-truth] RELEASE_MATRIX.md current package release "
+                    f"'{matrix_version}' != manifest version '{manifest_version}'"
+                )
+        else:
+            errors.append(
+                "[impl-truth] RELEASE_MATRIX.md: could not find "
+                "'Current package release is' line"
+            )
+        if "v0.9.0 source-only beta" not in text:
+            errors.append(
+                "[impl-truth] RELEASE_MATRIX.md: missing "
+                "'v0.9.0 source-only beta' channel"
+            )
+        if "PyPI" not in text:
+            errors.append("[impl-truth] RELEASE_MATRIX.md: missing PyPI channel")
+    else:
+        errors.append("[impl-truth] docs/reference/RELEASE_MATRIX.md not found")
 
     return errors
 
