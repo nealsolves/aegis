@@ -424,9 +424,14 @@ def check_link_hygiene(manifest: dict) -> list[str]:
 
     for path in collect_md_files():
         rel = str(path.relative_to(REPO_ROOT))
-        if is_internal_doc(rel, internal_patterns):
-            continue
-        if rel.startswith("docs/reference/external/") and rel not in maintained_external_docs:
+        # Check maintained external docs before the internal-doc gate so that
+        # files in docs/reference/external/ that are explicitly maintained are
+        # not skipped even when the manifest marks the external/* glob internal.
+        if rel.startswith("docs/reference/external/"):
+            if rel not in maintained_external_docs:
+                continue
+            # falls through to link-check below
+        elif is_internal_doc(rel, internal_patterns):
             continue
         text = path.read_text(encoding="utf-8")
 
