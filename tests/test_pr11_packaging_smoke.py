@@ -13,6 +13,13 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
+def _build_available() -> bool:
+    try:
+        return importlib.util.find_spec("build.__main__") is not None
+    except (ModuleNotFoundError, ValueError):
+        return False
+
+
 def _venv_python(venv_dir: Path) -> str:
     return str(venv_dir / ("Scripts" if sys.platform == "win32" else "bin") / ("python.exe" if sys.platform == "win32" else "python"))
 
@@ -26,7 +33,7 @@ def test_pyproject_runtime_package_boundary_is_narrow():
     assert "openai-agents" not in project_deps
 
 
-@pytest.mark.skipif(importlib.util.find_spec("build.__main__") is None, reason="build module is not installed")
+@pytest.mark.skipif(not _build_available(), reason="build module is not installed")
 def test_wheel_build_and_fresh_venv_import_smoke(tmp_path):
     out_dir = tmp_path / "dist"
     build = subprocess.run(
