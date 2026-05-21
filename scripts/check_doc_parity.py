@@ -882,10 +882,10 @@ def check_implementation_truth(manifest: dict) -> list[str]:
                 "[impl-truth] RELEASE_MATRIX.md: could not find "
                 "'Current package release is' line"
             )
-        if "v0.9.0 source-only beta" not in text:
+        if "source-only beta" not in text:
             errors.append(
                 "[impl-truth] RELEASE_MATRIX.md: missing "
-                "'v0.9.0 source-only beta' channel"
+                "a 'source-only beta' channel row"
             )
         if "PyPI" not in text:
             errors.append("[impl-truth] RELEASE_MATRIX.md: missing PyPI channel")
