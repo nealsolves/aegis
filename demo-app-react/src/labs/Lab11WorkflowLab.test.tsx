@@ -164,4 +164,84 @@ describe('Lab11WorkflowLab', () => {
     expect(traceCall).toHaveBeenCalledWith('/api/workflow/v090/trace')
     expect(await screen.findByText(/resolved invocation steps/i)).toBeInTheDocument()
   })
+
+  it('runs the failure, diagnosis, and fix flow against the workflow API contract', async () => {
+    const runCall = vi.fn(async (_path: string, body?: unknown) => {
+      const scenario = (body as { scenario?: string; run_id?: string } | undefined)?.scenario
+      if (scenario === 'failure') {
+        return {
+          artifact: {
+            workflow_schema_version: '0.9.0',
+            artifact_type: 'workflow',
+            session_id: 'failed-session',
+            policy_file: 'policy.yaml',
+            status: 'FAILED',
+            started_at: 1,
+            finalized_at: 2,
+            steps: [],
+            invocation_audit_checksums: [],
+            failure_summary: { exception_type: 'CustomGateViolationError', message: 'source_ids missing' },
+            metadata: {},
+          },
+          error: 'source_ids missing',
+          run_id: 'run-123',
+        }
+      }
+      return {
+        artifact: {
+          workflow_schema_version: '0.9.0',
+          artifact_type: 'workflow',
+          session_id: 'fixed-session',
+          policy_file: 'policy.yaml',
+          status: 'COMPLETED',
+          started_at: 3,
+          finalized_at: 4,
+          steps: [{ step_id: 'step-1', participant_id: null, invocation_artifact_checksum: 'abc' }],
+          invocation_audit_checksums: ['abc'],
+          failure_summary: null,
+          metadata: {},
+        },
+        error: null,
+        run_id: 'run-123',
+      }
+    })
+    const diagnoseCall = vi.fn(async () => ({
+      findings: [{
+        severity: 'INFO',
+        code: 'WORKFLOW_SOURCE_REQUIRED',
+        message: 'source_ids are required',
+        next_action: 'Restore provenance source_ids and rerun.',
+      }],
+      source: 'failure_starter_dir',
+    }))
+
+    mockUseApiStates([
+      buildApiState({ call: runCall }),
+      buildApiState(),
+      buildApiState({ call: diagnoseCall }),
+      buildApiState(),
+    ])
+
+    render(<Lab11WorkflowLab />)
+    fireEvent.click(screen.getByRole('button', { name: /failure.*fix/i }))
+    fireEvent.click(screen.getByRole('button', { name: /trigger failure/i }))
+    expect(await screen.findByText(/failure result/i)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /run doctor diagnosis/i }))
+    expect(await screen.findByText(/WORKFLOW_SOURCE_REQUIRED/i)).toBeInTheDocument()
+    expect(diagnoseCall).toHaveBeenCalledWith('/api/workflow/v090/diagnose?run_id=run-123')
+
+    fireEvent.click(screen.getByRole('button', { name: /apply fix.*rerun/i }))
+    expect(await screen.findByText(/post-fix result/i)).toBeInTheDocument()
+    expect(runCall).toHaveBeenLastCalledWith('/api/workflow/v090/run', {
+      scenario: 'regulated',
+      run_id: 'run-123',
+    })
+  })
+
+  it('does not contain private Python imports or stale aigc CLI strings', () => {
+    render(<Lab11WorkflowLab />)
+    expect(document.body.textContent).not.toMatch(/aegis\._internal/)
+    expect(document.body.textContent).not.toMatch(/\baigc\s/)
+  })
 })
