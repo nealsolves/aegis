@@ -231,7 +231,7 @@ class TestWorkflowTraceCLI:
             rc = cli_main(["workflow", "trace", "--input", f.name])
             assert rc == 1
             err = capsys.readouterr().err
-            assert "malformed JSONL" in err
+            assert "malformed JSONL line 1 (" in err
         finally:
             os.unlink(f.name)
 
@@ -244,7 +244,7 @@ class TestWorkflowTraceCLI:
             rc = cli_main(["workflow", "trace", "--input", f.name])
             assert rc == 1
             err = capsys.readouterr().err
-            assert "malformed JSONL" in err
+            assert "malformed JSONL line 1 (" in err
         finally:
             os.unlink(f.name)
 
