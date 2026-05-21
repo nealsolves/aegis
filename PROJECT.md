@@ -1,8 +1,9 @@
 # PROJECT.md — AEGIS Repository Guide
 
 This is the repo-level orientation document for AEGIS
-(Auditable Enforcement and Governance for Intelligent Systems). It is written for first-time visitors who need to understand the current state, how the runtime is
-organized, and how the project evolved release by release.
+(Auditable Enforcement and Governance for Intelligent Systems). It is written
+for first-time visitors who need to understand the current state, how the
+runtime is organized, and how the project evolved release by release.
 
 Use [README.md](README.md) for the quick start. Use this file for structure,
 architecture, and release context.
@@ -28,14 +29,16 @@ The shipped runtime supports:
 The demo surface in this repo is a React frontend plus FastAPI backend that
 walks through the `v0.3.x` capabilities.
 
-The source-only `v0.9.0` beta workflow governance line is available on local
-`develop`. It adds `AEGIS.open_session()`, `GovernanceSession`, starter
-scaffolds, `aegis workflow init`, `aegis policy init`, `aegis workflow lint`,
-`aegis workflow doctor`, `aegis workflow trace`, and `aegis workflow export`. The source tree
-also contains the advanced optional OpenAI Agents SDK adapter at
-`aegis.openai_agents_adapter` (PR-10c); it requires the `openai-agents` extra and is not
-re-exported from top-level `aegis`. Bedrock and A2A remain later optional
-tracks (PR-10a/10b). See
+The source-only `v0.9.0` beta workflow governance line adds
+`AEGIS.open_session()`, `GovernanceSession`, starter scaffolds,
+`aegis workflow init`, `aegis policy init`, `aegis workflow lint`,
+`aegis workflow doctor`, `aegis workflow trace`, and `aegis workflow export`.
+The source tree also contains optional source-only beta adapter submodules at
+`aegis.bedrock_adapter`, `aegis.a2a_adapter`, and
+`aegis.openai_agents_adapter`. They are not re-exported from top-level
+`aegis`; the OpenAI Agents adapter requires the `openai-agents` extra. See the
+[release matrix](docs/reference/RELEASE_MATRIX.md) for channel and ref status,
+and see
 [docs/reference/WORKFLOW_QUICKSTART.md](docs/reference/WORKFLOW_QUICKSTART.md)
 for the first-adopter path.
 
@@ -102,6 +105,8 @@ aegis/
 │   ├── presets.py                  Thin workflow preset builders
 │   ├── workflow_trace.py           Workflow timeline reconstruction helpers
 │   ├── workflow_export.py          Workflow export helpers
+│   ├── a2a_adapter.py              Optional source-only A2A adapter
+│   ├── bedrock_adapter.py          Optional source-only Bedrock adapter
 │   ├── openai_agents_adapter.py    Optional advanced adapter; extra-gated
 │   ├── schemas/                    Runtime schemas packaged with the SDK
 │   └── _internal/                  Runtime implementation
@@ -140,6 +145,7 @@ aegis/
 │   │   ├── STARTER_INDEX.md        Profile index with links to recipes
 │   │   ├── STARTER_RECIPES.md      Per-profile commands and customization
 │   │   ├── WORKFLOW_CLI.md         CLI reference for shipped commands
+│   │   ├── RELEASE_MATRIX.md       Canonical release-channel truth table
 │   │   ├── SUPPORTED_ENVIRONMENTS.md  Python/OS matrix and requirements
 │   │   ├── OPERATIONS_RUNBOOK.md   Test suite and validation commands
 │   │   └── external/               Advanced optional adapter documentation
@@ -318,6 +324,7 @@ Use the docs in this order if you are orienting yourself quickly:
 | [docs/USAGE.md](docs/USAGE.md) | Cookbook for common integration patterns and extension recipes |
 | [docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md](docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md) | Target-state `1.0.0` architecture contract and invariants |
 | [docs/INTEGRATION_GUIDE.md](docs/INTEGRATION_GUIDE.md) | Host integration patterns and split-mode behavior |
+| [docs/reference/RELEASE_MATRIX.md](docs/reference/RELEASE_MATRIX.md) | Canonical channel, ref, adapter, and verification status |
 | [policies/policy_dsl_spec.md](policies/policy_dsl_spec.md) | Policy authoring reference |
 | [CHANGELOG.md](CHANGELOG.md) | Detailed release notes and patch-level history |
 
