@@ -396,7 +396,7 @@ class TestWorkflowExportCLI:
             rc = cli_main(["workflow", "export", "--input", f.name, "--mode", "operator"])
             assert rc == 1
             err = capsys.readouterr().err
-            assert "malformed JSONL" in err
+            assert "malformed JSONL line 1 (" in err
         finally:
             os.unlink(f.name)
 
@@ -409,7 +409,7 @@ class TestWorkflowExportCLI:
             rc = cli_main(["workflow", "export", "--input", f.name, "--mode", "audit"])
             assert rc == 1
             err = capsys.readouterr().err
-            assert "malformed JSONL" in err
+            assert "malformed JSONL line 1 (" in err
         finally:
             os.unlink(f.name)
 

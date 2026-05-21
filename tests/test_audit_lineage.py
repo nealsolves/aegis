@@ -148,6 +148,48 @@ def test_from_jsonl_empty_file_returns_empty_lineage():
     assert len(lineage) == 0
 
 
+def test_from_jsonl_streams_artifacts_without_read_text(tmp_path, monkeypatch):
+    path = tmp_path / "trail.jsonl"
+    _write_jsonl([_make_artifact()], path)
+
+    def _fail_read_text(*args, **kwargs):
+        raise AssertionError("from_jsonl must stream the JSONL file")
+
+    monkeypatch.setattr(Path, "read_text", _fail_read_text)
+
+    assert len(AuditLineage.from_jsonl(path)) == 1
+
+
+def test_from_jsonl_rejects_non_object_lines_with_line_number(tmp_path):
+    path = tmp_path / "trail.jsonl"
+    path.write_text(json.dumps(_make_artifact()) + "\n[1, 2, 3]\n")
+
+    with pytest.raises(ValueError, match=r"line 2.*JSON object"):
+        AuditLineage.from_jsonl(path)
+
+
+def test_from_jsonl_reports_invalid_json_line_number(tmp_path):
+    path = tmp_path / "trail.jsonl"
+    path.write_text(json.dumps(_make_artifact()) + "\n{not valid json}\n")
+
+    with pytest.raises(ValueError, match=r"line 2.*not valid JSON"):
+        AuditLineage.from_jsonl(path)
+
+
+def test_from_jsonl_reports_invalid_provenance_line_number(tmp_path):
+    path = tmp_path / "trail.jsonl"
+    malformed = _make_artifact(
+        provenance={"derived_from_audit_checksums": "not-a-list"}
+    )
+    path.write_text(json.dumps(malformed) + "\n")
+
+    with pytest.raises(
+        ValueError,
+        match=r"line 1.*derived_from_audit_checksums must be a list",
+    ):
+        AuditLineage.from_jsonl(path)
+
+
 # ---------------------------------------------------------------------------
 # DAG edge construction
 # ---------------------------------------------------------------------------

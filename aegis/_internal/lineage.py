@@ -140,10 +140,31 @@ class AuditLineage:
         """
         lineage = cls()
         path = Path(path)
-        for line in path.read_text().splitlines():
-            line = line.strip()
-            if line:
-                lineage.add_artifact(json.loads(line))
+        with path.open("r", encoding="utf-8") as file_obj:
+            for line_number, raw_line in enumerate(file_obj, start=1):
+                line = raw_line.strip()
+                if not line:
+                    continue
+                try:
+                    artifact = json.loads(line)
+                except json.JSONDecodeError as exc:
+                    raise ValueError(
+                        f"JSONL artifact line {line_number} in {path} "
+                        f"is not valid JSON: {exc.msg}"
+                    ) from exc
+                if not isinstance(artifact, dict):
+                    raise ValueError(
+                        f"JSONL artifact line {line_number} in {path} "
+                        f"must be a JSON object, got "
+                        f"{type(artifact).__name__!r}"
+                    )
+                try:
+                    lineage.add_artifact(artifact)
+                except ValueError as exc:
+                    raise ValueError(
+                        f"JSONL artifact line {line_number} in {path} "
+                        f"is invalid: {exc}"
+                    ) from exc
         return lineage
 
     # ------------------------------------------------------------------
