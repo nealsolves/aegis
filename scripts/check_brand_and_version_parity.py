@@ -43,6 +43,9 @@ def _pyproject_version() -> str | None:
 
 def main() -> int:
     errors: list[str] = []
+    repo_root_str = str(REPO_ROOT)
+    if repo_root_str not in sys.path:
+        sys.path.insert(0, repo_root_str)
     aegis = importlib.import_module("aegis")
 
     if _pyproject_version() != RUNTIME_VERSION:
