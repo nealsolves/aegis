@@ -814,6 +814,19 @@ class GovernanceSession:
 
     def complete(self) -> None:
         """Mark the session as successfully completed (OPEN/PAUSED → COMPLETED)."""
+        if self._pending_results:
+            raise SessionStateError(
+                "Cannot complete session with pending authorized step(s); "
+                "complete or discard every SessionPreCallResult before finalizing",
+                details={
+                    "session_id": self._session_id,
+                    "pending_token_count": len(self._pending_results),
+                    "pending_step_ids": [
+                        entry.get("step_id")
+                        for entry in self._pending_results.values()
+                    ],
+                },
+            )
         for rec in self._approval_records:
             if rec["status"] != "approved":
                 raise SessionStateError(
