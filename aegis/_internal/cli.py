@@ -355,6 +355,37 @@ def _cmd_workflow_doctor(args: argparse.Namespace) -> int:
     return exit_code
 
 
+def _partition_workflow_jsonl(
+    input_path: Path,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Load a workflow evidence JSONL file and split artifacts by type."""
+    workflow_artifacts: list[dict[str, Any]] = []
+    invocation_artifacts: list[dict[str, Any]] = []
+    with input_path.open("r", encoding="utf-8") as file_obj:
+        for line_number, raw_line in enumerate(file_obj, start=1):
+            line = raw_line.strip()
+            if not line:
+                continue
+            try:
+                artifact = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    f"malformed JSONL line {line_number} "
+                    f"(not valid JSON): {line!r}"
+                ) from exc
+            if not isinstance(artifact, dict):
+                kind = type(artifact).__name__
+                raise ValueError(
+                    f"malformed JSONL line {line_number} "
+                    f"(not a JSON object, got {kind}): {line!r}"
+                )
+            if artifact.get("artifact_type") == "workflow":
+                workflow_artifacts.append(artifact)
+            else:
+                invocation_artifacts.append(artifact)
+    return workflow_artifacts, invocation_artifacts
+
+
 def _cmd_workflow_trace(args: argparse.Namespace) -> int:
     """Reconstruct workflow timelines from a JSONL artifact file."""
     from aegis._internal.workflow_trace import reconstruct_trace
@@ -364,36 +395,15 @@ def _cmd_workflow_trace(args: argparse.Namespace) -> int:
         print(f"ERROR: file not found: {input_path}", file=sys.stderr)
         return 1
 
-    workflow_artifacts: list[dict[str, Any]] = []
-    invocation_artifacts: list[dict[str, Any]] = []
     try:
-        with open(input_path, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    artifact = json.loads(line)
-                except json.JSONDecodeError:
-                    print(
-                        f"ERROR: malformed JSONL line (not valid JSON): {line!r}",
-                        file=sys.stderr,
-                    )
-                    return 1
-                if not isinstance(artifact, dict):
-                    kind = type(artifact).__name__
-                    print(
-                        f"ERROR: malformed JSONL line (not a JSON object,"
-                        f" got {kind}): {line!r}",
-                        file=sys.stderr,
-                    )
-                    return 1
-                if artifact.get("artifact_type") == "workflow":
-                    workflow_artifacts.append(artifact)
-                else:
-                    invocation_artifacts.append(artifact)
+        workflow_artifacts, invocation_artifacts = _partition_workflow_jsonl(
+            input_path
+        )
     except OSError as e:
         print(f"ERROR: cannot read file: {e}", file=sys.stderr)
+        return 1
+    except ValueError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
         return 1
 
     if not workflow_artifacts:
@@ -436,36 +446,15 @@ def _cmd_workflow_export(args: argparse.Namespace) -> int:
         print(f"ERROR: file not found: {input_path}", file=sys.stderr)
         return 1
 
-    workflow_artifacts: list[dict[str, Any]] = []
-    invocation_artifacts: list[dict[str, Any]] = []
     try:
-        with open(input_path, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    artifact = json.loads(line)
-                except json.JSONDecodeError:
-                    print(
-                        f"ERROR: malformed JSONL line (not valid JSON): {line!r}",
-                        file=sys.stderr,
-                    )
-                    return 1
-                if not isinstance(artifact, dict):
-                    kind = type(artifact).__name__
-                    print(
-                        f"ERROR: malformed JSONL line (not a JSON object,"
-                        f" got {kind}): {line!r}",
-                        file=sys.stderr,
-                    )
-                    return 1
-                if artifact.get("artifact_type") == "workflow":
-                    workflow_artifacts.append(artifact)
-                else:
-                    invocation_artifacts.append(artifact)
+        workflow_artifacts, invocation_artifacts = _partition_workflow_jsonl(
+            input_path
+        )
     except OSError as e:
         print(f"ERROR: cannot read file: {e}", file=sys.stderr)
+        return 1
+    except ValueError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
         return 1
 
     if not workflow_artifacts:
