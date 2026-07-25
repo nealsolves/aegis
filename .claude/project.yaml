@@ -1,0 +1,51 @@
+schema_version: 1
+control_plane_version: 1
+instruction_system:
+  module_state: complete
+project:
+  name: AEGIS
+  repository: nealsolves/aegis
+  lifecycle: configured
+delivery:
+  base_profile: solo
+  overlays: []
+  owner: Neal Bhattacharya
+  escalation_owner: neal@nealsolves.com
+spec_kit:
+  enabled: false
+  design_reference: v0.13.0
+  tested_version: not_applicable
+  minimum_version: not_applicable
+  allow_equivalent_manual_gates: true
+commands:
+  install: python -m pip install -e ".[dev]"
+  test: python -m pytest
+  lint: flake8 aegis
+  typecheck: not_applicable
+  build: python -m build
+  release: not_applicable
+data:
+  classifications: [public-source-code, synthetic-demo-data]
+  regulated_data: none-identified
+  production_data_in_nonproduction: prohibited
+environments:
+  configured: [local-development]
+remote_actions:
+  enabled: false
+  repository: nealsolves/aegis
+  push_branch: false
+  open_pull_request: false
+  update_pull_request: false
+  merge_pull_request: false
+  create_release: false
+production_actions:
+  enabled: false
+  target: not_applicable
+  deploy: false
+  rollback: false
+  deploy_command: not_applicable
+  rollback_command: not_applicable
+financial_limits:
+  currency: USD
+  autonomous_spend: 0
+external_obligations: [Apache-2.0 license]

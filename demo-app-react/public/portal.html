@@ -1,0 +1,2522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AEGIS — Auditable Enforcement and Governance for Intelligent Systems</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&display=swap" rel="stylesheet" />
+<style>
+/* ═══════════════════════════════════════════════════════════
+   AEGIS PORTAL — Monokai Design System
+   ═══════════════════════════════════════════════════════════ */
+:root {
+  --bg-primary:    #272822;
+  --bg-secondary:  #1e1f1a;
+  --bg-tertiary:   #3e3d32;
+  --bg-raised:     #2d2e27;
+
+  --text-primary:  #F8F8F2;
+  --text-secondary:#88846f;
+  --text-dim:      #5c5a4e;
+
+  --pink:          #F92672;
+  --green:         #A6E22E;
+  --yellow:        #E6DB74;
+  --purple:        #AE81FF;
+  --cyan:          #66D9EF;
+  --orange:        #FD971F;
+  --blue:          #819aff;
+
+  --border:        #49483e;
+  --border-subtle: #35342e;
+
+  --font: 'JetBrains Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
+
+  --radius: 2px;
+  --section-pad: 5rem 2rem;
+  --max-w: 1100px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; overflow-x: hidden; }
+
+body {
+  font-family: var(--font);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Typography ── */
+h1,h2,h3,h4 { font-weight: 500; line-height: 1.2; }
+
+a { color: var(--cyan); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+code, pre {
+  font-family: var(--font);
+  font-size: 12px;
+}
+
+pre {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.2rem 1.4rem;
+  overflow-x: auto;
+  position: relative;
+}
+
+/* ── Layout ── */
+.container {
+  max-width: var(--max-w);
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+section { padding: var(--section-pad); }
+section:nth-child(even) { background: var(--bg-primary); }
+section:nth-child(odd)  { background: var(--bg-secondary); }
+
+/* ── Nav ── */
+nav {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  z-index: 100;
+  padding: 0 1.5rem;
+}
+
+.nav-inner {
+  max-width: var(--max-w);
+  margin: 0 auto;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.nav-logo {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.08em;
+  flex-shrink: 0;
+}
+
+.nav-logo span { color: var(--cyan); }
+
+.nav-badge {
+  font-size: 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  padding: 1px 6px;
+  border-radius: var(--radius);
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.nav-links {
+  display: flex;
+  gap: 0;
+  list-style: none;
+  overflow-x: auto;
+  flex: 1;
+  scrollbar-width: none;
+}
+.nav-links::-webkit-scrollbar { display: none; }
+
+.nav-links a {
+  display: block;
+  padding: 0 0.75rem;
+  height: 48px;
+  line-height: 48px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+.nav-links a:hover { color: var(--text-primary); text-decoration: none; border-color: var(--cyan); }
+
+/* ── Section Labels ── */
+.section-label {
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 0.5rem;
+}
+.section-label::before { content: '// '; color: var(--text-dim); }
+
+/* ── Pill Tags ── */
+.tag {
+  display: inline-block;
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: var(--radius);
+  border: 1px solid;
+  margin-right: 4px;
+  margin-bottom: 4px;
+}
+.tag-green  { color: var(--green);  border-color: var(--green);  background: rgba(166,226,46,.07);  }
+.tag-pink   { color: var(--pink);   border-color: var(--pink);   background: rgba(249,38,114,.07);  }
+.tag-cyan   { color: var(--cyan);   border-color: var(--cyan);   background: rgba(102,217,239,.07); }
+.tag-orange { color: var(--orange); border-color: var(--orange); background: rgba(253,151,31,.07);  }
+.tag-yellow { color: var(--yellow); border-color: var(--yellow); background: rgba(230,219,116,.07); }
+.tag-purple { color: var(--purple); border-color: var(--purple); background: rgba(174,129,255,.07); }
+.tag-dim    { color: var(--text-secondary); border-color: var(--border); background: transparent; }
+
+/* ── Panels ── */
+.panel {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.2rem 1.4rem;
+}
+
+.panel-title {
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+/* ── Grid helpers ── */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.25rem; }
+
+@media (max-width: 760px) {
+  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  section { padding: 3.5rem 1.25rem; }
+  .nav-links { display: none; }
+}
+
+/* ══════════════════════════════════════════════════════════
+   §1  HERO
+   ══════════════════════════════════════════════════════════ */
+#hero {
+  background: var(--bg-secondary);
+  padding: 8rem 2rem 5rem;
+  position: relative;
+  overflow: hidden;
+  border-bottom: 1px solid var(--border);
+}
+
+/* scanline texture */
+#hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,0,0,0.08) 2px,
+    rgba(0,0,0,0.08) 4px
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ambient glow */
+#hero::after {
+  content: '';
+  position: absolute;
+  top: -80px; left: 50%;
+  transform: translateX(-50%);
+  width: 600px; height: 300px;
+  background: radial-gradient(ellipse, rgba(102,217,239,.06) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+#hero .container { position: relative; z-index: 1; }
+
+.hero-eyebrow {
+  font-size: 11px;
+  color: var(--cyan);
+  letter-spacing: 0.15em;
+  margin-bottom: 1.5rem;
+}
+.hero-eyebrow::before { content: '> '; }
+
+.hero-h1 {
+  font-size: clamp(22px, 4vw, 38px);
+  font-weight: 500;
+  line-height: 1.25;
+  color: var(--text-primary);
+  max-width: 750px;
+  margin-bottom: 1rem;
+}
+
+.hero-h1 em {
+  font-style: normal;
+  color: var(--cyan);
+}
+
+.hero-sub {
+  color: var(--text-secondary);
+  font-size: 13px;
+  max-width: 620px;
+  margin-bottom: 2.5rem;
+  line-height: 1.8;
+}
+
+.hero-terminal {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  max-width: 580px;
+  margin-bottom: 2rem;
+  overflow: hidden;
+}
+
+.term-bar {
+  background: var(--bg-tertiary);
+  padding: 6px 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.term-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+}
+.dot-red   { background: #F92672; }
+.dot-yel   { background: #E6DB74; }
+.dot-grn   { background: #A6E22E; }
+
+.term-title {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-left: 4px;
+  letter-spacing: 0.08em;
+}
+
+.term-body {
+  padding: 1rem 1.25rem;
+  font-size: 12px;
+}
+
+.term-line { display: flex; gap: 8px; margin-bottom: 2px; }
+.term-prompt { color: var(--green); }
+.term-cmd    { color: var(--text-primary); }
+.term-out    { color: var(--text-secondary); margin-bottom: 2px; }
+.term-out-grn { color: var(--green); }
+.term-out-yel { color: var(--yellow); }
+.term-out-cyn { color: var(--cyan); }
+.term-cursor {
+  display: inline-block;
+  width: 7px; height: 13px;
+  background: var(--cyan);
+  animation: blink 1s step-end infinite;
+  vertical-align: middle;
+}
+
+@keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+
+.hero-ctas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.cta-btn {
+  display: inline-block;
+  font-family: var(--font);
+  font-size: 11px;
+  padding: 8px 16px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  border: 1px solid;
+  text-decoration: none;
+}
+.cta-btn:hover { text-decoration: none; }
+
+.cta-primary {
+  background: var(--cyan);
+  color: var(--bg-secondary);
+  border-color: var(--cyan);
+  font-weight: 600;
+}
+.cta-primary:hover { background: #7ee5f5; border-color: #7ee5f5; }
+
+.cta-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+  border-color: var(--border);
+}
+.cta-ghost:hover { color: var(--text-primary); border-color: var(--text-secondary); }
+
+.hero-version-note {
+  margin-top: 2rem;
+  font-size: 11px;
+  color: var(--text-dim);
+  border-left: 2px solid var(--border);
+  padding-left: 1rem;
+}
+.hero-version-note strong { color: var(--green); }
+.hero-version-note em { color: var(--orange); font-style: normal; }
+
+/* ══════════════════════════════════════════════════════════
+   §2  RUNTIME BOUNDARY
+   ══════════════════════════════════════════════════════════ */
+.boundary-diagram {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto 1fr;
+  align-items: stretch;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin: 2rem 0;
+}
+
+.boundary-col {
+  padding: 1.5rem 1.25rem;
+  background: var(--bg-raised);
+}
+.boundary-col.host    { border-right: 1px solid var(--border); }
+.boundary-col.aegis   { background: rgba(102,217,239,.04); border-right: 1px solid var(--border); }
+.boundary-col.provider{}
+
+.boundary-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-secondary);
+  padding: 0 6px;
+  color: var(--border);
+  font-size: 16px;
+  user-select: none;
+}
+
+.boundary-owner {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.host-label    { color: var(--orange); }
+.aegis-label   { color: var(--cyan);   }
+.provider-label{ color: var(--purple); }
+
+.boundary-items li {
+  list-style: none;
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 2px 0;
+}
+.boundary-items li::before {
+  content: '• ';
+  color: var(--text-dim);
+}
+
+.not-a-platform {
+  background: rgba(249,38,114,.05);
+  border: 1px solid rgba(249,38,114,.25);
+  border-radius: var(--radius);
+  padding: 1.2rem 1.5rem;
+  margin-top: 1.5rem;
+}
+.not-a-platform .nap-title {
+  font-size: 11px;
+  color: var(--pink);
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  letter-spacing: 0.06em;
+}
+.not-a-platform p {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+.not-a-platform p + p { margin-top: 0.5rem; }
+
+@media (max-width: 760px) {
+  .boundary-diagram {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+  }
+  .boundary-col.host, .boundary-col.aegis { border-right: none; border-bottom: 1px solid var(--border); }
+  .boundary-arrow { padding: 4px; transform: rotate(90deg); }
+}
+
+/* ══════════════════════════════════════════════════════════
+   §3  INVOCATION GOVERNANCE
+   ══════════════════════════════════════════════════════════ */
+.pipeline {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 1.5rem 0;
+  position: relative;
+}
+
+.pipeline::before {
+  content: '';
+  position: absolute;
+  left: 12px;
+  top: 0; bottom: 0;
+  width: 1px;
+  background: var(--border-subtle);
+}
+
+.pipe-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--radius);
+  position: relative;
+  border: 1px solid transparent;
+  transition: border-color 0.15s;
+}
+.pipe-step:hover { border-color: var(--border); background: var(--bg-raised); }
+
+.pipe-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  margin-top: 5px;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+  border: 1.5px solid;
+}
+
+.pipe-dot-auth   { background: rgba(102,217,239,.2);  border-color: var(--cyan);   }
+.pipe-dot-output { background: rgba(166,226,46,.2);   border-color: var(--green);  }
+.pipe-dot-risk   { background: rgba(253,151,31,.2);   border-color: var(--orange); }
+.pipe-dot-audit  { background: rgba(230,219,116,.2);  border-color: var(--yellow); }
+.pipe-dot-custom { background: rgba(174,129,255,.2);  border-color: var(--purple); }
+
+.pipe-name {
+  font-size: 12px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.pipe-name code {
+  font-size: 11px;
+  color: var(--cyan);
+  background: rgba(102,217,239,.07);
+  padding: 1px 5px;
+  border-radius: 1px;
+}
+
+.pipe-desc {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 1px;
+}
+
+.pipe-phase-label {
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.5rem 0 0.25rem 0;
+  margin-left: 1.5rem;
+  border-top: 1px solid var(--border-subtle);
+  margin-top: 0.5rem;
+}
+
+/* ══════════════════════════════════════════════════════════
+   §4  SPLIT ENFORCEMENT
+   ══════════════════════════════════════════════════════════ */
+.split-diagram {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 1rem;
+  align-items: start;
+  margin: 2rem 0;
+}
+
+.split-phase {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.split-phase-head {
+  padding: 0.6rem 1rem;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.phase-a-head { background: rgba(102,217,239,.1);  color: var(--cyan);  border-bottom: 1px solid rgba(102,217,239,.2); }
+.phase-b-head { background: rgba(166,226,46,.1);   color: var(--green); border-bottom: 1px solid rgba(166,226,46,.2);  }
+
+.split-phase-body { padding: 0.9rem 1rem; background: var(--bg-raised); }
+
+.split-step {
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 2px 0;
+}
+.split-step::before { content: '→ '; color: var(--text-dim); }
+
+.split-verdict {
+  margin-top: 0.75rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: var(--radius);
+  font-size: 11px;
+  font-weight: 600;
+}
+.verdict-pass { background: rgba(166,226,46,.12); color: var(--green); border: 1px solid rgba(166,226,46,.3); }
+.verdict-fail { background: rgba(249,38,114,.12); color: var(--pink);  border: 1px solid rgba(249,38,114,.3); }
+
+.split-middle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1rem 0.5rem;
+}
+
+.host-call-box {
+  background: rgba(253,151,31,.08);
+  border: 1px solid rgba(253,151,31,.3);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.9rem;
+  font-size: 10px;
+  color: var(--orange);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.split-arrow { font-size: 18px; color: var(--text-dim); }
+
+@media (max-width: 760px) {
+  .split-diagram { grid-template-columns: 1fr; }
+  .split-middle { flex-direction: row; }
+}
+
+/* ══════════════════════════════════════════════════════════
+   §5  WORKFLOW BETA
+   ══════════════════════════════════════════════════════════ */
+.beta-banner {
+  background: rgba(253,151,31,.07);
+  border: 1px solid rgba(253,151,31,.25);
+  border-radius: var(--radius);
+  padding: 0.75rem 1.25rem;
+  font-size: 11px;
+  color: var(--orange);
+  margin-bottom: 2rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.beta-banner .bi { font-weight: 600; }
+
+.cli-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin: 1.5rem 0;
+}
+
+.cli-card {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.9rem 1.1rem;
+}
+
+.cli-cmd {
+  font-size: 11px;
+  color: var(--cyan);
+  margin-bottom: 0.3rem;
+  font-weight: 500;
+}
+.cli-cmd::before { content: '$ '; color: var(--green); }
+
+.cli-desc {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 760px) { .cli-grid { grid-template-columns: 1fr; } }
+
+.lifecycle-states {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin: 1rem 0;
+}
+.ls { font-size: 11px; padding: 3px 10px; border-radius: var(--radius); border: 1px solid; }
+.ls-open  { color: var(--cyan);   border-color: rgba(102,217,239,.4); background: rgba(102,217,239,.07); }
+.ls-inter { color: var(--orange); border-color: rgba(253,151,31,.4);  background: rgba(253,151,31,.07);  }
+.ls-final { color: var(--green);  border-color: rgba(166,226,46,.4);  background: rgba(166,226,46,.07);  }
+.ls-fail  { color: var(--pink);   border-color: rgba(249,38,114,.4);  background: rgba(249,38,114,.07);  }
+.ls-arrow { color: var(--text-dim); font-size: 14px; }
+
+/* ══════════════════════════════════════════════════════════
+   §6  GOLDEN PATH
+   ══════════════════════════════════════════════════════════ */
+.golden-path {
+  position: relative;
+  padding-left: 2rem;
+  margin: 2rem 0;
+}
+
+.golden-path::before {
+  content: '';
+  position: absolute;
+  left: 6px; top: 8px; bottom: 8px;
+  width: 2px;
+  background: linear-gradient(to bottom,
+    var(--cyan) 0%, var(--green) 40%, var(--yellow) 70%, var(--orange) 100%);
+  border-radius: 1px;
+}
+
+.gp-step {
+  position: relative;
+  margin-bottom: 1.5rem;
+}
+
+.gp-step:last-child { margin-bottom: 0; }
+
+.gp-dot {
+  position: absolute;
+  left: -1.65rem;
+  top: 4px;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--bg-secondary);
+}
+
+.gp-num {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-bottom: 2px;
+  letter-spacing: 0.06em;
+}
+
+.gp-title {
+  font-size: 13px;
+  color: var(--text-primary);
+  font-weight: 500;
+  margin-bottom: 3px;
+}
+
+.gp-detail {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+.gp-code {
+  display: inline-block;
+  font-size: 11px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  padding: 1px 7px;
+  border-radius: var(--radius);
+  color: var(--cyan);
+  margin-top: 3px;
+}
+
+/* ══════════════════════════════════════════════════════════
+   §6b  INTERACTIVE DEMO
+   ══════════════════════════════════════════════════════════ */
+
+.demo-frame-wrap {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin: 1.5rem 0;
+  background: var(--bg-secondary);
+}
+
+.demo-frame-header {
+  background: var(--bg-tertiary);
+  padding: 6px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.demo-frame-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+.demo-url-bar {
+  flex: 1;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 3px 10px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 4px;
+}
+.demo-url-lock { color: var(--green); font-size: 9px; }
+.demo-url-text { color: var(--text-secondary); }
+
+.demo-frame-actions { display: flex; gap: 6px; }
+.demo-frame-btn {
+  font-family: var(--font);
+  font-size: 10px;
+  padding: 3px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.demo-frame-btn:hover { color: var(--cyan); border-color: var(--cyan); }
+.demo-frame-btn.active { color: var(--cyan); border-color: var(--cyan); background: rgba(102,217,239,.06); }
+
+.demo-iframe {
+  width: 100%;
+  height: 620px;
+  border: none;
+  display: block;
+  background: #0d0d14;
+}
+
+.lab-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem;
+  margin: 1.5rem 0;
+}
+
+.lab-card {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.9rem 1.1rem;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  text-decoration: none;
+  display: block;
+  position: relative;
+}
+.lab-card:hover {
+  border-color: var(--cyan);
+  background: rgba(102,217,239,.04);
+  text-decoration: none;
+}
+.lab-card.beta-lab {
+  border-color: rgba(253,151,31,.3);
+}
+.lab-card.beta-lab:hover {
+  border-color: var(--orange);
+  background: rgba(253,151,31,.04);
+}
+
+.lab-card-num {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+  letter-spacing: 0.08em;
+}
+
+.lab-card-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.lab-card-desc {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.lab-arrow {
+  position: absolute;
+  top: 0.9rem; right: 1rem;
+  font-size: 12px;
+  color: var(--text-dim);
+  transition: color 0.15s;
+}
+.lab-card:hover .lab-arrow { color: var(--cyan); }
+.lab-card.beta-lab:hover .lab-arrow { color: var(--orange); }
+
+/* ══════════════════════════════════════════════════════════
+   §7  EVIDENCE & AUDIT
+   ══════════════════════════════════════════════════════════ */
+.artifact-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin: 1.5rem 0;
+}
+
+.artifact-header {
+  background: var(--bg-tertiary);
+  padding: 6px 14px;
+  font-size: 10px;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+}
+
+.artifact-status-pass { color: var(--green); font-weight: 600; }
+.artifact-status-fail { color: var(--pink);  font-weight: 600; }
+
+.artifact-body {
+  padding: 1rem 1.4rem;
+  font-size: 11px;
+}
+
+.aj { display: flex; margin-bottom: 3px; }
+.aj-key   { color: var(--purple);  min-width: 200px; flex-shrink: 0; }
+.aj-colon { color: var(--text-dim); margin: 0 4px; }
+.aj-str   { color: var(--yellow); }
+.aj-num   { color: var(--purple); }
+.aj-bool-t { color: var(--green); }
+.aj-obj   { color: var(--text-dim); }
+.aj-hash  { color: var(--cyan); font-size: 10px; }
+.aj-indent { margin-left: 1.5rem; }
+
+.evidence-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.evidence-item {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem;
+  border-left: 3px solid;
+}
+.ev-yellow { border-left-color: var(--yellow); }
+.ev-cyan   { border-left-color: var(--cyan);   }
+.ev-green  { border-left-color: var(--green);  }
+.ev-orange { border-left-color: var(--orange); }
+
+.ev-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.4rem;
+}
+
+.ev-desc {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+@media (max-width: 760px) { .evidence-grid { grid-template-columns: 1fr; } }
+
+/* ══════════════════════════════════════════════════════════
+   §8  SDK BOUNDARY EXPLORER
+   ══════════════════════════════════════════════════════════ */
+.boundary-explorer {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+  margin: 1.5rem 0;
+}
+
+.be-col {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.be-head {
+  padding: 0.6rem 1rem;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+}
+
+.be-runtime { background: rgba(102,217,239,.07); color: var(--cyan); }
+.be-repo    { background: rgba(88,84,78,.2);     color: var(--text-secondary); }
+
+.be-body { padding: 1rem; background: var(--bg-raised); }
+
+.be-file {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.be-file:last-child { border-bottom: none; }
+
+.be-icon { font-size: 10px; width: 14px; flex-shrink: 0; }
+.be-runtime .be-icon { color: var(--cyan); }
+.be-repo    .be-icon { color: var(--text-dim); }
+
+.be-name {
+  font-size: 11px;
+  color: var(--text-primary);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.be-name.private { color: var(--text-secondary); }
+.be-name.optional { color: var(--purple); }
+
+.be-note {
+  font-size: 10px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+@media (max-width: 760px) { .boundary-explorer { grid-template-columns: 1fr; } }
+
+/* ══════════════════════════════════════════════════════════
+   §9  OPTIONAL ADAPTERS
+   ══════════════════════════════════════════════════════════ */
+.adapters-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+.adapter-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.2rem 1.25rem;
+  background: var(--bg-raised);
+  border-top: 3px solid;
+}
+
+.adapter-openai  { border-top-color: var(--green); }
+.adapter-bedrock { border-top-color: var(--orange); }
+.adapter-a2a     { border-top-color: var(--purple); }
+
+.adapter-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.25rem;
+}
+
+.adapter-status {
+  font-size: 10px;
+  margin-bottom: 0.75rem;
+}
+
+.adapter-desc {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  margin-bottom: 0.75rem;
+}
+
+.adapter-note {
+  font-size: 10px;
+  color: var(--text-dim);
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+@media (max-width: 760px) { .adapters-grid { grid-template-columns: 1fr; } }
+
+/* ══════════════════════════════════════════════════════════
+   §10  CTA
+   ══════════════════════════════════════════════════════════ */
+#cta {
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  text-align: center;
+  padding: 5rem 2rem;
+}
+
+.cta-heading {
+  font-size: clamp(18px, 3vw, 28px);
+  color: var(--text-primary);
+  margin-bottom: 0.75rem;
+}
+
+.cta-sub {
+  font-size: 12px;
+  color: var(--text-secondary);
+  max-width: 500px;
+  margin: 0 auto 2.5rem;
+  line-height: 1.8;
+}
+
+.cta-steps {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 2.5rem;
+}
+
+.cta-step {
+  font-size: 12px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.cta-step-num {
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  font-size: 9px;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.cta-btns {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+/* ── Footer ── */
+footer {
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  padding: 1.5rem 2rem;
+  text-align: center;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+footer a { color: var(--text-secondary); }
+
+/* ── Code syntax ── */
+.kw  { color: var(--pink);   }
+.fn  { color: var(--green);  }
+.st  { color: var(--yellow); }
+.co  { color: var(--text-secondary); font-style: italic; }
+.va  { color: var(--text-primary); }
+.nu  { color: var(--purple); }
+.cm  { color: var(--cyan);   }
+
+/* ── Heading styles ── */
+.sh {
+  font-size: 22px;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+}
+
+.sh-sub {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 2rem;
+  max-width: 680px;
+  line-height: 1.8;
+}
+
+/* ── Utility ── */
+.mt1 { margin-top: 0.75rem; }
+.mt2 { margin-top: 1.5rem; }
+.mt3 { margin-top: 2.5rem; }
+.mb1 { margin-bottom: 0.75rem; }
+.mb2 { margin-bottom: 1.5rem; }
+
+.dimline {
+  border: none;
+  border-top: 1px solid var(--border-subtle);
+  margin: 1.5rem 0;
+}
+
+/* ── Scroll fade-in ── */
+.fade-in {
+  opacity: 0;
+  transform: translateY(16px);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+.fade-in.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════
+     NAV
+     ═══════════════════════════════════════════ -->
+<nav>
+  <div class="nav-inner">
+    <div class="nav-logo">
+      <span>AEGIS</span>
+      <span class="nav-badge">v0.9.0b1 candidate</span>
+    </div>
+    <ul class="nav-links">
+      <li><a href="#boundary">// runtime.boundary</a></li>
+      <li><a href="#invocation">// invocation.governance</a></li>
+      <li><a href="#split">// split.enforcement</a></li>
+      <li><a href="#workflow">// workflow.beta</a></li>
+      <li><a href="#golden">// golden.path</a></li>
+      <li><a href="#demo">// interactive.demo</a></li>
+      <li><a href="#audit">// audit.artifacts</a></li>
+      <li><a href="#sdk-boundary">// sdk.boundary</a></li>
+      <li><a href="#adapters">// adapters</a></li>
+      <li><a href="#cta">// install</a></li>
+    </ul>
+  </div>
+</nav>
+
+<!-- ═══════════════════════════════════════════
+     §1  HERO
+     ═══════════════════════════════════════════ -->
+<section id="hero" style="padding-top:7rem;">
+  <div class="container">
+    <div class="hero-eyebrow">aegis — auditable intelligence governance contract</div>
+
+    <h1 class="hero-h1">
+      Deterministic, fail-closed governance<br />
+      for <em>AI model calls</em> and workflows.
+    </h1>
+
+    <p class="hero-sub">
+      A Python SDK that enforces policy at the AI invocation boundary.
+      Every model call is validated, every violation is blocked, and every
+      outcome — pass or fail — leaves a tamper-evident audit artifact.
+      Governance is runtime enforcement, not documentation and not prompting.
+    </p>
+
+    <div class="hero-terminal">
+      <div class="term-bar">
+        <div class="term-dot dot-red"></div>
+        <div class="term-dot dot-yel"></div>
+        <div class="term-dot dot-grn"></div>
+        <span class="term-title">terminal — aegis install</span>
+      </div>
+      <div class="term-body">
+        <div class="term-line">
+          <span class="term-prompt">$</span>
+          <span class="term-cmd">pip install aegis-ai-governance==0.9.0b1</span>
+        </div>
+        <div class="term-out">Release candidate command — available after PyPI publication</div>
+        <div class="term-out">Distribution: aegis-ai-governance · import/CLI: aegis</div>
+        <div class="term-out-grn">Candidate validated locally; PyPI publication pending</div>
+        <div class="term-line" style="margin-top:0.75rem;">
+          <span class="term-prompt">$</span>
+          <span class="term-cmd">python -c "import aegis; print(aegis.__version__)"</span>
+        </div>
+        <div class="term-out-cyn">0.9.0b1</div>
+        <div class="term-line" style="margin-top:0.5rem;">
+          <span class="term-prompt">$</span>
+          <span class="term-cmd"><span class="term-cursor"></span></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="hero-ctas">
+      <a href="#golden" class="cta-btn cta-primary">&gt; start_quickstart</a>
+      <a href="#sdk-boundary" class="cta-btn cta-ghost">&gt; inspect_sdk_boundary</a>
+      <a href="#workflow" class="cta-btn cta-ghost">&gt; view_workflow_beta</a>
+    </div>
+
+    <div class="hero-version-note mt2">
+      <strong>v0.9.0b1</strong> is the validated <code>aegis-ai-governance</code>
+      distribution candidate — invocation and workflow governance, GovernanceSession,
+      and the <code>aegis workflow</code> CLI. It is merged on <code>develop</code>,
+      not on <code>main</code>, and is not yet published to PyPI. The live demo
+      follows <code>main</code> and may lag this local candidate.
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════
+     §2  RUNTIME BOUNDARY
+     ═══════════════════════════════════════════ -->
+<section id="boundary">
+  <div class="container">
+    <div class="fade-in">
+      <div class="section-label">runtime.boundary</div>
+      <h2 class="sh">Where AEGIS lives</h2>
+      <p class="sh-sub">
+        AEGIS sits at the invocation boundary between the host application and the model provider.
+        Ownership is explicit and non-negotiable: the host orchestrates and calls the model;
+        AEGIS governs and audits every invocation attempt.
+      </p>
+
+      <div class="boundary-diagram">
+        <!-- HOST -->
+        <div class="boundary-col host">
+          <div class="boundary-owner host-label">// host.application</div>
+          <ul class="boundary-items">
+            <li>Orchestration logic</li>
+            <li>Transport &amp; retries</li>
+            <li>Credentials &amp; auth</li>
+            <li>Business state</li>
+            <li>Tool execution</li>
+            <li>Provider SDK usage</li>
+            <li>Model call issuance</li>
+          </ul>
+        </div>
+
+        <div class="boundary-arrow">⟶</div>
+
+        <!-- AEGIS -->
+        <div class="boundary-col aegis">
+          <div class="boundary-owner aegis-label">// aegis.sdk</div>
+          <ul class="boundary-items">
+            <li>Policy loading &amp; composition</li>
+            <li>Ordered governance gates</li>
+            <li>Role / schema / tool validation</li>
+            <li>Pre/postcondition enforcement</li>
+            <li>Workflow constraints</li>
+            <li>Evidence correlation</li>
+            <li>Tamper-evident audit artifacts</li>
+            <li>Risk scoring</li>
+            <li>Optional adapter normalization</li>
+          </ul>
+        </div>
+
+        <div class="boundary-arrow">⟶</div>
+
+        <!-- PROVIDER -->
+        <div class="boundary-col provider">
+          <div class="boundary-owner provider-label">// model.provider</div>
+          <ul class="boundary-items">
+            <li>Anthropic</li>
+            <li>OpenAI</li>
+            <li>AWS Bedrock</li>
+            <li>Any other provider</li>
+          </ul>
+          <div style="margin-top:1rem; font-size:10px; color:var(--text-dim);">
+            AEGIS is model-agnostic and provider-agnostic.<br />
+            No provider SDK is required by AEGIS itself.
+          </div>
+        </div>
+      </div>
+
+      <div class="not-a-platform">
+        <div class="nap-title">⊘ NOT a hosted platform</div>
+        <p>AEGIS does not own orchestration, transport, retries, credentials, business state, tool execution, or provider SDK usage. It is not a hosted orchestrator, model-serving platform, queue runner, transport layer, credential broker, or remote session manager.</p>
+        <p>If a model call cannot be justified by policy and evidenced by an audit record, AEGIS treats it as invalid. That is the entire surface.</p>
+      </div>
+
+      <div class="grid-2 mt2">
+        <div class="panel">
+          <div class="panel-title">// unified.mode</div>
+          <p style="font-size:12px; color:var(--text-secondary); line-height:1.8;">
+            <code class="cm">enforce_invocation()</code> or <code class="cm">AEGIS.enforce()</code> — runs the complete gate
+            sequence in one call. Input and output are provided together. Simple integration path for non-latency-sensitive cases.
+          </p>
+          <div class="tag tag-dim mt1">v0.9.0b1 candidate</div>
+        </div>
+        <div class="panel">
+          <div class="panel-title">// split.mode</div>
+          <p style="font-size:12px; color:var(--text-secondary); line-height:1.8;">
+            <code class="cm">enforce_pre_call()</code> authorizes before token spend.
+            <code class="cm">enforce_post_call()</code> validates output after the model responds.
+            The host model call lives between the two phases. Split mode is the <code>@governed</code> default since v0.3.3.
+          </p>
+          <div class="tag tag-cyan mt1">split-by-default</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════
+     §3  INVOCATION GOVERNANCE
+     ═══════════════════════════════════════════ -->
+<section id="invocation">
+  <div class="container">
+    <div class="fade-in">
+      <div class="section-label">invocation.governance</div>
+      <h2 class="sh">The enforcement pipeline</h2>
+      <p class="sh-sub">
+        Every invocation traverses a fixed, ordered gate sequence. No step is skipped.
+        A violation at any gate is fail-closed — the invocation is rejected and a FAIL artifact is emitted.
+      </p>
+
+      <div class="grid-2" style="align-items:start;">
+        <div>
+          <div class="pipeline">
+            <div class="pipe-phase-label" style="margin-top:0; border-top:none;">authorization side</div>
+
+            <div class="pipe-step">
+              <div class="pipe-dot pipe-dot-auth"></div>
+              <div>
+                <div class="pipe-name"><code>load_policy()</code></div>
+                <div class="pipe-desc">YAML load, JSON Schema validation, extends composition, policy dates</div>
+              </div>
+            </div>
+
+            <div class="pipe-step">
+              <div class="pipe-dot pipe-dot-custom"></div>
+              <div>
+                <div class="pipe-name">Custom gates <code>pre_authorization</code></div>
+                <div class="pipe-desc">User-supplied EnforcementGate plugins, first insertion point</div>
+              </div>
+            </div>
+
+            <div class="pipe-step">
+              <div class="pipe-dot pipe-dot-auth"></div>
+              <div>
+                <div class="pipe-name"><code>evaluate_guards()</code></div>
+                <div class="pipe-desc">AST-based guard and condition resolution against invocation context</div>
+              </div>
+            </div>
+
+            <div class="pipe-step">
+              <div class="pipe-dot pipe-dot-auth"></div>
+              <div>
+                <div class="pipe-name"><code>validate_role()</code></div>
+                <div class="pipe-desc">Role must appear in the policy allowlist; fails closed if absent</div>
+              </div>
+            </div>
+
+            <div class="pipe-step">
+              <div class="pipe-dot pipe-dot-auth"></div>
+              <div>
+                <div class="pipe-name"><code>validate_preconditions()</code></div>
+                <div class="pipe-desc">Typed constraints — type, pattern, enum, min/max — on input fields</div>
+              </div>
+            </div>
+
+            <div class="pipe-step">
+              <div class="pipe-dot pipe-dot-auth"></div>
+              <div>
+                <div class="pipe-name"><code>validate_tool_constraints()</code></div>
+                <div class="pipe-desc">Tool allowlist and block-list enforcement</div>
+              </div>
+            </div>
+
+            <div class="pipe-step">
+              <div class="pipe-dot pipe-dot-custom"></div>
+              <div>
+                <div class="pipe-name">Custom gates <code>post_authorization</code></div>
+                <div class="pipe-desc">Second insertion point — host model call can now occur</div>
+              </div>
+            </div>
+
+            <div class="pipe-phase-label">output side</div>
+
+            <div class="pipe-step">
+              <div class="pipe-dot pipe-dot-custom"></div>
+              <div>
+                <div class="pipe-name">Custom gates <code>pre_output</code></div>
+                <div class="pipe-desc">Third insertion point, before schema validation</div>
+              </div>
+            </div>
+
+            <div class="pipe-step">
+              <div class="pipe-dot pipe-dot-output"></div>
+              <div>
+                <div class="pipe-name"><code>validate_schema()</code></div>
+                <div class="pipe-desc">Output JSON Schema validation; fail-closed on mismatch</div>
+              </div>
+            </div>
+
+            <div class="pipe-step">
+              <div class="pipe-dot pipe-dot-output"></div>
+              <div>
+                <div class="pipe-name"><code>validate_postconditions()</code></div>
+                <div class="pipe-desc">Typed constraints applied to output fields after generation</div>
+              </div>
+            </div>
+
+            <div class="pipe-step">
+              <div class="pipe-dot pipe-dot-custom"></div>
+              <div>
+                <div class="pipe-name">Custom gates <code>post_output</code></div>
+                <div class="pipe-desc">Fourth insertion point — final custom logic before risk</div>
+              </div>
+            </div>
+
+            <div class="pipe-step">
+              <div class="pipe-dot pipe-dot-risk"></div>
+              <div>
+                <div class="pipe-name"><code>compute_risk_score()</code></div>
+                <div class="pipe-desc">Factor-based scoring; strict / risk_scored / warn_only modes</div>
+              </div>
+            </div>
+
+            <div class="pipe-step">
+              <div class="pipe-dot pipe-dot-audit"></div>
+              <div>
+                <div class="pipe-name"><code>generate_audit_artifact()</code></div>
+                <div class="pipe-desc">SHA-256 checksums, optional HMAC-SHA256 signing, timestamp, risk score, PASS/FAIL verdict</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div style="font-size:10px; color:var(--text-dim); letter-spacing:0.1em; text-transform:uppercase; margin-bottom:0.75rem;"># unified enforcement — quick start</div>
+          <pre><span class="kw">from</span> <span class="va">aegis</span> <span class="kw">import</span> <span class="fn">enforce_invocation</span>
+
+<span class="co"># Assemble the invocation. AEGIS validates;</span>
+<span class="co"># the host owns the model call.</span>
+<span class="va">artifact</span> = <span class="fn">enforce_invocation</span>({
+    <span class="st">"policy_file"</span>:       <span class="st">"policies/base_policy.yaml"</span>,
+    <span class="st">"model_provider"</span>:    <span class="st">"anthropic"</span>,
+    <span class="st">"model_identifier"</span>: <span class="st">"claude-sonnet-4-6"</span>,
+    <span class="st">"role"</span>:             <span class="st">"assistant"</span>,
+    <span class="st">"input"</span>:  {<span class="st">"query"</span>: <span class="st">"Summarize this incident"</span>},
+    <span class="st">"output"</span>: {<span class="st">"result"</span>: <span class="st">"..."</span>, <span class="st">"confidence"</span>: <span class="nu">0.94</span>},
+    <span class="st">"context"</span>: {
+        <span class="st">"role_declared"</span>: <span class="kw">True</span>,
+        <span class="st">"schema_exists"</span>:  <span class="kw">True</span>,
+    },
+})
+
+<span class="co"># artifact.verdict → "PASS" or "FAIL"</span>
+<span class="fn">assert</span> <span class="va">artifact</span>.<span class="fn">verdict</span> == <span class="st">"PASS"</span></pre>
+
+          <div class="mt2" style="font-size:10px; color:var(--text-dim); letter-spacing:0.1em; text-transform:uppercase; margin-bottom:0.75rem;"># instance API — isolated config</div>
+          <pre><span class="kw">from</span> <span class="va">aegis</span> <span class="kw">import</span> <span class="fn">AEGIS</span>, <span class="fn">JsonFileAuditSink</span>
+
+<span class="va">engine</span> = <span class="fn">AEGIS</span>(
+    <span class="va">sink</span>=<span class="fn">JsonFileAuditSink</span>(<span class="st">"audit.jsonl"</span>)
+)
+<span class="va">artifact</span> = <span class="va">engine</span>.<span class="fn">enforce</span>(<span class="va">invocation</span>)</pre>
+
+          <div class="panel mt2">
+            <div class="panel-title">// policy format</div>
+            <p style="font-size:11px; color:var(--text-secondary); line-height:1.8;">
+              Policies are <strong style="color:var(--text-primary);">YAML</strong> validated against
+              <code class="cm">schemas/policy_dsl.schema.json</code> (Draft-07).
+              Key fields: <code>policy_version</code>, <code>roles</code>,
+              <code>pre_conditions</code>, <code>post_conditions</code>,
+              <code>output_schema</code>, <code>tools</code>, <code>guards</code>,
+              <code>risk</code>, <code>composition_strategy</code>.
+            </p>
+            <div class="tag tag-dim mt1">policy_dsl_spec.md</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════
+     §4  SPLIT ENFORCEMENT
+     ═══════════════════════════════════════════ -->
+<section id="split">
+  <div class="container">
+    <div class="fade-in">
+      <div class="section-label">split.enforcement</div>
+      <h2 class="sh">Authorize before you spend</h2>
+      <p class="sh-sub">
+        Split enforcement separates the authorization pass from output validation,
+        letting hosts block invalid requests before any tokens are consumed.
+        Since v0.3.3 this is the <code>@governed</code> default.
+      </p>
+
+      <div class="split-diagram">
+        <!-- Phase A -->
+        <div class="split-phase">
+          <div class="split-phase-head phase-a-head">
+            <span>⬡</span> Phase A — Pre-Call Authorization
+          </div>
+          <div class="split-phase-body">
+            <div class="split-step">load_policy()</div>
+            <div class="split-step">evaluate_guards()</div>
+            <div class="split-step">validate_role()</div>
+            <div class="split-step">validate_preconditions()</div>
+            <div class="split-step">validate_tool_constraints()</div>
+            <div class="split-step">custom pre/post_authorization gates</div>
+            <div class="split-verdict verdict-pass">→ AUTHORIZED — PreCallResult issued</div>
+            <div class="split-verdict verdict-fail" style="margin-top:4px;">→ BLOCKED — FAIL artifact emitted</div>
+          </div>
+        </div>
+
+        <!-- Middle: host call -->
+        <div class="split-middle">
+          <div class="split-arrow">↓</div>
+          <div class="host-call-box">
+            HOST<br/>model call<br/>owner: host
+          </div>
+          <div class="split-arrow">↓</div>
+        </div>
+
+        <!-- Phase B -->
+        <div class="split-phase">
+          <div class="split-phase-head phase-b-head">
+            <span>⬡</span> Phase B — Post-Call Validation
+          </div>
+          <div class="split-phase-body">
+            <div class="split-step">validate signed PreCallResult evidence</div>
+            <div class="split-step">custom pre_output gates</div>
+            <div class="split-step">validate_schema()</div>
+            <div class="split-step">validate_postconditions()</div>
+            <div class="split-step">custom post_output gates</div>
+            <div class="split-step">compute_risk_score()</div>
+            <div class="split-step">generate_audit_artifact()</div>
+            <div class="split-verdict verdict-pass">→ PASS artifact emitted</div>
+            <div class="split-verdict verdict-fail" style="margin-top:4px;">→ FAIL artifact emitted</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-2 mt2" style="align-items:start;">
+        <div>
+          <div style="font-size:10px; color:var(--text-dim); letter-spacing:0.1em; text-transform:uppercase; margin-bottom:0.75rem;"># split enforcement — function API</div>
+          <pre><span class="kw">from</span> <span class="va">aegis</span> <span class="kw">import</span> <span class="fn">enforce_pre_call</span>, <span class="fn">enforce_post_call</span>
+
+<span class="co"># Phase A — runs before token spend</span>
+<span class="va">pre</span> = <span class="fn">enforce_pre_call</span>({
+    <span class="st">"policy_file"</span>:      <span class="st">"policies/base.yaml"</span>,
+    <span class="st">"model_provider"</span>:   <span class="st">"anthropic"</span>,
+    <span class="st">"model_identifier"</span>:<span class="st">"claude-sonnet-4-6"</span>,
+    <span class="st">"role"</span>:            <span class="st">"assistant"</span>,
+    <span class="st">"input"</span>:           {<span class="st">"query"</span>: <span class="st">"Summarize incident"</span>},
+    <span class="st">"context"</span>:         {<span class="st">"role_declared"</span>: <span class="kw">True</span>},
+})
+<span class="co"># pre.authorized → True/False</span>
+
+<span class="co"># Host owns the model call</span>
+<span class="va">output</span> = <span class="va">model</span>.<span class="fn">generate</span>(<span class="va">pre</span>)
+
+<span class="co"># Phase B — validates output</span>
+<span class="va">artifact</span> = <span class="fn">enforce_post_call</span>(<span class="va">pre</span>, <span class="va">output</span>)</pre>
+        </div>
+
+        <div>
+          <div style="font-size:10px; color:var(--text-dim); letter-spacing:0.1em; text-transform:uppercase; margin-bottom:0.75rem;"># @governed decorator — split-by-default</div>
+          <pre><span class="kw">from</span> <span class="va">aegis</span> <span class="kw">import</span> <span class="fn">governed</span>
+
+<span class="co"># pre_call_enforcement=True is now the default</span>
+<span class="co"># since v0.3.3. Phase A runs before the function body.</span>
+<span class="va">@</span><span class="fn">governed</span>(
+    <span class="va">policy_file</span>=<span class="st">"policies/base.yaml"</span>,
+    <span class="va">role</span>=<span class="st">"assistant"</span>,
+    <span class="va">model_provider</span>=<span class="st">"anthropic"</span>,
+    <span class="va">model_identifier</span>=<span class="st">"claude-sonnet-4-6"</span>,
+)
+<span class="kw">def</span> <span class="fn">run_model</span>(<span class="va">input_data</span>, <span class="va">context</span>):
+    <span class="kw">return</span> <span class="va">model</span>.<span class="fn">generate</span>(<span class="va">input_data</span>)</pre>
+
+          <div class="panel mt2">
+            <div class="panel-title">// security hardening — v0.3.2</div>
+            <ul class="boundary-items" style="font-size:11px; line-height:1.9;">
+              <li>Phase B validates <strong style="color:var(--text-primary);">signed evidence</strong> from Phase A, not mutable token state</li>
+              <li>Gate manifest verified against signed evidence bytes</li>
+              <li>Replay via cloned tokens blocked by process-local consumption tracking</li>
+              <li>FAIL artifact identity sourced from verified evidence, not caller input</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════
+     §5  WORKFLOW GOVERNANCE BETA
+     ═══════════════════════════════════════════ -->
+<section id="workflow">
+  <div class="container">
+    <div class="fade-in">
+      <div class="section-label">workflow.governance.beta</div>
+      <h2 class="sh">Multi-step workflow governance</h2>
+
+      <div class="beta-banner">
+        <span class="bi">⚠ RELEASE CANDIDATE:</span>
+        v0.9.0 workflow governance is packaged as <code>aegis-ai-governance==0.9.0b1</code>
+        and validated locally. PyPI publication is still pending.
+        No external API keys required for the default first-adopter path.
+      </div>
+
+      <p class="sh-sub" style="margin-bottom:1.5rem;">
+        The v0.9.0 beta adds session-scoped governance over multi-step AI workflows.
+        <code class="cm">AEGIS.open_session()</code> returns a <code class="cm">GovernanceSession</code>
+        context manager that enforces deterministic lifecycle state and produces correlated workflow artifacts.
+      </p>
+
+      <div class="grid-2" style="align-items:start;">
+        <div>
+          <div style="font-size:10px; color:var(--text-dim); letter-spacing:0.1em; text-transform:uppercase; margin-bottom:0.75rem;"># workflow — minimal starter</div>
+          <pre><span class="kw">from</span> <span class="va">aegis</span> <span class="kw">import</span> <span class="fn">AEGIS</span>
+
+<span class="co"># No module-level open_session().</span>
+<span class="co"># Always instance-scoped.</span>
+<span class="va">engine</span> = <span class="fn">AEGIS</span>()
+
+<span class="kw">with</span> <span class="va">engine</span>.<span class="fn">open_session</span>(
+    <span class="va">workflow_id</span>=<span class="st">"incident-review"</span>,
+    <span class="va">policy_file</span>=<span class="st">"governance/policy.yaml"</span>,
+) <span class="kw">as</span> <span class="va">session</span>:
+
+    <span class="co"># Step 1 — pre-call authorization</span>
+    <span class="va">pre</span> = <span class="va">session</span>.<span class="fn">enforce_pre_call</span>({
+        <span class="st">"role"</span>: <span class="st">"assistant"</span>,
+        <span class="st">"input"</span>: {<span class="st">"query"</span>: <span class="st">"Summarize"</span>},
+    })
+
+    <span class="co"># Host owns the model call</span>
+    <span class="va">output</span> = <span class="va">model</span>.<span class="fn">generate</span>(...)
+
+    <span class="co"># Step 1 — post-call validation</span>
+    <span class="va">pre</span>.<span class="fn">complete</span>(<span class="va">output</span>)
+
+    <span class="co"># Step 2 ...</span>
+
+<span class="co"># Clean exit → COMPLETED workflow artifact</span>
+<span class="co"># Exception exit → FAILED + re-raise</span></pre>
+
+          <div class="mt2" style="font-size:11px; color:var(--text-secondary); line-height:1.8;">
+            <strong style="color:var(--text-primary);">Starter scaffolds:</strong>
+            <code class="cm">minimal</code>, <code class="cm">standard</code>, <code class="cm">regulated-high-assurance</code> —
+            generated by <code class="cm">aegis workflow init --profile &lt;name&gt;</code>.
+            All compile to ordinary session + policy + manifest behavior.
+          </div>
+        </div>
+
+        <div>
+          <div class="lifecycle-states">
+            <span class="ls ls-open">OPEN</span>
+            <span class="ls-arrow">→</span>
+            <span class="ls ls-inter">PAUSED</span>
+            <span class="ls-arrow">|</span>
+            <span class="ls ls-fail">FAILED</span>
+            <span class="ls-arrow">|</span>
+            <span class="ls ls-final">COMPLETED</span>
+            <span class="ls-arrow">|</span>
+            <span class="ls ls-inter">CANCELED</span>
+            <span class="ls-arrow">→</span>
+            <span class="ls ls-final">FINALIZED</span>
+          </div>
+          <p style="font-size:11px; color:var(--text-dim); margin-bottom:1.25rem;">
+            FINALIZED is a lifecycle state only — never serialized as artifact status.
+            Artifact status values: COMPLETED, FAILED, CANCELED, INCOMPLETE.
+          </p>
+
+          <div class="panel-title" style="margin-bottom:0.75rem;">// workflow CLI commands (v0.9.0 beta)</div>
+          <div class="cli-grid" style="margin:0 0 1rem;">
+            <div class="cli-card">
+              <div class="cli-cmd">aegis workflow init --profile minimal</div>
+              <div class="cli-desc">Generates starter scaffold in <code>governance/</code></div>
+            </div>
+            <div class="cli-card">
+              <div class="cli-cmd">aegis workflow lint</div>
+              <div class="cli-desc">Syntax, schema, and structural checks on workflow config</div>
+            </div>
+            <div class="cli-card">
+              <div class="cli-cmd">aegis workflow doctor</div>
+              <div class="cli-desc">Diagnoses artifact and starter health; emits reason codes</div>
+            </div>
+            <div class="cli-card">
+              <div class="cli-cmd">aegis workflow trace</div>
+              <div class="cli-desc">Reconstructs invocation timeline from session artifacts</div>
+            </div>
+            <div class="cli-card">
+              <div class="cli-cmd">aegis workflow export</div>
+              <div class="cli-desc">Operator and audit export modes for session evidence</div>
+            </div>
+            <div class="cli-card">
+              <div class="cli-cmd">aegis policy init</div>
+              <div class="cli-desc">Bootstraps a new policy YAML from a profile template</div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-title">// key reason codes</div>
+            <ul class="boundary-items" style="font-size:11px; line-height:1.9;">
+              <li><code style="color:var(--pink);">WORKFLOW_INVALID_TRANSITION</code></li>
+              <li><code style="color:var(--pink);">WORKFLOW_APPROVAL_REQUIRED</code></li>
+              <li><code style="color:var(--pink);">WORKFLOW_SOURCE_REQUIRED</code></li>
+              <li><code style="color:var(--pink);">WORKFLOW_TOOL_BUDGET_EXCEEDED</code></li>
+              <li><code style="color:var(--pink);">WORKFLOW_SESSION_TOKEN_INVALID</code></li>
+              <li><code style="color:var(--pink);">WORKFLOW_STARTER_INTEGRITY_ERROR</code></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════
+     §6  GOLDEN PATH
+     ═══════════════════════════════════════════ -->
+<section id="golden">
+  <div class="container">
+    <div class="fade-in">
+      <div class="section-label">first.adopter.path</div>
+      <h2 class="sh">From install to governed workflow</h2>
+      <p class="sh-sub">
+        The canonical first-adopter path through v0.9.0-beta.
+        No Bedrock, A2A, or OpenAI Agents SDK required.
+      </p>
+
+      <div class="golden-path">
+
+        <div class="gp-step">
+          <div class="gp-dot" style="background:var(--cyan); border:2px solid var(--bg-secondary);"></div>
+          <div class="gp-num">step 01 — install</div>
+          <div class="gp-title">Install the v0.9.0b1 candidate artifact</div>
+          <div class="gp-detail">
+            Install the locally validated wheel now. After the separately authorized
+            PyPI release, use the pinned distribution command below.
+          </div>
+          <div class="gp-code">pip install aegis-ai-governance==0.9.0b1</div>
+        </div>
+
+        <div class="gp-step">
+          <div class="gp-dot" style="background:var(--cyan); border:2px solid var(--bg-secondary);"></div>
+          <div class="gp-num">step 02 — workflow init</div>
+          <div class="gp-title">Scaffold a starter profile</div>
+          <div class="gp-detail">
+            Run <code>aegis workflow init --profile minimal</code>. A <code>governance/</code> directory
+            is created with <code>policy.yaml</code>, <code>workflow_example.py</code>, and a manifest.
+          </div>
+          <div class="gp-code">aegis workflow init --profile minimal</div>
+        </div>
+
+        <div class="gp-step">
+          <div class="gp-dot" style="background:var(--green); border:2px solid var(--bg-secondary);"></div>
+          <div class="gp-num">step 03 — first PASS</div>
+          <div class="gp-title">Run the generated example</div>
+          <div class="gp-detail">
+            Execute <code>python workflow_example.py</code> from inside <code>governance/</code>.
+            Expect <code>Status: COMPLETED</code>, a session UUID, and a PASS audit artifact on disk.
+          </div>
+          <div class="gp-code">python workflow_example.py  →  Status: COMPLETED</div>
+        </div>
+
+        <div class="gp-step">
+          <div class="gp-dot" style="background:var(--yellow); border:2px solid var(--bg-secondary);"></div>
+          <div class="gp-num">step 04 — inspect evidence</div>
+          <div class="gp-title">Read the audit artifact</div>
+          <div class="gp-detail">
+            Open the emitted <code>.jsonl</code> artifact. Verify checksums, verdict, session correlation, and provenance metadata.
+            Use <code>aegis workflow trace</code> to reconstruct the timeline.
+          </div>
+          <div class="gp-code">aegis workflow trace --session &lt;uuid&gt;</div>
+        </div>
+
+        <div class="gp-step">
+          <div class="gp-dot" style="background:var(--pink); border:2px solid var(--bg-secondary);"></div>
+          <div class="gp-num">step 05 — trigger failure</div>
+          <div class="gp-title">Intentionally violate the policy</div>
+          <div class="gp-detail">
+            Modify the example to use a role not in the policy allowlist, or supply an input that
+            fails a precondition. Run again. Observe a FAIL artifact with a typed reason code.
+          </div>
+          <div class="gp-code">Status: FAILED  →  reason: ROLE_VIOLATION</div>
+        </div>
+
+        <div class="gp-step">
+          <div class="gp-dot" style="background:var(--orange); border:2px solid var(--bg-secondary);"></div>
+          <div class="gp-num">step 06 — doctor &amp; lint</div>
+          <div class="gp-title">Diagnose with workflow doctor</div>
+          <div class="gp-detail">
+            Run <code>aegis workflow doctor</code> to get human-readable diagnosis of the failure.
+            Run <code>aegis workflow lint</code> to check the policy and workflow config for structural issues.
+          </div>
+          <div class="gp-code">aegis workflow doctor  →  [FAIL] ROLE_VIOLATION: 'auditor' not in allowlist</div>
+        </div>
+
+        <div class="gp-step">
+          <div class="gp-dot" style="background:var(--green); border:2px solid var(--bg-secondary);"></div>
+          <div class="gp-num">step 07 — fix &amp; verify</div>
+          <div class="gp-title">Repair and re-run to PASS</div>
+          <div class="gp-detail">
+            Add the role to the policy allowlist. Re-run. Confirm the artifact shows PASS.
+            Inspect the correlated invocation IDs in the workflow artifact.
+          </div>
+          <div class="gp-code">Status: COMPLETED  →  governance restored</div>
+        </div>
+
+      </div>
+
+      <div class="panel mt2">
+        <div class="panel-title">// first-adopter docs (read in order)</div>
+        <div style="font-size:12px; color:var(--text-secondary); line-height:2; columns:2;">
+          <div>1. Workflow Quickstart</div>
+          <div>2. Migration Guide</div>
+          <div>3. Troubleshooting</div>
+          <div>4. Starter Recipes</div>
+          <div>5. Workflow CLI Reference</div>
+          <div>6. Public API Contract</div>
+          <div>7. Supported Environments</div>
+          <div>8. Operations Runbook</div>
+          <div>9. External Adapter Docs (last)</div>
+        </div>
+        <div class="tag tag-dim mt1">adapters are advanced follow-on surfaces, not required for first success</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════
+     §6b  INTERACTIVE DEMO
+     ═══════════════════════════════════════════ -->
+<section id="demo">
+  <div class="container">
+    <div class="fade-in">
+      <div class="section-label">interactive.demo</div>
+      <h2 class="sh">Hands-on: the v0.3.x runtime</h2>
+      <p class="sh-sub">
+        Eleven labs walk you through every major capability in the shipped runtime.
+        Each lab runs against a live FastAPI backend — no mocking, no fake responses.
+        Use the lab cards below to jump directly to a specific topic, or open the full demo.
+      </p>
+
+      <!-- embedded demo frame -->
+      <div class="demo-frame-wrap">
+        <div class="demo-frame-header">
+          <div class="demo-frame-dot dot-red"></div>
+          <div class="demo-frame-dot dot-yel"></div>
+          <div class="demo-frame-dot dot-grn"></div>
+          <div class="demo-url-bar">
+            <span class="demo-url-lock">🔒</span>
+            <span class="demo-url-text" id="frame-url-display">nealsolves.github.io/aegis/</span>
+          </div>
+          <div class="demo-frame-actions">
+            <button class="demo-frame-btn" id="btn-open-new" onclick="window.open('https://nealsolves.github.io/aegis/', '_blank')">↗ open</button>
+            <button class="demo-frame-btn active" id="btn-reload" onclick="document.getElementById('aegis-iframe').src = document.getElementById('aegis-iframe').src">↺ reload</button>
+          </div>
+        </div>
+        <iframe
+          id="aegis-iframe"
+          class="demo-iframe"
+          src="https://nealsolves.github.io/aegis/"
+          title="AEGIS Interactive Demo"
+          loading="lazy"
+          allow="same-origin"
+        ></iframe>
+      </div>
+
+      <!-- lab cards -->
+      <div style="font-size:10px; color:var(--text-dim); letter-spacing:0.1em; text-transform:uppercase; margin-bottom:0.75rem;">
+        // jump to a specific lab
+      </div>
+      <div class="lab-grid">
+
+        <a class="lab-card" href="https://nealsolves.github.io/aegis/#/architecture" target="_blank" rel="noopener"
+           onclick="navigateDemo('#/architecture'); return false;">
+          <div class="lab-card-num">overview</div>
+          <div class="lab-card-title">Architecture</div>
+          <div class="lab-card-desc">Component and pipeline view of the enforcement runtime</div>
+          <span class="lab-arrow">→</span>
+        </a>
+
+        <a class="lab-card" href="https://nealsolves.github.io/aegis/#/lab/1" target="_blank" rel="noopener"
+           onclick="navigateDemo('#/lab/1'); return false;">
+          <div class="lab-card-num">lab 01</div>
+          <div class="lab-card-title">Risk Scoring</div>
+          <div class="lab-card-desc">strict / risk_scored / warn_only modes; factor-based scoring against real scenarios</div>
+          <span class="lab-arrow">→</span>
+        </a>
+
+        <a class="lab-card" href="https://nealsolves.github.io/aegis/#/lab/2" target="_blank" rel="noopener"
+           onclick="navigateDemo('#/lab/2'); return false;">
+          <div class="lab-card-num">lab 02</div>
+          <div class="lab-card-title">Artifact Signing</div>
+          <div class="lab-card-desc">HMAC-SHA256 signing and constant-time verification of audit artifacts</div>
+          <span class="lab-arrow">→</span>
+        </a>
+
+        <a class="lab-card" href="https://nealsolves.github.io/aegis/#/lab/3" target="_blank" rel="noopener"
+           onclick="navigateDemo('#/lab/3'); return false;">
+          <div class="lab-card-num">lab 03</div>
+          <div class="lab-card-title">Audit Chain</div>
+          <div class="lab-card-desc">Tamper-evident chaining of invocation artifacts across a session</div>
+          <span class="lab-arrow">→</span>
+        </a>
+
+        <a class="lab-card" href="https://nealsolves.github.io/aegis/#/lab/4" target="_blank" rel="noopener"
+           onclick="navigateDemo('#/lab/4'); return false;">
+          <div class="lab-card-num">lab 04</div>
+          <div class="lab-card-title">Policy Composition</div>
+          <div class="lab-card-desc">extends-based composition, restrictive merging, cycle detection</div>
+          <span class="lab-arrow">→</span>
+        </a>
+
+        <a class="lab-card" href="https://nealsolves.github.io/aegis/#/lab/5" target="_blank" rel="noopener"
+           onclick="navigateDemo('#/lab/5'); return false;">
+          <div class="lab-card-num">lab 05</div>
+          <div class="lab-card-title">Loaders &amp; Versioning</div>
+          <div class="lab-card-desc">Pluggable PolicyLoader, policy effective/expiration dates</div>
+          <span class="lab-arrow">→</span>
+        </a>
+
+        <a class="lab-card" href="https://nealsolves.github.io/aegis/#/lab/6" target="_blank" rel="noopener"
+           onclick="navigateDemo('#/lab/6'); return false;">
+          <div class="lab-card-num">lab 06</div>
+          <div class="lab-card-title">Custom Gates</div>
+          <div class="lab-card-desc">EnforcementGate plugins at all four insertion points</div>
+          <span class="lab-arrow">→</span>
+        </a>
+
+        <a class="lab-card" href="https://nealsolves.github.io/aegis/#/lab/7" target="_blank" rel="noopener"
+           onclick="navigateDemo('#/lab/7'); return false;">
+          <div class="lab-card-num">lab 07</div>
+          <div class="lab-card-title">Compliance Export</div>
+          <div class="lab-card-desc">Offline compliance reporting over JSONL audit trails with lineage analysis</div>
+          <span class="lab-arrow">→</span>
+        </a>
+
+        <a class="lab-card" href="https://nealsolves.github.io/aegis/#/lab/8" target="_blank" rel="noopener"
+           onclick="navigateDemo('#/lab/8'); return false;">
+          <div class="lab-card-num">lab 08</div>
+          <div class="lab-card-title">Governed Knowledge Base</div>
+          <div class="lab-card-desc">ProvenanceGate and AuditLineage over a source-tracked KB workflow</div>
+          <span class="lab-arrow">→</span>
+        </a>
+
+        <a class="lab-card" href="https://nealsolves.github.io/aegis/#/lab/9" target="_blank" rel="noopener"
+           onclick="navigateDemo('#/lab/9'); return false;">
+          <div class="lab-card-num">lab 09</div>
+          <div class="lab-card-title">Governed vs. Ungoverned</div>
+          <div class="lab-card-desc">Side-by-side comparison: what governance catches that ungoverned invocations miss</div>
+          <span class="lab-arrow">→</span>
+        </a>
+
+        <a class="lab-card" href="https://nealsolves.github.io/aegis/#/lab/10" target="_blank" rel="noopener"
+           onclick="navigateDemo('#/lab/10'); return false;">
+          <div class="lab-card-num">lab 10</div>
+          <div class="lab-card-title">Split Enforcement Explorer</div>
+          <div class="lab-card-desc">Interactive Phase A / Phase B flow; block before token spend</div>
+          <span class="lab-arrow">→</span>
+        </a>
+
+        <a class="lab-card beta-lab" href="https://nealsolves.github.io/aegis/#/lab/11" target="_blank" rel="noopener"
+           onclick="navigateDemo('#/lab/11'); return false;">
+          <div class="lab-card-num">lab 11 <span class="tag tag-orange" style="margin-left:4px;">beta</span></div>
+          <div class="lab-card-title">Workflow Lab</div>
+          <div class="lab-card-desc">v0.9.0-beta GovernanceSession: failure-and-fix flow, doctor/lint output</div>
+          <span class="lab-arrow">→</span>
+        </a>
+
+      </div>
+
+      <div class="panel" style="border-left:3px solid var(--green);">
+        <div class="panel-title">// live demo — technical notes</div>
+        <p style="font-size:12px; color:var(--text-secondary); line-height:1.8;">
+          The demo runs against a permanent FastAPI backend.
+          All 11 labs make real API calls — no mocked responses, no pre-baked results.
+          Labs 1–10 cover v0.3.x capabilities from the shipped PyPI release.
+          Lab 11 covers the v0.9.0-beta workflow governance surface.
+        </p>
+        <div style="margin-top:0.75rem;">
+          <a href="https://nealsolves.github.io/aegis/" target="_blank" rel="noopener" class="cta-btn cta-ghost" style="font-size:10px;">↗ open in new tab</a>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════
+     §7  EVIDENCE & AUDIT
+     ═══════════════════════════════════════════ -->
+<section id="audit">
+  <div class="container">
+    <div class="fade-in">
+      <div class="section-label">audit.artifacts</div>
+      <h2 class="sh">Tamper-evident evidence, always</h2>
+      <p class="sh-sub">
+        One invocation, one artifact. Every governance outcome — pass or fail —
+        is recorded with canonical checksums. Artifacts can be signed, chained,
+        exported, and inspected offline.
+      </p>
+
+      <div class="artifact-card">
+        <div class="artifact-header">
+          <span style="color:var(--text-dim);">audit.artifact — schema v1.4 — JSONL</span>
+          <span class="artifact-status-pass">● PASS</span>
+        </div>
+        <div class="artifact-body">
+          <div class="aj"><span class="aj-key">"schema_version"</span><span class="aj-colon">:</span><span class="aj-str">"1.4"</span><span style="color:var(--border);">,</span></div>
+          <div class="aj"><span class="aj-key">"verdict"</span><span class="aj-colon">:</span><span class="aj-str" style="color:var(--green);">"PASS"</span><span style="color:var(--border);">,</span></div>
+          <div class="aj"><span class="aj-key">"model_provider"</span><span class="aj-colon">:</span><span class="aj-str">"anthropic"</span><span style="color:var(--border);">,</span></div>
+          <div class="aj"><span class="aj-key">"model_identifier"</span><span class="aj-colon">:</span><span class="aj-str">"claude-sonnet-4-6"</span><span style="color:var(--border);">,</span></div>
+          <div class="aj"><span class="aj-key">"policy_version"</span><span class="aj-colon">:</span><span class="aj-str">"1.0.0"</span><span style="color:var(--border);">,</span></div>
+          <div class="aj"><span class="aj-key">"role"</span><span class="aj-colon">:</span><span class="aj-str">"assistant"</span><span style="color:var(--border);">,</span></div>
+          <div class="aj"><span class="aj-key">"risk_score"</span><span class="aj-colon">:</span><span class="aj-num">0.12</span><span style="color:var(--border);">,</span></div>
+          <div class="aj"><span class="aj-key">"input_checksum"</span><span class="aj-colon">:</span><span class="aj-hash">"sha256:3d2f1a..."</span><span style="color:var(--border);">,</span></div>
+          <div class="aj"><span class="aj-key">"output_checksum"</span><span class="aj-colon">:</span><span class="aj-hash">"sha256:8e9c4b..."</span><span style="color:var(--border);">,</span></div>
+          <div class="aj"><span class="aj-key">"signature"</span><span class="aj-colon">:</span><span class="aj-hash">"hmac-sha256:f2a91c..."</span><span style="color:var(--border);">,</span></div>
+          <div class="aj"><span class="aj-key">"provenance"</span><span class="aj-colon">:</span><span class="aj-obj">{</span></div>
+          <div class="aj aj-indent"><span class="aj-key">"source_ids"</span><span class="aj-colon">:</span><span class="aj-str">["doc-42", "doc-17"]</span><span style="color:var(--border);">,</span></div>
+          <div class="aj aj-indent"><span class="aj-key">"derived_from_audit_checksums"</span><span class="aj-colon">:</span><span class="aj-hash">["sha256:aa1f2b..."]</span></div>
+          <div class="aj"><span class="aj-obj">}</span><span style="color:var(--border);">,</span></div>
+          <div class="aj"><span class="aj-key">"timestamp"</span><span class="aj-colon">:</span><span class="aj-str">"2026-04-28T14:22:03.814Z"</span></div>
+        </div>
+      </div>
+
+      <div class="evidence-grid">
+        <div class="evidence-item ev-yellow">
+          <div class="ev-title">One artifact per invocation attempt</div>
+          <div class="ev-desc">
+            Invocation artifacts are not merged, updated, or replaced.
+            One attempt → one PASS or FAIL record. Workflow evidence is separate
+            and does not replace invocation artifacts.
+          </div>
+        </div>
+        <div class="evidence-item ev-cyan">
+          <div class="ev-title">SHA-256 + HMAC-SHA256 signing</div>
+          <div class="ev-desc">
+            Canonical checksums of input and output are computed and stored.
+            Optional HMAC-SHA256 signing allows offline tamper detection.
+            Verification is constant-time.
+          </div>
+        </div>
+        <div class="evidence-item ev-green">
+          <div class="ev-title">AuditLineage — invocation DAG</div>
+          <div class="ev-desc">
+            Reconstruct a directed acyclic graph of governed invocations from a JSONL
+            audit trail. Traverse ancestors and descendants, detect orphans and cycles.
+            Shipped in v0.3.3.
+          </div>
+        </div>
+        <div class="evidence-item ev-orange">
+          <div class="ev-title">ProvenanceGate + RiskHistory</div>
+          <div class="ev-desc">
+            <code>ProvenanceGate</code> blocks output when source context is absent.
+            <code>RiskHistory</code> tracks risk scores over time and flags improving,
+            stable, or degrading trajectories.
+          </div>
+        </div>
+      </div>
+
+      <div class="panel mt2">
+        <div class="panel-title">// workflow-correlated artifacts (v0.9.0 beta)</div>
+        <p style="font-size:12px; color:var(--text-secondary); line-height:1.8;">
+          In workflow mode, invocation artifacts gain additive workflow-correlation metadata
+          (<code>session_id</code>, <code>step_id</code>, <code>participant_id</code>).
+          Raw external payloads are not persisted by default.
+          Workflow/session evidence is a separate artifact, not a replacement for per-invocation artifacts.
+        </p>
+        <div style="margin-top:0.75rem;">
+          <div class="tag tag-yellow">one artifact per invocation attempt</div>
+          <div class="tag tag-cyan">correlation metadata is additive only</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════
+     §8  SDK BOUNDARY EXPLORER
+     ═══════════════════════════════════════════ -->
+<section id="sdk-boundary">
+  <div class="container">
+    <div class="fade-in">
+      <div class="section-label">sdk.boundary</div>
+      <h2 class="sh">What ships in the wheel</h2>
+      <p class="sh-sub">
+        The installable runtime SDK is the Python package under <code>aegis/</code>.
+        Everything else in the repository is documentation, demo, test, or maintainer material
+        and is not required for runtime use.
+      </p>
+
+      <div class="boundary-explorer">
+        <!-- Runtime -->
+        <div class="be-col">
+          <div class="be-head be-runtime">⬡ Runtime wheel — aegis/ package</div>
+          <div class="be-body">
+            <div class="be-file">
+              <span class="be-icon">📁</span>
+              <span class="be-name">aegis/__init__.py</span>
+              <span class="be-note">stable public exports</span>
+            </div>
+            <div class="be-file">
+              <span class="be-icon">📄</span>
+              <span class="be-name">aegis/enforcement.py</span>
+              <span class="be-note">public entry points</span>
+            </div>
+            <div class="be-file">
+              <span class="be-icon">📄</span>
+              <span class="be-name">aegis/decorators.py</span>
+              <span class="be-note">@governed surface</span>
+            </div>
+            <div class="be-file">
+              <span class="be-icon">📄</span>
+              <span class="be-name">aegis/sinks.py</span>
+              <span class="be-note">audit sinks</span>
+            </div>
+            <div class="be-file">
+              <span class="be-icon">📄</span>
+              <span class="be-name">aegis/session.py</span>
+              <span class="be-note">v0.9.0-beta workflow</span>
+            </div>
+            <div class="be-file">
+              <span class="be-icon">📄</span>
+              <span class="be-name">aegis/workflow_trace.py</span>
+              <span class="be-note">v0.9.0-beta trace</span>
+            </div>
+            <div class="be-file">
+              <span class="be-icon">📄</span>
+              <span class="be-name">aegis/workflow_export.py</span>
+              <span class="be-note">v0.9.0-beta export</span>
+            </div>
+            <div class="be-file">
+              <span class="be-icon">📄</span>
+              <span class="be-name optional">aegis/openai_agents_adapter.py</span>
+              <span class="be-note">aegis-ai-governance[openai-agents]</span>
+            </div>
+            <div class="be-file">
+              <span class="be-icon">📁</span>
+              <span class="be-name private">aegis/_internal/</span>
+              <span class="be-note">private, required</span>
+            </div>
+            <div class="be-file">
+              <span class="be-icon">📁</span>
+              <span class="be-name">aegis/schemas/</span>
+              <span class="be-note">runtime JSON schemas</span>
+            </div>
+            <div class="be-file">
+              <span class="be-icon">📄</span>
+              <span class="be-name">aegis/py.typed</span>
+              <span class="be-note">PEP 561 marker</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Repo-only -->
+        <div class="be-col">
+          <div class="be-head be-repo">○ Repo / supporting — not in runtime wheel</div>
+          <div class="be-body">
+            <div class="be-file">
+              <span class="be-icon" style="color:var(--text-dim);">📁</span>
+              <span class="be-name private">docs/</span>
+              <span class="be-note">documentation</span>
+            </div>
+            <div class="be-file">
+              <span class="be-icon" style="color:var(--text-dim);">📁</span>
+              <span class="be-name private">tests/</span>
+              <span class="be-note">test suite</span>
+            </div>
+            <div class="be-file">
+              <span class="be-icon" style="color:var(--text-dim);">📁</span>
+              <span class="be-name private">scripts/</span>
+              <span class="be-note">maintainer scripts</span>
+            </div>
+            <div class="be-file">
+              <span class="be-icon" style="color:var(--text-dim);">📁</span>
+              <span class="be-name private">examples/</span>
+              <span class="be-note">migration examples</span>
+            </div>
+            <div class="be-file">
+              <span class="be-icon" style="color:var(--text-dim);">📁</span>
+              <span class="be-name private">demo-app-react/</span>
+              <span class="be-note">live demo UI</span>
+            </div>
+            <div class="be-file">
+              <span class="be-icon" style="color:var(--text-dim);">📁</span>
+              <span class="be-name private">demo-app-api/</span>
+              <span class="be-note">demo FastAPI backend</span>
+            </div>
+            <div class="be-file">
+              <span class="be-icon" style="color:var(--text-dim);">📁</span>
+              <span class="be-name private">policies/</span>
+              <span class="be-note">example policies</span>
+            </div>
+            <div class="be-file">
+              <span class="be-icon" style="color:var(--text-dim);">📁</span>
+              <span class="be-name private">schemas/ <em style="font-style:normal;">(top-level)</em></span>
+              <span class="be-note">human-facing copies</span>
+            </div>
+            <div class="be-file">
+              <span class="be-icon" style="color:var(--text-dim);">📁</span>
+              <span class="be-name private">graphics/</span>
+              <span class="be-note">README imagery</span>
+            </div>
+            <div class="be-file">
+              <span class="be-icon" style="color:var(--text-dim);">📁</span>
+              <span class="be-name private">build/ &nbsp;.egg-info/ &nbsp;__pycache__/</span>
+              <span class="be-note">generated</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" style="border-left:3px solid var(--pink);">
+        <div class="panel-title">// critical rule — public import boundary</div>
+        <p style="font-size:12px; color:var(--text-secondary); line-height:1.8;">
+          Host code must never import from <code style="color:var(--pink);">aegis._internal</code>.
+          The <code>_internal</code> package is private by convention and required by public modules,
+          but it is not a stable API surface. All public exports are available from <code class="cm">aegis</code> directly.
+        </p>
+        <pre style="margin-top:0.75rem; font-size:11px;"><span class="co"># ✓ correct</span>
+<span class="kw">from</span> <span class="va">aegis</span> <span class="kw">import</span> <span class="fn">enforce_invocation</span>, <span class="fn">AEGIS</span>, <span class="fn">governed</span>
+
+<span class="co"># ✗ never do this in host code</span>
+<span class="co"># from aegis._internal.enforcement import ...</span></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════
+     §9  OPTIONAL ADAPTERS
+     ═══════════════════════════════════════════ -->
+<section id="adapters">
+  <div class="container">
+    <div class="fade-in">
+      <div class="section-label">optional.adapters</div>
+      <h2 class="sh">Advanced ecosystem integrations</h2>
+      <p class="sh-sub">
+        Optional adapters normalize provider-specific trace formats and agent protocols into AEGIS evidence.
+        They are advanced follow-on tracks — not required for the default first-adopter path.
+      </p>
+
+      <div class="adapters-grid">
+        <!-- OpenAI Agents -->
+        <div class="adapter-card adapter-openai">
+          <div class="adapter-name">OpenAI Agents SDK</div>
+          <div class="adapter-status">
+            <span class="tag tag-green">v0.9.0b1 beta candidate</span>
+            <span class="tag tag-dim">aegis-ai-governance[openai-agents]</span>
+          </div>
+          <div class="adapter-desc">
+            Normalizes host-owned <code>openai-agents</code> run, interruption, and optional trace evidence.
+            Governed tool support requires adapter-managed wrappers.
+            Included in the v0.9.0b1 candidate under <code>aegis.openai_agents_adapter</code>.
+          </div>
+          <div class="adapter-note">
+            Not re-exported from top-level <code>aegis</code>. Requires the <code>openai-agents</code>
+            install extra. Unsupported runtime surfaces reject explicitly — no silent fallback.
+          </div>
+        </div>
+
+        <!-- Bedrock -->
+        <div class="adapter-card adapter-bedrock">
+          <div class="adapter-name">AWS Bedrock Trace</div>
+          <div class="adapter-status">
+            <span class="tag tag-orange">v0.9.0b1 beta candidate</span>
+          </div>
+          <div class="adapter-desc">
+            Normalizes host-supplied parsed Bedrock trace parts into AEGIS evidence.
+            Alias-backed identity required for governed binding.
+            Name-only evidence is insufficient when policy requires authoritative identity.
+          </div>
+          <div class="adapter-note">
+            Included as <code>aegis.bedrock_adapter</code>; no AWS SDK is required by the base install.
+          </div>
+        </div>
+
+        <!-- A2A -->
+        <div class="adapter-card adapter-a2a">
+          <div class="adapter-name">A2A Protocol</div>
+          <div class="adapter-status">
+            <span class="tag tag-purple">v0.9.0b1 beta candidate</span>
+          </div>
+          <div class="adapter-desc">
+            Normalizes parsed Agent Card, request metadata, and task envelopes.
+            Validates <code>supportedInterfaces[].protocolVersion</code>.
+            Accepts only normative <code>TASK_STATE_*</code> wire values. gRPC is out of scope for v0.9.0.
+          </div>
+          <div class="adapter-note">
+            Included as <code>aegis.a2a_adapter</code>; no A2A SDK is required by the base install.
+          </div>
+        </div>
+      </div>
+
+      <div class="not-a-platform mt2" style="border-color:rgba(174,129,255,.25); background:rgba(174,129,255,.04);">
+        <div class="nap-title" style="color:var(--purple);">default path first — adapters last</div>
+        <p>
+          The first-adopter docs order puts adapter documentation last for a reason.
+          Completing the local minimal-starter golden path — install → init → PASS → failure → doctor → fix →
+          PASS again — requires none of these adapters. Add adapter complexity only after the default path
+          is working and understood.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════
+     §10  CTA
+     ═══════════════════════════════════════════ -->
+<section id="cta" style="background:var(--bg-secondary) !important; border-top:1px solid var(--border); padding:5rem 2rem;">
+  <div class="container" style="text-align:center;">
+    <div class="fade-in">
+      <div class="section-label" style="text-align:center; display:block;">get.started</div>
+      <h2 class="cta-heading">Ready to govern your model calls?</h2>
+      <p class="cta-sub">
+        Install the SDK, read the quickstart, and run a local workflow starter.
+        No external services, no API keys, no platform account.
+      </p>
+
+      <div class="hero-terminal" style="margin:0 auto 2rem; max-width:480px; text-align:left;">
+        <div class="term-bar">
+          <div class="term-dot dot-red"></div>
+          <div class="term-dot dot-yel"></div>
+          <div class="term-dot dot-grn"></div>
+          <span class="term-title">terminal — quick start</span>
+        </div>
+        <div class="term-body">
+          <div class="term-line">
+            <span class="term-prompt">$</span>
+            <span class="term-cmd">pip install aegis-ai-governance==0.9.0b1</span>
+          </div>
+          <div class="term-out-grn">Available after the separately authorized PyPI publication</div>
+          <div class="term-line" style="margin-top:0.5rem;">
+            <span class="term-prompt">$</span>
+            <span class="term-cmd">aegis workflow init --profile minimal</span>
+          </div>
+          <div class="term-out-yel">Created governance/ with minimal starter</div>
+          <div class="term-line">
+            <span class="term-prompt">$</span>
+            <span class="term-cmd">python governance/workflow_example.py</span>
+          </div>
+          <div class="term-out-grn">Status: COMPLETED &nbsp; Steps: 2 &nbsp; Session: &lt;uuid&gt;</div>
+        </div>
+      </div>
+
+      <div class="cta-steps">
+        <div class="cta-step">
+          <div class="cta-step-num">1</div>
+          <span><code>pip install aegis-ai-governance==0.9.0b1</code> — candidate command after publication</span>
+        </div>
+        <div class="cta-step">
+          <div class="cta-step-num">2</div>
+          <span>Read <code>docs/reference/WORKFLOW_QUICKSTART.md</code> — first-adopter path</span>
+        </div>
+        <div class="cta-step">
+          <div class="cta-step-num">3</div>
+          <span>Run <code>aegis workflow init --profile minimal</code> — scaffold and execute</span>
+        </div>
+      </div>
+
+      <div class="cta-btns mt2">
+        <a href="https://nealsolves.github.io/aegis/" class="cta-btn cta-primary" target="_blank" rel="noopener">&gt; open_interactive_demo</a>
+        <a href="#invocation" class="cta-btn cta-ghost">&gt; read_governance_pipeline</a>
+        <a href="#sdk-boundary" class="cta-btn cta-ghost">&gt; inspect_sdk_boundary</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════
+     FOOTER
+     ═══════════════════════════════════════════ -->
+<footer>
+  <div class="container">
+    <div style="margin-bottom:0.4rem;">
+      <span style="color:var(--cyan);">AEGIS</span>
+      &nbsp;·&nbsp; Auditable Enforcement and Governance for Intelligent Systems
+      &nbsp;·&nbsp; <span style="color:var(--orange);">v0.9.0b1</span>
+      <code>aegis-ai-governance</code> candidate · PyPI pending
+    </div>
+    <div>
+      <a href="https://nealsolves.github.io/aegis/">Interactive Demo</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/nealsolves/aegis">GitHub</a>
+      &nbsp;·&nbsp;
+      AEGIS is a Python SDK, not a hosted platform.
+      The host application owns orchestration, transport, and model calls.
+    </div>
+  </div>
+</footer>
+
+<!-- ═══════════════════════════════════════════
+     JS — scroll animations
+     ═══════════════════════════════════════════ -->
+<script>
+// navigate the embedded iframe to a specific lab hash and update the URL bar display
+function navigateDemo(hash) {
+  const iframe = document.getElementById('aegis-iframe');
+  const display = document.getElementById('frame-url-display');
+  if (!iframe) return;
+  const base = 'https://nealsolves.github.io/aegis/';
+  iframe.src = base + hash;
+  if (display) display.textContent = 'nealsolves.github.io/aegis/' + hash;
+  // scroll iframe into view
+  iframe.closest('.demo-frame-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+(function () {
+  // Intersection observer for fade-in
+  const obs = new IntersectionObserver(
+    entries => {
+      entries.forEach(e => {
+        if (e.isIntersecting) {
+          e.target.classList.add('visible');
+          obs.unobserve(e.target);
+        }
+      });
+    },
+    { threshold: 0.06, rootMargin: '0px 0px -40px 0px' }
+  );
+
+  document.querySelectorAll('.fade-in').forEach(el => obs.observe(el));
+
+  // Nav active link on scroll
+  const sections = document.querySelectorAll('section[id]');
+  const navLinks  = document.querySelectorAll('.nav-links a');
+
+  const secObs = new IntersectionObserver(
+    entries => {
+      entries.forEach(e => {
+        if (e.isIntersecting) {
+          const id = e.target.id;
+          navLinks.forEach(a => {
+            a.style.color = a.getAttribute('href') === `#${id}`
+              ? 'var(--cyan)'
+              : '';
+            a.style.borderColor = a.getAttribute('href') === `#${id}`
+              ? 'var(--cyan)'
+              : 'transparent';
+          });
+        }
+      });
+    },
+    { threshold: 0.35 }
+  );
+
+  sections.forEach(s => secObs.observe(s));
+
+  // Smooth scroll for internal links
+  document.querySelectorAll('a[href^="#"]').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      const target = document.querySelector(a.getAttribute('href'));
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+  });
+
+  // Animated terminal typing effect on hero
+  const heroTerm = document.querySelector('.hero-terminal .term-body');
+  if (heroTerm) {
+    // already rendered, just let cursor blink
+  }
+})();
+</script>
+
+</body>
+</html>

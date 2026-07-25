@@ -1,0 +1,34 @@
+schema_version: 1
+normal_states: [UNCLASSIFIED, CLASSIFIED, SPECIFIED, CLARIFIED, PLANNED, TASKED, ANALYZED, IMPLEMENTING, VALIDATING, REVIEWING, CONVERGING, RELEASE_READY, DEPLOYING, VERIFYING, COMPLETE]
+exceptional_states: [BLOCKED_REQUIREMENT, BLOCKED_POLICY, BLOCKED_TECHNICAL, HUMAN_DECISION_REQUIRED, ROLLBACK_REQUIRED, INCIDENT]
+paths:
+  code: [UNCLASSIFIED, CLASSIFIED, SPECIFIED, CLARIFIED, PLANNED, TASKED, ANALYZED, IMPLEMENTING, VALIDATING, REVIEWING, CONVERGING, COMPLETE]
+  release: [UNCLASSIFIED, CLASSIFIED, SPECIFIED, CLARIFIED, PLANNED, TASKED, ANALYZED, IMPLEMENTING, VALIDATING, REVIEWING, CONVERGING, RELEASE_READY, COMPLETE]
+  deployment: [UNCLASSIFIED, CLASSIFIED, SPECIFIED, CLARIFIED, PLANNED, TASKED, ANALYZED, IMPLEMENTING, VALIDATING, REVIEWING, CONVERGING, RELEASE_READY, DEPLOYING, VERIFYING, COMPLETE]
+  maintenance: [UNCLASSIFIED, CLASSIFIED, VALIDATING, REVIEWING, COMPLETE]
+transitions:
+  - {from: UNCLASSIFIED, to: CLASSIFIED, requires: [evaluation_passed]}
+  - {from: CLASSIFIED, to: SPECIFIED, requires: [spec_complete]}
+  - {from: SPECIFIED, to: CLARIFIED, requires: [material_clarifications_resolved]}
+  - {from: CLARIFIED, to: PLANNED, requires: [plan_complete, instruction_context_valid]}
+  - {from: PLANNED, to: TASKED, requires: [tasks_trace_to_acceptance]}
+  - {from: TASKED, to: ANALYZED, requires: [artifact_analysis_clean]}
+  - {from: ANALYZED, to: IMPLEMENTING, requires: [implementation_authorized]}
+  - {from: IMPLEMENTING, to: VALIDATING, requires: [implementation_tasks_complete]}
+  - {from: CLASSIFIED, to: VALIDATING, requires: [maintenance_scope_recorded]}
+  - {from: VALIDATING, to: REVIEWING, requires: [local_validation_passed]}
+  - {from: REVIEWING, to: CONVERGING, requires: [required_reviews_passed, required_ci_passed]}
+  - {from: REVIEWING, to: COMPLETE, requires: [required_reviews_passed, required_ci_passed]}
+  - {from: CONVERGING, to: COMPLETE, requires: [convergence_passed]}
+  - {from: CONVERGING, to: RELEASE_READY, requires: [convergence_passed, release_evidence_complete]}
+  - {from: RELEASE_READY, to: COMPLETE, requires: [release_artifact_verified]}
+  - {from: RELEASE_READY, to: DEPLOYING, requires: [deployment_authorized, rollback_verified]}
+  - {from: DEPLOYING, to: VERIFYING, requires: [deployment_observed]}
+  - {from: VERIFYING, to: COMPLETE, requires: [production_verification_passed]}
+recoveries:
+  BLOCKED_REQUIREMENT: gather_evidence_or_clarify
+  BLOCKED_POLICY: change_request_or_authorized_policy
+  BLOCKED_TECHNICAL: bounded_retry_or_alternative
+  HUMAN_DECISION_REQUIRED: validated_response
+  ROLLBACK_REQUIRED: execute_verified_rollback
+  INCIDENT: incident_hotfix_workflow

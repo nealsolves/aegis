@@ -1,0 +1,62 @@
+%%{init: {
+  'theme': 'dark',
+  'themeVariables': {
+    'primaryColor': '#1e2a4a',
+    'primaryTextColor': '#e8e8ed',
+    'primaryBorderColor': '#3a4a7a',
+    'lineColor': '#4a5a8a',
+    'secondaryColor': '#1a1a2e',
+    'tertiaryColor': '#12121e',
+    'fontFamily': 'IBM Plex Sans, sans-serif',
+    'fontSize': '13px'
+  }
+}}%%
+flowchart TB
+    subgraph Host["HOST APPLICATION OWNS EXECUTION"]
+        direction LR
+        App["App / Agent / Orchestrator"]
+        Runtime["Provider / Tool / Transport Runtime"]
+        App -->|"host calls after authorization"| Runtime
+    end
+
+    subgraph Adapters["OPTIONAL NORMALIZATION ADAPTERS"]
+        direction LR
+        Bedrock["Bedrock adapter"]
+        A2A["A2A adapter"]
+        OpenAI["OpenAI Agents adapter"]
+    end
+
+    subgraph SDK["AEGIS v0.9 Beta · aegis-ai-governance==0.9.0b1"]
+        direction TB
+        Policy["Policy YAML + JSON Schemas + PolicyLoader"]
+        Workflow["AEGIS.open_session() → GovernanceSession → SessionPreCallResult"]
+        Kernel["Invocation kernel\nordered authorization → output → risk gates"]
+        InvArtifact["Invocation artifact\nPASS / FAIL per attempt"]
+        WfArtifact["Workflow artifact\nseparate session evidence"]
+        Sink["AuditSink + optional signing"]
+    end
+
+    subgraph Ops["ADOPTION + OPERATOR TOOLING"]
+        direction LR
+        Init["aegis workflow init"]
+        Lint["aegis workflow lint"]
+        Doctor["aegis workflow doctor"]
+        Trace["aegis workflow trace"]
+        Export["aegis workflow export"]
+    end
+
+    App --> Workflow --> Kernel
+    App --> Kernel
+    Policy --> Workflow
+    Policy --> Kernel
+    Bedrock -.-> Workflow
+    A2A -.-> Workflow
+    OpenAI -.-> Workflow
+    Kernel --> InvArtifact --> Sink
+    Workflow --> WfArtifact --> Sink
+    InvArtifact -.->|"checksum correlation"| WfArtifact
+    Init -.-> Policy
+    Lint -.-> Policy
+    Doctor -.-> WfArtifact
+    Sink --> Trace
+    Sink --> Export

@@ -1,0 +1,5 @@
+policy_version: "1.0"
+pre_conditions:
+  required:
+    role_declared:
+      type: boolean

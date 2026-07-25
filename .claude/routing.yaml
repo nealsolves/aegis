@@ -1,0 +1,82 @@
+schema_version: 1
+always:
+  rules: [rules/engineering.md, rules/testing.md, rules/documentation.md, rules/aegis-project.md]
+profile_paths:
+  base:
+    solo: profiles/solo-developer.md
+    team: profiles/team.md
+    prototype: profiles/prototype.md
+  overlays:
+    regulated: profiles/regulated.md
+facts:
+  documentation_only: {type: boolean, material: false}
+  modifies_runtime_code: {type: boolean, material: false}
+  modifies_authentication: {type: boolean, material: true, corroborate_when_false: true}
+  modifies_authorization: {type: boolean, material: true, corroborate_when_false: true}
+  reads_customer_data: {type: boolean, material: true}
+  writes_customer_data: {type: boolean, material: true}
+  # New purpose, processor, sharing path, AI use, or sensitive classification.
+  introduces_sensitive_data_use: {type: boolean, material: true}
+  changes_public_contract: {type: boolean, material: true}
+  changes_database_schema: {type: boolean, material: true}
+  irreversible_migration: {type: boolean, material: true, corroborate_when_false: true}
+  changes_infrastructure: {type: boolean, material: true}
+  adds_external_dependency: {type: boolean, material: false}
+  uses_llm: {type: boolean, material: true}
+  deploys_to_production: {type: boolean, material: true}
+  destructive_production_action: {type: boolean, material: true}
+  credential_exposure: {type: boolean, material: true}
+  unsupported_regulatory_exception: {type: boolean, material: true}
+  unbounded_financial_commitment: {type: boolean, material: true}
+  instruction_system_change: {type: boolean, material: true}
+workflow_rules:
+  project_initialization: workflows/project-initialization.md
+  feature: workflows/feature-development.md
+  bug_fix: workflows/bug-fix.md
+  brownfield: workflows/brownfield-change.md
+  maintenance: workflows/maintenance.md
+  dependency: workflows/dependency-update.md
+  instruction_system: workflows/instruction-system-change.md
+  release: workflows/release.md
+  incident: workflows/incident-hotfix.md
+classification_rules:
+  - {fact: documentation_only, equals: true, add: [documentation_only]}
+  - {fact: modifies_runtime_code, equals: true, add: [feature]}
+  - {fact: modifies_authentication, equals: true, add: [security_sensitive]}
+  - {fact: modifies_authorization, equals: true, add: [security_sensitive]}
+  - {fact: reads_customer_data, equals: true, add: [data_sensitive]}
+  - {fact: writes_customer_data, equals: true, add: [data_sensitive]}
+  - {fact: introduces_sensitive_data_use, equals: true, add: [data_sensitive, regulated_scope]}
+  - {fact: changes_public_contract, equals: true, add: [public_contract_change]}
+  - {fact: changes_database_schema, equals: true, add: [data_sensitive, production_impact]}
+  - {fact: changes_infrastructure, equals: true, add: [architecture_change, production_impact]}
+  - {fact: adds_external_dependency, equals: true, add: [dependency_change]}
+  - {fact: uses_llm, equals: true, add: [ai_system_change]}
+  - {fact: deploys_to_production, equals: true, add: [production_impact, observability_impact, release]}
+  - {fact: destructive_production_action, equals: true, add: [production_impact, release]}
+  - {fact: credential_exposure, equals: true, add: [security_sensitive, incident_hotfix]}
+  - {fact: unsupported_regulatory_exception, equals: true, add: [regulated_scope]}
+  - {fact: instruction_system_change, equals: true, add: [instruction_system_change]}
+overlay_rules:
+  - {overlay: regulated, add: [regulated_scope]}
+action_routes:
+  create_release: [release]
+  deploy_production: [production_impact, observability_impact, release]
+  instruction_system_change: [instruction_system_change]
+routes:
+  documentation_only: {workflows: [workflows/maintenance.md], rules: []}
+  feature: {workflows: [workflows/feature-development.md], rules: [rules/architecture.md]}
+  bug_fix: {workflows: [workflows/bug-fix.md], rules: []}
+  brownfield_behavior_change: {workflows: [workflows/brownfield-change.md], rules: [rules/architecture.md]}
+  dependency_change: {workflows: [workflows/dependency-update.md], rules: [rules/security.md, rules/release-management.md]}
+  architecture_change: {rules: [rules/architecture.md, rules/security.md, rules/production-readiness.md, rules/observability.md]}
+  security_sensitive: {rules: [rules/security.md, rules/testing.md]}
+  data_sensitive: {rules: [rules/data-privacy.md, rules/security.md]}
+  production_impact: {rules: [rules/production-readiness.md, rules/observability.md, rules/release-management.md]}
+  observability_impact: {rules: [rules/observability.md]}
+  public_contract_change: {rules: [rules/architecture.md, rules/testing.md, rules/release-management.md]}
+  ai_system_change: {rules: [rules/ai-systems.md, rules/security.md, rules/data-privacy.md, rules/observability.md]}
+  release: {workflows: [workflows/release.md], rules: [rules/release-management.md, rules/production-readiness.md, rules/observability.md]}
+  incident_hotfix: {workflows: [workflows/incident-hotfix.md], rules: [rules/security.md, rules/production-readiness.md, rules/observability.md, rules/release-management.md]}
+  regulated_scope: {rules: [rules/compliance.md, rules/ownership.md]}
+  instruction_system_change: {workflows: [workflows/instruction-system-change.md], rules: [rules/security.md, rules/documentation.md]}

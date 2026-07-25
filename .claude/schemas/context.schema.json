@@ -1,0 +1,360 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/schemas/context.schema.json",
+  "title": "Instruction context",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "change_id",
+    "workflow_family",
+    "action",
+    "current_state",
+    "change_hash",
+    "facts",
+    "clarifications",
+    "exceptions",
+    "authority_constraints",
+    "evidence",
+    "resources",
+    "open_escalation",
+    "responses"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "change_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+    "workflow_family": {
+      "type": "string",
+      "enum": ["project_initialization", "feature", "bug_fix", "brownfield", "maintenance", "dependency", "instruction_system", "release", "incident"]
+    },
+    "action": {
+      "type": "string",
+      "enum": ["local_implementation", "push_branch", "open_pull_request", "update_pull_request", "merge_pull_request", "create_release", "deploy_production", "risk_exception", "instruction_system_change"]
+    },
+    "current_state": {"$ref": "#/$defs/lifecycle_state"},
+    "change_hash": {"$ref": "#/$defs/hash"},
+    "facts": {"$ref": "#/$defs/context_facts"},
+    "clarifications": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/clarification"}
+    },
+    "exceptions": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/exception"}
+    },
+    "authority_constraints": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/authority_constraint"}
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": {"$ref": "#/$defs/lifecycle_evidence"}
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repair_attempts", "ci_reruns"],
+      "properties": {
+        "repair_attempts": {"type": "integer", "minimum": 0},
+        "ci_reruns": {"type": "integer", "minimum": 0},
+        "elapsed_minutes": {"type": "integer", "minimum": 0}
+      }
+    },
+    "open_escalation": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "#/$defs/escalation_packet"}
+      ]
+    },
+    "responses": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/response"}
+    }
+  },
+  "$defs": {
+    "hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "hashes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy_hash", "context_hash", "change_hash"],
+      "properties": {
+        "policy_hash": {"$ref": "#/$defs/hash"},
+        "context_hash": {"$ref": "#/$defs/hash"},
+        "change_hash": {"$ref": "#/$defs/hash"}
+      }
+    },
+    "lifecycle_state": {
+      "type": "string",
+      "enum": [
+        "UNCLASSIFIED", "CLASSIFIED", "SPECIFIED", "CLARIFIED", "PLANNED", "TASKED", "ANALYZED", "IMPLEMENTING", "VALIDATING", "REVIEWING", "CONVERGING", "RELEASE_READY", "DEPLOYING", "VERIFYING", "COMPLETE",
+        "BLOCKED_REQUIREMENT", "BLOCKED_POLICY", "BLOCKED_TECHNICAL", "HUMAN_DECISION_REQUIRED", "ROLLBACK_REQUIRED", "INCIDENT"
+      ]
+    },
+    "normal_lifecycle_state": {
+      "type": "string",
+      "enum": [
+        "UNCLASSIFIED", "CLASSIFIED", "SPECIFIED", "CLARIFIED", "PLANNED", "TASKED", "ANALYZED", "IMPLEMENTING", "VALIDATING", "REVIEWING", "CONVERGING", "RELEASE_READY", "DEPLOYING", "VERIFYING", "COMPLETE"
+      ]
+    },
+    "classification": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "classifications": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/classification"},
+      "uniqueItems": true
+    },
+    "evidence_source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_type", "source_ref", "extractor", "confidence", "observed_at_change"],
+      "properties": {
+        "source_type": {"type": "string", "minLength": 1},
+        "source_ref": {"type": "string", "minLength": 1},
+        "extractor": {"type": "string", "minLength": 1},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "observed_at_change": {"$ref": "#/$defs/hash"}
+      }
+    },
+    "context_fact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "source_type", "source_ref", "extractor", "confidence", "observed_at_change", "corroboration"],
+      "properties": {
+        "value": {
+          "oneOf": [
+            {"type": "boolean"},
+            {"const": "unknown"}
+          ]
+        },
+        "source_type": {"type": "string", "minLength": 1},
+        "source_ref": {"type": "string", "minLength": 1},
+        "extractor": {"type": "string", "minLength": 1},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "observed_at_change": {"$ref": "#/$defs/hash"},
+        "corroboration": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/evidence_source"}
+        }
+      }
+    },
+    "context_facts": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[a-z][a-z0-9_]*$": {"$ref": "#/$defs/context_fact"}
+      }
+    },
+    "risk_factor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fact", "tier"],
+      "properties": {
+        "fact": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "tier": {"enum": ["low", "moderate", "high", "critical"]}
+      }
+    },
+    "risk_modifier": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rule"],
+      "properties": {
+        "rule": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "raise_by": {"type": "integer", "minimum": 1},
+        "minimum": {"enum": ["low", "moderate", "high", "critical"]}
+      },
+      "oneOf": [
+        {"required": ["raise_by"]},
+        {"required": ["minimum"]}
+      ]
+    },
+    "risk_decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tier", "inherent_factors", "modifiers", "critical_overrides"],
+      "properties": {
+        "tier": {"enum": ["low", "moderate", "high", "critical"]},
+        "inherent_factors": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/risk_factor"}
+        },
+        "modifiers": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/risk_modifier"}
+        },
+        "critical_overrides": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+          "uniqueItems": true
+        }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "category", "severity", "confidence", "location", "violated_rule", "evidence", "required_resolution"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "category": {"type": "string", "minLength": 1},
+        "severity": {"enum": ["low", "moderate", "high", "critical"]},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "location": {"type": "string", "minLength": 1},
+        "violated_rule": {"type": "string", "minLength": 1},
+        "evidence": {"type": "string", "minLength": 1},
+        "required_resolution": {"type": "string", "minLength": 1}
+      }
+    },
+    "clarification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["class", "question"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "class": {"enum": ["inferable", "reversible_default", "material_business"]},
+        "question": {"type": "string", "minLength": 1},
+        "resolution": {"type": "string", "minLength": 1},
+        "source_ref": {"type": "string", "minLength": 1},
+        "configured_default": {"type": ["string", "number", "boolean", "null"]},
+        "reversal_path": {"type": "string", "minLength": 1},
+        "options": {
+          "type": "array",
+          "minItems": 2,
+          "items": {"$ref": "#/$defs/escalation_option"}
+        },
+        "recommended_option": {"type": "string", "minLength": 1}
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {"class": {"const": "material_business"}},
+            "required": ["class"]
+          },
+          "then": {"required": ["options", "recommended_option"]}
+        }
+      ]
+    },
+    "exception": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tier", "expires_at"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "tier": {"enum": ["low", "moderate", "high", "critical"]},
+        "rationale": {"type": "string", "minLength": 1},
+        "owner": {"type": "string", "minLength": 1},
+        "remediation_task": {"type": "string", "minLength": 1},
+        "compensating_control": {"type": "string", "minLength": 1},
+        "follow_up_task": {"type": "string", "minLength": 1},
+        "expires_at": {"type": "string", "format": "date-time"},
+        "no_security_boundary_impact": {"type": "boolean"},
+        "no_regulatory_impact": {"type": "boolean"}
+      }
+    },
+    "authority_constraint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "outcome"],
+      "properties": {
+        "source": {"enum": ["external_obligation", "constitution", "regulated_overlay", "project", "base_profile", "workflow"]},
+        "action": {"$ref": "#/properties/action"},
+        "outcome": {"enum": ["autonomous", "autonomous_with_enhanced_gates", "human_required", "prohibited"]},
+        "rule": {"type": "string", "minLength": 1},
+        "reason": {"type": "string", "minLength": 1},
+        "approval": {"$ref": "#/$defs/authority_approval"}
+      }
+    },
+    "authority_approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decision_id", "rules", "hashes"],
+      "properties": {
+        "decision_id": {"type": "string", "minLength": 1},
+        "rules": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1},
+          "uniqueItems": true
+        },
+        "hashes": {"$ref": "#/$defs/hashes"}
+      }
+    },
+    "lifecycle_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["satisfied", "source_ref", "hashes"],
+      "properties": {
+        "satisfied": {"type": "boolean"},
+        "source_ref": {"type": "string", "minLength": 1},
+        "hashes": {"$ref": "#/$defs/hashes"}
+      }
+    },
+    "escalation_option": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "consequence"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "label": {"type": "string", "minLength": 1},
+        "consequence": {"type": "string", "minLength": 1},
+        "outcome": {"enum": ["autonomous", "autonomous_with_enhanced_gates", "human_required", "prohibited"]},
+        "conditions": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "escalation_packet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decision_id", "decision", "resume_state", "policy_trigger", "reason", "evidence_collected", "options", "recommended_option", "required_response", "hashes", "status"],
+      "properties": {
+        "decision_id": {"type": "string", "minLength": 1},
+        "decision": {"type": "object"},
+        "resume_state": {"$ref": "#/$defs/normal_lifecycle_state"},
+        "policy_trigger": {"type": "string", "minLength": 1},
+        "reason": {"type": "string", "minLength": 1},
+        "evidence_collected": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        },
+        "options": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/escalation_option"}
+        },
+        "recommended_option": {"type": "string", "minLength": 1},
+        "required_response": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1},
+          "uniqueItems": true
+        },
+        "hashes": {"$ref": "#/$defs/hashes"},
+        "status": {"enum": ["open", "resolved"]}
+      }
+    },
+    "response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decision_id", "selected_option", "decided_by", "authority_basis", "timestamp", "hashes"],
+      "properties": {
+        "decision_id": {"type": "string", "minLength": 1},
+        "selected_option": {"type": "string", "minLength": 1},
+        "decided_by": {"type": "string", "minLength": 1},
+        "authority_basis": {"type": "string", "minLength": 1},
+        "timestamp": {"type": "string", "format": "date-time"},
+        "hashes": {"$ref": "#/$defs/hashes"},
+        "conditions": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}

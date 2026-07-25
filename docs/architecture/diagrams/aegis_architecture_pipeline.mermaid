@@ -1,0 +1,42 @@
+%%{init: {
+  'theme': 'dark',
+  'themeVariables': {
+    'primaryColor': '#1e2a4a',
+    'primaryTextColor': '#e8e8ed',
+    'primaryBorderColor': '#3a4a7a',
+    'lineColor': '#4a5a8a',
+    'secondaryColor': '#1a1a2e',
+    'tertiaryColor': '#12121e',
+    'fontFamily': 'IBM Plex Sans, sans-serif',
+    'fontSize': '13px'
+  }
+}}%%
+flowchart LR
+    Open(["Direct invocation or\nAEGIS.open_session()"])
+    SessionPre["GovernanceSession\nstep pre-call"]
+    Load["Policy load + validation"]
+    PreAuth["pre_authorization"]
+    Guards["guards + role"]
+    Preconditions["preconditions + tools"]
+    PostAuth["post_authorization"]
+    Boundary{{"HOST EXECUTES\nprovider / tool call"}}
+    PreOutput["pre_output"]
+    SchemaV["output schema"]
+    Postconditions["postconditions"]
+    PostOutput["post_output"]
+    Risk["risk scoring"]
+    InvArtifact(["Invocation artifact\nPASS / FAIL"])
+    SessionPost["GovernanceSession\nstep post-call"]
+    WorkflowArtifact(["Workflow artifact\nseparate session evidence"])
+    Sink["AuditSink + optional signing"]
+    Trace["aegis workflow trace"]
+    Export["aegis workflow export"]
+    Adapters["Bedrock / A2A / OpenAI Agents\noptional normalization"]
+
+    Open --> SessionPre --> Load --> PreAuth --> Guards --> Preconditions --> PostAuth --> Boundary --> PreOutput --> SchemaV --> Postconditions --> PostOutput --> Risk --> InvArtifact --> SessionPost --> WorkflowArtifact
+    Open --> Load
+    Adapters -.-> SessionPre
+    InvArtifact --> Sink
+    WorkflowArtifact --> Sink
+    Sink --> Trace
+    Sink --> Export

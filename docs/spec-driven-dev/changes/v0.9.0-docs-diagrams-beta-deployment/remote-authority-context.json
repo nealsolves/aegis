@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "change_id": "v0.9.0-beta-deployment-bounded-authority",
+  "workflow_family": "instruction_system",
+  "action": "instruction_system_change",
+  "current_state": "HUMAN_DECISION_REQUIRED",
+  "change_hash": "d53275560025bc0f5cd9dbefe62b3e96ae8a882651a2af354daee6c5ce4cdf16",
+  "facts": {
+    "instruction_system_change": {
+      "value": true,
+      "source_type": "exact_proposed_diff",
+      "source_ref": ".claude/project.yaml",
+      "extractor": "codex-exact-diff-hash-v1",
+      "confidence": 1.0,
+      "observed_at_change": "d53275560025bc0f5cd9dbefe62b3e96ae8a882651a2af354daee6c5ce4cdf16",
+      "corroboration": []
+    }
+  },
+  "clarifications": [],
+  "exceptions": [],
+  "authority_constraints": [],
+  "evidence": {},
+  "resources": {
+    "repair_attempts": 0,
+    "ci_reruns": 0,
+    "elapsed_minutes": 0
+  },
+  "open_escalation": {
+    "decision_id": "DEC-v0.9.0-beta-deployment-bounded-authority-AUTH-instruction_system_change",
+    "decision": {
+      "action": "instruction_system_change",
+      "kind": "authority",
+      "risk_tier": "low",
+      "rules": [
+        "action_matrix:instruction_system_change:low",
+        "post_bootstrap_instruction_system_change"
+      ]
+    },
+    "resume_state": "IMPLEMENTING",
+    "policy_trigger": "authority.post_bootstrap_instruction_system_change",
+    "reason": "Deterministic policy requires human authority for: action_matrix:instruction_system_change:low, post_bootstrap_instruction_system_change",
+    "evidence_collected": [
+      ".claude/project.yaml"
+    ],
+    "options": [
+      {
+        "id": "authorize_once",
+        "label": "Authorize once",
+        "consequence": "Authorize only the listed rules for this action, policy, context, and change; enhanced gates still apply.",
+        "outcome": "autonomous_with_enhanced_gates",
+        "conditions": [
+          "change_id=v0.9.0-beta-deployment-bounded-authority",
+          "action=instruction_system_change",
+          "rules=action_matrix:instruction_system_change:low,post_bootstrap_instruction_system_change"
+        ]
+      }
+    ],
+    "recommended_option": "authorize_once",
+    "required_response": [
+      "decision_id",
+      "selected_option",
+      "decided_by",
+      "authority_basis",
+      "timestamp",
+      "hashes"
+    ],
+    "hashes": {
+      "change_hash": "d53275560025bc0f5cd9dbefe62b3e96ae8a882651a2af354daee6c5ce4cdf16",
+      "context_hash": "7453fb0439b5fdc73eefd8c396d26da493e87ba5450725c4ebf580af711c8f6b",
+      "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa"
+    },
+    "status": "open"
+  },
+  "responses": []
+}

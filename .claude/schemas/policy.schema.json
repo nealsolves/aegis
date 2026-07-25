@@ -1,0 +1,275 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/schemas/policy.schema.json",
+  "title": "Policy control plane",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "risk", "authority", "clarifications", "exceptions", "reviews", "resources"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "risk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tiers", "factors", "escalation", "automatic_critical"],
+      "properties": {
+        "tiers": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "prefixItems": [
+            {"const": "low"},
+            {"const": "moderate"},
+            {"const": "high"},
+            {"const": "critical"}
+          ],
+          "items": false,
+          "uniqueItems": true
+        },
+        "factors": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": false,
+          "patternProperties": {
+            "^[a-z][a-z0-9_]*$": {"$ref": "#/$defs/tier"}
+          }
+        },
+        "escalation": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/escalation_rule"}
+        },
+        "automatic_critical": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+          "uniqueItems": true
+        }
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["outcomes", "source_precedence", "fact_outcomes", "actions"],
+      "properties": {
+        "outcomes": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "prefixItems": [
+            {"const": "autonomous"},
+            {"const": "autonomous_with_enhanced_gates"},
+            {"const": "human_required"},
+            {"const": "prohibited"}
+          ],
+          "items": false,
+          "uniqueItems": true
+        },
+        "source_precedence": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 6,
+          "prefixItems": [
+            {"const": "external_obligation"},
+            {"const": "constitution"},
+            {"const": "regulated_overlay"},
+            {"const": "project"},
+            {"const": "base_profile"},
+            {"const": "workflow"}
+          ],
+          "items": false,
+          "uniqueItems": true
+        },
+        "fact_outcomes": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": false,
+          "patternProperties": {
+            "^[a-z][a-z0-9_]*$": {"$ref": "#/$defs/outcome"}
+          }
+        },
+        "actions": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": false,
+          "patternProperties": {
+            "^[a-z][a-z0-9_]*$": {"$ref": "#/$defs/tier_outcomes"}
+          }
+        }
+      }
+    },
+    "clarifications": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["inferable", "reversible_default", "material_business"],
+      "properties": {
+        "inferable": {"const": "resolve_and_record"},
+        "reversible_default": {"const": "apply_configured_default"},
+        "material_business": {"const": "human_required"}
+      }
+    },
+    "exceptions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["low", "moderate", "high", "critical"],
+      "properties": {
+        "low": {"$ref": "#/$defs/exception_policy"},
+        "moderate": {"$ref": "#/$defs/exception_policy"},
+        "high": {"$ref": "#/$defs/exception_policy"},
+        "critical": {"$ref": "#/$defs/exception_policy"}
+      }
+    },
+    "reviews": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["low", "moderate", "high", "critical"],
+      "properties": {
+        "low": {"$ref": "#/$defs/review_list"},
+        "moderate": {"$ref": "#/$defs/review_list"},
+        "high": {"$ref": "#/$defs/review_list"},
+        "critical": {"$ref": "#/$defs/review_list"}
+      }
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_repair_cycles", "max_ci_reruns_per_change", "max_elapsed_minutes", "retry_backoff_seconds"],
+      "properties": {
+        "max_repair_cycles": {"type": "integer", "minimum": 0},
+        "max_ci_reruns_per_change": {"type": "integer", "minimum": 0},
+        "max_elapsed_minutes": {"type": "integer", "minimum": 1},
+        "retry_backoff_seconds": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "integer", "minimum": 0}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "tier": {
+      "type": "string",
+      "enum": ["low", "moderate", "high", "critical"]
+    },
+    "outcome": {
+      "type": "string",
+      "enum": ["autonomous", "autonomous_with_enhanced_gates", "human_required", "prohibited"]
+    },
+    "tier_outcomes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["low", "moderate", "high", "critical"],
+      "properties": {
+        "low": {"$ref": "#/$defs/outcome"},
+        "moderate": {"$ref": "#/$defs/outcome"},
+        "high": {"$ref": "#/$defs/outcome"},
+        "critical": {"$ref": "#/$defs/outcome"}
+      }
+    },
+    "escalation_rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "when_all"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "when_all": {
+          "type": "array",
+          "minItems": 2,
+          "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+          "uniqueItems": true
+        },
+        "raise_by": {"type": "integer", "minimum": 1},
+        "minimum": {"$ref": "#/$defs/tier"}
+      },
+      "oneOf": [
+        {"required": ["raise_by"]},
+        {"required": ["minimum"]}
+      ]
+    },
+    "exception_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allowed", "autonomous"],
+      "properties": {
+        "allowed": {"type": "boolean"},
+        "autonomous": {"type": "boolean"},
+        "max_duration_days": {"type": "integer", "minimum": 1},
+        "required": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+          "uniqueItems": true
+        },
+        "outcome": {"$ref": "#/$defs/outcome"}
+      }
+    },
+    "review_list": {
+      "type": "array",
+      "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+      "uniqueItems": true
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "UNCLASSIFIED", "CLASSIFIED", "SPECIFIED", "CLARIFIED", "PLANNED", "TASKED", "ANALYZED", "IMPLEMENTING", "VALIDATING", "REVIEWING", "CONVERGING", "RELEASE_READY", "DEPLOYING", "VERIFYING", "COMPLETE",
+        "BLOCKED_REQUIREMENT", "BLOCKED_POLICY", "BLOCKED_TECHNICAL", "HUMAN_DECISION_REQUIRED", "ROLLBACK_REQUIRED", "INCIDENT"
+      ]
+    },
+    "state_list": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/state"},
+      "uniqueItems": true
+    },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "normal_states", "exceptional_states", "paths", "transitions", "recoveries"],
+      "properties": {
+        "schema_version": {"const": 1},
+        "normal_states": {"$ref": "#/$defs/state_list"},
+        "exceptional_states": {"$ref": "#/$defs/state_list"},
+        "paths": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "release", "deployment", "maintenance"],
+          "properties": {
+            "code": {"$ref": "#/$defs/state_list"},
+            "release": {"$ref": "#/$defs/state_list"},
+            "deployment": {"$ref": "#/$defs/state_list"},
+            "maintenance": {"$ref": "#/$defs/state_list"}
+          }
+        },
+        "transitions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["from", "to", "requires"],
+            "properties": {
+              "from": {"$ref": "#/$defs/state"},
+              "to": {"$ref": "#/$defs/state"},
+              "requires": {
+                "type": "array",
+                "minItems": 1,
+                "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+                "uniqueItems": true
+              }
+            }
+          }
+        },
+        "recoveries": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["BLOCKED_REQUIREMENT", "BLOCKED_POLICY", "BLOCKED_TECHNICAL", "HUMAN_DECISION_REQUIRED", "ROLLBACK_REQUIRED", "INCIDENT"],
+          "properties": {
+            "BLOCKED_REQUIREMENT": {"type": "string", "minLength": 1},
+            "BLOCKED_POLICY": {"type": "string", "minLength": 1},
+            "BLOCKED_TECHNICAL": {"type": "string", "minLength": 1},
+            "HUMAN_DECISION_REQUIRED": {"type": "string", "minLength": 1},
+            "ROLLBACK_REQUIRED": {"type": "string", "minLength": 1},
+            "INCIDENT": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    }
+  }
+}

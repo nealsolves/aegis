@@ -1,0 +1,165 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/schemas/routing.schema.json",
+  "title": "Routing control plane",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "always", "profile_paths", "facts", "workflow_rules", "classification_rules", "overlay_rules", "action_routes", "routes"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "always": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rules"],
+      "properties": {
+        "rules": {"$ref": "#/$defs/rule_path_list"}
+      }
+    },
+    "profile_paths": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["base", "overlays"],
+      "properties": {
+        "base": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["solo", "team", "prototype"],
+          "properties": {
+            "solo": {"$ref": "#/$defs/profile_path"},
+            "team": {"$ref": "#/$defs/profile_path"},
+            "prototype": {"$ref": "#/$defs/profile_path"}
+          }
+        },
+        "overlays": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["regulated"],
+          "properties": {
+            "regulated": {"$ref": "#/$defs/profile_path"}
+          }
+        }
+      }
+    },
+    "facts": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[a-z][a-z0-9_]*$": {"$ref": "#/$defs/fact_record"}
+      }
+    },
+    "workflow_rules": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[a-z][a-z0-9_]*$": {"$ref": "#/$defs/workflow_path"}
+      }
+    },
+    "classification_rules": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/rule"}
+    },
+    "overlay_rules": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/overlay_rule"},
+      "uniqueItems": true
+    },
+    "action_routes": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"$ref": "#/$defs/route_name_list"}
+    },
+    "routes": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[a-z][a-z0-9_]*$": {"$ref": "#/$defs/route"}
+      }
+    }
+  },
+  "$defs": {
+    "rule_path": {
+      "type": "string",
+      "pattern": "^rules/[a-z0-9-]+\\.md$"
+    },
+    "workflow_path": {
+      "type": "string",
+      "pattern": "^workflows/[a-z0-9-]+\\.md$"
+    },
+    "profile_path": {
+      "type": "string",
+      "pattern": "^profiles/[a-z0-9-]+\\.md$"
+    },
+    "rule_path_list": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/rule_path"},
+      "uniqueItems": true
+    },
+    "workflow_path_list": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/workflow_path"},
+      "uniqueItems": true
+    },
+    "route_name_list": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+      "uniqueItems": true
+    },
+    "fact_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "material"],
+      "properties": {
+        "type": {"const": "boolean"},
+        "material": {"type": "boolean"},
+        "corroborate_when_false": {"type": "boolean"}
+      }
+    },
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fact", "equals", "add"],
+      "properties": {
+        "fact": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "equals": {
+          "oneOf": [
+            {"type": "boolean"},
+            {"const": "unknown"}
+          ]
+        },
+        "add": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+          "uniqueItems": true
+        }
+      }
+    },
+    "overlay_rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["overlay", "add"],
+      "properties": {
+        "overlay": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "add": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+          "uniqueItems": true
+        }
+      }
+    },
+    "route": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "workflows": {"$ref": "#/$defs/workflow_path_list"},
+        "rules": {"$ref": "#/$defs/rule_path_list"}
+      }
+    }
+  }
+}

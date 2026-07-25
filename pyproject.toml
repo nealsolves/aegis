@@ -1,0 +1,73 @@
+[build-system]
+# Keep build deps minimal; editable installs do not require an explicit wheel
+# dependency and restricted environments should use --no-build-isolation.
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aegis-ai-governance"
+version = "0.9.0b1"
+description = "Deterministic, fail-closed governance enforcement for AI model invocations."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Apache-2.0"}
+authors = [{ name = "Neal Bhattacharya", email = "neal@nealsolves.com" }]
+keywords = [
+  "governance",
+  "audit",
+  "ai",
+  "enforcement",
+  "deterministic",
+  "policy",
+  "llm",
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Topic :: Security",
+  "Typing :: Typed",
+]
+dependencies = [
+  "PyYAML>=6.0",
+  "jsonschema>=4.0",
+]
+
+[project.scripts]
+aegis = "aegis.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/nealsolves/aegis"
+Repository = "https://github.com/nealsolves/aegis"
+Documentation = "https://github.com/nealsolves/aegis/blob/main/docs/USAGE.md"
+"Issue Tracker" = "https://github.com/nealsolves/aegis/issues"
+Changelog = "https://github.com/nealsolves/aegis/blob/main/CHANGELOG.md"
+
+[project.optional-dependencies]
+dev = [
+  "build>=1.2",
+  "pytest>=8.0",
+  "pytest-cov>=6.0",
+  "pytest-asyncio>=1.0",
+  "flake8>=7.0",
+]
+openai-agents = [
+  "openai-agents>=0.0.7",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["aegis", "aegis.*"]
+
+[tool.setuptools.package-data]
+aegis = ["schemas/*.json", "py.typed"]
