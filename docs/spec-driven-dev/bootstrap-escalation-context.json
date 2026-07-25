@@ -1,0 +1,135 @@
+{
+  "schema_version": 1,
+  "change_id": "BOOTSTRAP-2026-07-24-AEGIS-SDD",
+  "workflow_family": "project_initialization",
+  "action": "instruction_system_change",
+  "current_state": "HUMAN_DECISION_REQUIRED",
+  "change_hash": "6434bf6398bd73be9115734efeefd7c6bf8dfe02a343c99496b02cc5cf91d1fa",
+  "facts": {
+    "documentation_only": {
+      "value": false,
+      "source_type": "staged_diff_analysis",
+      "source_ref": "docs/spec-driven-dev/BOOTSTRAP.md",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "6434bf6398bd73be9115734efeefd7c6bf8dfe02a343c99496b02cc5cf91d1fa",
+      "corroboration": []
+    },
+    "modifies_runtime_code": {
+      "value": false,
+      "source_type": "staged_diff_analysis",
+      "source_ref": "docs/spec-driven-dev/BOOTSTRAP.md",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "6434bf6398bd73be9115734efeefd7c6bf8dfe02a343c99496b02cc5cf91d1fa",
+      "corroboration": []
+    },
+    "adds_external_dependency": {
+      "value": false,
+      "source_type": "dependency_manifest_comparison",
+      "source_ref": "docs/spec-driven-dev/BOOTSTRAP.md",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "6434bf6398bd73be9115734efeefd7c6bf8dfe02a343c99496b02cc5cf91d1fa",
+      "corroboration": []
+    },
+    "changes_public_contract": {
+      "value": false,
+      "source_type": "staged_diff_analysis",
+      "source_ref": "docs/spec-driven-dev/BOOTSTRAP.md",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "6434bf6398bd73be9115734efeefd7c6bf8dfe02a343c99496b02cc5cf91d1fa",
+      "corroboration": []
+    },
+    "deploys_to_production": {
+      "value": false,
+      "source_type": "staged_diff_analysis",
+      "source_ref": "docs/spec-driven-dev/BOOTSTRAP.md",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "6434bf6398bd73be9115734efeefd7c6bf8dfe02a343c99496b02cc5cf91d1fa",
+      "corroboration": []
+    },
+    "instruction_system_change": {
+      "value": true,
+      "source_type": "staged_diff_analysis",
+      "source_ref": "docs/spec-driven-dev/BOOTSTRAP.md",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "6434bf6398bd73be9115734efeefd7c6bf8dfe02a343c99496b02cc5cf91d1fa",
+      "corroboration": []
+    }
+  },
+  "clarifications": [
+    {
+      "id": "SPEC_KIT_DISABLED",
+      "class": "inferable",
+      "question": "Is GitHub Spec Kit installed and compatibility-tested in AEGIS?",
+      "resolution": "No; use equivalent manual specification gates.",
+      "source_ref": "docs/spec-driven-dev/BOOTSTRAP.md"
+    },
+    {
+      "id": "BOOTSTRAP_CURRENCY",
+      "class": "reversible_default",
+      "question": "Which currency labels the zero autonomous-spend boundary?",
+      "configured_default": "USD",
+      "reversal_path": "Update .claude/project.yaml through a post-bootstrap instruction-system decision."
+    }
+  ],
+  "exceptions": [],
+  "authority_constraints": [],
+  "evidence": {},
+  "resources": {
+    "repair_attempts": 0,
+    "ci_reruns": 0,
+    "elapsed_minutes": 0
+  },
+  "open_escalation": {
+    "decision": {
+      "action": "instruction_system_change",
+      "kind": "authority",
+      "risk_tier": "low",
+      "rules": [
+        "action_matrix:instruction_system_change:low",
+        "post_bootstrap_instruction_system_change"
+      ]
+    },
+    "decision_id": "DEC-BOOTSTRAP-2026-07-24-AEGIS-SDD-AUTH-instruction_system_change",
+    "evidence_collected": [
+      "docs/spec-driven-dev/BOOTSTRAP.md"
+    ],
+    "hashes": {
+      "change_hash": "6434bf6398bd73be9115734efeefd7c6bf8dfe02a343c99496b02cc5cf91d1fa",
+      "context_hash": "837ab2966321da04bc4735652308e707d4e678eb02907531dfb1634f35c49346",
+      "policy_hash": "5d83cd5cc6626114dc06371750edc25b926cd278e19c45e2f3fdb6018c245f68"
+    },
+    "options": [
+      {
+        "conditions": [
+          "change_id=BOOTSTRAP-2026-07-24-AEGIS-SDD",
+          "action=instruction_system_change",
+          "rules=action_matrix:instruction_system_change:low,post_bootstrap_instruction_system_change"
+        ],
+        "consequence": "Authorize only the listed rules for this action, policy, context, and change; enhanced gates still apply.",
+        "id": "authorize_once",
+        "label": "Authorize once",
+        "outcome": "autonomous_with_enhanced_gates"
+      }
+    ],
+    "policy_trigger": "authority.post_bootstrap_instruction_system_change",
+    "reason": "Deterministic policy requires human authority for: action_matrix:instruction_system_change:low, post_bootstrap_instruction_system_change",
+    "recommended_option": "authorize_once",
+    "required_response": [
+      "decision_id",
+      "selected_option",
+      "decided_by",
+      "authority_basis",
+      "timestamp",
+      "hashes"
+    ],
+    "resume_state": "UNCLASSIFIED",
+    "status": "open"
+  },
+  "responses": []
+}

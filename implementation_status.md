@@ -2,19 +2,39 @@
 
 **Target Version:** `0.9.0` Beta
 **Baseline Version:** `0.3.3`
-**Active Branch:** `feat/v0.9-10-a2a-adapter`
-**Last Updated:** 2026-05-04
+**Active Branch:** `feat/v0.9-12-pypi-distribution`
+**Last Updated:** 2026-07-24
+
+---
+
+## Spec-Driven Delivery Control
+
+| Field | Current value |
+|---|---|
+| Active change | `v0.9.0-pypi-distribution` |
+| Active profile | Base profile `solo`; project lifecycle `configured` |
+| Instruction modules | Bootstrap installation `complete` |
+| Project owner | Neal Adams |
+| Escalation owner | neal@nealsolves.com |
+| Remote actions | Disabled; no push, pull request, merge, release, or deployment authority is configured |
+| Current gate | Packaging specification and policy evaluation |
+| Bootstrap decision | `BOOTSTRAP-2026-07-24-AEGIS-SDD` |
+| Baseline commit | `73f1bfc494dd5290a7e579069b3cad72e33457ed` |
+
+The active workflow, explicit intent, and approved artifacts select work.
+This operational ledger does not select a feature by itself. Status claims
+must be updated only after their specific evidence exists.
 
 ---
 
 ## Overall Progress
 
 - PR-01 through PR-09 are complete.
-- PR-10a has not started.
-- PR-10b is implemented locally on `feat/v0.9-10-a2a-adapter`.
-- PR-10c is complete on local `develop` and is pending merge to `origin/develop` via PR.
-- PR-10d is implemented locally as a bounded research-informed safety addendum before PR-11.
-- PR-11 has not started.
+- PR-10a, PR-10b, PR-10c, and PR-10d adapter and safety tracks are complete
+  and merged on `origin/develop`.
+- PR-11's full functional test harness is merged through pull request #14.
+- The `v0.9.0` distribution and public release have not been cut; the shipped
+  package baseline remains `0.3.3`.
 
 | Track | Status | Notes |
 |-------|--------|-------|
@@ -27,9 +47,9 @@
 | Beta proof | complete | Clean-env proof, real failure/diagnosis/fix/rerun flow, and demo parity are in place |
 | Engine hardening | complete | Budgets, transitions, protocol constraints, approvals, handoffs, and internal validator hooks are hardened |
 | Exports and ops | complete | `aegis workflow trace` and `aegis workflow export` ship on `develop` |
-| Optional adapters | partial | PR-10b implemented locally; PR-10a not started; PR-10c complete on local `develop`, pending `origin/develop` merge |
-| Research safety addendum | implemented locally | PR-10d adds graph/topology lint, doctor remediation, export rationale, and safety smoke tests |
-| Beta freeze | not started | Begins in PR-11 |
+| Optional adapters | complete | Bedrock, A2A, and OpenAI Agents adapter tracks are present on `develop` with fixture coverage |
+| Research safety addendum | complete | PR-10d graph/topology lint, doctor remediation, export rationale, and safety smoke tests are merged |
+| Beta functional gate | complete | PR-11 full functional test harness is merged; distribution and publication remain separate gates |
 
 ---
 
@@ -57,11 +77,11 @@
 | PR-07 | `feat/v0.9-07-beta-proof` | complete | Mandatory stop-ship proof for quickstart, diagnosis, fix, rerun, and demo parity |
 | PR-08 | `feat/v0.9-08-engine-hardening` | complete | Sequencing, approvals, budgets, transitions, handoffs, protocol rules, and internal validator hooks |
 | PR-09 | `feat/v0.9-09-exports-and-ops` | complete | Trace, export, and operator polish |
-| PR-10a | `feat/v0.9-10-bedrock-adapter` | not started | Optional Bedrock adapter with alias-backed identity rules |
-| PR-10b | `feat/v0.9-10-a2a-adapter` | implemented locally | Optional A2A adapter with strict wire-contract rules |
-| PR-10c | `feat/v0.9-10-openai-agents-adapter` | complete | Optional OpenAI Agents SDK adapter ships on local `develop`; pending merge to `origin/develop` via PR |
-| PR-10d | `feat/v0.9-10d-research-safety-addendum` | implemented locally | Research-informed lint, doctor, export, safety smoke, and adapter-fixture hardening |
-| PR-11 | `feat/v0.9-11-beta-freeze` -> `release/v0.9.0` | not started | Public API freeze, beta gate verification, and release cut |
+| PR-10a | `feat/v0.9-10-bedrock-adapter` | complete | Optional Bedrock adapter with alias-backed identity rules |
+| PR-10b | `feat/v0.9-10-a2a-adapter` | complete | Optional A2A adapter with strict wire-contract rules |
+| PR-10c | `feat/v0.9-10-openai-agents-adapter` | complete | Optional OpenAI Agents SDK adapter with governed tool binding and fail-closed surface rules |
+| PR-10d | `feat/v0.9-10d-research-safety-addendum` | complete | Research-informed lint, doctor, export, safety smoke, and adapter-fixture hardening |
+| PR-11 | `feat/v0.9-11-full-functional-test-harness` | complete | Full functional harness and fail-closed completion fix merged through pull request #14 |
 
 ---
 
@@ -136,8 +156,8 @@
 - [x] starter and workflow safety smoke tests with no external services
 - [x] release docs confirm PR-10d does not change the default local adopter path
 
-Deferred PR-10d adapter gate: Bedrock alias-backed participant identity tests
-remain blocked until PR-10a surfaces are present.
+PR-10d Bedrock adapter gate: alias-backed participant identity and missing-trace
+behavior are covered by `tests/test_bedrock_adapter.py`.
 
 PR-10d A2A adapter gate: A2A capability and protocol mismatch tests are now
 covered by PR-10b fixtures.
