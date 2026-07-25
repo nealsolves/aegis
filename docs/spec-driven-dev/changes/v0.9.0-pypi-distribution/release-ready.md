@@ -38,7 +38,11 @@ source-checkout import leakage. The clean installation also passed `pip check`.
   artifact checksum verification.
 - Brand/version parity, documentation parity, public-import boundary, release
   freeze, and `flake8 aegis`: PASS.
-- React tests/build: optional SKIP because `node_modules` is absent.
+- React demo: `17` test files and `102` tests PASS; ESLint PASS;
+  TypeScript/Vite production build PASS.
+- React production browser smoke: PASS against the local FastAPI backend,
+  including architecture assets, theme switching, Lab 11 navigation, and a
+  completed minimal governed workflow with no browser/runtime/request errors.
 
 ## Publishing Evidence
 
