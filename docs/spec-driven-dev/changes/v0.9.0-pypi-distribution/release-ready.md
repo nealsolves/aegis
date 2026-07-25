@@ -4,23 +4,43 @@
 
 ## Source
 
-- Branch: `feat/v0.9-12-pypi-distribution`
-- Candidate source commit:
+- Merged source: PR #16 at `origin/develop` commit
+  `205026ac8368eaa33f532beca376c8974fae786b`
+- Locally built artifact source commit:
   `b27e7fa9a347c77b99ebb9cfa7ff5c6498214583`
+- Commits after the artifact source through the merge commit changed release
+  evidence only.
 - Distribution: `aegis-ai-governance`
 - Version: `0.9.0b1`
 - Import/CLI: `aegis`
 
 ## Artifacts
 
+Original implementation-candidate build:
+
 | File | SHA-256 |
 |---|---|
 | `aegis_ai_governance-0.9.0b1-py3-none-any.whl` | `fd2b1a2c5283e35313b0f5de3171acdd019bde1d86c8c95df99e3930d1bf3a59` |
 | `aegis_ai_governance-0.9.0b1.tar.gz` | `a68672e548553398442fff0d9551cdfc7ca984676064cdcc423816bd5cc0e8af` |
 
+Post-merge verification build on 2026-07-25:
+
+| File | SHA-256 |
+|---|---|
+| `aegis_ai_governance-0.9.0b1-py3-none-any.whl` | `f252a89ffdb6772717cb7f0ff3acc941ad4975a8313d60ac93030898b2c3cae0` |
+| `aegis_ai_governance-0.9.0b1.tar.gz` | `d8af4f5055cacc45cb90b434eef3832851906bc3a8e45f78c044cd025f02373e` |
+
 `scripts/validate_v090_distribution_candidate.py` built and inspected both
 artifacts, installed the wheel into a new Python 3.12 environment, and rejected
 source-checkout import leakage. The clean installation also passed `pip check`.
+The post-merge rebuild repeated that complete proof.
+
+A second post-merge wheel rebuild produced a different archive SHA-256 while
+its embedded `RECORD` matched exactly. The payload is identical, but ZIP
+timestamps currently prevent byte-for-byte reproducible wheel hashes. The
+release workflow builds once and passes those exact artifacts from validation
+to publication; the workflow-produced digests are authoritative for the
+published files.
 
 ## Test Evidence
 
@@ -43,6 +63,8 @@ source-checkout import leakage. The clean installation also passed `pip check`.
 - React production browser smoke: PASS against the local FastAPI backend,
   including architecture assets, theme switching, Lab 11 navigation, and a
   completed minimal governed workflow with no browser/runtime/request errors.
+- Post-merge rerun on 2026-07-25: all results above remained PASS; the focused
+  release suite reported `75 passed, 1 skipped`.
 
 ## Publishing Evidence
 
@@ -76,12 +98,13 @@ now use `aegis-ai-governance[openai-agents]`, with executable parity coverage.
 
 ## Rollback and Gaps
 
-Before publication, revert the five candidate commits or drop the isolated
-branch/artifacts. No irreversible action has occurred.
+Before publication, revert PR #16 through a reviewed PR and discard the local
+candidate artifacts. No irreversible publication action has occurred.
 
 Known non-blocking gaps:
 
-- React checks were not installed locally.
 - The live GitHub OIDC/PyPI exchange requires an authorized GitHub Release.
+- Wheel and sdist archive bytes are not reproducible across independent local
+  builds because archive timestamps vary; embedded wheel payload hashes match.
 - Setuptools warns that the current license metadata form should move to an
   SPDX expression before its 2027 deprecation cutoff.
