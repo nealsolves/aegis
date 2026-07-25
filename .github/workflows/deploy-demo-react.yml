@@ -21,8 +21,6 @@ jobs:
     permissions:
       contents: read
       pages: read
-    env:
-      VITE_API_URL: ${{ vars.VITE_API_URL }}
 
     steps:
       - name: Check out develop
@@ -41,6 +39,8 @@ jobs:
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
 
       - name: Require the public Render API URL
+        env:
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
         run: |
           if [[ -z "${VITE_API_URL}" || "${VITE_API_URL}" == *"localhost"* ]]; then
             echo "Set the VITE_API_URL repository variable to the public Render service URL."
@@ -61,6 +61,8 @@ jobs:
 
       - name: Build frontend
         working-directory: demo-app-react
+        env:
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
         run: npm run build
 
       - name: Upload GitHub Pages artifact
