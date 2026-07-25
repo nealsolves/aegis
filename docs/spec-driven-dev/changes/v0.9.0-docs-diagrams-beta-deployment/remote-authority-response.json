@@ -1,0 +1,17 @@
+{
+  "decision_id": "DEC-v0.9.0-beta-deployment-bounded-authority-AUTH-instruction_system_change",
+  "selected_option": "authorize_once",
+  "decided_by": "Neal Bhattacharya",
+  "authority_basis": "AEGIS project owner approval in Codex: only feat/v0.9-14-docs-pages-render may push and open or merge PRs into develop; only the AEGIS Render beta service and GitHub Pages may deploy; main remains prohibited",
+  "timestamp": "2026-07-25T17:20:05-04:00",
+  "hashes": {
+    "change_hash": "d53275560025bc0f5cd9dbefe62b3e96ae8a882651a2af354daee6c5ce4cdf16",
+    "context_hash": "7453fb0439b5fdc73eefd8c396d26da493e87ba5450725c4ebf580af711c8f6b",
+    "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa"
+  },
+  "conditions": [
+    "change_id=v0.9.0-beta-deployment-bounded-authority",
+    "action=instruction_system_change",
+    "rules=action_matrix:instruction_system_change:low,post_bootstrap_instruction_system_change"
+  ]
+}
