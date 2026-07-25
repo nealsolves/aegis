@@ -25,7 +25,7 @@ def test_project_control_plane_is_configured_for_aegis():
         "repository": "nealsolves/aegis",
         "lifecycle": "configured",
     }
-    assert project["delivery"]["owner"] == "Neal Adams"
+    assert project["delivery"]["owner"] == "Neal Bhattacharya"
     assert project["remote_actions"]["enabled"] is False
     assert project["production_actions"]["enabled"] is False
 
@@ -47,7 +47,7 @@ def test_constitution_records_bootstrap_authority():
 
     assert "**Version:** 1.0.0" in constitution
     assert "**Ratified:** 2026-07-24" in constitution
-    assert "**Owner:** Neal Adams" in constitution
+    assert "**Owner:** Neal Bhattacharya" in constitution
     assert "BOOTSTRAP-2026-07-24-AEGIS-SDD" in constitution
 
 
@@ -93,7 +93,7 @@ def test_bootstrap_has_a_hash_bound_authorized_policy_result():
     )
 
     assert result["resolved_escalation"]["status"] == "resolved"
-    assert result["response"]["decided_by"] == "Neal Adams"
+    assert result["response"]["decided_by"] == "Neal Bhattacharya"
     assert result["response"]["selected_option"] == "authorize_once"
     assert (
         result["decision"]["authority"]["outcome"]

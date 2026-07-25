@@ -106,7 +106,7 @@ the amendment log.
 - **Version:** 1.0.0
 - **Ratified:** 2026-07-24
 - **Last amended:** not amended
-- **Owner:** Neal Adams
+- **Owner:** Neal Bhattacharya
 - **Review cadence:** on material obligation or authority change, otherwise at
   least during each project-level control review
 
@@ -114,4 +114,4 @@ the amendment log.
 
 | Date | Version | Decision reference | Summary | Approved by |
 |---|---|---|---|---|
-| 2026-07-24 | `1.0.0` | `BOOTSTRAP-2026-07-24-AEGIS-SDD` | Instantiate the spec-driven-dev constitution for AEGIS. | Neal Adams |
+| 2026-07-24 | `1.0.0` | `BOOTSTRAP-2026-07-24-AEGIS-SDD` | Instantiate the spec-driven-dev constitution for AEGIS. | Neal Bhattacharya |

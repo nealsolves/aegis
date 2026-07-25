@@ -1,7 +1,7 @@
 {
   "decision_id": "DEC-BOOTSTRAP-2026-07-24-AEGIS-SDD-AUTH-instruction_system_change",
   "selected_option": "authorize_once",
-  "decided_by": "Neal Adams",
+  "decided_by": "Neal Bhattacharya",
   "authority_basis": "repository_owner_explicit_chat_instruction",
   "timestamp": "2026-07-24T20:00:00-04:00",
   "hashes": {
