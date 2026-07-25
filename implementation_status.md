@@ -18,7 +18,7 @@
 | Project owner | Neal Bhattacharya |
 | Escalation owner | neal@nealsolves.com |
 | Remote actions | Disabled; no push, pull request, merge, release, or deployment authority is configured |
-| Current gate | Truth audit and assembled-demo validation complete locally; develop-only review and handoff remain |
+| Current gate | Local truth-audit lifecycle complete; any push or pull request to `develop` requires separate authorization |
 | Bootstrap decision | `BOOTSTRAP-2026-07-24-AEGIS-SDD` |
 | Baseline commit | `73f1bfc494dd5290a7e579069b3cad72e33457ed` |
 
@@ -54,7 +54,7 @@ must be updated only after their specific evidence exists.
 | Research safety addendum | complete | PR-10d graph/topology lint, doctor remediation, export rationale, and safety smoke tests are merged |
 | Beta functional gate | complete | PR-11 full functional test harness is merged; distribution and publication remain separate gates |
 | Distribution candidate | merged on `develop` | `aegis-ai-governance==0.9.0b1` metadata and Trusted Publishing are prepared; the candidate is not on `main` and PyPI publication is pending |
-| Truth audit and demo refresh | validated locally | Maintained docs, diagrams, contextual help, adapters, Python coverage, React, build, API, and assembled browser workflows are validated; the final Python suite is 1919 passed and 2 skipped |
+| Truth audit and demo refresh | complete locally | Maintained docs, diagrams, contextual help, adapters, Python coverage, React, build, API, and assembled browser workflows are validated; independent review passed and the policy lifecycle reached `COMPLETE`; the final Python suite is 1919 passed and 2 skipped |
 
 ---
 

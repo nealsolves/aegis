@@ -117,6 +117,14 @@ edits and restores a canonical SVG. The `finally` restoration and clean-tree
 checks cover normal execution; moving that check to a temporary output root is
 deferred because it is not a correctness or release-truth blocker.
 
+The focused follow-up found no remaining Critical or Important issues and
+returned `Ready to merge — Yes`. The reviewed implementation head is
+`31fbca9cab9eba0f30f7a82f292675f48e316a9d`; the SHA-256 of its binary diff
+from `origin/develop` is
+`d43f4b2468d55c5ea1019f21fec8042f0ea7e7f3e0a650ec3ad512ef6f6a56c8`.
+Final lifecycle evidence records are intentionally excluded from that
+self-referential implementation hash.
+
 ## Instruction-system decision
 
 Task 7 is resolved. Policy decision
@@ -134,3 +142,23 @@ escalation had not been materialized into `HUMAN_DECISION_REQUIRED`. No
 instruction file was changed under that invalid state. The context was
 corrected, reevaluated deterministically, and reauthorized against the fresh
 hash before the one approved factual correction was applied.
+
+## Lifecycle completion
+
+The code workflow completed locally with autonomous, policy-valid transitions:
+
+- `IMPLEMENTING` → `VALIDATING`, authorized by context hash
+  `e4176b7d2c315c16958c0c84d92b69f5a7807556b8fca1e0d812f21b8b1c9323`;
+- `VALIDATING` → `REVIEWING`, authorized by context hash
+  `1aab0680043845b0f46bb52903a4c804c81eafeff04aecc541bf09d3bf25e997`;
+- `REVIEWING` → `CONVERGING`, authorized by context hash
+  `1c5fa5b5290853dd74597ad13977b61fc8c6e76d15b662ebf39064b8123a8de8`;
+- `CONVERGING` → `COMPLETE`, authorized by context hash
+  `49841e904a6ceca210ad68e1605922db9e3838e0f03e22366a86931bdfe5b770`.
+
+The transition records are `validating-transition.json`,
+`reviewing-transition.json`, `converging-transition.json`, and
+`complete-transition.json`. The final `complete-decision.json` is valid, and
+the final context passes policy validation. This completes the local change
+lifecycle only; it does not authorize a push, pull request, merge, release, or
+publication.
