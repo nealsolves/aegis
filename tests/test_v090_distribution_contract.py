@@ -62,3 +62,11 @@ def test_candidate_validator_covers_the_approved_end_to_end_gates():
         '"session_id"',
     ]:
         assert proof_marker in validator
+
+
+def test_optional_openai_agents_remediation_uses_distribution_name():
+    source = (REPO_ROOT / "aegis" / "openai_agents_adapter.py").read_text(
+        encoding="utf-8"
+    )
+    assert "aegis-ai-governance[openai-agents]" in source
+    assert "aegis[openai-agents]" not in source

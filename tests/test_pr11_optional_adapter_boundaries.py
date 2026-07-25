@@ -102,7 +102,10 @@ def test_openai_agents_import_guard_is_actionable_without_sdk():
 
     with pytest.MonkeyPatch.context() as monkeypatch:
         monkeypatch.setattr(module, "_SDK_AVAILABLE", False)
-        with pytest.raises(ImportError, match="aegis\\[openai-agents\\]"):
+        with pytest.raises(
+            ImportError,
+            match="aegis-ai-governance\\[openai-agents\\]",
+        ):
             module._require_sdk()
 
 

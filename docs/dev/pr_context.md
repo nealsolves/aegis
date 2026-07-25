@@ -63,7 +63,7 @@ no further public-surface work proceeds until the default path is repaired.
   `aegis` imports only and must not import from `aegis._internal`.
 - `aegis workflow trace` and `aegis workflow export` shipped in PR-09.
 - `OpenAIAgentsAdapter` is a source-only beta surface behind the optional
-  `aegis[openai-agents]` extra. It is not re-exported from the top-level
+  `aegis-ai-governance[openai-agents]` extra. It is not re-exported from the top-level
   `aegis` package.
 - `A2AAdapter` is a source-only beta surface under `aegis.a2a_adapter`. It is
   not re-exported from the top-level `aegis` package and does not require
@@ -163,7 +163,7 @@ Ships:
 - `workflow.protocol_constraints.openai_agents` in policy DSL schema
 - `step_metadata` pass-through in `workflow trace` and `workflow export`
 - Reference doc at `docs/reference/external/OPENAI_AGENTS_ADAPTER.md`
-- optional OpenAI Agents SDK extra (`aegis[openai-agents]`)
+- optional OpenAI Agents SDK extra (`aegis-ai-governance[openai-agents]`)
 
 P1 issues resolved:
 

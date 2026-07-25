@@ -1,7 +1,7 @@
-"""OpenAI Agents SDK adapter for AEGIS governance (source-only beta).
+"""OpenAI Agents SDK adapter for AEGIS governance (v0.9.0b1 beta candidate).
 
 Not re-exported from the top-level ``aegis`` package.
-Requires ``aegis[openai-agents]``.
+Requires ``aegis-ai-governance[openai-agents]``.
 
 Usage::
 
@@ -62,7 +62,8 @@ def _require_sdk() -> None:
     if not _SDK_AVAILABLE:
         raise ImportError(
             "The 'openai-agents' extra is required to use OpenAIAgentsAdapter. "
-            "Install it with: pip install 'aegis[openai-agents]'"
+            "Install it with: "
+            "pip install 'aegis-ai-governance[openai-agents]'"
         ) from _SDK_IMPORT_ERROR
 
 

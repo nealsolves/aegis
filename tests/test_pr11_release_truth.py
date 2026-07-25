@@ -19,6 +19,7 @@ CORE_TRUTH_DOCS = [
 CURRENT_PUBLIC_DOCS = [
     "README.md",
     "PROJECT.md",
+    "RELEASE_GATES.md",
     "demo-app-react/public/portal.html",
     "docs/PUBLIC_INTEGRATION_CONTRACT.md",
     "docs/reference/WORKFLOW_QUICKSTART.md",
@@ -28,6 +29,7 @@ CURRENT_PUBLIC_DOCS = [
     "docs/reference/STARTER_RECIPES.md",
     "docs/reference/SUPPORTED_ENVIRONMENTS.md",
     "docs/reference/OPERATIONS_RUNBOOK.md",
+    "docs/reference/external/OPENAI_AGENTS_ADAPTER.md",
 ]
 
 
@@ -101,6 +103,18 @@ def test_prior_beta_evidence_is_archived_beneath_current_candidate_truth():
     assert evidence.startswith("# AEGIS v0.9.0 Beta Test Evidence\n\n> Archived")
     assert "`aegis-ai-governance==0.9.0b1`" in evidence
     assert "not yet published to PyPI" in evidence
+
+
+def test_current_optional_extra_guidance_uses_distribution_name():
+    for rel in [
+        "RELEASE_GATES.md",
+        "demo-app-react/public/portal.html",
+        "docs/dev/pr_context.md",
+        "docs/reference/external/OPENAI_AGENTS_ADAPTER.md",
+    ]:
+        text = _read(rel)
+        assert "aegis[openai-agents]" not in text
+        assert "aegis-ai-governance[openai-agents]" in text
 
 
 def test_brand_and_version_parity_script_passes():

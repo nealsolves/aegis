@@ -86,7 +86,7 @@ work cannot publish through policy.
 - Fresh-wheel proof exposed raw governance metadata in audit mode. Regression
   tests reproduced the leak before the implementation was narrowed to preserve
   normalized adapter metadata while redacting the governance subtree.
-- Repository suite: `1901 passed, 2 skipped` on Python 3.12.
+- Repository suite: `1903 passed, 2 skipped` on Python 3.12.
 - Final artifact and installed-workflow details are emitted by
   `scripts/validate_v090_distribution_candidate.py`; publication remains
   prohibited.

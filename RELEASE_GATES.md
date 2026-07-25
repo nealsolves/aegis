@@ -94,7 +94,7 @@ no further public-surface work proceeds until the default path is repaired.
 
 ## PR-10c — OpenAI Agents Adapter Gate
 
-- [x] `OpenAIAgentsAdapter` is optional, fail-closed, and ships behind the `aegis[openai-agents]` extra
+- [x] `OpenAIAgentsAdapter` is optional, fail-closed, and ships behind the `aegis-ai-governance[openai-agents]` extra
 - [x] the default local adopter path is unchanged and green without `openai-agents` installed
 - [x] participant binding, duplicate-name rejection, and trace-required enforcement are tested with fixtures only
 - [x] `GovernanceSession.authorize_step_tool_call` enforces tool budgets and allowlists in real time
