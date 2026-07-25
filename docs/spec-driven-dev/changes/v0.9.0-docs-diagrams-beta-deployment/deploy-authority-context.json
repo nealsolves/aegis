@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "change_id": "v0.9.0-beta-demo-deployment",
+  "workflow_family": "release",
+  "action": "deploy_production",
+  "current_state": "HUMAN_DECISION_REQUIRED",
+  "change_hash": "2d52caca7310c5f86786beae7a7d072dae85e1d8ecb40a73b75aa2b741aca828",
+  "facts": {
+    "changes_infrastructure": {
+      "value": true,
+      "source_type": "owner_approved_deployment_scope",
+      "source_ref": "demo-app-api/render.yaml",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "2d52caca7310c5f86786beae7a7d072dae85e1d8ecb40a73b75aa2b741aca828",
+      "corroboration": []
+    },
+    "deploys_to_production": {
+      "value": true,
+      "source_type": "owner_approved_deployment_scope",
+      "source_ref": ".github/workflows/deploy-demo-react.yml",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "2d52caca7310c5f86786beae7a7d072dae85e1d8ecb40a73b75aa2b741aca828",
+      "corroboration": []
+    }
+  },
+  "clarifications": [],
+  "exceptions": [],
+  "authority_constraints": [],
+  "evidence": {},
+  "resources": {
+    "repair_attempts": 0,
+    "ci_reruns": 0,
+    "elapsed_minutes": 0
+  },
+  "open_escalation": {
+    "decision_id": "DEC-v0.9.0-beta-demo-deployment-AUTH-deploy_production",
+    "decision": {
+      "action": "deploy_production",
+      "kind": "authority",
+      "risk_tier": "high",
+      "rules": [
+        "action_matrix:deploy_production:high"
+      ]
+    },
+    "resume_state": "IMPLEMENTING",
+    "policy_trigger": "authority.action_matrix:deploy_production:high",
+    "reason": "Deterministic policy requires human authority for: action_matrix:deploy_production:high",
+    "evidence_collected": [
+      "demo-app-api/render.yaml",
+      ".github/workflows/deploy-demo-react.yml"
+    ],
+    "options": [
+      {
+        "id": "authorize_once",
+        "label": "Authorize once",
+        "consequence": "Authorize only the listed rules for this action, policy, context, and change; enhanced gates still apply.",
+        "outcome": "autonomous_with_enhanced_gates",
+        "conditions": [
+          "change_id=v0.9.0-beta-demo-deployment",
+          "action=deploy_production",
+          "rules=action_matrix:deploy_production:high"
+        ]
+      }
+    ],
+    "recommended_option": "authorize_once",
+    "required_response": [
+      "decision_id",
+      "selected_option",
+      "decided_by",
+      "authority_basis",
+      "timestamp",
+      "hashes"
+    ],
+    "hashes": {
+      "change_hash": "2d52caca7310c5f86786beae7a7d072dae85e1d8ecb40a73b75aa2b741aca828",
+      "context_hash": "8b1a26e3410b129cb2a290b1ab5f6e894eb95b5a68d9e3799f64979f4726fc19",
+      "policy_hash": "ebd760b41dcf75612908ccde14f5a67efd42c5228efc6c489786a4b24983e20c"
+    },
+    "status": "open"
+  },
+  "responses": []
+}

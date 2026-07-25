@@ -48,6 +48,11 @@ def test_pages_workflow_builds_and_deploys_only_the_develop_beta():
     assert deploy["environment"]["name"] == "github-pages"
     assert deploy["environment"]["url"] == "${{ steps.deployment.outputs.page_url }}"
 
+    build_steps = {
+        step["name"]: step
+        for step in build["steps"]
+        if isinstance(step, dict) and "name" in step
+    }
     build_commands = "\n".join(
         step.get("run", "") for step in build["steps"] if isinstance(step, dict)
     )
@@ -55,7 +60,14 @@ def test_pages_workflow_builds_and_deploys_only_the_develop_beta():
     assert "npm test" in build_commands
     assert "npm run lint" in build_commands
     assert "npm run build" in build_commands
-    assert build["env"]["VITE_API_URL"] == "${{ vars.VITE_API_URL }}"
+    assert "env" not in build
+    assert "env" not in build_steps["Test frontend"]
+    assert build_steps["Require the public Render API URL"]["env"] == {
+        "VITE_API_URL": "${{ vars.VITE_API_URL }}",
+    }
+    assert build_steps["Build frontend"]["env"] == {
+        "VITE_API_URL": "${{ vars.VITE_API_URL }}",
+    }
 
 
 def test_pages_workflow_pins_actions_and_grants_no_secret_access():

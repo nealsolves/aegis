@@ -1,0 +1,17 @@
+{
+  "decision_id": "DEC-v0.9.0-beta-demo-deployment-AUTH-deploy_production",
+  "selected_option": "authorize_once",
+  "decided_by": "Neal Bhattacharya",
+  "authority_basis": "AEGIS project owner approval in Codex: deploy only the beta demo from develop to the AEGIS Render beta service and nealsolves/aegis GitHub Pages; main and every other deployment target remain prohibited",
+  "timestamp": "2026-07-25T17:28:30-04:00",
+  "hashes": {
+    "change_hash": "2d52caca7310c5f86786beae7a7d072dae85e1d8ecb40a73b75aa2b741aca828",
+    "context_hash": "8b1a26e3410b129cb2a290b1ab5f6e894eb95b5a68d9e3799f64979f4726fc19",
+    "policy_hash": "ebd760b41dcf75612908ccde14f5a67efd42c5228efc6c489786a4b24983e20c"
+  },
+  "conditions": [
+    "change_id=v0.9.0-beta-demo-deployment",
+    "action=deploy_production",
+    "rules=action_matrix:deploy_production:high"
+  ]
+}
