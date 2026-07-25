@@ -1179,7 +1179,7 @@ footer a { color: var(--text-secondary); }
   <div class="nav-inner">
     <div class="nav-logo">
       <span>AEGIS</span>
-      <span class="nav-badge">v0.9.0b1 candidate</span>
+      <span class="nav-badge">v0.9.0b1 public beta</span>
     </div>
     <ul class="nav-links">
       <li><a href="#boundary">// runtime.boundary</a></li>
@@ -1227,9 +1227,9 @@ footer a { color: var(--text-secondary); }
           <span class="term-prompt">$</span>
           <span class="term-cmd">pip install aegis-ai-governance==0.9.0b1</span>
         </div>
-        <div class="term-out">Release candidate command — available after PyPI publication</div>
+        <div class="term-out">Public beta released from main and published on PyPI</div>
         <div class="term-out">Distribution: aegis-ai-governance · import/CLI: aegis</div>
-        <div class="term-out-grn">Candidate validated locally; PyPI publication pending</div>
+        <div class="term-out-grn">Installable now as aegis-ai-governance==0.9.0b1</div>
         <div class="term-line" style="margin-top:0.75rem;">
           <span class="term-prompt">$</span>
           <span class="term-cmd">python -c "import aegis; print(aegis.__version__)"</span>
@@ -1335,7 +1335,7 @@ footer a { color: var(--text-secondary); }
             <code class="cm">enforce_invocation()</code> or <code class="cm">AEGIS.enforce()</code> — runs the complete gate
             sequence in one call. Input and output are provided together. Simple integration path for non-latency-sensitive cases.
           </p>
-          <div class="tag tag-dim mt1">v0.9.0b1 candidate</div>
+          <div class="tag tag-dim mt1">v0.9.0b1 public beta</div>
         </div>
         <div class="panel">
           <div class="panel-title">// split.mode</div>
@@ -1648,9 +1648,9 @@ footer a { color: var(--text-secondary); }
       <h2 class="sh">Multi-step workflow governance</h2>
 
       <div class="beta-banner">
-        <span class="bi">⚠ RELEASE CANDIDATE:</span>
+        <span class="bi">PUBLIC BETA:</span>
         v0.9.0 workflow governance is packaged as <code>aegis-ai-governance==0.9.0b1</code>
-        and validated locally. PyPI publication is still pending.
+        and published on PyPI from the protected <code>main</code> release source.
         No external API keys required for the default first-adopter path.
       </div>
 
@@ -1781,10 +1781,9 @@ footer a { color: var(--text-secondary); }
         <div class="gp-step">
           <div class="gp-dot" style="background:var(--cyan); border:2px solid var(--bg-secondary);"></div>
           <div class="gp-num">step 01 — install</div>
-          <div class="gp-title">Install the v0.9.0b1 candidate artifact</div>
+          <div class="gp-title">Install the v0.9.0b1 public beta</div>
           <div class="gp-detail">
-            Install the locally validated wheel now. After the separately authorized
-            PyPI release, use the pinned distribution command below.
+            Install the published, pinned distribution from PyPI.
           </div>
           <div class="gp-code">pip install aegis-ai-governance==0.9.0b1</div>
         </div>
@@ -2296,13 +2295,13 @@ footer a { color: var(--text-secondary); }
         <div class="adapter-card adapter-openai">
           <div class="adapter-name">OpenAI Agents SDK</div>
           <div class="adapter-status">
-            <span class="tag tag-green">v0.9.0b1 beta candidate</span>
+            <span class="tag tag-green">v0.9.0b1 public beta</span>
             <span class="tag tag-dim">aegis-ai-governance[openai-agents]</span>
           </div>
           <div class="adapter-desc">
             Normalizes host-owned <code>openai-agents</code> run, interruption, and optional trace evidence.
             Governed tool support requires adapter-managed wrappers.
-            Included in the v0.9.0b1 candidate under <code>aegis.openai_agents_adapter</code>.
+            Included in the v0.9.0b1 public beta under <code>aegis.openai_agents_adapter</code>.
           </div>
           <div class="adapter-note">
             Not re-exported from top-level <code>aegis</code>. Requires the <code>openai-agents</code>
@@ -2314,7 +2313,7 @@ footer a { color: var(--text-secondary); }
         <div class="adapter-card adapter-bedrock">
           <div class="adapter-name">AWS Bedrock Trace</div>
           <div class="adapter-status">
-            <span class="tag tag-orange">v0.9.0b1 beta candidate</span>
+            <span class="tag tag-orange">v0.9.0b1 public beta</span>
           </div>
           <div class="adapter-desc">
             Normalizes host-supplied parsed Bedrock trace parts into AEGIS evidence.
@@ -2330,7 +2329,7 @@ footer a { color: var(--text-secondary); }
         <div class="adapter-card adapter-a2a">
           <div class="adapter-name">A2A Protocol</div>
           <div class="adapter-status">
-            <span class="tag tag-purple">v0.9.0b1 beta candidate</span>
+            <span class="tag tag-purple">v0.9.0b1 public beta</span>
           </div>
           <div class="adapter-desc">
             Normalizes parsed Agent Card, request metadata, and task envelopes.
@@ -2381,7 +2380,7 @@ footer a { color: var(--text-secondary); }
             <span class="term-prompt">$</span>
             <span class="term-cmd">pip install aegis-ai-governance==0.9.0b1</span>
           </div>
-          <div class="term-out-grn">Available after the separately authorized PyPI publication</div>
+          <div class="term-out-grn">Public beta available from PyPI</div>
           <div class="term-line" style="margin-top:0.5rem;">
             <span class="term-prompt">$</span>
             <span class="term-cmd">aegis workflow init --profile minimal</span>
@@ -2428,7 +2427,7 @@ footer a { color: var(--text-secondary); }
       <span style="color:var(--cyan);">AEGIS</span>
       &nbsp;·&nbsp; Auditable Enforcement and Governance for Intelligent Systems
       &nbsp;·&nbsp; <span style="color:var(--orange);">v0.9.0b1</span>
-      <code>aegis-ai-governance</code> candidate · PyPI pending
+      <code>aegis-ai-governance</code> public beta · released from main · published on PyPI
     </div>
     <div>
       <a href="https://nealsolves.github.io/aegis/">Interactive Demo</a>

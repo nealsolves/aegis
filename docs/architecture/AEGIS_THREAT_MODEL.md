@@ -8,7 +8,7 @@ and how the architecture prevents those failures.
 
 This document assumes an adversarial environment.
 
-Current candidate boundary: `aegis-ai-governance==0.9.0b1` adds
+Current public beta boundary: `aegis-ai-governance==0.9.0b1` adds
 `GovernanceSession`, workflow lifecycle and budget checks, the workflow
 trace/export operator surface, and optional adapter submodules. The public beta
 is released from `main`. The host still owns model calls, tools,

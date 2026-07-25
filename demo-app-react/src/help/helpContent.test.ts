@@ -73,10 +73,13 @@ describe('helpContent', () => {
     expect(helpContent[0].takeaway).toMatch(/deterministic governance wrapper/i)
   })
 
-  it('architecture guide names the v0.9 candidate and current ownership boundaries', () => {
+  it('architecture guide names the v0.9 public beta and current ownership boundaries', () => {
     const content = guideText(0)
     for (const expected of [
       'aegis-ai-governance==0.9.0b1',
+      'public beta',
+      'released from main',
+      'published on PyPI',
       'host owns',
       'GovernanceSession',
       'invocation artifact',
@@ -88,6 +91,7 @@ describe('helpContent', () => {
     ]) {
       expect(content).toContain(expected)
     }
+    expect(content).not.toContain('on develop, not main or PyPI')
   })
 
   it('keeps each lab guide aligned with exact visible controls', () => {
