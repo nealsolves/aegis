@@ -148,9 +148,19 @@ def css(theme: Theme, height: int) -> str:
             font-size: 18px;
             font-weight: 600;
           }}
+          .box-title-compact {{
+            fill: {theme.text};
+            font-size: 15px;
+            font-weight: 600;
+          }}
           .box-sub {{
             fill: {theme.subtext};
             font-size: 13px;
+            font-weight: 500;
+          }}
+          .box-sub-compact {{
+            fill: {theme.subtext};
+            font-size: 11px;
             font-weight: 500;
           }}
           .body {{
@@ -349,7 +359,9 @@ def lines_text(
 ) -> str:
     heights: dict[str, int] = {
         "box-title": 22,
+        "box-title-compact": 18,
         "box-sub": 17,
+        "box-sub-compact": 14,
         "body": 18,
         "body-plus": 19,
         "small": 14,
@@ -381,10 +393,12 @@ def node(
     title_lines: list[str],
     subtitle_lines: list[str] | None = None,
     rx: int = 18,
+    title_cls: str = "box-title",
+    subtitle_cls: str = "box-sub",
 ) -> str:
-    lines: list[tuple[str, str]] = [("box-title", text) for text in title_lines]
+    lines: list[tuple[str, str]] = [(title_cls, text) for text in title_lines]
     if subtitle_lines:
-        lines.extend(("box-sub", text) for text in subtitle_lines)
+        lines.extend((subtitle_cls, text) for text in subtitle_lines)
     return rect(x, y, w, h, cls, rx=rx) + lines_text(x + w // 2, y + h / 2, lines)
 
 
@@ -512,10 +526,44 @@ def render_beta(theme: Theme) -> str:
     # Policy + loading
     parts.extend(
         [
-            node(112, 336, 124, 78, "node-policy", ["Policy YAML"]),
-            node(254, 336, 124, 78, "node-policy", ["PolicyCache"]),
-            node(112, 432, 124, 90, "node-policy", ["FilePolicyLoader"], ["or PolicyLoaderBase"]),
-            node(254, 432, 124, 90, "node-policy", ["JSON Schemas"]),
+            node(
+                112,
+                336,
+                124,
+                78,
+                "node-policy",
+                ["Policy YAML"],
+                title_cls="box-title-compact",
+            ),
+            node(
+                254,
+                336,
+                124,
+                78,
+                "node-policy",
+                ["PolicyCache"],
+                title_cls="box-title-compact",
+            ),
+            node(
+                106,
+                432,
+                136,
+                90,
+                "node-policy",
+                ["FilePolicy", "Loader"],
+                ["or PolicyLoaderBase"],
+                title_cls="box-title-compact",
+                subtitle_cls="box-sub-compact",
+            ),
+            node(
+                254,
+                432,
+                124,
+                90,
+                "node-policy",
+                ["JSON", "Schemas"],
+                title_cls="box-title-compact",
+            ),
             note_node(
                 110,
                 558,
@@ -530,8 +578,24 @@ def render_beta(theme: Theme) -> str:
     # Workflow layer
     parts.extend(
         [
-            node(448, 336, 168, 88, "node-workflow", ["AEGIS.open_session()"]),
-            node(642, 336, 174, 88, "node-workflow", ["GovernanceSession"]),
+            node(
+                448,
+                336,
+                168,
+                88,
+                "node-workflow",
+                ["AEGIS.", "open_session()"],
+                title_cls="box-title-compact",
+            ),
+            node(
+                642,
+                336,
+                174,
+                88,
+                "node-workflow",
+                ["GovernanceSession"],
+                title_cls="box-title-compact",
+            ),
             node(
                 842,
                 336,
@@ -540,14 +604,26 @@ def render_beta(theme: Theme) -> str:
                 "node-workflow",
                 ["SessionPreCallResult"],
                 ["workflow-bound split token"],
+                title_cls="box-title-compact",
+                subtitle_cls="box-sub-compact",
             ),
-            node(1054, 336, 122, 88, "node-workflow", ["Workflow DSL"], ["sequence, budgets,", "approvals"]),
+            node(
+                1042,
+                336,
+                134,
+                88,
+                "node-workflow",
+                ["Workflow DSL"],
+                ["sequence, budgets,", "approvals"],
+                title_cls="box-title-compact",
+                subtitle_cls="box-sub-compact",
+            ),
             note_node(
                 448,
                 454,
                 374,
                 72,
-                ["Tracks steps, checkpoints, participants, and budgets."],
+                ["Tracks steps, checkpoints,", "participants, and budgets."],
             ),
             node(
                 842,
@@ -564,10 +640,44 @@ def render_beta(theme: Theme) -> str:
     # Kernel
     parts.extend(
         [
-            node(448, 620, 168, 88, "node-kernel", ["enforce_invocation()"]),
-            node(642, 620, 168, 88, "node-kernel", ["AEGIS.enforce()"]),
-            node(842, 620, 188, 88, "node-kernel", ["split APIs"], ["pre_call / post_call"]),
-            node(1048, 620, 128, 88, "node-kernel", ["ordered gates"], ["auth -> output -> risk"]),
+            node(
+                448,
+                620,
+                190,
+                88,
+                "node-kernel",
+                ["enforce_invocation()"],
+                title_cls="box-title-compact",
+            ),
+            node(
+                642,
+                620,
+                176,
+                88,
+                "node-kernel",
+                ["AEGIS.enforce()"],
+                title_cls="box-title-compact",
+            ),
+            node(
+                828,
+                620,
+                188,
+                88,
+                "node-kernel",
+                ["split APIs"],
+                ["pre_call / post_call"],
+            ),
+            node(
+                1026,
+                620,
+                150,
+                88,
+                "node-kernel",
+                ["ordered gates"],
+                ["auth -> output", "-> risk"],
+                title_cls="box-title-compact",
+                subtitle_cls="box-sub-compact",
+            ),
             text_box(
                 448,
                 736,
@@ -575,8 +685,9 @@ def render_beta(theme: Theme) -> str:
                 96,
                 "node-kernel",
                 [
-                    "pre_authorization -> guards -> role -> preconditions -> tools -> post_authorization",
-                    "pre_output -> schema -> postconditions -> post_output -> risk",
+                    "pre_authorization -> guards -> role -> preconditions",
+                    "tools -> post_authorization -> pre_output -> schema",
+                    "postconditions -> post_output -> risk",
                 ],
             ),
         ]
@@ -592,7 +703,7 @@ def render_beta(theme: Theme) -> str:
                 88,
                 "node-evidence",
                 ["Invocation artifact"],
-                ["PASS or FAIL per invocation attempt"],
+                ["PASS or FAIL", "per invocation attempt"],
             ),
             node(
                 1246,
@@ -601,7 +712,7 @@ def render_beta(theme: Theme) -> str:
                 96,
                 "node-evidence",
                 ["AuditSink + signing"],
-                ["JSONL, callback, custom sink, optional signer"],
+                ["JSONL, callback, custom sink,", "optional signer"],
             ),
             node(
                 1246,
@@ -609,16 +720,17 @@ def render_beta(theme: Theme) -> str:
                 242,
                 100,
                 "node-ops",
-                ["AuditLineage /", "compliance export --lineage"],
+                ["AuditLineage", "compliance export", "--lineage"],
                 ["stored-trail analysis"],
+                title_cls="box-title-compact",
             ),
             note_node(
                 1242,
                 736,
                 250,
                 124,
-                ["Workflow evidence stays separate", "from invocation artifacts."],
-                ["Correlation is additive. It does not", "replace invocation evidence."],
+                ["Workflow evidence", "stays separate from", "invocation artifacts."],
+                ["Correlation is additive.", "It does not replace evidence."],
                 body_cls="body-plus",
                 small_cls="small-plus",
             ),
@@ -664,7 +776,7 @@ def render_beta(theme: Theme) -> str:
             path("M378 375 H418 V380 H448"),
             path("M378 477 H404 V664 H448"),
             path("M808 544 V570"),
-            path("M936 424 V620"),
+            path("M936 424 V436 H832 V578 H922 V620"),
             path("M1176 493 H1220 V514 H1246"),
             path("M1176 664 H1214 V380 H1246"),
             path("M1367 424 V466"),
