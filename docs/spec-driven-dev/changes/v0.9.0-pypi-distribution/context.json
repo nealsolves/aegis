@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "change_id": "v0.9.0-pypi-distribution",
+  "workflow_family": "release",
+  "action": "local_implementation",
+  "current_state": "UNCLASSIFIED",
+  "change_hash": "bef51b8878459af23fcc52067c038db447cf611afaa41797c6291d87cfee8fb5",
+  "facts": {
+    "documentation_only": {
+      "value": false,
+      "source_type": "brownfield_inventory",
+      "source_ref": "docs/spec-driven-dev/changes/v0.9.0-pypi-distribution/evidence.md",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "bef51b8878459af23fcc52067c038db447cf611afaa41797c6291d87cfee8fb5",
+      "corroboration": []
+    },
+    "modifies_runtime_code": {
+      "value": false,
+      "source_type": "approved_scope_analysis",
+      "source_ref": "docs/spec-driven-dev/changes/v0.9.0-pypi-distribution/spec.md",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 0.98,
+      "observed_at_change": "bef51b8878459af23fcc52067c038db447cf611afaa41797c6291d87cfee8fb5",
+      "corroboration": []
+    },
+    "changes_public_contract": {
+      "value": true,
+      "source_type": "approved_specification",
+      "source_ref": "docs/spec-driven-dev/changes/v0.9.0-pypi-distribution/spec.md",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "bef51b8878459af23fcc52067c038db447cf611afaa41797c6291d87cfee8fb5",
+      "corroboration": []
+    },
+    "adds_external_dependency": {
+      "value": true,
+      "source_type": "approved_plan",
+      "source_ref": "docs/spec-driven-dev/changes/v0.9.0-pypi-distribution/plan.md",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "bef51b8878459af23fcc52067c038db447cf611afaa41797c6291d87cfee8fb5",
+      "corroboration": []
+    },
+    "changes_infrastructure": {
+      "value": true,
+      "source_type": "approved_plan",
+      "source_ref": "docs/spec-driven-dev/changes/v0.9.0-pypi-distribution/plan.md",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "bef51b8878459af23fcc52067c038db447cf611afaa41797c6291d87cfee8fb5",
+      "corroboration": []
+    },
+    "deploys_to_production": {
+      "value": false,
+      "source_type": "approved_scope_analysis",
+      "source_ref": "docs/spec-driven-dev/changes/v0.9.0-pypi-distribution/spec.md",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "bef51b8878459af23fcc52067c038db447cf611afaa41797c6291d87cfee8fb5",
+      "corroboration": []
+    },
+    "instruction_system_change": {
+      "value": false,
+      "source_type": "approved_scope_analysis",
+      "source_ref": "docs/spec-driven-dev/changes/v0.9.0-pypi-distribution/spec.md",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "bef51b8878459af23fcc52067c038db447cf611afaa41797c6291d87cfee8fb5",
+      "corroboration": []
+    }
+  },
+  "clarifications": [],
+  "exceptions": [],
+  "authority_constraints": [],
+  "evidence": {},
+  "resources": {
+    "repair_attempts": 0,
+    "ci_reruns": 0,
+    "elapsed_minutes": 0
+  },
+  "open_escalation": null,
+  "responses": []
+}
