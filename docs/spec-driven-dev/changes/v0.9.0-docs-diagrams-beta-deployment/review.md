@@ -17,10 +17,10 @@ this is not represented as an independent-person review.
 | Pre-v0.9 history points to `nealsolves/aigc` | Met |
 | Every requested Markdown file audited | Met |
 | Obsolete docs deleted only with evidence | Met; none qualified |
-| Pages configured for beta from `develop` | Met locally |
-| Render configured for beta from `develop` | Met locally |
+| Pages configured for beta from `develop` | Met live |
+| Render configured for beta from `develop` | Met live |
 | No change to `main` | Met |
-| Live deployment and smoke test | Blocked by repository policy |
+| Live deployment and smoke test | Met |
 
 ## Findings
 
@@ -34,13 +34,17 @@ this is not represented as an independent-person review.
   build.
 - **Low — Stale release-truth assertion:** replaced the old `main`-lag
   requirement with the develop-beta deployment contract.
+- **Moderate — CI environment leakage:** scoped `VITE_API_URL` to the Pages
+  guard and build steps so the localhost-fallback unit test remains isolated.
+- **High — Pages branch protection:** replaced GitHub's auto-created
+  `main`-only deployment rule with a single `develop` rule.
 
 ### Remaining
 
-No unresolved local correctness or security finding remains. External delivery
-and live verification are blocked, not failed: `.claude/project.yaml` disables
-remote and production actions, and the deterministic evaluations therefore
-prohibit push, pull request, and deployment.
+No unresolved correctness or security finding remains for the beta
+deployment. The default project policy remains locked; the owner authorized a
+one-time, hash-bound exception for this feature branch, `develop`, the AEGIS
+Render beta service, and GitHub Pages. `main` was never authorized.
 
 ## Security and Operations Review
 
@@ -53,12 +57,16 @@ prohibit push, pull request, and deployment.
   workflow rejects empty/localhost values.
 - Render uses the free plan, branch `develop`, automatic commit deploys, and
   `/health`.
+- The `github-pages` environment has one custom deployment branch policy:
+  `develop`. `main` is not allowed to deploy.
 - Existing CORS remains limited to the GitHub Pages origin and two documented
   local origins.
 - The backend remains stateless and synthetic.
 
 ## Conclusion
 
-The branch is locally ready for delivery to `develop`. It is not deployment
-complete and must not be described as live until the repository governance
-settings permit remote actions and the public smoke tests pass.
+The beta is live at `https://nealsolves.github.io/aegis/` with
+`https://aegis-demo-api.onrender.com` as its backend. Render health, CORS,
+Pages CI, live Lab 1 and Lab 11 behavior, and a clean in-app-browser console
+all passed. Any switch to `main` remains a separate prohibited action until
+the owner explicitly approves it.
