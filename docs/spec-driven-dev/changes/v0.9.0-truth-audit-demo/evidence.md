@@ -60,20 +60,14 @@ configured and no provider calls were made.
 - Documentation parity: passed before this evidence update.
 - Brand and version parity: passed.
 - Flake8 for `aegis`: passed.
-- Full package suite: `1916 passed, 2 skipped, 1 failed`. The only failure is
-  the deliberate instruction-guide truth guard added for Task 7; it cannot
-  pass until the separately authorized one-file `.claude` correction is
-  applied.
+- Final full package suite: `1917 passed, 2 skipped`.
 - Coverage run with only that pending guard deselected:
   `1916 passed, 2 skipped, 1 deselected`, with `90.32%` package coverage
   against the `90%` gate.
 - Demo API suite: `67 passed`, with 2 non-failing warnings.
 
-The canonical final package test count is intentionally not advanced yet.
-After the exact Task 7 owner response is validated and the authorized
-instruction file is corrected, the expected full-suite result is
-`1917 passed, 2 skipped`; that result must be observed before it is recorded as
-the release baseline.
+The observed `1917` passing tests are recorded as the canonical candidate
+baseline. The two skips are expected environment-dependent cases.
 
 ### React application
 
@@ -106,10 +100,20 @@ The maintained FastAPI backend and Vite React application were run together on
 
 The local demo services were stopped after validation.
 
-## Open gate
+## Instruction-system decision
 
-Task 7 remains open. Policy evaluation
-`DEC-v0.9.0-instruction-status-truth-AUTH-instruction_system_change` requires
-an exact owner response before `.claude/rules/aegis-project.md` can be edited.
-All validation evidence above is complete except the final full-suite rerun
-that depends on that protected correction.
+Task 7 is resolved. Policy decision
+`DEC-v0.9.0-instruction-status-truth-AUTH-instruction_system_change` received
+an exact response from Neal Bhattacharya, bound to change hash
+`e45c78434e3e9cba9441ececcf467600f19506d80ab6eb3a6d2a8d80864539b6`,
+context hash
+`b85051520a08e20e4f0db4c06aafe28907accbad04553b3ffc2615fe8a658292`,
+and policy hash
+`d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa`.
+The result was `autonomous_with_enhanced_gates`.
+
+The first response attempt exposed a preparation error: the generated
+escalation had not been materialized into `HUMAN_DECISION_REQUIRED`. No
+instruction file was changed under that invalid state. The context was
+corrected, reevaluated deterministically, and reauthorized against the fresh
+hash before the one approved factual correction was applied.

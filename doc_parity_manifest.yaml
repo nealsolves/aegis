@@ -16,7 +16,7 @@ distribution_name: "aegis-ai-governance"
 import_package: "aegis"
 console_command: "aegis"
 candidate_status: "unpublished-beta"
-test_count: 1903
+test_count: 1917
 coverage_threshold: 90
 audit_schema_version: "1.4"
 
@@ -85,6 +85,7 @@ documentation_inventory:
     - CLAUDE.md
     - .claude/**
     - .specify/memory/constitution.md
+    - docs/spec-driven-dev/changes/v0.9.0-instruction-status-truth/**
 
 # --- Documentation parity set ---
 # These docs must stay synchronized with implementation.

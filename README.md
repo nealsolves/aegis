@@ -24,7 +24,7 @@ Governance in AEGIS is runtime enforcement, not documentation and not prompting.
   `ProvenanceGate`, `RiskHistory`, `@governed` defaults to split enforcement
 - Current beta line: `v0.9.0`, packaged as
   `aegis-ai-governance==0.9.0b1`
-- Verification baseline: `1903 tests` pass in the candidate environment,
+- Verification baseline: `1917 tests` pass in the candidate environment,
   including fixture-based optional-adapter coverage;
   coverage remains above the `90%` CI gate
 

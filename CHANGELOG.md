@@ -20,7 +20,7 @@ The candidate is merged on `develop`, not on `main`. Its distribution is
   runtime dependencies.
 - Package the completed `v0.9.0` workflow governance surface as candidate
   version `0.9.0b1`.
-- Validate the candidate against `1903 tests` before release-ready promotion.
+- Validate the candidate against `1917 tests` before release-ready promotion.
 
 ### Fixed
 
