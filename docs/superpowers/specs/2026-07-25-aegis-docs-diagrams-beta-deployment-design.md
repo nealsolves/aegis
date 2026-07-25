@@ -186,8 +186,10 @@ Update `demo-app-api/render.yaml` to declare:
 - `autoDeployTrigger: commit`;
 - `healthCheckPath: /health`;
 - the existing Python 3.12 runtime;
-- the existing editable SDK plus API requirements build; and
-- the existing Uvicorn start command bound to `$PORT`.
+- no service `rootDir`, because the API build requires the repository-root
+  AEGIS package;
+- `pip install -e . && pip install -r demo-app-api/requirements.txt`; and
+- Uvicorn with `--app-dir demo-app-api`, bound to `$PORT`.
 
 The backend remains stateless and uses only synthetic demo data. It requires no
 provider credentials or external model calls. CORS remains restricted to the
@@ -206,7 +208,8 @@ Create `.github/workflows/deploy-demo-react.yml` with:
   deployment-relevant diagram paths;
 - `workflow_dispatch`;
 - a build job using immutable action revisions, Node, `npm ci`, React tests,
-  and the production build;
+  lint, and the production build;
+- `contents: read` and `pages: read` only in the build job;
 - `VITE_API_URL` set to the observed Render service URL through a repository
   variable or an explicit public build value;
 - Pages artifact upload;

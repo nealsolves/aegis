@@ -633,7 +633,7 @@ PINNED_ACTIONS = {
 Assert the workflow:
 
 - triggers on `develop` and manual dispatch;
-- grants build only `contents: read`;
+- grants build only `contents: read` and `pages: read`;
 - grants deploy only `pages: write` and `id-token: write`;
 - runs `npm ci`, `npm test`, `npm run lint`, and `npm run build`;
 - sets the public Render URL as `VITE_API_URL`;
@@ -650,13 +650,12 @@ Assert the single service equals:
     "type": "web",
     "name": "aegis-demo-api",
     "runtime": "python",
-    "rootDir": "demo-app-api",
     "branch": "develop",
     "plan": "free",
     "autoDeployTrigger": "commit",
     "healthCheckPath": "/health",
-    "buildCommand": "pip install -e ../ && pip install -r requirements.txt",
-    "startCommand": "uvicorn main:app --host 0.0.0.0 --port $PORT",
+    "buildCommand": "pip install -e . && pip install -r demo-app-api/requirements.txt",
+    "startCommand": "uvicorn main:app --app-dir demo-app-api --host 0.0.0.0 --port $PORT",
 }
 ```
 
@@ -702,7 +701,8 @@ git commit -m "test: define beta demo deployment contract"
 
 - [ ] **Step 1: Update the Render Blueprint**
 
-Implement the exact service mapping from Task 6. Keep CORS in
+Implement the exact service mapping from Task 6. Do not set `rootDir`: Render
+must retain the repository-root SDK during build and runtime. Keep CORS in
 `demo-app-api/main.py` unchanged because it already allows only
 `https://nealsolves.github.io` plus the two local origins.
 

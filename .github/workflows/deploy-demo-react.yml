@@ -55,6 +55,10 @@ jobs:
         working-directory: demo-app-react
         run: npm test
 
+      - name: Lint frontend
+        working-directory: demo-app-react
+        run: npm run lint
+
       - name: Build frontend
         working-directory: demo-app-react
         run: npm run build

@@ -53,6 +53,7 @@ def test_pages_workflow_builds_and_deploys_only_the_develop_beta():
     )
     assert "npm ci" in build_commands
     assert "npm test" in build_commands
+    assert "npm run lint" in build_commands
     assert "npm run build" in build_commands
     assert build["env"]["VITE_API_URL"] == "${{ vars.VITE_API_URL }}"
 
@@ -76,16 +77,16 @@ def test_render_blueprint_deploys_the_stateless_backend_from_develop():
     assert service["type"] == "web"
     assert service["name"] == "aegis-demo-api"
     assert service["runtime"] == "python"
-    assert service["rootDir"] == "demo-app-api"
+    assert "rootDir" not in service
     assert service["branch"] == "develop"
     assert service["plan"] == "free"
     assert service["autoDeployTrigger"] == "commit"
     assert service["healthCheckPath"] == "/health"
     assert service["buildCommand"] == (
-        "pip install -e ../ && pip install -r requirements.txt"
+        "pip install -e . && pip install -r demo-app-api/requirements.txt"
     )
     assert service["startCommand"] == (
-        "uvicorn main:app --host 0.0.0.0 --port $PORT"
+        "uvicorn main:app --app-dir demo-app-api --host 0.0.0.0 --port $PORT"
     )
     assert service["envVars"] == [
         {"key": "PYTHON_VERSION", "value": "3.12"},
