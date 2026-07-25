@@ -1,6 +1,6 @@
 # OpenAI Agents SDK Adapter — AEGIS v0.9.0 Beta
 
-> **Status:** Included in the `aegis-ai-governance==0.9.0b1` beta candidate.
+> **Status:** Included in the `aegis-ai-governance==0.9.0b1` public beta.
 > Not re-exported from the top-level `aegis` package.
 > Requires `pip install "aegis-ai-governance[openai-agents]"`.
 > This is an advanced follow-on surface per the [first-adopter docs order](../WORKFLOW_QUICKSTART.md).

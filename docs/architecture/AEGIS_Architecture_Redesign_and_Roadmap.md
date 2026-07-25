@@ -7,8 +7,8 @@
 **Audience:** Core maintainers, contributing engineers, security reviewers
 
 > **Current implementation overlay (2026-07-25):** This remains a target-state
-> roadmap, not current release truth. The unpublished
-> `aegis-ai-governance==0.9.0b1` candidate on `develop` now implements
+> roadmap, not current release truth. The
+> `aegis-ai-governance==0.9.0b1` public beta now implements
 > `GovernanceSession`, workflow policy constraints, init/lint/doctor/trace/export,
 > and optional Bedrock, A2A, and OpenAI Agents adapter submodules.
 > `ValidatorHook` is internal, while `AgentIdentity` and

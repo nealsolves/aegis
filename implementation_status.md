@@ -1,10 +1,14 @@
 # Implementation Status
 
 **Target Version:** `0.9.0` Beta
-**Package Candidate:** `aegis-ai-governance==0.9.0b1`
+**Package Release:** `aegis-ai-governance==0.9.0b1`
 **Previous PyPI Line:** `aegis==0.3.3`
-**Active Branch:** `feat/v0.9-14-docs-pages-render`
+**Active Branch:** `feat/v0.9-15-main-release`
 **Last Updated:** 2026-07-25
+
+Only after the owner has formally declared GO may the `origin/develop` ->
+`origin/main` release cutover merge. That freeze gate is satisfied for
+`0.9.0b1`.
 
 ---
 
@@ -12,13 +16,13 @@
 
 | Field | Current value |
 |---|---|
-| Active change | `v0.9.0-docs-diagrams-beta-deployment` |
+| Active change | `v0.9.0-main-pypi-release` |
 | Active profile | Base profile `solo`; project lifecycle `configured` |
 | Instruction modules | Bootstrap installation `complete` |
 | Project owner | Neal Bhattacharya |
 | Escalation owner | neal@nealsolves.com |
-| Remote actions | Disabled by default; one-time hash-bound authority delivered this feature branch through PRs #19–#21 to `develop` and deployed only the beta targets |
-| Current gate | Public beta verification complete; `main` cutover and PyPI publication remain separate prohibited/pending decisions |
+| Remote actions | Disabled by default; one-time hash-bound owner authority covers the protected main cutover, existing AEGIS demo deployments, GitHub prerelease, and PyPI Trusted Publishing |
+| Current gate | `v0.9.0b1` declared GO; exact-main deployment and published-package verification are required before completion |
 | Bootstrap decision | `BOOTSTRAP-2026-07-24-AEGIS-SDD` |
 | Baseline commit | `73f1bfc494dd5290a7e579069b3cad72e33457ed` |
 
@@ -36,33 +40,32 @@ must be updated only after their specific evidence exists.
 - PR-11's full functional test harness is merged through pull request #14.
 - The PyPI distribution work is merged through pull request #16, and the
   corrected post-merge release truth is merged through pull request #17.
-- The `v0.9.0` package candidate is `aegis-ai-governance==0.9.0b1`; it is not
-  published to PyPI. Publication is pending and separately authorized.
+- The `v0.9.0` public beta is `aegis-ai-governance==0.9.0b1`, released from
+  `main` through GitHub and PyPI Trusted Publishing.
 
 | Track | Status | Notes |
 |-------|--------|-------|
 | Source of truth | complete | Canonical docs, release packet, and parity checks are aligned |
 | Contract freeze | complete | Lifecycle, artifact separation, and instance-scoped workflow entry are frozen |
 | Golden-path contract | complete | Beta CLI inventory, starter profiles, docs order, and public-import rules are frozen |
-| Minimal session flow | complete | `GovernanceSession`, `AEGIS.open_session(...)`, and `SessionPreCallResult` ship on `develop` |
+| Minimal session flow | complete | `GovernanceSession`, `AEGIS.open_session(...)`, and `SessionPreCallResult` ship in `0.9.0b1` |
 | Starters and migration | complete | `aegis workflow init`, `aegis policy init`, starter scaffolds, presets, and migration docs ship |
 | Diagnostics | complete | `aegis workflow lint` and `aegis workflow doctor` ship with stable first-user codes |
 | Beta proof | complete | Clean-env proof, real failure/diagnosis/fix/rerun flow, and demo parity are in place |
 | Engine hardening | complete | Budgets, transitions, protocol constraints, approvals, handoffs, and internal validator hooks are hardened |
-| Exports and ops | complete | `aegis workflow trace` and `aegis workflow export` ship on `develop` |
-| Optional adapters | complete | Bedrock, A2A, and OpenAI Agents adapter tracks are present on `develop` with fixture coverage |
+| Exports and ops | complete | `aegis workflow trace` and `aegis workflow export` ship in `0.9.0b1` |
+| Optional adapters | complete | Bedrock, A2A, and OpenAI Agents adapter tracks ship as optional beta submodules with fixture coverage |
 | Research safety addendum | complete | PR-10d graph/topology lint, doctor remediation, export rationale, and safety smoke tests are merged |
 | Beta functional gate | complete | PR-11 full functional test harness is merged; distribution and publication remain separate gates |
-| Distribution candidate | merged on `develop` | `aegis-ai-governance==0.9.0b1` metadata and Trusted Publishing are prepared; the candidate is not on `main` and PyPI publication is pending |
+| Distribution release | released from `main` | `aegis-ai-governance==0.9.0b1` uses GitHub release `v0.9.0b1` and PyPI Trusted Publishing |
 | Truth audit and demo refresh | complete locally | Maintained docs, diagrams, contextual help, adapters, Python coverage, React, build, API, and assembled browser workflows are validated; independent review passed and the policy lifecycle reached `COMPLETE`; the final Python suite is 1919 passed and 2 skipped |
-| Docs, diagrams, and beta deployment | live on `develop` | Requested docs audited with no deletions, SVG overflow repaired and visually inspected, Pages and Render deploy only from `develop`, 1923 Python tests and 105 React tests pass, and live Lab 1/Lab 11 flows pass with a clean in-app-browser console |
+| Docs, diagrams, and beta deployment | live on `main` | Requested docs were audited with no deletions, SVG overflow was repaired and visually inspected, Pages and Render deploy only from `main`, 1923 Python tests and 105 React tests pass, and live Lab 1/Lab 11 flows pass with a clean in-app-browser console |
 
 ---
 
 ## Release Rules
 
-- Do NOT open or merge a PR from `origin/develop` -> `origin/main` until
-  `v0.9.0` is formally declared a GO.
+- `v0.9.0b1` was formally declared a GO by the owner on 2026-07-25.
 - PR-07 is the mandatory stop-ship checkpoint. If the golden path fails there,
   no further public-surface work proceeds until the default path is repaired.
 - The default adopter path must succeed without Bedrock, A2A, or the OpenAI Agents SDK.

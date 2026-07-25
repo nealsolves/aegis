@@ -1,23 +1,20 @@
 # AEGIS Workflow Governance — Quickstart (v0.9.0 Beta)
 
-> This is packaged as the `aegis-ai-governance==0.9.0b1` beta candidate. It is
-> merged on `develop`, not on `main`, and not yet published to PyPI. Install
-> from a `develop` checkout until publication is separately authorized.
-> After publication, install with
+> This is packaged as the `aegis-ai-governance==0.9.0b1` public beta and
+> released from `main`. Install with
 > `pip install aegis-ai-governance==0.9.0b1`.
 
 ## Prerequisites
 
 - Python 3.10 or later
-- AEGIS installed in editable mode from the candidate checkout. Normal source
-  installs require access to PyPI or an internal package mirror:
+- Access to PyPI or an internal package mirror:
 
 ```bash
-git clone https://github.com/nealsolves/aegis
-cd aegis
-git switch develop
-pip install -e ".[dev]"
+pip install aegis-ai-governance==0.9.0b1
 ```
+
+Source contributors may instead clone `main` and run
+`pip install -e ".[dev]"`.
 
 No external API keys, Bedrock credentials, or A2A setup are required. The
 minimal starter runs entirely locally.

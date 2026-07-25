@@ -2,9 +2,8 @@
 
 # Migrating from Invocation-Only to Workflow Governance
 
-This migration targets the unpublished `aegis-ai-governance==0.9.0b1`
-candidate on `develop`. It does not require an unreleased Git tag. The import
-package and CLI remain `aegis`.
+This migration targets the `aegis-ai-governance==0.9.0b1` public beta. The
+import package and CLI remain `aegis`.
 
 This guide shows the smallest safe diff to add workflow governance to existing
 AEGIS-governed code. The migration is **additive** — existing invocation-only code

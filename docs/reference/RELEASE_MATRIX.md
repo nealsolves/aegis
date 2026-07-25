@@ -2,9 +2,9 @@
 
 Last verified: 2026-07-25.
 
-This is the canonical release-truth table for AEGIS. It separates the previous
-PyPI release, the new package candidate, remote source state, and archived
-material.
+This is the canonical release-truth table for AEGIS. It separates the current
+public beta, previous PyPI releases, historical candidate baselines, remote
+source state, and archived material.
 
 Source, tags, and release artifacts for versions before `0.9.0` remain in
 [`nealsolves/aigc`](https://github.com/nealsolves/aigc). This repository is the
@@ -12,30 +12,30 @@ AEGIS `0.9.0`-and-later development home.
 
 Verification snapshot used for this table:
 
-- Current package candidate is `aegis-ai-governance==0.9.0b1`.
+- Current public beta is `aegis-ai-governance==0.9.0b1`.
 - Package metadata and `aegis.__version__` are `0.9.0b1`.
 - Import package and CLI remain `aegis`.
-- The candidate is not yet published to PyPI.
+- Install with `pip install aegis-ai-governance==0.9.0b1`.
 - Previous PyPI line: `aegis==0.3.3`.
-- Candidate implementation merged through PR #17.
-- Documentation, diagram, and demo truth is merged through PR #18.
-- `origin/develop` is at merge commit
-  `fdf3649` (`fdf3649f...`) for the current documentation/demo baseline.
-- PR #17 merge commit `8be5f54` remains the package-candidate build baseline.
-- The candidate is not on `main` and is not yet published to PyPI.
-- A Pending Trusted Publisher is configured for
-  `nealsolves/aegis` / `publish.yml` / `pypi`; no upload is authorized.
+- PR #23 promoted the verified `develop` baseline to `main` at merge commit
+  `22457bcaeef89495031ac8a01a22d3c36e9818ee`.
+- GitHub release `v0.9.0b1` targets the final `main` release source.
+- PyPI publication uses the configured Trusted Publisher
+  `nealsolves/aegis` / `publish.yml` / `pypi`.
 - The truth-audit adapter, Python, coverage, React, build, API, and browser
   matrix is complete. The current suite is `1923 passed, 2 skipped`.
 
-These source refs identify the inspected beta baseline. Before any merge commit
-is used for public beta or release claims, rerun the snapshot commands and
-replace the local and remote source refs with the exact target refs.
+Historical rows retain the inspected beta baselines. Final immutable release,
+deployment, workflow, and artifact identifiers are recorded in
+`docs/spec-driven-dev/changes/v0.9.0-main-pypi-release/evidence.md`.
+The earlier documentation/demo checkpoint was PR #18 at `fdf3649`; it remains
+historical evidence rather than the current release source.
 
 <!-- markdownlint-disable MD013 -->
 
 | Channel | Version label | Exact ref | Distribution | Included surfaces | Excluded surfaces | Adapter status | Support stance | Test status | Artifact integrity | Build authority | Known limitations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Current public beta | `aegis-ai-governance==0.9.0b1` | GitHub prerelease tag `v0.9.0b1` from the final `main` release source. | `pip install aegis-ai-governance==0.9.0b1`. | `AEGIS.open_session(...)`, workflow sessions and starters, policy/workflow init, lint, doctor, trace, export, invocation governance, and packaged optional adapter submodules. | Hosted control plane, transport ownership, cloud credentials, provider SDK ownership, tenant isolation, and top-level adapter re-exports. | Bedrock and A2A require no base SDK dependency; OpenAI Agents requires the `openai-agents` extra. | Public beta; Python 3.10–3.12. | 1,923 passed, 2 skipped; 105 React tests; lint, build, distribution, API, and live-browser gates passed. | Wheel and sdist are built from the release tag; published file digests are recorded in the release evidence. | GitHub Actions OIDC through the PyPI Trusted Publisher and `pypi` environment. | Render's free service may cold-start after inactivity; beta APIs may change before GA. |
 | Previous PyPI release | `aegis==0.3.3` | Historical release dated `2026-04-10`. | `pip install aegis==0.3.3`. | Invocation governance, split enforcement, policy loading, audit artifacts, signing, audit chain utility, lineage, provenance gate, and compliance export. | The v0.9 workflow CLI, starter scaffolds, trace/export operations, and optional adapters. | Not claimed as included. | Previous installable line; no longer the candidate identity. | Historical release evidence. | Historical artifacts are outside this candidate packet. | Historical publisher path. | The `aegis` distribution name cannot be used for the new release. |
 | Local beta candidate | `aegis-ai-governance==0.9.0b1` | PR #17 merged at `origin/develop` merge commit `8be5f54`; not on `main`. | Wheel and sdist built locally; after publication, `pip install aegis-ai-governance==0.9.0b1`. | `AEGIS.open_session(...)`, workflow sessions and starters, policy/workflow init, lint, doctor, trace, export, invocation governance, and packaged optional adapter submodules. | Hosted control plane, transport ownership, cloud credentials, provider SDK ownership, tenant isolation, and top-level adapter re-exports. | Bedrock and A2A require no base SDK dependency; OpenAI Agents requires the `openai-agents` extra. Base matrix: 258 passed, 1 expected skip. Extra-enabled matrix: 277 passed. | Merged on `develop`; not on `main` and not yet published to PyPI. | Policy, parity, brand/version, lint, coverage, demo API, React, build, and browser checks passed. Final package suite: 1919 passed, 2 skipped. | Prior candidate artifact evidence remains recorded in the release packet; no published artifact exists. | Pending Trusted Publisher `nealsolves/aegis` / `publish.yml` / `pypi`; no upload authorized. | Publication remains a separate human-authorized action; byte-for-byte local rebuild reproducibility is not established. |
 | Verified beta deployment baseline | `v0.9.0 beta source` | PR #21 merged at `origin/develop` merge commit `04f301a`; not on `main`. | Source checkout plus live beta demo at `https://nealsolves.github.io/aegis/`. | Candidate runtime, reconciled maintained docs, regenerated architecture assets, and eleven live labs backed by `https://aegis-demo-api.onrender.com`. | PyPI publication and `main` cutover. | Same candidate adapter contract as the package baseline. | Public beta from `develop`; `main` remains unchanged. | PRs #19 through #21 validation passed; Pages runs `30177779500` and `30178022023`, Render health/CORS, live Lab 1, live Lab 11, and clean-console checks passed. | No published Python package is implied; the deployed frontend and backend correspond to the recorded `develop` baseline. | One-time bounded owner authority covered the feature-branch PRs and beta targets only; default remote authority remains disabled. | Render's free service may cold-start after inactivity; GitHub Actions reports non-blocking Node-runtime deprecation warnings for pinned upstream actions. |

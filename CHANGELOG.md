@@ -5,12 +5,10 @@ All notable changes to AEGIS are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.9.0b1] — Unreleased
+## [0.9.0b1] — 2026-07-25
 
-This beta candidate is not yet published to PyPI.
-
-The candidate is merged on `develop`, not on `main`. Its distribution is
-`aegis-ai-governance`; its import package and console command remain `aegis`.
+This public beta is released as the `aegis-ai-governance` distribution from
+`main`; its import package and console command remain `aegis`.
 
 ### Changed
 
@@ -32,7 +30,8 @@ The candidate is merged on `develop`, not on `main`. Its distribution is
 
 - PyPI publication uses Trusted Publishing from
   `.github/workflows/publish.yml` and GitHub environment `pypi`.
-- Building, testing, and reaching `RELEASE_READY` do not authorize an upload.
+- The GitHub prerelease tag is `v0.9.0b1`.
+- Render and GitHub Pages deploy the interactive beta demo from `main`.
 
 ## [0.3.3] — 2026-04-10
 

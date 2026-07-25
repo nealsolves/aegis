@@ -1,4 +1,4 @@
-"""Deployment contract for the develop-based public beta demo."""
+"""Deployment contract for the main-based public beta demo."""
 from __future__ import annotations
 
 import re
@@ -27,11 +27,11 @@ def _load_pages_workflow() -> tuple[str, dict]:
     return text, parsed
 
 
-def test_pages_workflow_builds_and_deploys_only_the_develop_beta():
+def test_pages_workflow_builds_and_deploys_only_the_main_beta():
     _, workflow = _load_pages_workflow()
 
-    assert workflow["on"]["push"]["branches"] == ["develop"]
-    assert "main" not in workflow["on"]["push"]["branches"]
+    assert workflow["on"]["push"]["branches"] == ["main"]
+    assert "develop" not in workflow["on"]["push"]["branches"]
     assert "workflow_dispatch" in workflow["on"]
 
     build = workflow["jobs"]["build"]
@@ -80,7 +80,7 @@ def test_pages_workflow_pins_actions_and_grants_no_secret_access():
     assert "pull_request_target" not in text
 
 
-def test_render_blueprint_deploys_the_stateless_backend_from_develop():
+def test_render_blueprint_deploys_the_stateless_backend_from_main():
     blueprint = yaml.safe_load(RENDER_BLUEPRINT.read_text(encoding="utf-8"))
     assert isinstance(blueprint, dict)
     assert len(blueprint["services"]) == 1
@@ -90,7 +90,7 @@ def test_render_blueprint_deploys_the_stateless_backend_from_develop():
     assert service["name"] == "aegis-demo-api"
     assert service["runtime"] == "python"
     assert "rootDir" not in service
-    assert service["branch"] == "develop"
+    assert service["branch"] == "main"
     assert service["plan"] == "free"
     assert service["autoDeployTrigger"] == "commit"
     assert service["healthCheckPath"] == "/health"

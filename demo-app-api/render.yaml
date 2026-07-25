@@ -2,7 +2,7 @@ services:
   - type: web
     name: aegis-demo-api
     runtime: python
-    branch: develop
+    branch: main
     plan: free
     autoDeployTrigger: commit
     healthCheckPath: /health

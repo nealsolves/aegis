@@ -1,8 +1,7 @@
 # AEGIS Operations Runbook (`v0.9.0` Beta)
 
-This runbook covers the `aegis-ai-governance==0.9.0b1` beta candidate. The
-candidate is merged on `develop`, not on `main`, and is not yet published to
-PyPI.
+This runbook covers the `aegis-ai-governance==0.9.0b1` public beta released
+from `main`.
 
 ## Core Validation Commands
 

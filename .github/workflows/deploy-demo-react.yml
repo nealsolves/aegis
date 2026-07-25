@@ -3,7 +3,7 @@ name: Deploy beta demo to GitHub Pages
 on:
   push:
     branches:
-      - develop
+      - main
     paths:
       - ".github/workflows/deploy-demo-react.yml"
       - "demo-app-react/**"
@@ -23,7 +23,7 @@ jobs:
       pages: read
 
     steps:
-      - name: Check out develop
+      - name: Check out main
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
