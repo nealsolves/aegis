@@ -128,6 +128,50 @@ def test_release_matrix_records_the_merged_unpublished_candidate():
     assert "under review in PR #17" not in release_matrix
 
 
+def test_optional_adapter_reference_set_matches_the_packaged_submodules():
+    root = SCRIPT_PATH.parents[1]
+    external = root / "docs" / "reference" / "external"
+    adapter_index = (external / "README.md").read_text(encoding="utf-8")
+
+    assert (external / "BEDROCK_ADAPTER.md").exists()
+    assert not (external / "what-is-bedrock.md").exists()
+    for name in (
+        "BEDROCK_ADAPTER.md",
+        "A2A_ADAPTER.md",
+        "OPENAI_AGENTS_ADAPTER.md",
+    ):
+        assert name in adapter_index
+
+    bedrock = (external / "BEDROCK_ADAPTER.md").read_text(encoding="utf-8")
+    for anchor in (
+        "BedrockTraceAdapter",
+        "BedrockParticipantBinding",
+        "BedrockPreparedStep",
+        "agent alias ARN",
+        "require_trace",
+        "require_alias_backed_identity",
+        "host owns",
+        "not re-exported",
+    ):
+        assert anchor in bedrock
+
+
+def test_adapter_guides_use_packaged_candidate_status_and_exact_extra_install():
+    root = SCRIPT_PATH.parents[1]
+    external = root / "docs" / "reference" / "external"
+    a2a = (external / "A2A_ADAPTER.md").read_text(encoding="utf-8")
+    openai = (external / "OPENAI_AGENTS_ADAPTER.md").read_text(encoding="utf-8")
+
+    for text in (a2a, openai):
+        lower = text.lower()
+        assert "aegis-ai-governance==0.9.0b1" in text
+        assert "not re-exported" in lower
+        assert "source-only" not in lower
+        assert "local-only" not in lower
+
+    assert 'pip install "aegis-ai-governance[openai-agents]"' in openai
+
+
 REFERENCE_TABLE = """
 | PR | Branch | Goal |
 |----|--------|------|
