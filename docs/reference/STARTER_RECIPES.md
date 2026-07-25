@@ -1,5 +1,8 @@
 # AEGIS Workflow Starter Recipes
 
+These recipes target the unpublished
+`aegis-ai-governance==0.9.0b1` candidate on `develop`.
+
 Each section below covers one starter profile: how to generate it, what it
 contains, how to run it, what output to expect, and the key customization points.
 

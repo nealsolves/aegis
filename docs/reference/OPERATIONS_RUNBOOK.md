@@ -1,7 +1,8 @@
 # AEGIS Operations Runbook (`v0.9.0` Beta)
 
 This runbook covers the `aegis-ai-governance==0.9.0b1` beta candidate. The
-candidate is not yet published to PyPI.
+candidate is merged on `develop`, not on `main`, and is not yet published to
+PyPI.
 
 ## Core Validation Commands
 
@@ -123,15 +124,9 @@ evidence for graph/topology failures. Lint does not emit `severity` or
 default. It warns when exact source-bearing governance metadata or memory-like
 context lacks `source_ids`.
 
-Deferred PR-10d adapter gate: Bedrock alias-backed participant identity tests
-remain blocked until PR-10a surfaces are present.
-
-Deferred PR-10d adapter gate: A2A capability and protocol mismatch tests remain
-blocked until PR-10b surfaces are present.
-
-Deferred PR-10d adapter gate: OpenAI Agents SDK capability mismatch and
-unsupported dynamic-tool tests remain blocked until PR-10c surfaces are present
-on this target branch.
+The Bedrock alias-backed identity, A2A capability/protocol, and OpenAI Agents
+capability/dynamic-tool gates are implemented with deterministic fixture tests.
+No live provider credentials or calls are required for the adapter matrix.
 
 ## Beta Scope Boundaries
 
@@ -140,9 +135,16 @@ Not in the current beta surface:
 - `AgentIdentity`
 - `AgentCapabilityManifest`
 - `ValidatorHook` as a public API
-- `BedrockTraceAdapter`
-- `A2AAdapter`
 - gRPC workflow transport support
 
 The PR-10d `ValidatorHook` examples are internal tests only and are not public
 integration guidance.
+
+Packaged optional submodules:
+
+- `aegis.bedrock_adapter`, including `BedrockTraceAdapter`
+- `aegis.a2a_adapter`, including `A2AAdapter`
+- `aegis.openai_agents_adapter`, gated by the `openai-agents` extra
+
+They are not top-level `aegis` re-exports. The host owns provider SDK clients,
+credentials, transport, retries, orchestration, and model/tool execution.

@@ -10,6 +10,7 @@ but integrations continue to use `import aegis` and the `aegis` CLI. The
 candidate is not yet published to PyPI. The target-state `1.0.0` architecture
 contract is captured separately in
 [docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md](architecture/AEGIS_HIGH_LEVEL_DESIGN.md).
+The candidate is merged on `develop`, not on `main`.
 
 The candidate includes `AEGIS.open_session(...)`, `GovernanceSession`, and
 `SessionPreCallResult`. This is beta, not yet stable.

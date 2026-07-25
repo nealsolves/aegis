@@ -15,8 +15,16 @@ This DSL governs:
 - conditional guard logic
 - tool usage constraints
 - retry behavior
+- workflow participants, sequencing, transitions, handoffs, budgets,
+  escalation, and protocol evidence constraints
 
 The DSL is data, not executable policy code.
+
+The authoritative schema is implemented in both
+`schemas/policy_dsl.schema.json` and the packaged
+`aegis/schemas/policy_dsl.schema.json`. The
+`aegis-ai-governance==0.9.0b1` candidate on `develop` supports the invocation
+fields and the `workflow` section documented below.
 
 ## Design Intent
 
@@ -194,6 +202,89 @@ guards:
           - verified_signature
 ```
 
+### `workflow`
+
+Intent: constrain a stateful `GovernanceSession` without making AEGIS the
+application's orchestrator.
+
+Implemented workflow fields:
+
+- `max_steps` and `max_total_tool_calls` — session budgets
+- `participants` — stable participant IDs with optional roles, protocols, and
+  host-owned `manifest_ref` metadata
+- `required_sequence` — the required ordered step sequence
+- `allowed_transitions` — allowed next-step graph
+- `allowed_agent_roles` — workflow-wide role restriction
+- `handoffs` — allowed `from`/`to` participant pairs
+- `escalation.require_approval_after_steps` and
+  `escalation.require_approval_for_roles` — approval policy; resulting
+  `approval_checkpoints` are recorded in workflow evidence
+- `protocol_constraints` — named constraints for `local`, `bedrock`, `a2a`,
+  and `openai_agents` evidence
+
+Example:
+
+```yaml
+policy_version: "1.0"
+roles:
+  - planner
+  - reviewer
+pre_conditions:
+  required:
+    source_present:
+      type: boolean
+workflow:
+  max_steps: 3
+  max_total_tool_calls: 4
+  participants:
+    - id: planner-agent
+      roles: [planner]
+      protocols: [local]
+    - id: reviewer-agent
+      roles: [reviewer]
+      protocols: [local]
+  required_sequence:
+    - draft
+    - review
+    - publish
+  allowed_transitions:
+    draft: [review]
+    review: [publish]
+    publish: []
+  allowed_agent_roles:
+    - planner
+    - reviewer
+  handoffs:
+    - from: planner-agent
+      to: reviewer-agent
+  escalation:
+    require_approval_after_steps: 2
+    require_approval_for_roles:
+      - reviewer
+  protocol_constraints:
+    local:
+      source_ids_required: true
+```
+
+Source requirements are expressed through ordinary invocation preconditions or
+gates, as shown by `source_present`; `source_constraints` is not a separate DSL
+key. The regulated starter combines this pattern with provenance enforcement.
+
+The accepted scaffold profiles are `minimal`, `standard`, and
+`regulated-high-assurance`. They are CLI inputs, not policy fields:
+
+```bash
+aegis policy init --profile minimal
+aegis workflow init --profile standard
+aegis workflow lint governance/
+aegis workflow doctor governance/
+aegis workflow trace --input audit.jsonl
+aegis workflow export --input audit.jsonl --mode audit
+```
+
+`ValidatorHook` is an internal implementation mechanism in this beta and is not
+part of the public policy DSL or public SDK contract.
+
 ## Common Use Patterns
 
 ### Role-Specific Hardening
@@ -252,7 +343,7 @@ The canonical schema is `schemas/policy_dsl.schema.json`. Always validate
 policies against that file. Do not rely on inline copies, which may lag
 behind the canonical schema.
 
-Top-level properties defined in the canonical schema (v0.3.0):
+Top-level properties defined in the canonical schema:
 
 - `extends` — path to base policy for composition
 - `composition_strategy` — merge strategy: `intersect`, `union`, `replace`
@@ -269,3 +360,5 @@ Top-level properties defined in the canonical schema (v0.3.0):
 - `post_conditions` — postconditions
 - `output_schema` — JSON Schema for output validation
 - `guards` — conditional policy activation rules
+- `workflow` — participants, sequence/transitions, budgets, handoffs,
+  escalation approvals, and protocol constraints

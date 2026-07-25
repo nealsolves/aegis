@@ -4,7 +4,19 @@ This document defines the non-negotiable engineering invariants of the AEGIS Gov
 
 These invariants exist to prevent architectural drift.
 
-Current runtime baseline: `v0.3.3`, with audit schema `v1.4`.
+Current candidate baseline: `aegis-ai-governance==0.9.0b1` on `develop`, with
+audit schema `v1.4`. It is not on `main` or published to PyPI.
+
+The packaged beta public surface adds `AEGIS.open_session(...)`,
+`GovernanceSession`, `SessionPreCallResult`, `aegis workflow init`,
+`aegis workflow lint`, `aegis workflow doctor`, `aegis workflow trace`, and
+`aegis workflow export`. Workflow checks wrap the invocation kernel; they do not
+change its ordered gates.
+
+`ValidatorHook` remains internal, not public. `AgentIdentity` and
+`AgentCapabilityManifest` are not current public types. Bedrock, A2A, and
+OpenAI Agents integrations are optional public submodules, not top-level
+re-exports.
 
 Any change that violates these invariants must not be merged.
 

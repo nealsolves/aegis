@@ -56,6 +56,78 @@ def test_documentation_inventory_rejects_an_unclassified_tracked_doc(
     ]
 
 
+def test_authoritative_policy_dsl_documents_the_workflow_schema():
+    policy_dsl_spec = (
+        SCRIPT_PATH.parents[1] / "policies" / "policy_dsl_spec.md"
+    ).read_text(encoding="utf-8")
+
+    for anchor in (
+        "workflow",
+        "participants",
+        "sequence",
+        "budgets",
+        "approval_checkpoints",
+        "protocol_constraints",
+    ):
+        assert anchor in policy_dsl_spec
+
+
+def test_current_architecture_docs_describe_the_packaged_workflow_surface():
+    root = SCRIPT_PATH.parents[1]
+    for rel in (
+        "docs/architecture/ARCHITECTURAL_INVARIANTS.md",
+        "docs/architecture/ENFORCEMENT_PIPELINE.md",
+    ):
+        text = (root / rel).read_text(encoding="utf-8")
+        for anchor in (
+            "0.9.0b1",
+            "GovernanceSession",
+            "workflow trace",
+            "workflow export",
+        ):
+            assert anchor in text, f"{rel} must include {anchor!r}"
+
+    hld = (root / "docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Packaged beta public surface" in hld
+    assert "Internal, not public" in hld
+    assert "Not current public types" in hld
+    assert "`ValidatorHook`" in hld
+    assert "`AgentIdentity`" in hld
+    assert "`AgentCapabilityManifest`" in hld
+
+
+def test_unpublished_quickstart_does_not_claim_a_candidate_git_tag():
+    root = SCRIPT_PATH.parents[1]
+    quickstart = (root / "docs/reference/WORKFLOW_QUICKSTART.md").read_text(
+        encoding="utf-8"
+    )
+    normalized = " ".join(quickstart.lower().split())
+
+    assert "git checkout v0.9.0b1" not in quickstart
+    assert 'pip install -e ".[dev]"' in quickstart
+    assert "after publication" in normalized
+
+
+def test_release_matrix_records_the_merged_unpublished_candidate():
+    root = SCRIPT_PATH.parents[1]
+    release_matrix = (root / "docs/reference/RELEASE_MATRIX.md").read_text(
+        encoding="utf-8"
+    )
+
+    for anchor in (
+        "8be5f54",
+        "PR #17",
+        "merged",
+        "Pending Trusted Publisher",
+        "not on `main`",
+        "not yet published to PyPI",
+    ):
+        assert anchor in release_matrix
+    assert "under review in PR #17" not in release_matrix
+
+
 REFERENCE_TABLE = """
 | PR | Branch | Goal |
 |----|--------|------|

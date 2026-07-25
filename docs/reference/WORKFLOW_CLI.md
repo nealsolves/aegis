@@ -1,5 +1,9 @@
 # AEGIS Workflow CLI Guide (`v0.9.0` Beta)
 
+These commands ship in the unpublished
+`aegis-ai-governance==0.9.0b1` candidate on `develop`. They remain under the
+`aegis` console command.
+
 The beta CLI covers six workflow-adoption commands:
 
 - `aegis policy init`
