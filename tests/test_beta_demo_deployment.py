@@ -36,7 +36,10 @@ def test_pages_workflow_builds_and_deploys_only_the_develop_beta():
 
     build = workflow["jobs"]["build"]
     deploy = workflow["jobs"]["deploy"]
-    assert build["permissions"] == {"contents": "read"}
+    assert build["permissions"] == {
+        "contents": "read",
+        "pages": "read",
+    }
     assert deploy["needs"] == "build"
     assert deploy["permissions"] == {
         "pages": "write",

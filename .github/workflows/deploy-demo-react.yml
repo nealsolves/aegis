@@ -20,6 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      pages: read
     env:
       VITE_API_URL: ${{ vars.VITE_API_URL }}
 
