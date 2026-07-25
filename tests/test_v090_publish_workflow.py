@@ -64,6 +64,18 @@ def test_build_job_proves_the_fresh_wheel_workflow_before_upload():
     ) in build_commands
 
 
+def test_build_job_installs_backend_for_no_isolation_packaging_smoke():
+    _, workflow = _load_workflow()
+    install_step = next(
+        step
+        for step in workflow["jobs"]["build"]["steps"]
+        if step["name"] == "Install validation and build dependencies"
+    )
+
+    assert '"setuptools"' in install_step["run"]
+    assert ' -e ".[dev]"' in install_step["run"]
+
+
 def test_publish_workflow_pins_every_action_to_a_full_commit():
     text, _ = _load_workflow()
     uses = re.findall(r"^\s*uses:\s*([^@\s]+)@([0-9a-f]+)", text, re.MULTILINE)
