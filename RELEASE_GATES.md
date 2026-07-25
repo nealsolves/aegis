@@ -1,8 +1,8 @@
 # Release Gates
 
 This file tracks the release gates for the `v0.9.0` beta train.
-The published package/runtime metadata remains `0.3.3` until an intentional
-package release is cut; `v0.9.0` is the source-only beta train.
+The package candidate is `aegis-ai-governance==0.9.0b1`; it preserves
+`import aegis` and the `aegis` CLI and is not yet published to PyPI.
 
 Do NOT open or merge a PR from `origin/develop` -> `origin/main` until
 `v0.9.0` is formally declared a GO.

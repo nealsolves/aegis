@@ -4,34 +4,32 @@ This document is the primary onboarding reference for integrating AEGIS into you
 It contains a minimal hello-world example, a realistic production integration, the available
 extension points, and a troubleshooting/FAQ section.
 
-It describes the current public runtime surface for the shipped `v0.3.3`
-package and CLI plus the source-only `v0.9.0` beta workflow surface that lives
-on local `develop`. The target-state `1.0.0` architecture contract, including
-later adapters and exports, is captured separately in
+It describes the public runtime surface packaged in the
+`aegis-ai-governance==0.9.0b1` beta candidate. The distribution name changes,
+but integrations continue to use `import aegis` and the `aegis` CLI. The
+candidate is not yet published to PyPI. The target-state `1.0.0` architecture
+contract is captured separately in
 [docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md](architecture/AEGIS_HIGH_LEVEL_DESIGN.md).
 
-The following surfaces are available in the source-only `v0.9.0` beta line and
-are not part of the installable `v0.3.3` artifact: `AEGIS.open_session(...)`,
-`GovernanceSession`, and `SessionPreCallResult`. This is beta, not yet stable.
+The candidate includes `AEGIS.open_session(...)`, `GovernanceSession`, and
+`SessionPreCallResult`. This is beta, not yet stable.
 There is no module-level `open_session()` convenience — workflow adoption is
 always instance-scoped through `AEGIS.open_session(...)`.
 
 See [docs/reference/WORKFLOW_QUICKSTART.md](reference/WORKFLOW_QUICKSTART.md)
 for the fastest path to a working workflow with these surfaces.
 
-Also available in the source-only `v0.9.0` beta line: `aegis workflow init`,
+Also available in the `v0.9.0` beta candidate: `aegis workflow init`,
 `aegis policy init`, `aegis workflow lint`, `aegis workflow doctor`,
 `aegis.presets.MinimalPreset`, `aegis.presets.StandardPreset`,
 `aegis.presets.RegulatedHighAssurancePreset`, `WorkflowStarterIntegrityError`,
 and `docs/migration.md` (migration guide from invocation-only to workflow
 governance). This is beta, not yet stable.
 
-The following surfaces remain planned-only beyond `v0.9.0` beta and are not
-part of the `v0.3.3` artifact or the current beta public surface:
-`AgentIdentity`, `AgentCapabilityManifest`, `ValidatorHook`,
-`BedrockTraceAdapter`, and `A2AAdapter`. Do not build integrations against
-those names until they ship through the public package exports, instance API,
-CLI surface, and contract tests.
+`aegis.bedrock_adapter`, `aegis.a2a_adapter`, and
+`aegis.openai_agents_adapter` are included optional submodules and are not
+top-level re-exports. `AgentIdentity`, `AgentCapabilityManifest`, and
+`ValidatorHook` remain outside the current public surface.
 
 `aegis workflow trace` and `aegis workflow export` shipped in PR-09 and are part
 of the current beta CLI surface.
@@ -47,11 +45,13 @@ Install and run governance enforcement in under five minutes.
 
 ### 1.1 Install
 
+After publication:
+
 ```bash
-pip install aegis
+pip install aegis-ai-governance==0.9.0b1
 ```
 
-Or from source (editable, with dev dependencies):
+Before publication, install from source (editable, with dev dependencies):
 
 ```bash
 git clone https://github.com/nealsolves/aegis

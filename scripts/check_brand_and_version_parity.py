@@ -9,8 +9,8 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-RUNTIME_VERSION = "0.3.3"
-SOURCE_BETA = "v0.9.0"
+CANDIDATE_DISTRIBUTION = "aegis-ai-governance"
+RUNTIME_VERSION = "0.9.0b1"
 CORE_DOCS = [
     "README.md",
     "PROJECT.md",
@@ -41,6 +41,11 @@ def _pyproject_version() -> str | None:
     return match.group(1) if match else None
 
 
+def _pyproject_name() -> str | None:
+    match = re.search(r'^name\s*=\s*"([^"]+)"', _read("pyproject.toml"), re.MULTILINE)
+    return match.group(1) if match else None
+
+
 def main() -> int:
     errors: list[str] = []
     repo_root_str = str(REPO_ROOT)
@@ -48,16 +53,20 @@ def main() -> int:
         sys.path.insert(0, repo_root_str)
     aegis = importlib.import_module("aegis")
 
+    if _pyproject_name() != CANDIDATE_DISTRIBUTION:
+        errors.append(
+            f"pyproject.toml distribution must be {CANDIDATE_DISTRIBUTION}"
+        )
     if _pyproject_version() != RUNTIME_VERSION:
-        errors.append(f"pyproject.toml version must remain {RUNTIME_VERSION}")
+        errors.append(f"pyproject.toml version must be {RUNTIME_VERSION}")
     if getattr(aegis, "__version__", None) != RUNTIME_VERSION:
-        errors.append(f"aegis.__version__ must remain {RUNTIME_VERSION}")
+        errors.append(f"aegis.__version__ must be {RUNTIME_VERSION}")
 
     for rel in CORE_DOCS:
         text = _read(rel)
         lower = text.lower()
         if RUNTIME_VERSION not in text:
-            errors.append(f"{rel} does not mention shipped runtime {RUNTIME_VERSION}")
+            errors.append(f"{rel} does not mention candidate runtime {RUNTIME_VERSION}")
         if "0.9.0" in text and "beta" not in lower and "release/v0.9.0" not in lower:
             errors.append(f"{rel} mentions 0.9.0 without beta/release context")
 
@@ -67,10 +76,13 @@ def main() -> int:
             errors.append(f"{rel} contains stale aigc CLI command")
 
     readme = _read("README.md")
-    if f"source-only `{SOURCE_BETA}`" not in readme:
-        errors.append("README.md must label v0.9.0 as source-only beta")
-    if "shipped PyPI package remains `v0.3.3`" not in readme:
-        errors.append("README.md must keep PyPI package release boundary explicit")
+    if (
+        f"Distribution candidate: `{CANDIDATE_DISTRIBUTION}=={RUNTIME_VERSION}`"
+        not in readme
+    ):
+        errors.append("README.md must identify the exact distribution candidate")
+    if "not yet published to PyPI" not in readme:
+        errors.append("README.md must keep the publication boundary explicit")
 
     if errors:
         print("Brand/version parity failed:", file=sys.stderr)

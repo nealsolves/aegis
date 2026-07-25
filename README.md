@@ -12,17 +12,19 @@ Governance in AEGIS is runtime enforcement, not documentation and not prompting.
 
 ## At a Glance
 
-- Package: `pip install aegis`
+- Distribution candidate: `aegis-ai-governance==0.9.0b1`
 - Import: `import aegis`
-- Current release: `v0.3.3` on `2026-04-10`
+- CLI: `aegis`
+- Candidate status: beta artifact, not yet published to PyPI
+- Previous PyPI line: `aegis==0.3.3` (`2026-04-10`)
 - Release matrix: [docs/reference/RELEASE_MATRIX.md](docs/reference/RELEASE_MATRIX.md)
 - Current release scope: invocation governance plus workflow-aware provenance
   and lineage groundwork, audit schema `v1.4`, `AuditLineage`,
   `ProvenanceGate`, `RiskHistory`, `@governed` defaults to split enforcement
-- Current beta line: source-only `v0.9.0` workflow governance; the shipped
-  PyPI package remains `v0.3.3`
-- Verification baseline: `1816 base-package tests`, plus `19` optional OpenAI
-  Agents integration tests when the `openai-agents` extra is installed;
+- Current beta line: `v0.9.0`, packaged as
+  `aegis-ai-governance==0.9.0b1`
+- Verification baseline: `1899 tests` pass in the candidate environment,
+  including fixture-based optional-adapter coverage;
   coverage remains above the `90%` CI gate
 
 ## Threat Model
@@ -65,24 +67,26 @@ Since v0.3.3, split enforcement is the default — Phase A runs before the model
 call, Phase B validates output after. Pass `pre_call_enforcement=False` for the
 legacy unified mode (deprecated).
 
-The source-only `v0.9.0` beta line adds workflow governance built around
+The `v0.9.0` beta candidate adds workflow governance built around
 `AEGIS.open_session(...)`, `GovernanceSession`, `SessionPreCallResult`,
 `aegis workflow init`, `aegis policy init`, `aegis workflow lint`,
 `aegis workflow doctor`, `aegis workflow trace`, and
 `aegis workflow export`. No external API keys are required for the default
-adopter path. The currently shipped PyPI package remains `v0.3.3`.
+adopter path. The `aegis-ai-governance==0.9.0b1` candidate is not yet
+published to PyPI.
 
-Optional Bedrock, A2A, and OpenAI Agents adapters are source-only beta
-submodules. They are not re-exported from top-level `aegis`; the OpenAI Agents
-adapter requires `aegis[openai-agents]`. See the
+Optional Bedrock, A2A, and OpenAI Agents adapters are beta submodules included
+in the candidate wheel. They are not re-exported from top-level `aegis`; the
+OpenAI Agents adapter requires
+`aegis-ai-governance[openai-agents]`. See the
 [release matrix](docs/reference/RELEASE_MATRIX.md) for exact channel and ref
 status. The target-state architecture is captured in
 `docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md`.
 
 ## Workflow Governance (v0.9.0 Beta)
 
-Workflow governance is available in the source-only `v0.9.0` beta line. No
-external API keys are required. Install from source, then:
+Workflow governance is available in the `v0.9.0` beta candidate. No external
+API keys are required. Install the candidate from source, then:
 
 ```bash
 aegis workflow init --profile minimal
@@ -133,14 +137,21 @@ release by release.
   including audit schema `v1.4` provenance metadata, `AuditLineage`,
   `ProvenanceGate`, `RiskHistory`, and `@governed` defaulting to split
   enforcement.
+- `0.9.0b1` (candidate): workflow sessions, starter profiles, diagnostics,
+  trace/export operations, and optional adapter submodules, distributed as
+  `aegis-ai-governance` while preserving `import aegis` and the `aegis` CLI.
 
 For the full change log, use [CHANGELOG.md](CHANGELOG.md).
 
 ## Installation
 
+After the candidate is published to PyPI:
+
 ```bash
-pip install aegis
+pip install aegis-ai-governance==0.9.0b1
 ```
+
+Until then, install from this checkout:
 
 Editable install from source:
 
@@ -255,10 +266,9 @@ The `aegis` console script exposes three practical commands:
   include DAG-level lineage analysis (node counts, duplicate detection,
   root/leaf/orphan lists, cycle detection)
 
-The source-only `v0.9.0` beta line adds `aegis workflow init`,
+The `v0.9.0` beta candidate adds `aegis workflow init`,
 `aegis policy init`, `aegis workflow lint`, `aegis workflow doctor`,
-`aegis workflow trace`, and `aegis workflow export`. The current PyPI release
-(`v0.3.3`) CLI surface is unchanged.
+`aegis workflow trace`, and `aegis workflow export`.
 
 ## SDK Package Boundary
 
@@ -273,9 +283,9 @@ aegis/
 ├── session.py                     v0.9.0-beta workflow session surface
 ├── workflow_trace.py              v0.9.0-beta trace helpers
 ├── workflow_export.py             v0.9.0-beta export helpers
-├── a2a_adapter.py                 Optional source-only A2A adapter
-├── bedrock_adapter.py             Optional source-only Bedrock adapter
-├── openai_agents_adapter.py       Optional source-only OpenAI Agents adapter
+├── a2a_adapter.py                 Optional beta A2A adapter
+├── bedrock_adapter.py             Optional beta Bedrock adapter
+├── openai_agents_adapter.py       Optional beta OpenAI Agents adapter
 ├── schemas/                       Runtime JSON Schemas packaged with the SDK
 └── _internal/                     Private implementation used by public modules
 ```

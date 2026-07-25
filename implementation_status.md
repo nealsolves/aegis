@@ -1,7 +1,8 @@
 # Implementation Status
 
 **Target Version:** `0.9.0` Beta
-**Baseline Version:** `0.3.3`
+**Package Candidate:** `aegis-ai-governance==0.9.0b1`
+**Previous PyPI Line:** `aegis==0.3.3`
 **Active Branch:** `feat/v0.9-12-pypi-distribution`
 **Last Updated:** 2026-07-24
 
@@ -17,7 +18,7 @@
 | Project owner | Neal Adams |
 | Escalation owner | neal@nealsolves.com |
 | Remote actions | Disabled; no push, pull request, merge, release, or deployment authority is configured |
-| Current gate | Packaging specification and policy evaluation |
+| Current gate | Local validation complete; release evidence pending |
 | Bootstrap decision | `BOOTSTRAP-2026-07-24-AEGIS-SDD` |
 | Baseline commit | `73f1bfc494dd5290a7e579069b3cad72e33457ed` |
 
@@ -33,8 +34,8 @@ must be updated only after their specific evidence exists.
 - PR-10a, PR-10b, PR-10c, and PR-10d adapter and safety tracks are complete
   and merged on `origin/develop`.
 - PR-11's full functional test harness is merged through pull request #14.
-- The `v0.9.0` distribution and public release have not been cut; the shipped
-  package baseline remains `0.3.3`.
+- The `v0.9.0` package candidate is `aegis-ai-governance==0.9.0b1`; it has not
+  been published to PyPI.
 
 | Track | Status | Notes |
 |-------|--------|-------|
@@ -50,6 +51,7 @@ must be updated only after their specific evidence exists.
 | Optional adapters | complete | Bedrock, A2A, and OpenAI Agents adapter tracks are present on `develop` with fixture coverage |
 | Research safety addendum | complete | PR-10d graph/topology lint, doctor remediation, export rationale, and safety smoke tests are merged |
 | Beta functional gate | complete | PR-11 full functional test harness is merged; distribution and publication remain separate gates |
+| Distribution candidate | validating | `aegis-ai-governance==0.9.0b1` metadata, Trusted Publishing workflow, full suite, demo API, and fresh-wheel workflow proof are green; final evidence and review remain |
 
 ---
 
@@ -81,7 +83,7 @@ must be updated only after their specific evidence exists.
 | PR-10b | `feat/v0.9-10-a2a-adapter` | complete | Optional A2A adapter with strict wire-contract rules |
 | PR-10c | `feat/v0.9-10-openai-agents-adapter` | complete | Optional OpenAI Agents SDK adapter with governed tool binding and fail-closed surface rules |
 | PR-10d | `feat/v0.9-10d-research-safety-addendum` | complete | Research-informed lint, doctor, export, safety smoke, and adapter-fixture hardening |
-| PR-11 | `feat/v0.9-11-full-functional-test-harness` | complete | Full functional harness and fail-closed completion fix merged through pull request #14 |
+| PR-11 | `feat/v0.9-11-beta-freeze` -> `release/v0.9.0` | complete | Full functional harness and fail-closed completion fix merged through pull request #14 |
 
 ---
 

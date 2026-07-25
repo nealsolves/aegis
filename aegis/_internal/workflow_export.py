@@ -275,11 +275,21 @@ def _build_audit(
                 "invocation_artifact_checksum": cs,
                 "enforcement_result": inv.get("enforcement_result") if inv else None,
             }
-            if step.get("metadata") is not None:
-                step_summary["metadata"] = step["metadata"]
             governance_summary = _extract_governance_summary(step)
+            metadata = step.get("metadata")
+            if isinstance(metadata, dict):
+                safe_metadata = {
+                    key: value
+                    for key, value in metadata.items()
+                    if key != "governance"
+                }
+            else:
+                safe_metadata = {}
             if governance_summary is not None:
+                safe_metadata["governance"] = governance_summary
                 step_summary["governance"] = governance_summary
+            if safe_metadata:
+                step_summary["metadata"] = safe_metadata
             step_summaries.append(step_summary)
         sessions.append({
             "session_id": wa.get("session_id"),

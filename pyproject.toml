@@ -5,8 +5,8 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "aegis"
-version = "0.3.3"
+name = "aegis-ai-governance"
+version = "0.9.0b1"
 description = "Deterministic, fail-closed governance enforcement for AI model invocations."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -22,7 +22,7 @@ keywords = [
   "llm",
 ]
 classifiers = [
-  "Development Status :: 3 - Alpha",
+  "Development Status :: 4 - Beta",
   "Intended Audience :: Developers",
   "License :: OSI Approved :: Apache Software License",
   "Operating System :: OS Independent",
@@ -51,6 +51,7 @@ Changelog = "https://github.com/nealsolves/aegis/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = [
+  "build>=1.2",
   "pytest>=8.0",
   "pytest-cov>=6.0",
   "pytest-asyncio>=1.0",

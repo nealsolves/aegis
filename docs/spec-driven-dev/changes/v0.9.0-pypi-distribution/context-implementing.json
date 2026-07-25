@@ -136,13 +136,13 @@
       "value": false
     },
     "modifies_runtime_code": {
-      "confidence": 0.98,
+      "confidence": 1.0,
       "corroboration": [],
       "extractor": "codex-repository-fact-extractor-v1",
       "observed_at_change": "bef51b8878459af23fcc52067c038db447cf611afaa41797c6291d87cfee8fb5",
-      "source_ref": "docs/spec-driven-dev/changes/v0.9.0-pypi-distribution/spec.md",
-      "source_type": "approved_scope_analysis",
-      "value": false
+      "source_ref": "aegis/_internal/workflow_export.py",
+      "source_type": "implementation_evidence",
+      "value": true
     }
   },
   "open_escalation": null,

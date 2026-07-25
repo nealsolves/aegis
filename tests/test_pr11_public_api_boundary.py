@@ -68,7 +68,7 @@ def test_core_public_imports_are_available():
     from aegis import GovernanceSession, SessionPreCallResult
     from aegis import enforce_invocation, enforce_pre_call, enforce_post_call
 
-    assert aegis.__version__ == "0.3.3"
+    assert aegis.__version__ == "0.9.0b1"
     assert AEGIS is aegis.AEGIS
     assert GovernanceSession is aegis.GovernanceSession
     assert SessionPreCallResult is aegis.SessionPreCallResult

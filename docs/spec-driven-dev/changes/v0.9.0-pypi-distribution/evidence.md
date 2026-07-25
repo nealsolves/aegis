@@ -14,7 +14,7 @@ The intent hash is SHA-256 over the exact base commit plus SHA-256 records for
 | Fact | Value | Confidence | Evidence |
 |---|---:|---:|---|
 | `documentation_only` | false | 1.0 | package metadata, executable checks, tests, and a release workflow change |
-| `modifies_runtime_code` | false | 0.98 | no governance behavior or `aegis/_internal` change is planned |
+| `modifies_runtime_code` | true | 1.0 | fresh-wheel proof exposed and repaired audit-mode governance metadata leakage in `aegis/_internal/workflow_export.py` |
 | `changes_public_contract` | true | 1.0 | install name and published version change |
 | `adds_external_dependency` | true | 1.0 | release tooling and pinned GitHub actions are introduced |
 | `changes_infrastructure` | true | 1.0 | `.github/workflows/publish.yml` is added |
@@ -76,3 +76,17 @@ truth.
 Before publication, revert the implementation commits. Remote, release, and
 production actions remain disabled by `.claude/project.yaml`, so this local
 work cannot publish through policy.
+
+## Implementation Evidence
+
+- Distribution contract tests first failed on `aegis` / `0.3.3`, then passed
+  after the metadata change.
+- The publishing workflow contract first failed because `publish.yml` was
+  absent, then passed with exact action commit pins and job-scoped OIDC.
+- Fresh-wheel proof exposed raw governance metadata in audit mode. Regression
+  tests reproduced the leak before the implementation was narrowed to preserve
+  normalized adapter metadata while redacting the governance subtree.
+- Repository suite: `1899 passed, 2 skipped` on Python 3.12.
+- Final artifact and installed-workflow details are emitted by
+  `scripts/validate_v090_distribution_candidate.py`; publication remains
+  prohibited.
