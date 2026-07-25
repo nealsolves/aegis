@@ -1,7 +1,6 @@
 # AEGIS Supported Environments (v0.9.0 Beta)
 
-This matrix applies to the unpublished
-`aegis-ai-governance==0.9.0b1` candidate on `develop`.
+This matrix applies to the `aegis-ai-governance==0.9.0b1` public beta.
 
 ## Python versions
 

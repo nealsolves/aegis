@@ -5,12 +5,11 @@ It contains a minimal hello-world example, a realistic production integration, t
 extension points, and a troubleshooting/FAQ section.
 
 It describes the public runtime surface packaged in the
-`aegis-ai-governance==0.9.0b1` beta candidate. The distribution name changes,
+`aegis-ai-governance==0.9.0b1` public beta. The distribution name changes,
 but integrations continue to use `import aegis` and the `aegis` CLI. The
-candidate is not yet published to PyPI. The target-state `1.0.0` architecture
-contract is captured separately in
+target-state `1.0.0` architecture contract is captured separately in
 [docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md](architecture/AEGIS_HIGH_LEVEL_DESIGN.md).
-The candidate is merged on `develop`, not on `main`.
+The release source is `main`.
 
 Source, tags, and release artifacts for versions before `0.9.0` remain in
 [`nealsolves/aigc`](https://github.com/nealsolves/aigc). This repository is the
@@ -50,13 +49,12 @@ Install and run governance enforcement in under five minutes.
 
 ### 1.1 Install
 
-After publication:
-
 ```bash
 pip install aegis-ai-governance==0.9.0b1
 ```
 
-Before publication, install from source (editable, with dev dependencies):
+Source contributors may instead install `main` in editable mode with
+development dependencies:
 
 ```bash
 git clone https://github.com/nealsolves/aegis

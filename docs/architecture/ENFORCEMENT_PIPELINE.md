@@ -4,10 +4,10 @@ This document describes how governance enforcement occurs for every AI invocatio
 
 The enforcement pipeline is deterministic and fail-closed.
 
-Current candidate: `aegis-ai-governance==0.9.0b1` on `develop`, not on `main`
-or PyPI. `GovernanceSession` wraps this unchanged invocation pipeline for each
-workflow step. The shipped operator surface includes `aegis workflow trace`
-and `aegis workflow export`.
+Current public beta: `aegis-ai-governance==0.9.0b1`, released from `main`.
+`GovernanceSession` wraps this unchanged invocation pipeline for each workflow
+step. The shipped operator surface includes `aegis workflow trace` and
+`aegis workflow export`.
 
 Packaged beta public surface: `AEGIS.open_session(...)`, `GovernanceSession`,
 `SessionPreCallResult`, workflow init/lint/doctor/trace/export, and optional
@@ -301,9 +301,9 @@ Failure codes:
 
 ---
 
-## Workflow Governance (`0.9.0b1` Candidate)
+## Workflow Governance (`0.9.0b1` Public Beta)
 
-The unpublished candidate includes the initial `GovernanceSession` primitive.
+The public beta includes the initial `GovernanceSession` primitive.
 A session manages:
 
 * step sequencing

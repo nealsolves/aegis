@@ -23,8 +23,8 @@ The DSL is data, not executable policy code.
 The authoritative schema is implemented in both
 `schemas/policy_dsl.schema.json` and the packaged
 `aegis/schemas/policy_dsl.schema.json`. The
-`aegis-ai-governance==0.9.0b1` candidate on `develop` supports the invocation
-fields and the `workflow` section documented below.
+`aegis-ai-governance==0.9.0b1` supports the invocation fields and the
+`workflow` section documented below.
 
 ## Design Intent
 

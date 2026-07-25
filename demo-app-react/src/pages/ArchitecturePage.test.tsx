@@ -42,7 +42,7 @@ describe('ArchitecturePage', () => {
     }
   })
 
-  it('labels the page with the unpublished beta candidate', () => {
+  it('labels the page with the public beta release', () => {
     renderPage()
     expect(screen.getByText('AEGIS v0.9 Beta')).toBeInTheDocument()
     expect(screen.getByText('aegis-ai-governance==0.9.0b1')).toBeInTheDocument()

@@ -98,7 +98,7 @@ def test_current_architecture_docs_describe_the_packaged_workflow_surface():
     assert "`AgentCapabilityManifest`" in hld
 
 
-def test_unpublished_quickstart_does_not_claim_a_candidate_git_tag():
+def test_released_quickstart_installs_the_pypi_distribution():
     root = SCRIPT_PATH.parents[1]
     quickstart = (root / "docs/reference/WORKFLOW_QUICKSTART.md").read_text(
         encoding="utf-8"
@@ -106,8 +106,9 @@ def test_unpublished_quickstart_does_not_claim_a_candidate_git_tag():
     normalized = " ".join(quickstart.lower().split())
 
     assert "git checkout v0.9.0b1" not in quickstart
-    assert 'pip install -e ".[dev]"' in quickstart
-    assert "after publication" in normalized
+    assert "pip install aegis-ai-governance==0.9.0b1" in quickstart
+    assert "git switch develop" not in quickstart
+    assert "after publication" not in normalized
 
 
 def test_release_matrix_separates_package_and_current_docs_baselines():

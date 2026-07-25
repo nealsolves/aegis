@@ -4,8 +4,8 @@ This document defines the non-negotiable engineering invariants of the AEGIS Gov
 
 These invariants exist to prevent architectural drift.
 
-Current candidate baseline: `aegis-ai-governance==0.9.0b1` on `develop`, with
-audit schema `v1.4`. It is not on `main` or published to PyPI.
+Current public beta baseline: `aegis-ai-governance==0.9.0b1`, released from
+`main` with audit schema `v1.4`.
 
 The packaged beta public surface adds `AEGIS.open_session(...)`,
 `GovernanceSession`, `SessionPreCallResult`, `aegis workflow init`,

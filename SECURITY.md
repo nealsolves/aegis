@@ -4,13 +4,14 @@
 
 | Version | Supported          |
 | ------- | ------------------ |
+| 0.9.0b1 | Yes (public beta)  |
 | 0.3.x   | Yes                |
 | 0.2.x   | Security fixes only |
 | 0.1.x   | No                 |
 
-`aegis-ai-governance==0.9.0b1` is an unpublished pre-release candidate on
-`develop`, not a new support commitment. The table above remains the support
-policy until a release explicitly changes it.
+`aegis-ai-governance==0.9.0b1` is the public beta released from `main`. Beta
+users receive the same responsible-disclosure handling and response targets
+documented below.
 
 ## Reporting a Vulnerability
 

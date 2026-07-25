@@ -10,8 +10,8 @@ This document assumes an adversarial environment.
 
 Current candidate boundary: `aegis-ai-governance==0.9.0b1` adds
 `GovernanceSession`, workflow lifecycle and budget checks, the workflow
-trace/export operator surface, and optional adapter submodules. The candidate
-is on `develop`, not `main` or PyPI. The host still owns model calls, tools,
+trace/export operator surface, and optional adapter submodules. The public beta
+is released from `main`. The host still owns model calls, tools,
 transport, credentials, retries, and orchestration; adapter input is
 host-supplied evidence and remains untrusted until normalized and enforced.
 

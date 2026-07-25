@@ -5,8 +5,8 @@ How to integrate AEGIS governance into any system that invokes AI models.
 For a copy-paste quickstart with runnable examples and troubleshooting, see the
 [Public Integration Contract](PUBLIC_INTEGRATION_CONTRACT.md).
 
-This guide covers the unpublished `aegis-ai-governance==0.9.0b1` candidate on
-`develop`. Use `import aegis` and the `aegis` CLI. For multi-step work, use
+This guide covers the public beta `aegis-ai-governance==0.9.0b1` release from
+`main`. Use `import aegis` and the `aegis` CLI. For multi-step work, use
 `AEGIS.open_session(...)` and `GovernanceSession`; the host remains responsible
 for model calls, tools, credentials, transport, retries, and orchestration. See
 [Workflow Quickstart](reference/WORKFLOW_QUICKSTART.md) for the smallest

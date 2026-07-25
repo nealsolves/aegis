@@ -243,7 +243,7 @@ def check_candidate_identity(manifest: dict) -> list[str]:
         "distribution_name": "aegis-ai-governance",
         "import_package": "aegis",
         "console_command": "aegis",
-        "candidate_status": "unpublished-beta",
+        "candidate_status": "released-beta",
     }
     for key, expected in required.items():
         if manifest.get(key) != expected:
@@ -281,11 +281,10 @@ def check_candidate_identity(manifest: dict) -> list[str]:
         )
 
     publication_markers = (
-        "not yet published to pypi",
-        "not published to pypi",
-        "unpublished",
-        "publication pending",
-        "pypi pending",
+        "public beta",
+        "released from `main`",
+        "distribution release",
+        "published on pypi",
     )
     for rel in manifest.get("candidate_truth_docs", []):
         path = REPO_ROOT / rel
@@ -300,7 +299,7 @@ def check_candidate_identity(manifest: dict) -> list[str]:
         if str(manifest.get("version", "")) not in text:
             errors.append(f"{prefix} {rel}: missing candidate version")
         if not any(marker in normalized for marker in publication_markers):
-            errors.append(f"{prefix} {rel}: missing unpublished candidate status")
+            errors.append(f"{prefix} {rel}: missing public beta release status")
         if "pr #17 under review" in lower or "pr-17 under review" in lower:
             errors.append(f"{prefix} {rel}: contains stale PR #17 review status")
     return errors
@@ -956,24 +955,24 @@ def check_implementation_truth(manifest: dict) -> list[str]:
     else:
         errors.append("[impl-truth] aegis/_internal/audit.py not found")
 
-    # 4. README.md exact distribution candidate
+    # 4. README.md exact distribution release
     readme_path = REPO_ROOT / "README.md"
     if readme_path.exists():
         text = readme_path.read_text(encoding="utf-8")
         m = re.search(
-            r"Distribution candidate:\s*`aegis-ai-governance==([^`]+)`",
+            r"Distribution release:\s*`aegis-ai-governance==([^`]+)`",
             text,
         )
         if m:
             readme_version = m.group(1)
             if readme_version != manifest_version:
                 errors.append(
-                    f"[impl-truth] README.md distribution candidate shows "
+                    f"[impl-truth] README.md distribution release shows "
                     f"'{readme_version}' != manifest version '{manifest_version}'"
                 )
         else:
             errors.append(
-                "[impl-truth] README.md: could not find the distribution candidate"
+                "[impl-truth] README.md: could not find the distribution release"
             )
     else:
         errors.append("[impl-truth] README.md not found")
@@ -1004,48 +1003,48 @@ def check_implementation_truth(manifest: dict) -> list[str]:
     else:
         errors.append("[impl-truth] CHANGELOG.md not found")
 
-    # 6. implementation_status.md — package candidate must match.
+    # 6. implementation_status.md — package release must match.
     impl_status_path = REPO_ROOT / "implementation_status.md"
     if impl_status_path.exists():
         text = impl_status_path.read_text(encoding="utf-8")
         m = re.search(
-            r"\*\*Package Candidate:\*\*\s*`aegis-ai-governance==([^`]+)`",
+            r"\*\*Package Release:\*\*\s*`aegis-ai-governance==([^`]+)`",
             text,
         )
         if m:
             baseline_version = m.group(1)
             if baseline_version != manifest_version:
                 errors.append(
-                    f"[impl-truth] implementation_status.md Package Candidate "
+                    f"[impl-truth] implementation_status.md Package Release "
                     f"'{baseline_version}' != manifest version '{manifest_version}'"
                 )
         else:
             errors.append(
                 "[impl-truth] implementation_status.md: could not find "
-                "'Package Candidate' line"
+                "'Package Release' line"
             )
     else:
         errors.append("[impl-truth] implementation_status.md not found")
 
-    # 7. Release matrix — distinguish the candidate from prior PyPI truth.
+    # 7. Release matrix — distinguish the public beta from prior PyPI truth.
     release_matrix_path = REPO_ROOT / "docs" / "reference" / "RELEASE_MATRIX.md"
     if release_matrix_path.exists():
         text = release_matrix_path.read_text(encoding="utf-8")
         m = re.search(
-            r"Current package candidate is `aegis-ai-governance==([^`]+)`",
+            r"Current public beta is `aegis-ai-governance==([^`]+)`",
             text,
         )
         if m:
             matrix_version = m.group(1)
             if matrix_version != manifest_version:
                 errors.append(
-                    f"[impl-truth] RELEASE_MATRIX.md current package candidate "
+                    f"[impl-truth] RELEASE_MATRIX.md current public beta "
                     f"'{matrix_version}' != manifest version '{manifest_version}'"
                 )
         else:
             errors.append(
                 "[impl-truth] RELEASE_MATRIX.md: could not find "
-                "'Current package candidate is' line"
+                "'Current public beta is' line"
             )
         if "Local beta candidate" not in text:
             errors.append(
