@@ -172,6 +172,20 @@ def test_adapter_guides_use_packaged_candidate_status_and_exact_extra_install():
     assert 'pip install "aegis-ai-governance[openai-agents]"' in openai
 
 
+def test_instruction_guide_records_candidate_and_optional_adapter_status():
+    root = SCRIPT_PATH.parents[1]
+    guide = (root / ".claude" / "rules" / "aegis-project.md").read_text(
+        encoding="utf-8"
+    )
+    normalized = " ".join(guide.lower().split())
+
+    assert "aegis-ai-governance==0.9.0b1" in guide
+    assert "not published to pypi" in normalized
+    for adapter in ("Bedrock", "A2A", "OpenAI Agents"):
+        assert adapter in guide
+    assert "published package version remains `0.3.3`" not in guide
+
+
 REFERENCE_TABLE = """
 | PR | Branch | Goal |
 |----|--------|------|
