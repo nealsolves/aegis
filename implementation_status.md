@@ -54,7 +54,7 @@ must be updated only after their specific evidence exists.
 | Research safety addendum | complete | PR-10d graph/topology lint, doctor remediation, export rationale, and safety smoke tests are merged |
 | Beta functional gate | complete | PR-11 full functional test harness is merged; distribution and publication remain separate gates |
 | Distribution candidate | merged on `develop` | `aegis-ai-governance==0.9.0b1` metadata and Trusted Publishing are prepared; the candidate is not on `main` and PyPI publication is pending |
-| Truth audit and demo refresh | validated locally | Maintained docs, diagrams, contextual help, adapters, Python coverage, React, build, API, and assembled browser workflows are validated; the final Python suite is 1917 passed and 2 skipped |
+| Truth audit and demo refresh | validated locally | Maintained docs, diagrams, contextual help, adapters, Python coverage, React, build, API, and assembled browser workflows are validated; the final Python suite is 1919 passed and 2 skipped |
 
 ---
 

@@ -82,7 +82,7 @@ no further public-surface work proceeds until the default path is repaired.
 
 ## PR-10b — A2A Adapter Gate
 
-- [x] `A2AAdapter` is optional, source-only, and importable without `a2a-sdk`
+- [x] `A2AAdapter` is a packaged optional beta submodule and is importable without `a2a-sdk`
 - [x] no `A2AAdapter`, `A2AParticipantBinding`, or `A2APreparedStep` top-level `aegis` re-export is added
 - [x] `workflow.protocol_constraints.a2a` is strict in root and packaged schemas
 - [x] Agent Card compatibility is validated from `supportedInterfaces[].protocolVersion`

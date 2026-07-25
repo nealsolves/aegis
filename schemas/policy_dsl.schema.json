@@ -250,7 +250,7 @@
             "bedrock": {
               "type": "object",
               "additionalProperties": false,
-              "description": "Bedrock trace adapter constraints (source-only beta)",
+              "description": "Bedrock adapter constraints (packaged optional beta submodule)",
               "properties": {
                 "require_trace": {
                   "type": "boolean",
@@ -272,7 +272,7 @@
             "a2a": {
               "type": "object",
               "additionalProperties": false,
-              "description": "A2A adapter constraints (source-only beta)",
+              "description": "A2A adapter constraints (packaged optional beta submodule)",
               "properties": {
                 "protocol_version": {
                   "type": "string",
@@ -295,7 +295,7 @@
             "openai_agents": {
               "type": "object",
               "additionalProperties": false,
-              "description": "OpenAI Agents SDK adapter constraints (source-only beta)",
+              "description": "OpenAI Agents SDK adapter constraints (packaged optional beta submodule)",
               "properties": {
                 "require_trace": {
                   "type": "boolean",

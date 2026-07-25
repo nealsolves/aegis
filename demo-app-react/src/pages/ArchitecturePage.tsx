@@ -52,6 +52,7 @@ export default function ArchitecturePage() {
         num="01"
         title="Component View"
         description="The current candidate boundary: host-owned execution, workflow and invocation governance, optional normalization adapters, and separate evidence outputs."
+        summary="Host-controlled execution remains outside AEGIS. AEGIS governs policy, workflow, and invocations through optional Bedrock, A2A, and OpenAI Agents adapters, then emits separate invocation and workflow evidence."
         src={componentSvg}
         alt="AEGIS v0.9 beta component architecture"
       />
@@ -60,6 +61,7 @@ export default function ArchitecturePage() {
         num="02"
         title="Enforcement Pipeline"
         description="Phase A authorizes before the host call. Phase B validates output, emits an invocation artifact, and lets the owning GovernanceSession correlate separate workflow evidence."
+        summary="Phase A authorizes before the host model call. Phase B applies ordered output gates, emits an invocation artifact, and records workflow correlation."
         src={pipelineSvg}
         alt="AEGIS v0.9 beta enforcement pipeline"
       />
@@ -141,14 +143,16 @@ function OwnershipStep({ label, detail, last = false }: {
   )
 }
 
-function DiagramSection({ num, title, description, src, alt }: {
+function DiagramSection({ num, title, description, summary, src, alt }: {
   num: string
   title: string
   description: string
+  summary: string
   src: string
   alt: string
 }) {
   const [imgError, setImgError] = useState(false)
+  const summaryId = `diagram-${num}-summary`
 
   return (
     <div className="mb-16">
@@ -158,6 +162,9 @@ function DiagramSection({ num, title, description, src, alt }: {
         style={{ color: 'var(--text-secondary)', marginLeft: 40 }}
       >
         {description}
+      </p>
+      <p id={summaryId} className="sr-only">
+        {summary}
       </p>
       <div
         style={{
@@ -186,6 +193,7 @@ function DiagramSection({ num, title, description, src, alt }: {
           <img
             src={src}
             alt={alt}
+            aria-describedby={summaryId}
             style={{ width: '100%', height: 'auto', display: 'block' }}
             onError={() => setImgError(true)}
           />

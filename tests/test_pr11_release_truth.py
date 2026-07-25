@@ -100,6 +100,18 @@ def test_current_public_docs_use_the_new_distribution_install_name():
         )
 
 
+def test_root_readme_distinguishes_live_main_demo_from_eleven_lab_candidate():
+    readme = _read("README.md")
+    normalized = " ".join(readme.lower().split())
+
+    assert "eleven hands-on labs" in normalized
+    for lab in ("Lab 8", "Lab 9", "Lab 10", "Lab 11"):
+        assert lab in readme
+    assert "live github pages deployment may still show the last `main` build" in (
+        normalized
+    )
+
+
 def test_prior_beta_evidence_is_archived_beneath_current_candidate_truth():
     evidence = _read("docs/releases/v0.9.0-beta-test-evidence.md")
     assert evidence.startswith("# AEGIS v0.9.0 Beta Test Evidence\n\n> Archived")

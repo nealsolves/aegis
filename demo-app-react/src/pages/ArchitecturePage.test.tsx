@@ -50,11 +50,16 @@ describe('ArchitecturePage', () => {
 
   it('renders diagram images', () => {
     renderPage()
-    expect(
-      screen.getByAltText('AEGIS v0.9 beta component architecture')
-    ).toBeInTheDocument()
-    expect(
-      screen.getByAltText('AEGIS v0.9 beta enforcement pipeline')
-    ).toBeInTheDocument()
+    const component = screen.getByAltText('AEGIS v0.9 beta component architecture')
+    const pipeline = screen.getByAltText('AEGIS v0.9 beta enforcement pipeline')
+
+    expect(component).toHaveAttribute('aria-describedby', 'diagram-01-summary')
+    expect(pipeline).toHaveAttribute('aria-describedby', 'diagram-02-summary')
+    expect(document.getElementById('diagram-01-summary')).toHaveTextContent(
+      /host-controlled execution.*Bedrock.*A2A.*OpenAI Agents.*separate invocation and workflow evidence/i
+    )
+    expect(document.getElementById('diagram-02-summary')).toHaveTextContent(
+      /Phase A.*before the host model call.*Phase B.*ordered output gates.*invocation artifact.*workflow correlation/i
+    )
   })
 })

@@ -172,6 +172,26 @@ def test_adapter_guides_use_packaged_candidate_status_and_exact_extra_install():
     assert 'pip install "aegis-ai-governance[openai-agents]"' in openai
 
 
+def test_adapter_schema_and_release_gate_record_packaged_optional_status():
+    root = SCRIPT_PATH.parents[1]
+    for rel in (
+        "schemas/policy_dsl.schema.json",
+        "aegis/schemas/policy_dsl.schema.json",
+    ):
+        normalized = " ".join(
+            (root / rel).read_text(encoding="utf-8").lower().split()
+        )
+        for adapter in ("bedrock", "a2a", "openai agents sdk"):
+            assert f"{adapter} adapter constraints (packaged optional beta submodule)" in (
+                normalized
+            )
+        assert "adapter constraints (source-only beta)" not in normalized
+
+    release_gates = (root / "RELEASE_GATES.md").read_text(encoding="utf-8")
+    assert "`A2AAdapter` is a packaged optional beta submodule" in release_gates
+    assert "`A2AAdapter` is optional, source-only" not in release_gates
+
+
 def test_instruction_guide_records_candidate_and_optional_adapter_status():
     root = SCRIPT_PATH.parents[1]
     guide = (root / ".claude" / "rules" / "aegis-project.md").read_text(

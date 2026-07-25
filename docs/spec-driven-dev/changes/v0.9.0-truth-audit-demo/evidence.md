@@ -57,16 +57,15 @@ configured and no provider calls were made.
 ### Python, policy, and documentation
 
 - Policy validation: passed.
-- Documentation parity: passed before this evidence update.
+- Documentation parity: passed after the final count and reviewer repairs.
 - Brand and version parity: passed.
 - Flake8 for `aegis`: passed.
-- Final full package suite: `1917 passed, 2 skipped`.
-- Coverage run with only that pending guard deselected:
-  `1916 passed, 2 skipped, 1 deselected`, with `90.32%` package coverage
-  against the `90%` gate.
+- Final full package suite: `1919 passed, 2 skipped`.
+- Final coverage run: `1919 passed, 2 skipped`, with `90.32%` package
+  coverage against the `90%` gate.
 - Demo API suite: `67 passed`, with 2 non-failing warnings.
 
-The observed `1917` passing tests are recorded as the canonical candidate
+The observed `1919` passing tests are recorded as the canonical candidate
 baseline. The two skips are expected environment-dependent cases.
 
 ### React application
@@ -99,6 +98,24 @@ The maintained FastAPI backend and Vite React application were run together on
 - The final browser console contained no warnings or errors.
 
 The local demo services were stopped after validation.
+
+## Independent review and repairs
+
+An independent read-only review found no Critical issues and three Important
+truth/accessibility defects:
+
+- both policy schema copies and the A2A release gate still described packaged
+  adapters as source-only;
+- the root README described only the seven-lab `v0.3.x` experience instead of
+  distinguishing the live `main` deployment from the eleven-lab candidate;
+- the complex architecture images lacked meaningful screen-reader summaries.
+
+Each defect was reproduced with a failing test, repaired narrowly, and
+revalidated. The final matrix above includes those repairs. The reviewer also
+noted one Minor limitation: the stale-generator regression test temporarily
+edits and restores a canonical SVG. The `finally` restoration and clean-tree
+checks cover normal execution; moving that check to a temporary output root is
+deferred because it is not a correctness or release-truth blocker.
 
 ## Instruction-system decision
 
