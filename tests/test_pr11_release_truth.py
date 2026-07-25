@@ -51,17 +51,17 @@ def _pyproject_name() -> str:
     return match.group(1)
 
 
-def test_runtime_metadata_matches_the_090_beta_distribution_candidate():
+def test_runtime_metadata_matches_the_090_beta_distribution_release():
     assert _pyproject_name() == "aegis-ai-governance"
     assert _pyproject_version() == "0.9.0b1"
     assert aegis.__version__ == "0.9.0b1"
 
     readme = _read("README.md")
     changelog = _read("CHANGELOG.md")
-    assert "Distribution candidate: `aegis-ai-governance==0.9.0b1`" in readme
-    assert "not yet published to PyPI" in readme
-    assert "## [0.9.0b1] — Unreleased" in changelog
-    assert "not yet published to PyPI" in changelog
+    assert "Distribution release: `aegis-ai-governance==0.9.0b1`" in readme
+    assert "not yet published to PyPI" not in readme
+    assert "## [0.9.0b1] — 2026-07-25" in changelog
+    assert "not yet published to PyPI" not in changelog
 
 
 def test_canonical_release_docs_identify_the_beta_candidate():
@@ -100,7 +100,7 @@ def test_current_public_docs_use_the_new_distribution_install_name():
         )
 
 
-def test_root_readme_identifies_develop_beta_demo_and_eleven_lab_candidate():
+def test_root_readme_identifies_main_beta_demo_and_eleven_lab_release():
     readme = _read("README.md")
     normalized = " ".join(readme.lower().split())
 
@@ -109,8 +109,8 @@ def test_root_readme_identifies_develop_beta_demo_and_eleven_lab_candidate():
         assert lab in readme
     assert ".github/workflows/deploy-demo-react.yml" in readme
     assert "demo-app-api/render.yaml" in readme
-    assert "live from `develop`" in readme
-    assert "`main` remains unchanged" in readme
+    assert "live from `main`" in readme
+    assert "live from `develop`" not in readme
 
 
 def test_prior_beta_evidence_is_archived_beneath_current_candidate_truth():
@@ -142,21 +142,22 @@ def test_brand_and_version_parity_script_passes():
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_doc_manifest_names_the_distribution_import_cli_and_candidate_status():
+def test_doc_manifest_names_the_distribution_import_cli_and_release_status():
     manifest = yaml.safe_load(_read("doc_parity_manifest.yaml"))
 
     assert manifest["distribution_name"] == "aegis-ai-governance"
     assert manifest["import_package"] == "aegis"
     assert manifest["console_command"] == "aegis"
     assert manifest["version"] == "0.9.0b1"
-    assert manifest["candidate_status"] == "unpublished-beta"
+    assert manifest["candidate_status"] == "released-beta"
 
 
-def test_contribution_license_and_security_candidate_status_are_truthful():
+def test_contribution_license_and_security_release_status_are_truthful():
     contributing = _read("CONTRIBUTING.md")
     security = _read("SECURITY.md")
 
     assert "Apache-2.0" in contributing
     assert "MIT License" not in contributing
     assert "0.9.0b1" in security
-    assert "pre-release" in security.lower()
+    assert "public beta" in security.lower()
+    assert "| 0.9.0b1 | Yes (public beta)" in security

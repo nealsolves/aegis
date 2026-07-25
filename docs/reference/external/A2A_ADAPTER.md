@@ -1,7 +1,6 @@
 # A2A Adapter
 
-> **Status:** Included in the unpublished
-> `aegis-ai-governance==0.9.0b1` beta candidate on `develop`.
+> **Status:** Included in the `aegis-ai-governance==0.9.0b1` public beta.
 > Import from `aegis.a2a_adapter`; it is not re-exported from top-level
 > `aegis`.
 

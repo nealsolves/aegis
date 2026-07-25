@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "change_id": "v0.9.0-develop-baseline-main-promotion",
+  "workflow_family": "release",
+  "action": "merge_pull_request",
+  "current_state": "UNCLASSIFIED",
+  "change_hash": "bbfd7bb8a41b492f8f54b53ae08a9157e4fb1aaf34b7836cab6b7abb1c4df486",
+  "facts": {
+    "documentation_only": {
+      "value": false,
+      "source_type": "exact_git_diff",
+      "source_ref": "docs/superpowers/plans/2026-07-25-aegis-main-pypi-release.md",
+      "extractor": "codex-git-diff-v1",
+      "confidence": 1.0,
+      "observed_at_change": "bbfd7bb8a41b492f8f54b53ae08a9157e4fb1aaf34b7836cab6b7abb1c4df486",
+      "corroboration": []
+    },
+    "modifies_runtime_code": {
+      "value": true,
+      "source_type": "exact_git_diff",
+      "source_ref": "pyproject.toml",
+      "extractor": "codex-git-diff-v1",
+      "confidence": 1.0,
+      "observed_at_change": "bbfd7bb8a41b492f8f54b53ae08a9157e4fb1aaf34b7836cab6b7abb1c4df486",
+      "corroboration": []
+    },
+    "changes_public_contract": {
+      "value": true,
+      "source_type": "release_candidate_contract",
+      "source_ref": "pyproject.toml",
+      "extractor": "codex-release-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "bbfd7bb8a41b492f8f54b53ae08a9157e4fb1aaf34b7836cab6b7abb1c4df486",
+      "corroboration": []
+    },
+    "changes_infrastructure": {
+      "value": true,
+      "source_type": "exact_git_diff",
+      "source_ref": "demo-app-api/render.yaml",
+      "extractor": "codex-release-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "bbfd7bb8a41b492f8f54b53ae08a9157e4fb1aaf34b7836cab6b7abb1c4df486",
+      "corroboration": []
+    },
+    "adds_external_dependency": {
+      "value": true,
+      "source_type": "dependency_manifest_diff",
+      "source_ref": "pyproject.toml",
+      "extractor": "codex-release-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "bbfd7bb8a41b492f8f54b53ae08a9157e4fb1aaf34b7836cab6b7abb1c4df486",
+      "corroboration": []
+    },
+    "deploys_to_production": {
+      "value": false,
+      "source_type": "deployment_trigger_analysis",
+      "source_ref": ".github/workflows/deploy-demo-react.yml",
+      "extractor": "codex-release-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "bbfd7bb8a41b492f8f54b53ae08a9157e4fb1aaf34b7836cab6b7abb1c4df486",
+      "corroboration": []
+    },
+    "instruction_system_change": {
+      "value": false,
+      "source_type": "exact_git_diff",
+      "source_ref": "CLAUDE.md",
+      "extractor": "codex-git-diff-v1",
+      "confidence": 1.0,
+      "observed_at_change": "bbfd7bb8a41b492f8f54b53ae08a9157e4fb1aaf34b7836cab6b7abb1c4df486",
+      "corroboration": []
+    }
+  },
+  "clarifications": [],
+  "exceptions": [],
+  "authority_constraints": [],
+  "evidence": {},
+  "resources": {
+    "repair_attempts": 0,
+    "ci_reruns": 0,
+    "elapsed_minutes": 0
+  },
+  "open_escalation": null,
+  "responses": []
+}

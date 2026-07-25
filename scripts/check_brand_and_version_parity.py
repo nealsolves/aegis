@@ -65,9 +65,9 @@ def main() -> int:
         errors.append("doc_parity_manifest.yaml import_package must be aegis")
     if manifest.get("console_command") != "aegis":
         errors.append("doc_parity_manifest.yaml console_command must be aegis")
-    if manifest.get("candidate_status") != "unpublished-beta":
+    if manifest.get("candidate_status") != "released-beta":
         errors.append(
-            "doc_parity_manifest.yaml candidate_status must be unpublished-beta"
+            "doc_parity_manifest.yaml candidate_status must be released-beta"
         )
     if manifest.get("version") != RUNTIME_VERSION:
         errors.append("doc_parity_manifest.yaml version must match runtime candidate")
@@ -95,12 +95,12 @@ def main() -> int:
 
     readme = _read("README.md")
     if (
-        f"Distribution candidate: `{CANDIDATE_DISTRIBUTION}=={RUNTIME_VERSION}`"
+        f"Distribution release: `{CANDIDATE_DISTRIBUTION}=={RUNTIME_VERSION}`"
         not in readme
     ):
-        errors.append("README.md must identify the exact distribution candidate")
-    if "not yet published to PyPI" not in readme:
-        errors.append("README.md must keep the publication boundary explicit")
+        errors.append("README.md must identify the exact distribution release")
+    if "not yet published to PyPI" in readme:
+        errors.append("README.md must not retain the pre-publication boundary")
 
     if errors:
         print("Brand/version parity failed:", file=sys.stderr)

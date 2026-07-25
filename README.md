@@ -12,11 +12,12 @@ Governance in AEGIS is runtime enforcement, not documentation and not prompting.
 
 ## At a Glance
 
-- Distribution candidate: `aegis-ai-governance==0.9.0b1`
+- Distribution release: `aegis-ai-governance==0.9.0b1`
 - Import: `import aegis`
 - CLI: `aegis`
-- Candidate status: beta artifact, not yet published to PyPI
-- Source status: merged on `develop`, not merged to `main`
+- Release status: public beta
+- Source status: released from `main`
+- Install: `pip install aegis-ai-governance==0.9.0b1`
 - Previous PyPI line: `aegis==0.3.3` (`2026-04-10`)
 - Release matrix: [docs/reference/RELEASE_MATRIX.md](docs/reference/RELEASE_MATRIX.md)
 - Current release scope: invocation governance plus workflow-aware provenance
@@ -72,17 +73,15 @@ Since v0.3.3, split enforcement is the default — Phase A runs before the model
 call, Phase B validates output after. Pass `pre_call_enforcement=False` for the
 legacy unified mode (deprecated).
 
-The `v0.9.0` beta candidate adds workflow governance built around
+The `v0.9.0b1` beta release adds workflow governance built around
 `AEGIS.open_session(...)`, `GovernanceSession`, `SessionPreCallResult`,
 `aegis workflow init`, `aegis policy init`, `aegis workflow lint`,
 `aegis workflow doctor`, `aegis workflow trace`, and
 `aegis workflow export`. No external API keys are required for the default
-adopter path. The `aegis-ai-governance==0.9.0b1` candidate is not yet
-published to PyPI.
+adopter path.
 
-Current candidate: `aegis-ai-governance==0.9.0b1`. It installs
-`import aegis` and the `aegis` CLI. The candidate is on `develop`; it is not on
-`main` and is not published to PyPI.
+Current release: `aegis-ai-governance==0.9.0b1`. It installs
+`import aegis` and the `aegis` CLI from the `main` release source.
 
 Optional Bedrock, A2A, and OpenAI Agents adapters are beta submodules included
 in the candidate wheel. They are not re-exported from top-level `aegis`; the
@@ -94,10 +93,11 @@ status. The target-state architecture is captured in
 
 ## Workflow Governance (v0.9.0 Beta)
 
-Workflow governance is available in the `v0.9.0` beta candidate. No external
-API keys are required. Install the candidate from source, then:
+Workflow governance is available in the `v0.9.0b1` beta release. No external
+API keys are required. Install the release, then:
 
 ```bash
+pip install aegis-ai-governance==0.9.0b1
 aegis workflow init --profile minimal
 cd governance
 python workflow_example.py
@@ -257,8 +257,8 @@ The maintained demo is a React frontend plus FastAPI backend:
 - Beta site target:
   [https://nealsolves.github.io/aegis/](https://nealsolves.github.io/aegis/)
 - Frontend deployment source:
-  `.github/workflows/deploy-demo-react.yml` on `develop`
-- Backend deployment source: `demo-app-api/render.yaml` on `develop`
+  `.github/workflows/deploy-demo-react.yml` on `main`
+- Backend deployment source: `demo-app-api/render.yaml` on `main`
 - Live backend:
   [https://aegis-demo-api.onrender.com](https://aegis-demo-api.onrender.com)
 - Candidate source: eleven hands-on labs across risk scoring, signing, audit
@@ -270,7 +270,7 @@ The maintained demo is a React frontend plus FastAPI backend:
 - Purpose: hands-on orientation to both the `v0.3.x` invocation runtime and the
   `v0.9.0b1` workflow-governance candidate
 
-The beta deployment is live from `develop`; `main` remains unchanged. The
+The beta deployment is live from `main`. The
 Render `/health` endpoint returns `{"status":"ok"}`, the Pages origin is the
 only public CORS origin, and live browser checks passed for the split
 pre-call block in Lab 1 and the two-step workflow artifact in Lab 11.

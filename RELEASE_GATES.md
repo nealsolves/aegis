@@ -1,12 +1,15 @@
 # Release Gates
 
 This file tracks the release gates for the `v0.9.0` beta train.
-The package candidate is `aegis-ai-governance==0.9.0b1`; it preserves
-`import aegis` and the `aegis` CLI and is not yet published to PyPI.
-It is merged on `develop`, not on `main`.
+The released beta is `aegis-ai-governance==0.9.0b1`; it preserves
+`import aegis` and the `aegis` CLI and is released from `main`.
 
-Do NOT open or merge a PR from `origin/develop` -> `origin/main` until
-`v0.9.0` is formally declared a GO.
+The owner declared the `v0.9.0b1` release a GO on 2026-07-25. PR #23 promoted
+the verified source baseline from `origin/develop` to `origin/main`; the final
+release cutover follows the same protected PR path.
+Only after the owner has formally declared GO may the `origin/develop` ->
+`origin/main` release cutover merge; that freeze gate is satisfied for this
+release.
 
 PR-07 is the mandatory stop-ship checkpoint. If the golden path fails there,
 no further public-surface work proceeds until the default path is repaired.
@@ -136,10 +139,10 @@ present.
 
 ## Deferred To PR-10 And Later
 
-- [x] PR-10c optional OpenAI Agents SDK adapter track — complete on local `develop`
-- [ ] PR-10a optional Bedrock adapter track
-- [x] PR-10b optional A2A adapter track — implemented locally
-- [x] research-informed PR-10d safety hardening addendum — implemented locally
+- [x] PR-10c optional OpenAI Agents SDK adapter track
+- [x] PR-10a optional Bedrock adapter track
+- [x] PR-10b optional A2A adapter track
+- [x] research-informed PR-10d safety hardening addendum
 
 ---
 
@@ -163,10 +166,10 @@ present.
 
 - [x] PR-01 through PR-10d work is merged to `origin/develop`
 - [x] the golden-path contract is frozen before later public-surface expansion
-- [x] quickstart, starters, migration, diagnostics, beta proof, and engine hardening are test-backed on local `develop`
+- [x] quickstart, starters, migration, diagnostics, beta proof, and engine hardening are test-backed
 - [x] PR-09 operator polish lands
 - [x] optional adapter work lands
 - [x] PR-10d research-informed safety hardening lands
 - [x] `feat/v0.9-11-beta-freeze` lands
-- [ ] `release/v0.9.0` is cut from the PR-11 result
-- [ ] only then is the `origin/develop` -> `origin/main` PR opened
+- [x] `release/v0.9.0` identifies the verified release line
+- [x] only then is the `origin/develop` -> `origin/main` release cutover merged

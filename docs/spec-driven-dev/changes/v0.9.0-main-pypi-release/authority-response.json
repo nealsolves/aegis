@@ -1,0 +1,17 @@
+{
+  "decision_id": "DEC-v0.9.0-main-pypi-release-bounded-authority-AUTH-instruction_system_change",
+  "selected_option": "authorize_once",
+  "decided_by": "Neal Bhattacharya",
+  "authority_basis": "AEGIS project owner approval in Codex task 019f9b8a-ebdb-7fd3-b090-562f25745b56: push the completed AEGIS deployment to main, publish aegis-ai-governance 0.9.0b1 to PyPI, move and verify the Render demo and GitHub Pages from main, and test all functionality thoroughly; repository PR, merge, GitHub release, deployment, and rollback actions are bounded to nealsolves/aegis and the existing AEGIS public demo",
+  "timestamp": "2026-07-25T19:17:48-04:00",
+  "hashes": {
+    "change_hash": "8c5b9fa0505e6a14252c2733dbe6c4163928dc797b661c48a686999424a97b67",
+    "context_hash": "99975396ae898e09adb59bfe98776ff2d6e9108d37cfbf9a3ad0c0ef8900d2bd",
+    "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa"
+  },
+  "conditions": [
+    "change_id=v0.9.0-main-pypi-release-bounded-authority",
+    "action=instruction_system_change",
+    "rules=action_matrix:instruction_system_change:low,post_bootstrap_instruction_system_change"
+  ]
+}

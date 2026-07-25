@@ -7,8 +7,8 @@ Use [README.md](../README.md) for the repo overview and
 [INTEGRATION_GUIDE.md](INTEGRATION_GUIDE.md) for the full host-integration
 contract.
 
-These recipes target the unpublished `aegis-ai-governance==0.9.0b1` candidate
-on `develop`; the import and CLI remain `aegis`.
+These recipes target the `aegis-ai-governance==0.9.0b1` public beta; the import
+and CLI remain `aegis`.
 
 Source, tags, and release artifacts for versions before `0.9.0` remain in
 [`nealsolves/aigc`](https://github.com/nealsolves/aigc). This repository is the

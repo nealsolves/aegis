@@ -11,13 +11,10 @@ architecture, and release context.
 ## Current State
 
 AEGIS is a Python SDK that enforces governance at the AI invocation boundary.
-The current package candidate is `aegis-ai-governance==0.9.0b1`. It preserves
-the `aegis` import package and CLI and is not yet published to PyPI. The
-previous PyPI line is `aegis==0.3.3` (`2026-04-10`).
-
-The candidate is merged on `develop`, not on `main`. Installing it will provide
-`import aegis` and the `aegis` CLI after the separately authorized PyPI
-publication.
+The current beta release is `aegis-ai-governance==0.9.0b1`. It preserves the
+`aegis` import package and CLI and is released from `main`. Install it with
+`pip install aegis-ai-governance==0.9.0b1`. The previous PyPI line is
+`aegis==0.3.3` (`2026-04-10`).
 
 Source, tags, and release artifacts for versions before `0.9.0` remain in
 [`nealsolves/aigc`](https://github.com/nealsolves/aigc). This repository is the
@@ -142,7 +139,7 @@ aegis/
 ├── scripts/                        Maintainer validation and generation tools
 ├── tests/                          Regression, contract, and release tests
 ├── demo-app-api/                   FastAPI backend for the beta demo
-│   └── render.yaml                 Render blueprint targeting `develop`
+│   └── render.yaml                 Render blueprint targeting `main`
 ├── demo-app-react/                 Eleven-lab React beta frontend
 ├── docs/
 │   ├── architecture/               High-level design, diagrams, threat model

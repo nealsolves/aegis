@@ -6,10 +6,9 @@ the enforcement pipeline, decorator defaults, and workflow governance surfaces.
 
 **Live demo:** [https://nealsolves.github.io/aegis/](https://nealsolves.github.io/aegis/)
 
-The local app in this branch accompanies the unpublished
-`aegis-ai-governance==0.9.0b1` candidate. It uses `import aegis` and the
-`aegis` CLI. During the beta period, both public components deploy from
-`develop`; `main` remains unchanged. PyPI publication is pending.
+The local app accompanies the `aegis-ai-governance==0.9.0b1` public beta. It
+uses `import aegis` and the `aegis` CLI. Both public components deploy from
+`main`.
 
 ## Labs
 
@@ -33,11 +32,11 @@ The demo has two public components:
 
 - **React frontend** — built and tested with Vite, then deployed to GitHub
   Pages by `.github/workflows/deploy-demo-react.yml` after relevant pushes to
-  `develop`. The public backend URL is baked in from the `VITE_API_URL`
+  `main`. The public backend URL is baked in from the `VITE_API_URL`
   repository variable.
 - **FastAPI backend** (`demo-app-api/`) — defined by
-  `demo-app-api/render.yaml` and auto-deployed by Render from `develop`. The
-  live beta API is
+  `demo-app-api/render.yaml` and auto-deployed by Render from `main`. The live
+  beta API is
   [https://aegis-demo-api.onrender.com](https://aegis-demo-api.onrender.com).
   The React app calls it for all lab enforcement, signing, chaining,
   composition, loader, and workflow operations. No user API keys are required.
@@ -70,6 +69,5 @@ under `https://nealsolves.github.io/aegis/`.
 
 ## Deployment
 
-Relevant pushes to `develop` trigger the beta Pages workflow. After the owner
-approves the production cutover, a separate change will switch both branch
-selectors to `main` and re-verify the public site and API.
+Relevant pushes to `main` trigger the beta Pages workflow. Render also tracks
+`main`; every release cutover must re-verify the public site and API.

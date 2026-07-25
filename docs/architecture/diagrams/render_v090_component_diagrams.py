@@ -484,7 +484,7 @@ def render_beta(theme: Theme) -> str:
         header(
             theme,
             "AEGIS v0.9 BETA",
-            "aegis-ai-governance==0.9.0b1 | develop candidate | not on main or PyPI",
+            "aegis-ai-governance==0.9.0b1 | public beta | released from main",
             height,
         ),
         rect(*HOST_BAND, "band", rx=24),

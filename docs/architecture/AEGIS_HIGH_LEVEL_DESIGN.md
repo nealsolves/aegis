@@ -21,8 +21,8 @@ One-line rule: the host performs actions; AEGIS governs whether they are allowed
 and emits evidence.
 
 Availability boundary: this document describes the intended `1.0.0` public
-surface. The current unpublished candidate is
-`aegis-ai-governance==0.9.0b1` on `develop`, not on `main` or PyPI.
+surface. The current public beta is `aegis-ai-governance==0.9.0b1`, released
+from `main`.
 
 Packaged beta public surface: `AEGIS.open_session(...)`, `GovernanceSession`,
 `SessionPreCallResult`, workflow init/lint/doctor/trace/export, and the optional
@@ -611,7 +611,7 @@ The previous PyPI release, `aegis==0.3.3`, remains invocation-scoped.
 | `enforce_pre_call` / `enforce_post_call` | split invocation governance |
 | `PreCallResult` | single-use split handoff for invocation governance |
 
-Packaged in the unpublished `aegis-ai-governance==0.9.0b1` candidate:
+Packaged in the public beta `aegis-ai-governance==0.9.0b1` release:
 
 | Surface | Intended role |
 | ------- | ------------- |
