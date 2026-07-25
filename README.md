@@ -25,7 +25,7 @@ Governance in AEGIS is runtime enforcement, not documentation and not prompting.
   `ProvenanceGate`, `RiskHistory`, `@governed` defaults to split enforcement
 - Current beta line: `v0.9.0`, packaged as
   `aegis-ai-governance==0.9.0b1`
-- Verification baseline: `1923 tests` pass in the candidate environment,
+- Verification baseline: `1923 tests` pass in the public-beta environment,
   including fixture-based optional-adapter coverage;
   coverage remains above the `90%` CI gate
 
@@ -84,7 +84,7 @@ Current release: `aegis-ai-governance==0.9.0b1`. It installs
 `import aegis` and the `aegis` CLI from the `main` release source.
 
 Optional Bedrock, A2A, and OpenAI Agents adapters are beta submodules included
-in the candidate wheel. They are not re-exported from top-level `aegis`; the
+in the public-beta wheel. They are not re-exported from top-level `aegis`; the
 OpenAI Agents adapter requires
 `aegis-ai-governance[openai-agents]`. See the
 [release matrix](docs/reference/RELEASE_MATRIX.md) for exact channel and ref
@@ -146,7 +146,7 @@ release by release.
   including audit schema `v1.4` provenance metadata, `AuditLineage`,
   `ProvenanceGate`, `RiskHistory`, and `@governed` defaulting to split
   enforcement.
-- `0.9.0b1` (candidate): workflow sessions, starter profiles, diagnostics,
+- `0.9.0b1` (public beta): workflow sessions, starter profiles, diagnostics,
   trace/export operations, and optional adapter submodules, distributed as
   `aegis-ai-governance` while preserving `import aegis` and the `aegis` CLI.
 
@@ -154,15 +154,13 @@ For the full change log, use [CHANGELOG.md](CHANGELOG.md).
 
 ## Installation
 
-After the candidate is published to PyPI:
+Install the public beta from PyPI:
 
 ```bash
 pip install aegis-ai-governance==0.9.0b1
 ```
 
-Until then, install from this checkout:
-
-Editable install from source:
+For contributor development, install an editable checkout:
 
 ```bash
 python3 -m venv aegis-env
@@ -261,14 +259,14 @@ The maintained demo is a React frontend plus FastAPI backend:
 - Backend deployment source: `demo-app-api/render.yaml` on `main`
 - Live backend:
   [https://aegis-demo-api.onrender.com](https://aegis-demo-api.onrender.com)
-- Candidate source: eleven hands-on labs across risk scoring, signing, audit
+- Public beta source: eleven hands-on labs across risk scoring, signing, audit
   chain, composition, loaders and policy dates, custom gates, compliance
   export, governed knowledge, governed-versus-ungoverned comparison, split
   enforcement, and workflow governance
-- Candidate-only additions: Lab 8 (Governed Knowledge Base), Lab 9 (Governed
+- Public-beta additions: Lab 8 (Governed Knowledge Base), Lab 9 (Governed
   vs Ungoverned), Lab 10 (Split Enforcement), and Lab 11 (Workflow Governance)
 - Purpose: hands-on orientation to both the `v0.3.x` invocation runtime and the
-  `v0.9.0b1` workflow-governance candidate
+  `v0.9.0b1` workflow-governance public beta
 
 The beta deployment is live from `main`. The
 Render `/health` endpoint returns `{"status":"ok"}`, the Pages origin is the
@@ -287,7 +285,7 @@ The `aegis` console script exposes three practical commands:
   include DAG-level lineage analysis (node counts, duplicate detection,
   root/leaf/orphan lists, cycle detection)
 
-The `v0.9.0` beta candidate adds `aegis workflow init`,
+The `v0.9.0b1` public beta adds `aegis workflow init`,
 `aegis policy init`, `aegis workflow lint`, `aegis workflow doctor`,
 `aegis workflow trace`, and `aegis workflow export`.
 

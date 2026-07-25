@@ -636,7 +636,7 @@ Planned for 1.0.0 or later (not in the current beta public surface):
 ### 13.2 Stability Contract After `1.0.0` GA
 
 The `1.x` stability promise described here does not apply to the beta
-`0.9.0b1` candidate. It activates only after `1.0.0` formally ships and the
+`0.9.0b1` public beta. It activates only after `1.0.0` formally ships and the
 relevant exports, CLI commands, schema contracts, and contract tests land.
 
 After `1.0.0` GA, the intended stability promise covers:

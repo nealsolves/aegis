@@ -33,6 +33,11 @@ CURRENT_PUBLIC_DOCS = [
     "docs/reference/OPERATIONS_RUNBOOK.md",
     "docs/reference/external/OPENAI_AGENTS_ADAPTER.md",
 ]
+CURRENT_PUBLIC_UI_COPY = [
+    "demo-app-react/public/portal.html",
+    "demo-app-react/src/pages/ArchitecturePage.tsx",
+    "demo-app-react/src/help/helpContent.ts",
+]
 
 
 def _read(rel: str) -> str:
@@ -111,6 +116,24 @@ def test_root_readme_identifies_main_beta_demo_and_eleven_lab_release():
     assert "demo-app-api/render.yaml" in readme
     assert "live from `main`" in readme
     assert "live from `develop`" not in readme
+
+
+def test_current_public_ui_copy_identifies_the_main_pypi_release():
+    stale_markers = (
+        "on develop, not main or pypi",
+        "pypi publication pending",
+        "available after pypi publication",
+        "available after the separately authorized pypi publication",
+        "candidate · pypi pending",
+    )
+    for rel in CURRENT_PUBLIC_UI_COPY:
+        normalized = " ".join(_read(rel).lower().split())
+        assert "aegis-ai-governance==0.9.0b1" in normalized
+        assert "public beta" in normalized
+        assert "released from main" in normalized
+        assert "published on pypi" in normalized
+        for marker in stale_markers:
+            assert marker not in normalized, f"{rel} contains stale marker: {marker}"
 
 
 def test_prior_beta_evidence_is_archived_beneath_current_candidate_truth():

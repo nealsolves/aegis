@@ -19,8 +19,8 @@ export const helpContent: Record<number, LabHelp> = {
   0: {
     title: 'Architecture Guide',
     overview:
-      'If you are new to AEGIS, start here. The current candidate is ' +
-      'aegis-ai-governance==0.9.0b1 on develop, not main or PyPI. AEGIS is a runtime governance layer ' +
+      'If you are new to AEGIS, start here. The public beta ' +
+      'aegis-ai-governance==0.9.0b1 is released from main and published on PyPI. AEGIS is a runtime governance layer ' +
       'around host-controlled AI execution: the host owns orchestration, provider calls, credentials, ' +
       'tools, retries, and business state, while AEGIS enforces policy and emits evidence. Signing, ' +
       'AuditChain, and adapter integrations remain opt-in.',
