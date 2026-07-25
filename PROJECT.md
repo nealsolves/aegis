@@ -15,6 +15,10 @@ The current package candidate is `aegis-ai-governance==0.9.0b1`. It preserves
 the `aegis` import package and CLI and is not yet published to PyPI. The
 previous PyPI line is `aegis==0.3.3` (`2026-04-10`).
 
+The candidate is merged on `develop`, not on `main`. Installing it will provide
+`import aegis` and the `aegis` CLI after the separately authorized PyPI
+publication.
+
 The shipped runtime supports:
 
 - unified enforcement through `enforce_invocation()` and `AEGIS.enforce()`

@@ -6,6 +6,12 @@ the enforcement pipeline, decorator defaults, and workflow governance surfaces.
 
 **Live demo:** [https://nealsolves.github.io/aegis/](https://nealsolves.github.io/aegis/)
 
+The local app in this branch accompanies the unpublished
+`aegis-ai-governance==0.9.0b1` candidate. It uses `import aegis` and the
+`aegis` CLI. The candidate is merged on `develop`, not on `main`, so the live
+GitHub Pages deployment may still show the last `main` build; PyPI publication
+is pending.
+
 ## Labs
 
 | Lab | Topic |
@@ -24,7 +30,8 @@ the enforcement pipeline, decorator defaults, and workflow governance surfaces.
 
 ## Architecture
 
-The demo has two deployed components:
+The demo has two components in source. Their public deployments follow `main`
+and may lag the local `develop` candidate:
 
 - **React frontend** — built with Vite, deployed to GitHub Pages via `.github/workflows/deploy-demo-react.yml` on every push to `main` that touches `demo-app-react/`. The API URL is baked in at build time via the `VITE_API_URL` GitHub secret.
 - **FastAPI backend** (`demo-app-api/`) — deployed on Render at `https://aegis-2oaf.onrender.com`. The React app calls this backend for all lab enforcement, signing, chaining, composition, and loader operations. No user API keys are required.

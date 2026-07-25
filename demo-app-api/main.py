@@ -26,7 +26,7 @@ from loaders import InMemoryPolicyLoader
 import yaml as yaml_lib
 from workflow_routes import router as workflow_router
 
-app = FastAPI(title="AEGIS Demo API", version="0.3.3")
+app = FastAPI(title="AEGIS Demo API", version="0.9.0b1")
 
 app.add_middleware(
     CORSMiddleware,

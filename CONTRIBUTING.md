@@ -78,4 +78,4 @@ Be respectful. Focus on the work.
 ## License
 
 By contributing, you agree that your contributions will be licensed under
-the MIT License.
+the Apache License 2.0 (`Apache-2.0`).

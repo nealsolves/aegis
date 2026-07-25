@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 import textwrap
 from pathlib import Path
 
@@ -23,6 +24,36 @@ def _write_file(root: Path, rel: str, content: str) -> None:
     path = root / rel
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(textwrap.dedent(content).strip() + "\n", encoding="utf-8")
+
+
+def test_documentation_inventory_rejects_an_unclassified_tracked_doc(
+    tmp_path, monkeypatch
+):
+    module = _load_doc_parity_module()
+    monkeypatch.setattr(module, "REPO_ROOT", tmp_path)
+    _write_file(tmp_path, "docs/current.md", "# Current")
+    _write_file(tmp_path, "docs/unclassified.md", "# Missing classification")
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "add", "docs/current.md", "docs/unclassified.md"],
+        cwd=tmp_path,
+        check=True,
+    )
+    manifest = {
+        "documentation_inventory": {
+            "current": ["docs/current.md"],
+            "target": [],
+            "historical": [],
+            "instruction_system": [],
+        }
+    }
+
+    errors = module.check_documentation_inventory(manifest)
+
+    assert errors == [
+        "[documentation-inventory] unclassified tracked documentation: "
+        "docs/unclassified.md"
+    ]
 
 
 REFERENCE_TABLE = """

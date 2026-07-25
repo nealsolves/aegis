@@ -16,6 +16,7 @@ Governance in AEGIS is runtime enforcement, not documentation and not prompting.
 - Import: `import aegis`
 - CLI: `aegis`
 - Candidate status: beta artifact, not yet published to PyPI
+- Source status: merged on `develop`, not merged to `main`
 - Previous PyPI line: `aegis==0.3.3` (`2026-04-10`)
 - Release matrix: [docs/reference/RELEASE_MATRIX.md](docs/reference/RELEASE_MATRIX.md)
 - Current release scope: invocation governance plus workflow-aware provenance
@@ -74,6 +75,10 @@ The `v0.9.0` beta candidate adds workflow governance built around
 `aegis workflow export`. No external API keys are required for the default
 adopter path. The `aegis-ai-governance==0.9.0b1` candidate is not yet
 published to PyPI.
+
+Current candidate: `aegis-ai-governance==0.9.0b1`. It installs
+`import aegis` and the `aegis` CLI. The candidate is on `develop`; it is not on
+`main` and is not published to PyPI.
 
 Optional Bedrock, A2A, and OpenAI Agents adapters are beta submodules included
 in the candidate wheel. They are not re-exported from top-level `aegis`; the

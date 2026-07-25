@@ -9,6 +9,9 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 This beta candidate is not yet published to PyPI.
 
+The candidate is merged on `develop`, not on `main`. Its distribution is
+`aegis-ai-governance`; its import package and console command remain `aegis`.
+
 ### Changed
 
 - Rename the distribution from `aegis` to `aegis-ai-governance` because the
