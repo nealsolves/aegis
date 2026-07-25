@@ -3,6 +3,7 @@
 This file tracks the release gates for the `v0.9.0` beta train.
 The package candidate is `aegis-ai-governance==0.9.0b1`; it preserves
 `import aegis` and the `aegis` CLI and is not yet published to PyPI.
+It is merged on `develop`, not on `main`.
 
 Do NOT open or merge a PR from `origin/develop` -> `origin/main` until
 `v0.9.0` is formally declared a GO.
@@ -81,7 +82,7 @@ no further public-surface work proceeds until the default path is repaired.
 
 ## PR-10b — A2A Adapter Gate
 
-- [x] `A2AAdapter` is optional, source-only, and importable without `a2a-sdk`
+- [x] `A2AAdapter` is a packaged optional beta submodule and is importable without `a2a-sdk`
 - [x] no `A2AAdapter`, `A2AParticipantBinding`, or `A2APreparedStep` top-level `aegis` re-export is added
 - [x] `workflow.protocol_constraints.a2a` is strict in root and packaged schemas
 - [x] Agent Card compatibility is validated from `supportedInterfaces[].protocolVersion`
@@ -160,12 +161,12 @@ present.
 
 `v0.9.0` beta ships only if all of the following are true:
 
-- [ ] PR-01 through PR-10d work is merged to `origin/develop`
+- [x] PR-01 through PR-10d work is merged to `origin/develop`
 - [x] the golden-path contract is frozen before later public-surface expansion
 - [x] quickstart, starters, migration, diagnostics, beta proof, and engine hardening are test-backed on local `develop`
 - [x] PR-09 operator polish lands
-- [ ] optional adapter work lands
-- [ ] PR-10d research-informed safety hardening lands
-- [ ] `feat/v0.9-11-beta-freeze` lands
+- [x] optional adapter work lands
+- [x] PR-10d research-informed safety hardening lands
+- [x] `feat/v0.9-11-beta-freeze` lands
 - [ ] `release/v0.9.0` is cut from the PR-11 result
 - [ ] only then is the `origin/develop` -> `origin/main` PR opened

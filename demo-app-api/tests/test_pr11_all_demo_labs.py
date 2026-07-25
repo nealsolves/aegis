@@ -16,6 +16,7 @@ client = TestClient(app)
 
 def test_demo_api_imports_and_health_route():
     assert app.title == "AEGIS Demo API"
+    assert app.version == "0.9.0b1"
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}

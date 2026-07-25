@@ -8,6 +8,10 @@
 | 0.2.x   | Security fixes only |
 | 0.1.x   | No                 |
 
+`aegis-ai-governance==0.9.0b1` is an unpublished pre-release candidate on
+`develop`, not a new support commitment. The table above remains the support
+policy until a release explicitly changes it.
+
 ## Reporting a Vulnerability
 
 If you discover a security vulnerability in AEGIS, please report it

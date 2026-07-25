@@ -1,5 +1,19 @@
 import { helpContent } from './helpContent'
 
+function guideText(labId: number) {
+  const guide = helpContent[labId]
+  return [
+    guide.title,
+    guide.overview,
+    guide.whyItMatters,
+    guide.whatThisLabShows.join(' '),
+    guide.howToNavigate.join(' '),
+    guide.steps.map(step => `${step.title} ${step.instruction} ${step.tip ?? ''}`).join(' '),
+    guide.takeaway,
+    (guide.glossary ?? []).map(entry => `${entry.term} ${entry.definition}`).join(' '),
+  ].join(' ')
+}
+
 describe('helpContent', () => {
   it('has an architecture entry and entries for all 11 labs', () => {
     expect(helpContent[0]).toBeDefined()
@@ -57,6 +71,46 @@ describe('helpContent', () => {
   it('architecture framework explains that AEGIS is a runtime governance layer', () => {
     expect(helpContent[0].overview).toMatch(/runtime governance layer/i)
     expect(helpContent[0].takeaway).toMatch(/deterministic governance wrapper/i)
+  })
+
+  it('architecture guide names the v0.9 candidate and current ownership boundaries', () => {
+    const content = guideText(0)
+    for (const expected of [
+      'aegis-ai-governance==0.9.0b1',
+      'host owns',
+      'GovernanceSession',
+      'invocation artifact',
+      'workflow artifact',
+      'Bedrock',
+      'A2A',
+      'OpenAI Agents',
+      'submodule',
+    ]) {
+      expect(content).toContain(expected)
+    }
+  })
+
+  it('keeps each lab guide aligned with exact visible controls', () => {
+    const exactLabels: Record<number, string[]> = {
+      1: ['Preset Scenario', 'Risk Mode', 'Enforcement Flow', 'Run Enforcement →'],
+      2: ['Generate', 'Sign Artifact →', 'tamper payload', 'Verify'],
+      3: ['+ Entry 1', 'Verify Chain', 'reset', 'Export Chain (JSON)'],
+      4: ['intersect', 'union', 'replace', 'Merge →'],
+      5: ['Loaders', 'Versioning', 'Testing', 'FileSystem', 'InMemory', 'Load →', 'Parse →', 'Validate Dates →', 'Run Tests →'],
+      6: ['Select Gate', 'Authorized Session', 'Run Gate →'],
+      7: ['Load Sample Data', 'JSON', 'CSV', 'aegis compliance export'],
+      8: ['Single source (pass)', 'Unsourced (fail)', 'Multi-source (pass)', 'Run KB Query'],
+      9: ['Low risk (governed PASS)', 'High risk (governed FAIL)', 'Compare'],
+      10: ['Low risk (both phases pass)', 'Pre-call block (Phase A fails)', 'Run Split Trace'],
+      11: ['Start Here', 'Run Minimal', 'Failure & Fix', 'workflow doctor', 'Build Evidence Trace', 'workflow trace'],
+    }
+
+    for (const [labId, labels] of Object.entries(exactLabels)) {
+      const content = guideText(Number(labId))
+      for (const label of labels) {
+        expect(content).toContain(label)
+      }
+    }
   })
 
   it('lab 1 framework keeps risk modes and threshold behavior explicit', () => {
@@ -221,15 +275,14 @@ describe('helpContent', () => {
     expect(content).toMatch(/workflow trace/i)
   })
 
-  it('architecture content explains unified default mode and split opt-in', () => {
+  it('architecture content explains split default mode and unified opt-out', () => {
     const content = [
       helpContent[0].overview,
       helpContent[0].whatThisLabShows.join(' '),
       helpContent[0].steps.map(s => s.instruction + (s.tip ?? '')).join(' '),
       (helpContent[0].glossary ?? []).map(g => `${g.term} ${g.definition}`).join(' '),
     ].join(' ')
-    expect(content).toMatch(/unified/i)
-    expect(content).toMatch(/split/i)
-    expect(content).toMatch(/pre_call_enforcement/i)
+    expect(content).toMatch(/split enforcement.*default/i)
+    expect(content).toMatch(/pre_call_enforcement=False.*unified/i)
   })
 })

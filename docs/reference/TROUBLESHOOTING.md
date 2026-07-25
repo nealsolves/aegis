@@ -1,5 +1,8 @@
 # AEGIS Workflow Troubleshooting Guide
 
+This guide covers the unpublished
+`aegis-ai-governance==0.9.0b1` candidate on `develop`.
+
 This guide covers `aegis workflow doctor`, `aegis workflow lint`, the frozen
 first-user reason codes, and the regulated failure-and-fix walkthrough.
 

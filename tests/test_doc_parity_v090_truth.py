@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 import textwrap
 from pathlib import Path
 
@@ -23,6 +24,186 @@ def _write_file(root: Path, rel: str, content: str) -> None:
     path = root / rel
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(textwrap.dedent(content).strip() + "\n", encoding="utf-8")
+
+
+def test_documentation_inventory_rejects_an_unclassified_tracked_doc(
+    tmp_path, monkeypatch
+):
+    module = _load_doc_parity_module()
+    monkeypatch.setattr(module, "REPO_ROOT", tmp_path)
+    _write_file(tmp_path, "docs/current.md", "# Current")
+    _write_file(tmp_path, "docs/unclassified.md", "# Missing classification")
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "add", "docs/current.md", "docs/unclassified.md"],
+        cwd=tmp_path,
+        check=True,
+    )
+    manifest = {
+        "documentation_inventory": {
+            "current": ["docs/current.md"],
+            "target": [],
+            "historical": [],
+            "instruction_system": [],
+        }
+    }
+
+    errors = module.check_documentation_inventory(manifest)
+
+    assert errors == [
+        "[documentation-inventory] unclassified tracked documentation: "
+        "docs/unclassified.md"
+    ]
+
+
+def test_authoritative_policy_dsl_documents_the_workflow_schema():
+    policy_dsl_spec = (
+        SCRIPT_PATH.parents[1] / "policies" / "policy_dsl_spec.md"
+    ).read_text(encoding="utf-8")
+
+    for anchor in (
+        "workflow",
+        "participants",
+        "sequence",
+        "budgets",
+        "approval_checkpoints",
+        "protocol_constraints",
+    ):
+        assert anchor in policy_dsl_spec
+
+
+def test_current_architecture_docs_describe_the_packaged_workflow_surface():
+    root = SCRIPT_PATH.parents[1]
+    for rel in (
+        "docs/architecture/ARCHITECTURAL_INVARIANTS.md",
+        "docs/architecture/ENFORCEMENT_PIPELINE.md",
+    ):
+        text = (root / rel).read_text(encoding="utf-8")
+        for anchor in (
+            "0.9.0b1",
+            "GovernanceSession",
+            "workflow trace",
+            "workflow export",
+        ):
+            assert anchor in text, f"{rel} must include {anchor!r}"
+
+    hld = (root / "docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Packaged beta public surface" in hld
+    assert "Internal, not public" in hld
+    assert "Not current public types" in hld
+    assert "`ValidatorHook`" in hld
+    assert "`AgentIdentity`" in hld
+    assert "`AgentCapabilityManifest`" in hld
+
+
+def test_unpublished_quickstart_does_not_claim_a_candidate_git_tag():
+    root = SCRIPT_PATH.parents[1]
+    quickstart = (root / "docs/reference/WORKFLOW_QUICKSTART.md").read_text(
+        encoding="utf-8"
+    )
+    normalized = " ".join(quickstart.lower().split())
+
+    assert "git checkout v0.9.0b1" not in quickstart
+    assert 'pip install -e ".[dev]"' in quickstart
+    assert "after publication" in normalized
+
+
+def test_release_matrix_records_the_merged_unpublished_candidate():
+    root = SCRIPT_PATH.parents[1]
+    release_matrix = (root / "docs/reference/RELEASE_MATRIX.md").read_text(
+        encoding="utf-8"
+    )
+
+    for anchor in (
+        "8be5f54",
+        "PR #17",
+        "merged",
+        "Pending Trusted Publisher",
+        "not on `main`",
+        "not yet published to PyPI",
+    ):
+        assert anchor in release_matrix
+    assert "under review in PR #17" not in release_matrix
+
+
+def test_optional_adapter_reference_set_matches_the_packaged_submodules():
+    root = SCRIPT_PATH.parents[1]
+    external = root / "docs" / "reference" / "external"
+    adapter_index = (external / "README.md").read_text(encoding="utf-8")
+
+    assert (external / "BEDROCK_ADAPTER.md").exists()
+    assert not (external / "what-is-bedrock.md").exists()
+    for name in (
+        "BEDROCK_ADAPTER.md",
+        "A2A_ADAPTER.md",
+        "OPENAI_AGENTS_ADAPTER.md",
+    ):
+        assert name in adapter_index
+
+    bedrock = (external / "BEDROCK_ADAPTER.md").read_text(encoding="utf-8")
+    for anchor in (
+        "BedrockTraceAdapter",
+        "BedrockParticipantBinding",
+        "BedrockPreparedStep",
+        "agent alias ARN",
+        "require_trace",
+        "require_alias_backed_identity",
+        "host owns",
+        "not re-exported",
+    ):
+        assert anchor in bedrock
+
+
+def test_adapter_guides_use_packaged_candidate_status_and_exact_extra_install():
+    root = SCRIPT_PATH.parents[1]
+    external = root / "docs" / "reference" / "external"
+    a2a = (external / "A2A_ADAPTER.md").read_text(encoding="utf-8")
+    openai = (external / "OPENAI_AGENTS_ADAPTER.md").read_text(encoding="utf-8")
+
+    for text in (a2a, openai):
+        lower = text.lower()
+        assert "aegis-ai-governance==0.9.0b1" in text
+        assert "not re-exported" in lower
+        assert "source-only" not in lower
+        assert "local-only" not in lower
+
+    assert 'pip install "aegis-ai-governance[openai-agents]"' in openai
+
+
+def test_adapter_schema_and_release_gate_record_packaged_optional_status():
+    root = SCRIPT_PATH.parents[1]
+    for rel in (
+        "schemas/policy_dsl.schema.json",
+        "aegis/schemas/policy_dsl.schema.json",
+    ):
+        normalized = " ".join(
+            (root / rel).read_text(encoding="utf-8").lower().split()
+        )
+        for adapter in ("bedrock", "a2a", "openai agents sdk"):
+            assert f"{adapter} adapter constraints (packaged optional beta submodule)" in (
+                normalized
+            )
+        assert "adapter constraints (source-only beta)" not in normalized
+
+    release_gates = (root / "RELEASE_GATES.md").read_text(encoding="utf-8")
+    assert "`A2AAdapter` is a packaged optional beta submodule" in release_gates
+    assert "`A2AAdapter` is optional, source-only" not in release_gates
+
+
+def test_instruction_guide_records_candidate_and_optional_adapter_status():
+    root = SCRIPT_PATH.parents[1]
+    guide = (root / ".claude" / "rules" / "aegis-project.md").read_text(
+        encoding="utf-8"
+    )
+    normalized = " ".join(guide.lower().split())
+
+    assert "aegis-ai-governance==0.9.0b1" in guide
+    assert "not published to pypi" in normalized
+    for adapter in ("Bedrock", "A2A", "OpenAI Agents"):
+        assert adapter in guide
+    assert "published package version remains `0.3.3`" not in guide
 
 
 REFERENCE_TABLE = """

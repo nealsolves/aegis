@@ -2,7 +2,7 @@
 
 **Auditable Enforcement and Governance for Intelligent Systems**
 
-Version: 1.0.0 | Status: Target-State Design | Last Updated: 2026-04-13
+Version: 1.0.0 | Status: Target-State Design | Last Updated: 2026-07-25
 
 ---
 
@@ -21,13 +21,17 @@ One-line rule: the host performs actions; AEGIS governs whether they are allowed
 and emits evidence.
 
 Availability boundary: this document describes the intended `1.0.0` public
-surface. The currently shipped package remains `v0.3.3`. The upcoming unreleased
-v0.9.0-beta line adds `GovernanceSession`, `SessionPreCallResult`,
-`AEGIS.open_session(...)`, `aegis workflow init`, `aegis policy init`,
-`aegis workflow lint`, `aegis workflow doctor`, `aegis workflow trace`, and
-`aegis workflow export`. `AgentIdentity`, `AgentCapabilityManifest`,
-`ValidatorHook`, `BedrockTraceAdapter`, and `A2AAdapter` remain planned-only
-and are not part of the current beta public surface.
+surface. The current unpublished candidate is
+`aegis-ai-governance==0.9.0b1` on `develop`, not on `main` or PyPI.
+
+Packaged beta public surface: `AEGIS.open_session(...)`, `GovernanceSession`,
+`SessionPreCallResult`, workflow init/lint/doctor/trace/export, and the optional
+`aegis.bedrock_adapter`, `aegis.a2a_adapter`, and
+`aegis.openai_agents_adapter` submodules.
+
+Internal, not public: `ValidatorHook`.
+
+Not current public types: `AgentIdentity`, `AgentCapabilityManifest`.
 
 Headline 1.0.0 capabilities:
 
@@ -172,11 +176,11 @@ business state.
 | `AEGIS` | Instance-scoped SDK entry point for enforcement, sinks, loaders, and workflow sessions | AEGIS public API | global app runtime |
 | `GovernanceSession` | Stateful workflow-governance primitive coordinating many governed steps | AEGIS public API | business state machine |
 | `SessionPreCallResult` | Split-mode handoff token scoped to a governed workflow step | AEGIS public API | general transport token |
-| `AgentIdentity` | Stable identity for a participant in a governed workflow | AEGIS public API | provider-specific auth |
-| `AgentCapabilityManifest` | Declared capability and protocol contract for a participant | AEGIS public API | transport implementation |
+| `AgentIdentity` | Target-state stable identity for a participant in a governed workflow | Planned `1.0.0` public API; not a current beta type | provider-specific auth |
+| `AgentCapabilityManifest` | Target-state capability and protocol contract for a participant | Planned `1.0.0` public API; not a current beta type | transport implementation |
 | `Audit Artifact` | Immutable evidence for one invocation attempt | AEGIS output contract | workflow summary |
 | `Workflow Artifact` | Session-level evidence correlated across many invocation artifacts | AEGIS output contract | raw provider trace store |
-| `ValidatorHook` | Optional extension point for semantic or content validators at workflow boundaries | AEGIS public API | core policy kernel |
+| `ValidatorHook` | Target-state extension point for semantic or content validators | Internal-only in the beta; planned `1.0.0` public API | core policy kernel |
 | `BedrockTraceAdapter` | Optional normalization layer from Bedrock collaborator and trace evidence into AEGIS workflow events | AEGIS optional adapter API | AWS runtime ownership |
 | `A2AAdapter` | Optional normalization layer from A2A cards, envelopes, and task updates into AEGIS workflow events | AEGIS optional adapter API | A2A transport ownership |
 
@@ -598,7 +602,7 @@ normalization and validation.
 
 ### 13.1 Shipped vs Planned Public Surface
 
-The shipped `0.3.3` public surface remains invocation-scoped.
+The previous PyPI release, `aegis==0.3.3`, remains invocation-scoped.
 
 | Shipped in `0.3.3` | Role today |
 | ------------------ | ---------- |
@@ -607,7 +611,7 @@ The shipped `0.3.3` public surface remains invocation-scoped.
 | `enforce_pre_call` / `enforce_post_call` | split invocation governance |
 | `PreCallResult` | single-use split handoff for invocation governance |
 
-Available in the source-only `v0.9.0` beta line — not part of the `v0.3.3` artifact:
+Packaged in the unpublished `aegis-ai-governance==0.9.0b1` candidate:
 
 | Surface | Intended role |
 | ------- | ------------- |
@@ -617,6 +621,9 @@ Available in the source-only `v0.9.0` beta line — not part of the `v0.3.3` art
 | `aegis workflow init` / `aegis policy init` | starter and policy bootstrap surface |
 | `aegis workflow lint` / `aegis workflow doctor` | beta diagnostic surface |
 | `aegis workflow trace` / `aegis workflow export` | operator inspection and audit export surface (shipped in PR-09) |
+| `aegis.bedrock_adapter` | optional Bedrock normalization submodule |
+| `aegis.a2a_adapter` | optional A2A normalization submodule |
+| `aegis.openai_agents_adapter` | optional OpenAI Agents SDK submodule; extra-gated |
 
 Planned for 1.0.0 or later (not in the current beta public surface):
 
@@ -625,13 +632,11 @@ Planned for 1.0.0 or later (not in the current beta public surface):
 | `AgentIdentity` | participant identity contract |
 | `AgentCapabilityManifest` | capability and protocol contract |
 | `ValidatorHook` | workflow validator extension point |
-| `BedrockTraceAdapter` | optional Bedrock normalization adapter |
-| `A2AAdapter` | optional A2A normalization adapter |
 
 ### 13.2 Stability Contract After `1.0.0` GA
 
-The `1.x` stability promise described here does not apply to the shipped
-`0.3.3` artifact. It activates only after `1.0.0` formally ships and the
+The `1.x` stability promise described here does not apply to the beta
+`0.9.0b1` candidate. It activates only after `1.0.0` formally ships and the
 relevant exports, CLI commands, schema contracts, and contract tests land.
 
 After `1.0.0` GA, the intended stability promise covers:
@@ -649,7 +654,7 @@ It does not cover:
 - experimental adapter internals
 
 Before `1.0.0` GA, this document is a design target, not an active
-compatibility guarantee for planned-only workflow APIs.
+compatibility guarantee for the planned-only `1.0.0` APIs.
 
 ### 13.3 Migration at a High Level
 

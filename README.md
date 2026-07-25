@@ -16,6 +16,7 @@ Governance in AEGIS is runtime enforcement, not documentation and not prompting.
 - Import: `import aegis`
 - CLI: `aegis`
 - Candidate status: beta artifact, not yet published to PyPI
+- Source status: merged on `develop`, not merged to `main`
 - Previous PyPI line: `aegis==0.3.3` (`2026-04-10`)
 - Release matrix: [docs/reference/RELEASE_MATRIX.md](docs/reference/RELEASE_MATRIX.md)
 - Current release scope: invocation governance plus workflow-aware provenance
@@ -23,7 +24,7 @@ Governance in AEGIS is runtime enforcement, not documentation and not prompting.
   `ProvenanceGate`, `RiskHistory`, `@governed` defaults to split enforcement
 - Current beta line: `v0.9.0`, packaged as
   `aegis-ai-governance==0.9.0b1`
-- Verification baseline: `1903 tests` pass in the candidate environment,
+- Verification baseline: `1919 tests` pass in the candidate environment,
   including fixture-based optional-adapter coverage;
   coverage remains above the `90%` CI gate
 
@@ -74,6 +75,10 @@ The `v0.9.0` beta candidate adds workflow governance built around
 `aegis workflow export`. No external API keys are required for the default
 adopter path. The `aegis-ai-governance==0.9.0b1` candidate is not yet
 published to PyPI.
+
+Current candidate: `aegis-ai-governance==0.9.0b1`. It installs
+`import aegis` and the `aegis` CLI. The candidate is on `develop`; it is not on
+`main` and is not published to PyPI.
 
 Optional Bedrock, A2A, and OpenAI Agents adapters are beta submodules included
 in the candidate wheel. They are not re-exported from top-level `aegis`; the
@@ -246,13 +251,17 @@ Phase A runs before the model call; Phase B validates output after. Pass
 The maintained demo is a React frontend plus FastAPI backend:
 
 - Site: [https://nealsolves.github.io/aegis/](https://nealsolves.github.io/aegis/)
-- Coverage: 7 labs across risk scoring, signing, audit chain, composition,
-  loaders and policy dates, custom gates, and compliance export
-- Purpose: hands-on orientation to the runtime that shipped in `v0.3.x`
+- Candidate source: eleven hands-on labs across risk scoring, signing, audit
+  chain, composition, loaders and policy dates, custom gates, compliance
+  export, governed knowledge, governed-versus-ungoverned comparison, split
+  enforcement, and workflow governance
+- Candidate-only additions: Lab 8 (Governed Knowledge Base), Lab 9 (Governed
+  vs Ungoverned), Lab 10 (Split Enforcement), and Lab 11 (Workflow Governance)
+- Purpose: hands-on orientation to both the `v0.3.x` invocation runtime and the
+  `v0.9.0b1` workflow-governance candidate
 
-The repo also contains a local-only workflow beta lab in
-`demo-app-react/src/labs/Lab11WorkflowLab.tsx` plus matching
-`demo-app-api/workflow_routes.py` routes for the PR-07 failure-and-fix path.
+The candidate source is merged on `develop`, not `main`, so the live GitHub
+Pages deployment may still show the last `main` build.
 
 ## CLI Surface
 

@@ -7,6 +7,9 @@ Use [README.md](../README.md) for the repo overview and
 [INTEGRATION_GUIDE.md](INTEGRATION_GUIDE.md) for the full host-integration
 contract.
 
+These recipes target the unpublished `aegis-ai-governance==0.9.0b1` candidate
+on `develop`; the import and CLI remain `aegis`.
+
 ## Choosing the right API
 
 - Use `enforce_invocation()` when you already have the model output and want
@@ -16,6 +19,10 @@ contract.
 - Use `AEGIS(...)` when you want instance-scoped configuration for sinks,
   signers, policy loaders, strict mode, or custom gates.
 - Use `@governed(...)` when you want to wrap a model call site directly.
+- Use `AEGIS.open_session(...)` when multiple governed calls need workflow
+  lifecycle, sequence, budget, approval, handoff, or correlated evidence.
+- Use `aegis workflow trace` and `aegis workflow export` to inspect persisted
+  invocation and workflow evidence; neither command runs the workflow.
 
 ## Recipe 1: Unified enforcement
 

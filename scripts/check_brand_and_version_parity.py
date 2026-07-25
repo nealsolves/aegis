@@ -7,8 +7,11 @@ import re
 import sys
 from pathlib import Path
 
+import yaml
+
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+MANIFEST_PATH = REPO_ROOT / "doc_parity_manifest.yaml"
 CANDIDATE_DISTRIBUTION = "aegis-ai-governance"
 RUNTIME_VERSION = "0.9.0b1"
 CORE_DOCS = [
@@ -48,11 +51,26 @@ def _pyproject_name() -> str | None:
 
 def main() -> int:
     errors: list[str] = []
+    manifest = yaml.safe_load(MANIFEST_PATH.read_text(encoding="utf-8"))
     repo_root_str = str(REPO_ROOT)
     if repo_root_str not in sys.path:
         sys.path.insert(0, repo_root_str)
     aegis = importlib.import_module("aegis")
 
+    if manifest.get("distribution_name") != CANDIDATE_DISTRIBUTION:
+        errors.append(
+            "doc_parity_manifest.yaml distribution_name must match the candidate"
+        )
+    if manifest.get("import_package") != "aegis":
+        errors.append("doc_parity_manifest.yaml import_package must be aegis")
+    if manifest.get("console_command") != "aegis":
+        errors.append("doc_parity_manifest.yaml console_command must be aegis")
+    if manifest.get("candidate_status") != "unpublished-beta":
+        errors.append(
+            "doc_parity_manifest.yaml candidate_status must be unpublished-beta"
+        )
+    if manifest.get("version") != RUNTIME_VERSION:
+        errors.append("doc_parity_manifest.yaml version must match runtime candidate")
     if _pyproject_name() != CANDIDATE_DISTRIBUTION:
         errors.append(
             f"pyproject.toml distribution must be {CANDIDATE_DISTRIBUTION}"

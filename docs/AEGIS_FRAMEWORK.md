@@ -14,6 +14,12 @@ the minimum governance architecture for a production AI system.
 
 **Contract. Control. Check.**
 
+Current candidate: `aegis-ai-governance==0.9.0b1` on `develop`, not on `main`
+or PyPI. It extends the framework from invocation governance to
+`GovernanceSession` workflow constraints and separate workflow evidence.
+Workflow init/lint/doctor/trace/export and the optional adapter submodules are
+packaged beta surfaces; the host still owns execution and orchestration.
+
 This document is intentionally evolutionary. Each section starts with the base
 capability and then shows how later releases extended it.
 

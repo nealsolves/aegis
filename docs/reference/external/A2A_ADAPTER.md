@@ -1,8 +1,13 @@
 # A2A Adapter
 
-`A2AAdapter` is an optional source-only adapter for host-owned A2A
-interactions. It validates Agent Card compatibility before a governed step and
-validates A2A task-state evidence before completing the step.
+> **Status:** Included in the unpublished
+> `aegis-ai-governance==0.9.0b1` beta candidate on `develop`.
+> Import from `aegis.a2a_adapter`; it is not re-exported from top-level
+> `aegis`.
+
+`A2AAdapter` is an optional adapter for host-owned A2A interactions. It
+validates Agent Card compatibility before a governed step and validates A2A
+task-state evidence before completing the step.
 
 AEGIS does not become an A2A client, server, proxy, gateway, task store, retry
 loop, streaming runtime, credential manager, or remote agent host.

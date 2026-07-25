@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 import aegis
+import yaml
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -98,6 +100,18 @@ def test_current_public_docs_use_the_new_distribution_install_name():
         )
 
 
+def test_root_readme_distinguishes_live_main_demo_from_eleven_lab_candidate():
+    readme = _read("README.md")
+    normalized = " ".join(readme.lower().split())
+
+    assert "eleven hands-on labs" in normalized
+    for lab in ("Lab 8", "Lab 9", "Lab 10", "Lab 11"):
+        assert lab in readme
+    assert "live github pages deployment may still show the last `main` build" in (
+        normalized
+    )
+
+
 def test_prior_beta_evidence_is_archived_beneath_current_candidate_truth():
     evidence = _read("docs/releases/v0.9.0-beta-test-evidence.md")
     assert evidence.startswith("# AEGIS v0.9.0 Beta Test Evidence\n\n> Archived")
@@ -119,9 +133,29 @@ def test_current_optional_extra_guidance_uses_distribution_name():
 
 def test_brand_and_version_parity_script_passes():
     result = subprocess.run(
-        ["python", "scripts/check_brand_and_version_parity.py"],
+        [sys.executable, "scripts/check_brand_and_version_parity.py"],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_doc_manifest_names_the_distribution_import_cli_and_candidate_status():
+    manifest = yaml.safe_load(_read("doc_parity_manifest.yaml"))
+
+    assert manifest["distribution_name"] == "aegis-ai-governance"
+    assert manifest["import_package"] == "aegis"
+    assert manifest["console_command"] == "aegis"
+    assert manifest["version"] == "0.9.0b1"
+    assert manifest["candidate_status"] == "unpublished-beta"
+
+
+def test_contribution_license_and_security_candidate_status_are_truthful():
+    contributing = _read("CONTRIBUTING.md")
+    security = _read("SECURITY.md")
+
+    assert "Apache-2.0" in contributing
+    assert "MIT License" not in contributing
+    assert "0.9.0b1" in security
+    assert "pre-release" in security.lower()

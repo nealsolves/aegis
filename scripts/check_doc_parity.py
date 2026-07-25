@@ -27,10 +27,12 @@ Exit codes:
 from __future__ import annotations
 
 import fnmatch
+import importlib
 import json
 import re
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 import yaml
@@ -132,6 +134,45 @@ def collect_md_files() -> list[Path]:
     return sorted(result)
 
 
+_DOCUMENTATION_SUFFIXES = {".html", ".md", ".mermaid", ".png", ".svg"}
+
+
+def collect_documentation_files() -> list[Path]:
+    """Collect tracked files that are maintained as docs or visual doc assets."""
+    try:
+        output = subprocess.check_output(
+            ["git", "ls-files", "--cached"],
+            cwd=REPO_ROOT,
+            text=True,
+        )
+        result = [
+            REPO_ROOT / line
+            for line in output.splitlines()
+            if line
+            and Path(line).suffix.lower() in _DOCUMENTATION_SUFFIXES
+            and (REPO_ROOT / line).exists()
+        ]
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        excluded = {
+            ".git",
+            ".pytest_cache",
+            ".venv",
+            "aegis-env",
+            "dist",
+            "node_modules",
+            "venv",
+        }
+        result = []
+        for path in REPO_ROOT.rglob("*"):
+            if not path.is_file() or path.suffix.lower() not in _DOCUMENTATION_SUFFIXES:
+                continue
+            parts = path.relative_to(REPO_ROOT).parts
+            if any(part in excluded for part in parts):
+                continue
+            result.append(path)
+    return sorted(result)
+
+
 def get_manifest_doc_list(
     manifest: dict,
     key: str,
@@ -188,6 +229,118 @@ def extract_current_runtime_version_refs(text: str) -> set[str]:
             refs.update(_CURRENT_RUNTIME_SEMVER_RE.findall(line))
 
     return refs
+
+
+# ---------------------------------------------------------------------------
+# Check 0: Candidate identity and documentation inventory
+# ---------------------------------------------------------------------------
+
+def check_candidate_identity(manifest: dict) -> list[str]:
+    """Bind candidate documentation to package metadata and runtime identity."""
+    errors: list[str] = []
+    prefix = "[candidate-identity]"
+    required = {
+        "distribution_name": "aegis-ai-governance",
+        "import_package": "aegis",
+        "console_command": "aegis",
+        "candidate_status": "unpublished-beta",
+    }
+    for key, expected in required.items():
+        if manifest.get(key) != expected:
+            errors.append(
+                f"{prefix} manifest {key!r} must be {expected!r}"
+            )
+
+    pyproject_path = REPO_ROOT / "pyproject.toml"
+    if not pyproject_path.exists():
+        errors.append(f"{prefix} missing pyproject.toml")
+        return errors
+
+    with pyproject_path.open("rb") as handle:
+        project = tomllib.load(handle).get("project", {})
+
+    if project.get("name") != manifest.get("distribution_name"):
+        errors.append(
+            f"{prefix} pyproject.toml name {project.get('name')!r} does not "
+            "match manifest distribution_name"
+        )
+    if project.get("version") != manifest.get("version"):
+        errors.append(
+            f"{prefix} pyproject.toml version {project.get('version')!r} does "
+            "not match manifest version"
+        )
+
+    repo_root_str = str(REPO_ROOT)
+    if repo_root_str not in sys.path:
+        sys.path.insert(0, repo_root_str)
+    runtime = importlib.import_module(str(manifest.get("import_package", "aegis")))
+    if getattr(runtime, "__version__", None) != manifest.get("version"):
+        errors.append(
+            f"{prefix} runtime version {getattr(runtime, '__version__', None)!r} "
+            "does not match manifest version"
+        )
+
+    publication_markers = (
+        "not yet published to pypi",
+        "not published to pypi",
+        "unpublished",
+        "publication pending",
+        "pypi pending",
+    )
+    for rel in manifest.get("candidate_truth_docs", []):
+        path = REPO_ROOT / rel
+        if not path.exists():
+            errors.append(f"{prefix} missing candidate truth doc: {rel}")
+            continue
+        text = path.read_text(encoding="utf-8")
+        lower = text.lower()
+        normalized = " ".join(lower.split())
+        if manifest.get("distribution_name", "") not in text:
+            errors.append(f"{prefix} {rel}: missing distribution candidate")
+        if str(manifest.get("version", "")) not in text:
+            errors.append(f"{prefix} {rel}: missing candidate version")
+        if not any(marker in normalized for marker in publication_markers):
+            errors.append(f"{prefix} {rel}: missing unpublished candidate status")
+        if "pr #17 under review" in lower or "pr-17 under review" in lower:
+            errors.append(f"{prefix} {rel}: contains stale PR #17 review status")
+    return errors
+
+
+def check_documentation_inventory(manifest: dict) -> list[str]:
+    """Require every tracked documentation-like file to have one owner class."""
+    errors: list[str] = []
+    prefix = "[documentation-inventory]"
+    inventory = manifest.get("documentation_inventory")
+    if not isinstance(inventory, dict):
+        return [f"{prefix} manifest missing documentation_inventory mapping"]
+
+    categories = ("current", "target", "historical", "instruction_system")
+    patterns_by_category: dict[str, list[str]] = {}
+    for category in categories:
+        patterns = inventory.get(category)
+        if not isinstance(patterns, list):
+            errors.append(
+                f"{prefix} category {category!r} must be a list of patterns"
+            )
+            patterns_by_category[category] = []
+            continue
+        patterns_by_category[category] = patterns
+
+    for path in collect_documentation_files():
+        rel = path.relative_to(REPO_ROOT).as_posix()
+        matches = [
+            category
+            for category, patterns in patterns_by_category.items()
+            if any(fnmatch.fnmatch(rel, pattern) for pattern in patterns)
+        ]
+        if not matches:
+            errors.append(f"{prefix} unclassified tracked documentation: {rel}")
+        elif len(matches) > 1:
+            errors.append(
+                f"{prefix} multiply classified tracked documentation: {rel} "
+                f"({', '.join(matches)})"
+            )
+    return errors
 
 
 # ---------------------------------------------------------------------------
@@ -2224,6 +2377,11 @@ def main() -> int:
     manifest = load_manifest()
     all_errors: list[str] = []
     checks = [
+        ("0A. Candidate identity", lambda: check_candidate_identity(manifest)),
+        (
+            "0B. Documentation inventory",
+            lambda: check_documentation_inventory(manifest),
+        ),
         ("A. Current-state parity", lambda: check_current_state_parity(manifest)),
         ("B. Public API boundary", lambda: check_public_api_boundary(manifest)),
         ("C. Schema-example parity", lambda: check_schema_example_parity(manifest)),

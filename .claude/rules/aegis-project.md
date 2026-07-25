@@ -92,9 +92,9 @@ enforce_invocation(invocation)
 
 ### `v0.9.0` Additions (current beta surface on `develop`)
 
-These components are present in the source-only `v0.9.0` beta line on local
-`develop`. The published package version remains `0.3.3` until the beta train
-is released.
+These components are included in the
+`aegis-ai-governance==0.9.0b1` candidate on `develop`. The candidate is not
+published to PyPI and is not merged into `main`.
 
 **`AEGIS.open_session(...)`** — Public workflow entrypoint. Returns a `GovernanceSession` instance. Workflow adoption is always instance-scoped through this method. There is no module-level `open_session(...)`.
 

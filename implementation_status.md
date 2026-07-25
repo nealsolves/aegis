@@ -3,8 +3,8 @@
 **Target Version:** `0.9.0` Beta
 **Package Candidate:** `aegis-ai-governance==0.9.0b1`
 **Previous PyPI Line:** `aegis==0.3.3`
-**Active Branch:** `feat/v0.9-12-pypi-distribution`
-**Last Updated:** 2026-07-24
+**Active Branch:** `feat/v0.9-13-truth-audit-demo`
+**Last Updated:** 2026-07-25
 
 ---
 
@@ -12,13 +12,13 @@
 
 | Field | Current value |
 |---|---|
-| Active change | `v0.9.0-pypi-distribution` |
+| Active change | `v0.9.0-truth-audit-demo` |
 | Active profile | Base profile `solo`; project lifecycle `configured` |
 | Instruction modules | Bootstrap installation `complete` |
 | Project owner | Neal Bhattacharya |
 | Escalation owner | neal@nealsolves.com |
 | Remote actions | Disabled; no push, pull request, merge, release, or deployment authority is configured |
-| Current gate | Local validation complete; release evidence pending |
+| Current gate | Local truth-audit lifecycle complete; any push or pull request to `develop` requires separate authorization |
 | Bootstrap decision | `BOOTSTRAP-2026-07-24-AEGIS-SDD` |
 | Baseline commit | `73f1bfc494dd5290a7e579069b3cad72e33457ed` |
 
@@ -34,8 +34,10 @@ must be updated only after their specific evidence exists.
 - PR-10a, PR-10b, PR-10c, and PR-10d adapter and safety tracks are complete
   and merged on `origin/develop`.
 - PR-11's full functional test harness is merged through pull request #14.
-- The `v0.9.0` package candidate is `aegis-ai-governance==0.9.0b1`; it has not
-  been published to PyPI.
+- The PyPI distribution work is merged through pull request #16, and the
+  corrected post-merge release truth is merged through pull request #17.
+- The `v0.9.0` package candidate is `aegis-ai-governance==0.9.0b1`; it is not
+  published to PyPI. Publication is pending and separately authorized.
 
 | Track | Status | Notes |
 |-------|--------|-------|
@@ -51,7 +53,8 @@ must be updated only after their specific evidence exists.
 | Optional adapters | complete | Bedrock, A2A, and OpenAI Agents adapter tracks are present on `develop` with fixture coverage |
 | Research safety addendum | complete | PR-10d graph/topology lint, doctor remediation, export rationale, and safety smoke tests are merged |
 | Beta functional gate | complete | PR-11 full functional test harness is merged; distribution and publication remain separate gates |
-| Distribution candidate | validating | `aegis-ai-governance==0.9.0b1` metadata, Trusted Publishing workflow, full suite, demo API, and fresh-wheel workflow proof are green; final evidence and review remain |
+| Distribution candidate | merged on `develop` | `aegis-ai-governance==0.9.0b1` metadata and Trusted Publishing are prepared; the candidate is not on `main` and PyPI publication is pending |
+| Truth audit and demo refresh | complete locally | Maintained docs, diagrams, contextual help, adapters, Python coverage, React, build, API, and assembled browser workflows are validated; independent review passed and the policy lifecycle reached `COMPLETE`; the final Python suite is 1919 passed and 2 skipped |
 
 ---
 

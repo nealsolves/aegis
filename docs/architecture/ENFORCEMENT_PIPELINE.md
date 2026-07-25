@@ -4,6 +4,19 @@ This document describes how governance enforcement occurs for every AI invocatio
 
 The enforcement pipeline is deterministic and fail-closed.
 
+Current candidate: `aegis-ai-governance==0.9.0b1` on `develop`, not on `main`
+or PyPI. `GovernanceSession` wraps this unchanged invocation pipeline for each
+workflow step. The shipped operator surface includes `aegis workflow trace`
+and `aegis workflow export`.
+
+Packaged beta public surface: `AEGIS.open_session(...)`, `GovernanceSession`,
+`SessionPreCallResult`, workflow init/lint/doctor/trace/export, and optional
+adapter submodules.
+
+Internal, not public: `ValidatorHook`.
+
+Not current public types: `AgentIdentity`, `AgentCapabilityManifest`.
+
 ---
 
 ## High Level Flow
@@ -288,18 +301,15 @@ Failure codes:
 
 ---
 
-## Workflow Governance (Planned `1.0.0` Target State)
+## Workflow Governance (`0.9.0b1` Candidate)
 
-The shipped `0.3.3` runtime remains invocation-scoped. Its provenance, lineage,
-and risk-history additions are groundwork for the upcoming unreleased v0.9.0-beta
-line, which will ship the initial `GovernanceSession` primitive. The currently
-shipped package remains `v0.3.3`.
-
-A `GovernanceSession` will manage:
+The unpublished candidate includes the initial `GovernanceSession` primitive.
+A session manages:
 
 * step sequencing
 * cross-invocation policy enforcement
 * tool budgets
 * workflow audit artifacts
 
-These features are tracked in the Architecture Redesign Roadmap.
+Invocation artifacts remain one-per-attempt. The separate workflow artifact
+correlates step checksums, lifecycle, approvals, and workflow evidence.
