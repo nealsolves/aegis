@@ -26,27 +26,35 @@ describe('ArchitecturePage', () => {
     expect(screen.getByText('Key Boundaries')).toBeInTheDocument()
   })
 
-  it('renders the current v0.3.3 boundary notes', () => {
+  it('renders the current candidate boundary notes', () => {
     renderPage()
-    expect(screen.getByText('Decorator Modes')).toBeInTheDocument()
-    expect(screen.getByText('Phase A / Phase B')).toBeInTheDocument()
-    expect(screen.getAllByText('ProvenanceGate').length).toBeGreaterThan(0)
-    expect(screen.getByText('Artifact Provenance')).toBeInTheDocument()
-    expect(screen.getByText('Audit Chain')).toBeInTheDocument()
-    expect(screen.getByText('Lineage Analysis')).toBeInTheDocument()
-    expect(screen.getByText('Pre-Pipeline Failures')).toBeInTheDocument()
-    expect(screen.getByText('Risk History')).toBeInTheDocument()
-    expect(screen.getByText('Async + Instance APIs')).toBeInTheDocument()
+    for (const label of [
+      'Host Ownership',
+      'Workflow Governance',
+      'Invocation Enforcement',
+      'Optional Adapters',
+      'Evidence Separation',
+      'Public API Boundary',
+      'Signing and AuditChain',
+      'Operator Tooling',
+    ]) {
+      expect(screen.getByText(label)).toBeInTheDocument()
+    }
   })
 
-  it('labels the page as v0.3.3', () => {
+  it('labels the page with the unpublished beta candidate', () => {
     renderPage()
-    expect(screen.getByText('AEGIS v0.3.3')).toBeInTheDocument()
+    expect(screen.getByText('AEGIS v0.9 Beta')).toBeInTheDocument()
+    expect(screen.getByText('aegis-ai-governance==0.9.0b1')).toBeInTheDocument()
   })
 
   it('renders diagram images', () => {
     renderPage()
-    expect(screen.getByAltText('AEGIS Component View')).toBeInTheDocument()
-    expect(screen.getByAltText('AEGIS Enforcement Pipeline')).toBeInTheDocument()
+    expect(
+      screen.getByAltText('AEGIS v0.9 beta component architecture')
+    ).toBeInTheDocument()
+    expect(
+      screen.getByAltText('AEGIS v0.9 beta enforcement pipeline')
+    ).toBeInTheDocument()
   })
 })

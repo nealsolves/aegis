@@ -12,27 +12,31 @@
   }
 }}%%
 flowchart LR
-    Open(["Open session\nor direct invocation"])
-    SessionPre["Workflow step pre-call\nAEGIS.open_session() -> GovernanceSession"]
-    Load["Validation +\npolicy load"]
-    PreAuth["Custom gates\npre_authorization"]
-    Guards["Guard\nevaluation"]
-    Role["Role\nvalidation"]
-    Preconditions["Precondition\nvalidation"]
-    Tools["Tool constraint\nvalidation"]
-    PostAuth["Custom gates\npost_authorization"]
-    Boundary{{"Host executes provider / tool call\nsplit + session paths only"}}
-    PreOutput["Custom + built-in gates\npre_output"]
-    SchemaV["Output schema\nvalidation"]
-    Postconditions["Postcondition\nvalidation"]
-    PostOutput["Custom gates\npost_output"]
-    Risk["Risk\nscoring"]
+    Open(["Direct invocation or\nAEGIS.open_session()"])
+    SessionPre["GovernanceSession\nstep pre-call"]
+    Load["Policy load + validation"]
+    PreAuth["pre_authorization"]
+    Guards["guards + role"]
+    Preconditions["preconditions + tools"]
+    PostAuth["post_authorization"]
+    Boundary{{"HOST EXECUTES\nprovider / tool call"}}
+    PreOutput["pre_output"]
+    SchemaV["output schema"]
+    Postconditions["postconditions"]
+    PostOutput["post_output"]
+    Risk["risk scoring"]
     InvArtifact(["Invocation artifact\nPASS / FAIL"])
-    SessionPost["GovernanceSession.enforce_step_post_call()\nupdates step state / budgets / approvals"]
-    Finalize["Session finalize\nterminal or auto-finalized"]
-    WorkflowArtifact(["Workflow artifact\nCOMPLETED / FAILED / CANCELED / INCOMPLETE"])
-    BetaCli["workflow init / lint / doctor\nbootstrap + diagnose"]
+    SessionPost["GovernanceSession\nstep post-call"]
+    WorkflowArtifact(["Workflow artifact\nseparate session evidence"])
+    Sink["AuditSink + optional signing"]
+    Trace["aegis workflow trace"]
+    Export["aegis workflow export"]
+    Adapters["Bedrock / A2A / OpenAI Agents\noptional normalization"]
 
-    Open --> SessionPre --> Load --> PreAuth --> Guards --> Role --> Preconditions --> Tools --> PostAuth --> Boundary --> PreOutput --> SchemaV --> Postconditions --> PostOutput --> Risk --> InvArtifact --> SessionPost --> Finalize --> WorkflowArtifact
-    BetaCli -.-> SessionPre
-    BetaCli -.-> WorkflowArtifact
+    Open --> SessionPre --> Load --> PreAuth --> Guards --> Preconditions --> PostAuth --> Boundary --> PreOutput --> SchemaV --> Postconditions --> PostOutput --> Risk --> InvArtifact --> SessionPost --> WorkflowArtifact
+    Open --> Load
+    Adapters -.-> SessionPre
+    InvArtifact --> Sink
+    WorkflowArtifact --> Sink
+    Sink --> Trace
+    Sink --> Export

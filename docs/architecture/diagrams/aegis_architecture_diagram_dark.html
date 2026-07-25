@@ -219,8 +219,8 @@
       How the local <code>develop</code> beta surface fits together: workflow governance wraps the existing invocation kernel, and invocation plus workflow evidence remain separate outputs.
     </p>
     <div class="diagram-container">
-      <object type="image/svg+xml" data="aegis_architecture_component.svg?v=20260419v090a">
-        <img src="aegis_architecture_component.svg?v=20260419v090a" alt="AEGIS Component View"/>
+      <object type="image/svg+xml" data="aegis_architecture_component.svg?v=20260725v090b">
+        <img src="aegis_architecture_component.svg?v=20260725v090b" alt="AEGIS v0.9 beta component architecture"/>
       </object>
     </div>
   </div>
@@ -235,8 +235,8 @@
       The sequential path for workflow-composed enforcement in the beta line: session pre-call, unchanged invocation gate order, step post-call correlation, then workflow finalization.
     </p>
     <div class="diagram-container">
-      <object type="image/svg+xml" data="aegis_architecture_pipeline.svg?v=20260419v090a">
-        <img src="aegis_architecture_pipeline.svg?v=20260419v090a" alt="AEGIS Enforcement Pipeline"/>
+      <object type="image/svg+xml" data="aegis_architecture_pipeline.svg?v=20260725v090b">
+        <img src="aegis_architecture_pipeline.svg?v=20260725v090b" alt="AEGIS v0.9 beta enforcement pipeline"/>
       </object>
     </div>
   </div>
@@ -270,7 +270,7 @@
       </div>
       <div class="note-card">
         <div class="note-label">Planned-Only Exclusions</div>
-        <p><code>AgentIdentity</code>, <code>AgentCapabilityManifest</code>, public <code>ValidatorHook</code>, <code>BedrockTraceAdapter</code>, <code>A2AAdapter</code>, and <code>workflow trace/export</code> stay out of these beta diagrams.</p>
+        <p><code>AgentIdentity</code>, <code>AgentCapabilityManifest</code>, and public <code>ValidatorHook</code> stay out of the current-candidate diagrams. Bedrock, A2A, OpenAI Agents, workflow trace, and workflow export are shown because their submodules or commands are packaged.</p>
       </div>
       <div class="note-card">
         <div class="note-label">Session Token Boundary</div>

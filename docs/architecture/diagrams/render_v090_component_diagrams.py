@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 from dataclasses import dataclass, replace
 from html import escape
 from pathlib import Path
@@ -464,12 +465,12 @@ def render_beta(theme: Theme) -> str:
             connector_muted="#6a7c94",
         )
 
-    height = 1240
+    height = 1390
     parts = [
         header(
             theme,
-            "AEGIS v0.9.0 BETA",
-            "Source-only beta surface on local develop. The installable package remains v0.3.3.",
+            "AEGIS v0.9 BETA",
+            "aegis-ai-governance==0.9.0b1 | develop candidate | not on main or PyPI",
             height,
         ),
         rect(*HOST_BAND, "band", rx=24),
@@ -624,22 +625,35 @@ def render_beta(theme: Theme) -> str:
         ]
     )
 
-    # Bottom operator band
+    # Optional adapter band
     parts.extend(
         [
             rect(60, 1028, 1480, 100, "ops-panel", rx=24),
-            section_text(84, 1052, "BETA ADOPTION + OPERATOR SURFACES"),
-            node(92, 1060, 238, 46, "node-ops", ["aegis workflow init"], rx=14),
-            node(356, 1060, 238, 46, "node-ops", ["aegis workflow lint"], rx=14),
-            node(620, 1060, 238, 46, "node-ops", ["aegis workflow doctor"], rx=14),
+            section_text(84, 1052, "OPTIONAL NORMALIZATION ADAPTERS"),
+            node(92, 1060, 250, 46, "node-adapter", ["Bedrock adapter"], rx=14),
+            node(364, 1060, 250, 46, "node-adapter", ["A2A adapter"], rx=14),
+            node(636, 1060, 280, 46, "node-adapter", ["OpenAI Agents adapter"], rx=14),
             text_box(
-                888,
+                944,
                 1054,
-                620,
+                564,
                 58,
                 "note-box",
-                ["Beta adopter flow + diagnosis around starter and workflow state."],
+                ["Host owns SDK clients, credentials, transport, retries, and execution."],
             ),
+        ]
+    )
+
+    # Operator band
+    parts.extend(
+        [
+            rect(60, 1150, 1480, 100, "ops-panel", rx=24),
+            section_text(84, 1174, "ADOPTION + OPERATOR TOOLING"),
+            node(92, 1182, 258, 46, "node-ops", ["aegis workflow init"], rx=14),
+            node(372, 1182, 258, 46, "node-ops", ["aegis workflow lint"], rx=14),
+            node(652, 1182, 258, 46, "node-ops", ["aegis workflow doctor"], rx=14),
+            node(932, 1182, 258, 46, "node-ops", ["aegis workflow trace"], rx=14),
+            node(1212, 1182, 258, 46, "node-ops", ["aegis workflow export"], rx=14),
         ]
     )
 
@@ -663,30 +677,135 @@ def render_beta(theme: Theme) -> str:
         [
             lines_text(
                 60,
-                1160,
+                1290,
                 [("footer-note-lg", "The host still performs provider and tool calls after AEGIS authorizes a step or invocation.")],
                 anchor="start",
             ),
             lines_text(
                 60,
-                1188,
+                1320,
                 [("footer-note-lg", "The beta adds workflow evidence. It does not collapse AEGIS into a hosted orchestrator.")],
                 anchor="start",
             ),
             lines_text(
                 60,
-                1218,
+                1352,
                 [
                     (
                         "footer-small-lg",
-                        "Planned-only public items intentionally omitted: AgentIdentity, AgentCapabilityManifest,",
+                        "Public boundary: workflow sessions and adapter submodules are packaged; internal implementation details",
                     ),
-                    ("footer-small-lg", "public ValidatorHook, BedrockTraceAdapter, A2AAdapter, workflow trace/export."),
+                    ("footer-small-lg", "and target-state identity/manifest types are intentionally absent from this current-candidate view."),
                 ],
                 anchor="start",
             ),
         ]
     )
+    parts.append(footer())
+    return "".join(parts)
+
+
+def render_pipeline(theme: Theme) -> str:
+    """Render the current candidate's host/workflow/invocation evidence flow."""
+    height = 1050
+    parts = [
+        header(
+            theme,
+            "AEGIS v0.9 BETA | ENFORCEMENT PIPELINE",
+            "The host executes. AEGIS authorizes, validates, and emits separate invocation and workflow evidence.",
+            height,
+        ),
+        rect(60, 94, 1480, 106, "band", rx=24),
+        section_text(84, 118, "HOST OWNERSHIP"),
+        node(92, 130, 286, 48, "host-box", ["orchestration"], rx=14),
+        node(400, 130, 286, 48, "host-box", ["provider / tool call"], rx=14),
+        node(708, 130, 286, 48, "host-box", ["credentials + retries"], rx=14),
+        text_box(
+            1016,
+            124,
+            492,
+            60,
+            "note-box",
+            ["Execution remains outside AEGIS."],
+            ["The host calls the model only after authorization."],
+        ),
+        rect(60, 224, 1480, 146, "workflow-panel", rx=24),
+        section_text(84, 248, "WORKFLOW COORDINATION"),
+        node(92, 270, 246, 70, "node-workflow", ["AEGIS.open_session()"]),
+        node(364, 270, 246, 70, "node-workflow", ["GovernanceSession"]),
+        node(636, 270, 274, 70, "node-workflow", ["SessionPreCallResult"], ["single-use step token"]),
+        node(936, 270, 246, 70, "node-policy", ["Workflow policy"], ["sequence, budgets, approvals"]),
+        node(1208, 270, 300, 70, "node-evidence", ["Workflow artifact"], ["separate session evidence"]),
+        rect(60, 394, 1480, 420, "kernel-panel", rx=24),
+        section_text(84, 418, "DETERMINISTIC INVOCATION PIPELINE"),
+        panel_text(96, 456, "PHASE A | AUTHORIZE BEFORE EXECUTION"),
+        node(96, 474, 188, 68, "node-kernel", ["Policy load", "+ validation"]),
+        node(306, 474, 188, 68, "node-kernel", ["pre_authorization"]),
+        node(516, 474, 188, 68, "node-kernel", ["guards + role"]),
+        node(726, 474, 210, 68, "node-kernel", ["preconditions + tools"]),
+        node(958, 474, 210, 68, "node-kernel", ["post_authorization"]),
+        text_box(
+            1190,
+            468,
+            318,
+            80,
+            "note-box",
+            ["Authorization result"],
+            ["Split and session paths pause here", "for the host-owned call."],
+        ),
+        rect(96, 574, 1412, 62, "adapter-panel", rx=18),
+        lines_text(
+            802,
+            605,
+            [
+                ("body-plus", "HOST EXECUTION BOUNDARY"),
+                ("small-plus", "provider / tool call occurs here only after Phase A succeeds"),
+            ],
+        ),
+        panel_text(96, 674, "PHASE B | VALIDATE OUTPUT + EMIT EVIDENCE"),
+        node(96, 692, 188, 68, "node-kernel", ["pre_output"]),
+        node(306, 692, 188, 68, "node-kernel", ["output schema"]),
+        node(516, 692, 188, 68, "node-kernel", ["postconditions"]),
+        node(726, 692, 188, 68, "node-kernel", ["post_output"]),
+        node(936, 692, 188, 68, "node-kernel", ["risk scoring"]),
+        node(1146, 692, 362, 68, "node-evidence", ["Invocation artifact"], ["PASS or FAIL per attempt"]),
+        rect(60, 838, 1480, 126, "evidence-panel", rx=24),
+        section_text(84, 862, "EVIDENCE + OPERATOR TOOLING"),
+        node(92, 884, 250, 54, "node-evidence", ["AuditSink + optional signing"], rx=14),
+        node(366, 884, 250, 54, "node-ops", ["aegis workflow trace"], rx=14),
+        node(640, 884, 250, 54, "node-ops", ["aegis workflow export"], rx=14),
+        node(914, 884, 250, 54, "node-adapter", ["Bedrock / A2A"], ["optional adapters"], rx=14),
+        node(1188, 884, 320, 54, "node-adapter", ["OpenAI Agents adapter"], ["optional extra"], rx=14),
+        lines_text(
+            60,
+            1002,
+            [
+                (
+                    "footer-note",
+                    "Split enforcement has been the @governed default since v0.3.3; unified enforcement preserves the same gate order.",
+                )
+            ],
+            anchor="start",
+        ),
+        path("M338 305 H364"),
+        path("M610 305 H636"),
+        path("M910 305 H936"),
+        path("M1060 340 V394 H190 V474"),
+        path("M284 508 H306"),
+        path("M494 508 H516"),
+        path("M704 508 H726"),
+        path("M936 508 H958"),
+        path("M1063 542 V574"),
+        path("M1063 636 V660 H190 V692"),
+        path("M284 726 H306"),
+        path("M494 726 H516"),
+        path("M704 726 H726"),
+        path("M914 726 H936"),
+        path("M1124 726 H1146"),
+        path("M1327 760 V814 H216 V884"),
+        path("M1327 760 V814 H1358 V884", muted=True),
+        path("M1358 340 V838", muted=True),
+    ]
     parts.append(footer())
     return "".join(parts)
 
@@ -893,30 +1012,64 @@ def write_svg(path: Path, content: str) -> None:
     path.write_text(content + "\n", encoding="utf-8")
 
 
-def main() -> None:
+def architecture_outputs() -> dict[Path, str]:
     diagrams_dir = Path(__file__).resolve().parent
     repo_root = diagrams_dir.parents[2]
     demo_dir = repo_root / "demo-app-react" / "public" / "diagrams"
 
     beta_light = render_beta(LIGHT)
     beta_dark = render_beta(DARK)
+    pipeline_light = render_pipeline(LIGHT)
+    pipeline_dark = render_pipeline(DARK)
     full_light = render_full(LIGHT)
     full_dark = render_full(DARK)
 
-    outputs = {
-        diagrams_dir / "aigc_v090_beta_component_light.svg": beta_light,
-        diagrams_dir / "aigc_v090_beta_component_dark.svg": beta_dark,
-        diagrams_dir / "aigc_v090_full_component_light.svg": full_light,
-        diagrams_dir / "aigc_v090_full_component_dark.svg": full_dark,
-        diagrams_dir / "aigc_architecture_component_light.svg": beta_light,
-        diagrams_dir / "aigc_architecture_component.svg": beta_dark,
-        demo_dir / "aigc_architecture_component_light.svg": beta_light,
-        demo_dir / "aigc_architecture_component.svg": beta_dark,
+    return {
+        diagrams_dir / "aegis_v090_beta_component_light.svg": beta_light,
+        diagrams_dir / "aegis_v090_beta_component_dark.svg": beta_dark,
+        diagrams_dir / "aegis_v090_full_component_light.svg": full_light,
+        diagrams_dir / "aegis_v090_full_component_dark.svg": full_dark,
+        diagrams_dir / "aegis_architecture_component_light.svg": beta_light,
+        diagrams_dir / "aegis_architecture_component.svg": beta_dark,
+        diagrams_dir / "aegis_architecture_pipeline_light.svg": pipeline_light,
+        diagrams_dir / "aegis_architecture_pipeline.svg": pipeline_dark,
+        demo_dir / "aegis_architecture_component_light.svg": beta_light,
+        demo_dir / "aegis_architecture_component.svg": beta_dark,
+        demo_dir / "aegis_architecture_pipeline_light.svg": pipeline_light,
+        demo_dir / "aegis_architecture_pipeline.svg": pipeline_dark,
     }
 
-    for path_obj, content in outputs.items():
-        write_svg(path_obj, content)
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Generate deterministic AEGIS architecture SVG assets."
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Return non-zero when a checked-in output differs from generated content.",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    outputs = architecture_outputs()
+    if args.check:
+        stale = [
+            output_path
+            for output_path, expected in outputs.items()
+            if not output_path.exists()
+            or output_path.read_text(encoding="utf-8") != expected + "\n"
+        ]
+        for output_path in stale:
+            print(f"STALE: {output_path}")
+        return 1 if stale else 0
+
+    for output_path, content in outputs.items():
+        write_svg(output_path, content)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
