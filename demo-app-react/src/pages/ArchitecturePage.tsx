@@ -28,7 +28,7 @@ export default function ArchitecturePage() {
         aegis-ai-governance==0.9.0b1
       </div>
       <p className="text-sm leading-relaxed mb-7" style={{ color: 'var(--text-secondary)', maxWidth: 760 }}>
-        The candidate is on <Code>develop</Code>, not on <Code>main</Code> or PyPI.
+        The public beta is released from main and published on PyPI.
         Read the architecture as an ownership contract: the host executes,
         AEGIS governs, and separate evidence proves what happened.
       </p>
@@ -51,7 +51,7 @@ export default function ArchitecturePage() {
       <DiagramSection
         num="01"
         title="Component View"
-        description="The current candidate boundary: host-owned execution, workflow and invocation governance, optional normalization adapters, and separate evidence outputs."
+        description="The current public beta boundary: host-owned execution, workflow and invocation governance, optional normalization adapters, and separate evidence outputs."
         summary="Host-controlled execution remains outside AEGIS. AEGIS governs policy, workflow, and invocations through optional Bedrock, A2A, and OpenAI Agents adapters, then emits separate invocation and workflow evidence."
         src={componentSvg}
         alt="AEGIS v0.9 beta component architecture"

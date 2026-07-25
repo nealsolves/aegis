@@ -26,7 +26,7 @@ describe('ArchitecturePage', () => {
     expect(screen.getByText('Key Boundaries')).toBeInTheDocument()
   })
 
-  it('renders the current candidate boundary notes', () => {
+  it('renders the current public beta boundary notes', () => {
     renderPage()
     for (const label of [
       'Host Ownership',
@@ -43,9 +43,13 @@ describe('ArchitecturePage', () => {
   })
 
   it('labels the page with the public beta release', () => {
-    renderPage()
+    const { container } = renderPage()
     expect(screen.getByText('AEGIS v0.9 Beta')).toBeInTheDocument()
     expect(screen.getByText('aegis-ai-governance==0.9.0b1')).toBeInTheDocument()
+    expect(container).toHaveTextContent(
+      'The public beta is released from main and published on PyPI.'
+    )
+    expect(container).not.toHaveTextContent('The candidate is on develop')
   })
 
   it('renders diagram images', () => {
