@@ -16,7 +16,7 @@ distribution_name: "aegis-ai-governance"
 import_package: "aegis"
 console_command: "aegis"
 candidate_status: "unpublished-beta"
-test_count: 1919
+test_count: 1923
 coverage_threshold: 90
 audit_schema_version: "1.4"
 
@@ -64,6 +64,9 @@ documentation_inventory:
     - docs/superpowers/plans/2026-07-25-v090-truth-audit-demo.md
     - docs/superpowers/specs/2026-07-25-v090-truth-audit-demo-design.md
     - docs/spec-driven-dev/changes/v0.9.0-truth-audit-demo/**
+    - docs/superpowers/plans/2026-07-25-aegis-docs-diagrams-beta-deployment.md
+    - docs/superpowers/specs/2026-07-25-aegis-docs-diagrams-beta-deployment-design.md
+    - docs/spec-driven-dev/changes/v0.9.0-docs-diagrams-beta-deployment/**
   target:
     - docs/architecture/AEGIS_Architecture_Redesign_and_Roadmap.md
     - docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md

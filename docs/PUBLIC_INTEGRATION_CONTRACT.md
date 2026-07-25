@@ -12,6 +12,10 @@ contract is captured separately in
 [docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md](architecture/AEGIS_HIGH_LEVEL_DESIGN.md).
 The candidate is merged on `develop`, not on `main`.
 
+Source, tags, and release artifacts for versions before `0.9.0` remain in
+[`nealsolves/aigc`](https://github.com/nealsolves/aigc). This repository is the
+AEGIS `0.9.0`-and-later development home.
+
 The candidate includes `AEGIS.open_session(...)`, `GovernanceSession`, and
 `SessionPreCallResult`. This is beta, not yet stable.
 There is no module-level `open_session()` convenience — workflow adoption is

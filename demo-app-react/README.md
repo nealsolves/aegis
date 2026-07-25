@@ -8,9 +8,8 @@ the enforcement pipeline, decorator defaults, and workflow governance surfaces.
 
 The local app in this branch accompanies the unpublished
 `aegis-ai-governance==0.9.0b1` candidate. It uses `import aegis` and the
-`aegis` CLI. The candidate is merged on `develop`, not on `main`, so the live
-GitHub Pages deployment may still show the last `main` build; PyPI publication
-is pending.
+`aegis` CLI. During the beta period, both public components deploy from
+`develop`; `main` remains unchanged. PyPI publication is pending.
 
 ## Labs
 
@@ -30,11 +29,16 @@ is pending.
 
 ## Architecture
 
-The demo has two components in source. Their public deployments follow `main`
-and may lag the local `develop` candidate:
+The demo has two public components:
 
-- **React frontend** — built with Vite, deployed to GitHub Pages via `.github/workflows/deploy-demo-react.yml` on every push to `main` that touches `demo-app-react/`. The API URL is baked in at build time via the `VITE_API_URL` GitHub secret.
-- **FastAPI backend** (`demo-app-api/`) — deployed on Render at `https://aegis-2oaf.onrender.com`. The React app calls this backend for all lab enforcement, signing, chaining, composition, and loader operations. No user API keys are required.
+- **React frontend** — built and tested with Vite, then deployed to GitHub
+  Pages by `.github/workflows/deploy-demo-react.yml` after relevant pushes to
+  `develop`. The public backend URL is baked in from the `VITE_API_URL`
+  repository variable.
+- **FastAPI backend** (`demo-app-api/`) — defined by
+  `demo-app-api/render.yaml` and auto-deployed by Render from `develop`. The
+  React app calls it for all lab enforcement, signing, chaining, composition,
+  loader, and workflow operations. No user API keys are required.
 
 ## Development
 
@@ -64,5 +68,6 @@ under `https://nealsolves.github.io/aegis/`.
 
 ## Deployment
 
-Pushes to `main` that touch `demo-app-react/` trigger automatic deployment to
-GitHub Pages via `.github/workflows/deploy-demo-react.yml`.
+Relevant pushes to `develop` trigger the beta Pages workflow. After the owner
+approves the production cutover, a separate change will switch both branch
+selectors to `main` and re-verify the public site and API.

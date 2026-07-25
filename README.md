@@ -24,9 +24,13 @@ Governance in AEGIS is runtime enforcement, not documentation and not prompting.
   `ProvenanceGate`, `RiskHistory`, `@governed` defaults to split enforcement
 - Current beta line: `v0.9.0`, packaged as
   `aegis-ai-governance==0.9.0b1`
-- Verification baseline: `1919 tests` pass in the candidate environment,
+- Verification baseline: `1923 tests` pass in the candidate environment,
   including fixture-based optional-adapter coverage;
   coverage remains above the `90%` CI gate
+
+Source, tags, and release artifacts for versions before `0.9.0` remain in
+[`nealsolves/aigc`](https://github.com/nealsolves/aigc). This repository is the
+AEGIS `0.9.0`-and-later development home.
 
 ## Threat Model
 
@@ -250,7 +254,11 @@ Phase A runs before the model call; Phase B validates output after. Pass
 
 The maintained demo is a React frontend plus FastAPI backend:
 
-- Site: [https://nealsolves.github.io/aegis/](https://nealsolves.github.io/aegis/)
+- Beta site target:
+  [https://nealsolves.github.io/aegis/](https://nealsolves.github.io/aegis/)
+- Frontend deployment source:
+  `.github/workflows/deploy-demo-react.yml` on `develop`
+- Backend deployment source: `demo-app-api/render.yaml` on `develop`
 - Candidate source: eleven hands-on labs across risk scoring, signing, audit
   chain, composition, loaders and policy dates, custom gates, compliance
   export, governed knowledge, governed-versus-ungoverned comparison, split
@@ -260,8 +268,9 @@ The maintained demo is a React frontend plus FastAPI backend:
 - Purpose: hands-on orientation to both the `v0.3.x` invocation runtime and the
   `v0.9.0b1` workflow-governance candidate
 
-The candidate source is merged on `develop`, not `main`, so the live GitHub
-Pages deployment may still show the last `main` build.
+The beta deployment is configured from `develop`; `main` remains unchanged.
+The exact live backend URL and public smoke-test result are recorded only after
+the corresponding Render and GitHub Pages deployments complete.
 
 ## CLI Surface
 

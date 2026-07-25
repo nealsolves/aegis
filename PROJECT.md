@@ -19,6 +19,10 @@ The candidate is merged on `develop`, not on `main`. Installing it will provide
 `import aegis` and the `aegis` CLI after the separately authorized PyPI
 publication.
 
+Source, tags, and release artifacts for versions before `0.9.0` remain in
+[`nealsolves/aigc`](https://github.com/nealsolves/aigc). This repository is the
+AEGIS `0.9.0`-and-later development home.
+
 The shipped runtime supports:
 
 - unified enforcement through `enforce_invocation()` and `AEGIS.enforce()`
@@ -29,8 +33,9 @@ The shipped runtime supports:
 - pluggable audit sinks, policy loaders, custom gates, telemetry, and policy
   testing helpers
 
-The demo surface in this repo is a React frontend plus FastAPI backend that
-walks through the `v0.3.x` capabilities.
+The demo surface in this repo is a React frontend plus FastAPI backend. Labs
+1–7 preserve the historical invocation-governance walkthrough; Labs 8–11 add
+the v0.9 beta provenance, comparison, split-enforcement, and workflow surfaces.
 
 The `v0.9.0` beta workflow governance candidate adds
 `AEGIS.open_session()`, `GovernanceSession`, starter scaffolds,
@@ -97,6 +102,8 @@ This tree focuses on the parts of the repo a new visitor is most likely to use.
 
 ```text
 aegis/
+├── .github/
+│   └── workflows/                  Release and beta Pages automation
 ├── aegis/                           Public package surface
 │   ├── __init__.py                 Stable imports
 │   ├── __main__.py                 `python -m aegis` entry point
@@ -134,8 +141,9 @@ aegis/
 ├── schemas/                        Human-facing schema copies
 ├── scripts/                        Maintainer validation and generation tools
 ├── tests/                          Regression, contract, and release tests
-├── demo-app-api/                   FastAPI backend for the live demo
-├── demo-app-react/                 React frontend for the live demo
+├── demo-app-api/                   FastAPI backend for the beta demo
+│   └── render.yaml                 Render blueprint targeting `develop`
+├── demo-app-react/                 Eleven-lab React beta frontend
 ├── docs/
 │   ├── architecture/               High-level design, diagrams, threat model
 │   ├── design/                     Release design specs

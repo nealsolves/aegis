@@ -3,7 +3,7 @@
 **Target Version:** `0.9.0` Beta
 **Package Candidate:** `aegis-ai-governance==0.9.0b1`
 **Previous PyPI Line:** `aegis==0.3.3`
-**Active Branch:** `feat/v0.9-13-truth-audit-demo`
+**Active Branch:** `feat/v0.9-14-docs-pages-render`
 **Last Updated:** 2026-07-25
 
 ---
@@ -12,13 +12,13 @@
 
 | Field | Current value |
 |---|---|
-| Active change | `v0.9.0-truth-audit-demo` |
+| Active change | `v0.9.0-docs-diagrams-beta-deployment` |
 | Active profile | Base profile `solo`; project lifecycle `configured` |
 | Instruction modules | Bootstrap installation `complete` |
 | Project owner | Neal Bhattacharya |
 | Escalation owner | neal@nealsolves.com |
 | Remote actions | Disabled; no push, pull request, merge, release, or deployment authority is configured |
-| Current gate | Local truth-audit lifecycle complete; any push or pull request to `develop` requires separate authorization |
+| Current gate | Documentation, diagram, and beta deployment configuration pass locally; branch delivery and live deployment remain separate policy decisions |
 | Bootstrap decision | `BOOTSTRAP-2026-07-24-AEGIS-SDD` |
 | Baseline commit | `73f1bfc494dd5290a7e579069b3cad72e33457ed` |
 
@@ -55,6 +55,7 @@ must be updated only after their specific evidence exists.
 | Beta functional gate | complete | PR-11 full functional test harness is merged; distribution and publication remain separate gates |
 | Distribution candidate | merged on `develop` | `aegis-ai-governance==0.9.0b1` metadata and Trusted Publishing are prepared; the candidate is not on `main` and PyPI publication is pending |
 | Truth audit and demo refresh | complete locally | Maintained docs, diagrams, contextual help, adapters, Python coverage, React, build, API, and assembled browser workflows are validated; independent review passed and the policy lifecycle reached `COMPLETE`; the final Python suite is 1919 passed and 2 skipped |
+| Docs, diagrams, and beta deployment | local validation complete; remote pending | Requested docs audited with no deletions, generated SVG overflow repaired and visually inspected, develop-based Pages/Render contracts added, 1923 Python tests and 105 React tests pass, and local Lab 1/Lab 11 browser flows complete without console errors |
 
 ---
 
