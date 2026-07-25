@@ -26,7 +26,7 @@ Verification snapshot used for this table:
 - A Pending Trusted Publisher is configured for
   `nealsolves/aegis` / `publish.yml` / `pypi`; no upload is authorized.
 - The truth-audit adapter, Python, coverage, React, build, API, and browser
-  matrix is complete. The final package suite is `1919 passed, 2 skipped`.
+  matrix is complete. The current suite is `1923 passed, 2 skipped`.
 
 These source refs identify the inspected beta baseline. Before any merge commit
 is used for public beta or release claims, rerun the snapshot commands and

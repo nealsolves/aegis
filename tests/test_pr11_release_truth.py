@@ -100,16 +100,17 @@ def test_current_public_docs_use_the_new_distribution_install_name():
         )
 
 
-def test_root_readme_distinguishes_live_main_demo_from_eleven_lab_candidate():
+def test_root_readme_identifies_develop_beta_demo_and_eleven_lab_candidate():
     readme = _read("README.md")
     normalized = " ".join(readme.lower().split())
 
     assert "eleven hands-on labs" in normalized
     for lab in ("Lab 8", "Lab 9", "Lab 10", "Lab 11"):
         assert lab in readme
-    assert "live github pages deployment may still show the last `main` build" in (
-        normalized
-    )
+    assert ".github/workflows/deploy-demo-react.yml" in readme
+    assert "demo-app-api/render.yaml" in readme
+    assert "configured from `develop`" in readme
+    assert "`main` remains unchanged" in readme
 
 
 def test_prior_beta_evidence_is_archived_beneath_current_candidate_truth():
