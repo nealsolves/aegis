@@ -9,4 +9,3 @@
 - [x] The known test-interpreter defect is repaired test-first before parity gates are strengthened.
 - [x] No dependency, public contract, deployment, publication, `main`, or remote action is authorized.
 - [x] The instruction-guide correction remains a separately bounded change.
-

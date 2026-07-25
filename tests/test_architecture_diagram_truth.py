@@ -72,4 +72,3 @@ def test_generator_check_fails_when_a_canonical_output_is_stale():
         target.write_text(original, encoding="utf-8")
         for path in set(ROOT.rglob("aigc_*.svg")) - before:
             path.unlink()
-

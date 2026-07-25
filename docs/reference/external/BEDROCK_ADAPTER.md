@@ -149,4 +149,3 @@ Representative fail-closed cases:
 
 These raise typed invocation, participant, binding, or protocol errors before
 the workflow step can be accepted.
-
