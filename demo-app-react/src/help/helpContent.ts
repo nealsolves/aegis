@@ -19,33 +19,34 @@ export const helpContent: Record<number, LabHelp> = {
   0: {
     title: 'Architecture Guide',
     overview:
-      'If you are new to AEGIS, start here. AEGIS is a runtime governance layer that sits between ' +
-      'your application and an AI model call. It checks each invocation against policy, emits an ' +
-      'audit artifact on pass or fail, and leaves opt-in utilities like signing, chaining, and ' +
-      'compliance export outside the core enforcement path.',
+      'If you are new to AEGIS, start here. The current candidate is ' +
+      'aegis-ai-governance==0.9.0b1 on develop, not main or PyPI. AEGIS is a runtime governance layer ' +
+      'around host-controlled AI execution: the host owns orchestration, provider calls, credentials, ' +
+      'tools, retries, and business state, while AEGIS enforces policy and emits evidence. Signing, ' +
+      'AuditChain, and adapter integrations remain opt-in.',
     whyItMatters:
       'Most teams treat AI governance as documentation or prompt advice. AEGIS turns it into a ' +
-      'deterministic control plane: policy is declared up front, enforcement is fail-closed, and ' +
-      'evidence is generated every time.',
+      'deterministic control plane without becoming an agent orchestrator: policy is declared up front, ' +
+      'enforcement is fail-closed, and invocation and workflow evidence remain inspectable and distinct.',
     whatThisLabShows: [
-      'Where the host app, model provider, policy layer, and SDK enforcement core sit at runtime.',
-      'Which checks belong to the core fail-closed pipeline and which capabilities are opt-in utilities.',
+      'Where host-owned execution ends and AEGIS invocation and workflow governance begin.',
+      'How GovernanceSession correlates governed steps while preserving a separate invocation artifact and workflow artifact.',
       'How split enforcement (the default since v0.3.3) and legacy unified mode share the same ordered gates.',
-      'Why AEGIS is provider-agnostic: it wraps model calls instead of replacing the model itself.',
+      'How the Bedrock, A2A, and OpenAI Agents optional adapter submodules normalize host-supplied evidence without owning provider execution.',
+      'Which capabilities are opt-in utilities, including signing and host-applied AuditChain.',
     ],
     howToNavigate: [
-      'Read Component View first to see where AEGIS sits in the call path.',
-      'Move to Enforcement Pipeline next to understand the exact gate order.',
-      'Use Key Boundaries to separate core enforcement from signing, AuditChain, and compliance export.',
+      'Read Component View first and follow the ownership rail: Host executes, AEGIS governs, Evidence proves.',
+      'Move to Enforcement Pipeline next to understand the fixed gate order and model-call boundary.',
+      'Use Key Boundaries to distinguish host ownership, workflow governance, invocation enforcement, optional adapters, and evidence outputs.',
       'Then open Labs 1-11 to study one capability at a time.',
     ],
     steps: [
       {
-        title: 'Component View - what connects to what',
+        title: 'Component View - read the ownership contract',
         instruction:
-          'Your app, agent, or orchestrator calls a model through the SDK. The SDK loads the policy, ' +
-          'runs the enforcement core, then returns the governance result and audit artifact to your app. ' +
-          'The model provider still does the generation in the middle; AEGIS governs the call boundary around it.',
+          'Your app, agent, or orchestrator retains provider clients, credentials, transport, model calls, ' +
+          'tool execution, and retries. AEGIS loads policy and governs the boundary around that host execution.',
         tip: 'Since v0.3.3, @governed defaults to split enforcement (Phase A before the model call, Phase B after). Pass pre_call_enforcement=False for legacy unified mode (deprecated).',
       },
       {
@@ -57,24 +58,22 @@ export const helpContent: Record<number, LabHelp> = {
           'The core gates are fail-closed: a violation stops the pipeline and produces a FAIL artifact.',
       },
       {
-        title: 'Phase boundary in v0.3.3',
+        title: 'Connect invocation and workflow evidence',
         instruction:
-          'Split mode moves the model-call boundary between post_authorization and pre_output. ' +
-          'Phase A is authorize-before-call; Phase B is validate-after-output. Unified mode still uses the same gate order, but inside one enforcement call.',
-        tip: 'Look for Phase A / Phase B labeling on the pipeline view when you want to reason about token-spend avoidance.',
+          'Each governed attempt emits an invocation artifact. A GovernanceSession separately records step sequence, lifecycle, approvals, budgets, and invocation checksums in a workflow artifact. Correlation adds context without replacing either record.',
+        tip: 'Use aegis workflow trace to resolve session steps back to invocation evidence and reveal missing links.',
       },
       {
-        title: 'Risk scoring is the last gate',
+        title: 'Understand the split boundary',
         instruction:
-          'Risk scoring runs only after the structural checks pass. Depending on the configured mode, a high score ' +
-          'blocks the call (strict), records the score without blocking (risk_scored), or records a warning (warn_only).',
-        tip: 'Lab 1 shows that the score can stay the same while the enforcement outcome changes by mode.',
+          'Split enforcement moves the host model call between post_authorization and pre_output. Phase A authorizes before spend; Phase B validates returned output. pre_call_enforcement=False selects the deprecated unified opt-out while preserving gate order.',
+        tip: 'Risk scoring remains the last enforcement step after structural and pre_output checks pass.',
       },
       {
-        title: 'Key Boundaries - what is not in the pipeline',
+        title: 'Keep optional capabilities outside the core',
         instruction:
-          'AuditChain, artifact signing, and the compliance export CLI all operate on artifacts after enforcement. ' +
-          'They are important integrity and reporting tools, but they are not runtime gates and do not decide whether a call is allowed.',
+          'Signing is opt-in and runs before sink emission. AuditChain is also opt-in and host-applied after enforcement. ' +
+          'Bedrock, A2A, and OpenAI Agents are optional normalization submodules, not transports or provider clients.',
       },
     ],
     takeaway:
@@ -82,7 +81,9 @@ export const helpContent: Record<number, LabHelp> = {
     glossary: [
       { term: 'enforce_invocation()', definition: 'The SDK entry point. Accepts policy, input, output, context, model identity, and role, then returns an audit artifact or raises with one attached.' },
       { term: 'enforce_pre_call()', definition: 'The split-mode Phase A entry point. It authorizes the invocation before the model call and returns a PreCallResult token for Phase B.' },
-      { term: 'Audit artifact', definition: 'The immutable record produced after each enforcement run. It contains checksums, policy metadata, result, and supporting evidence.' },
+      { term: 'GovernanceSession', definition: 'The v0.9 workflow surface that governs steps, participants, budgets, approvals, transitions, lifecycle, and evidence correlation.' },
+      { term: 'Invocation artifact', definition: 'The immutable per-attempt record produced after enforcement. It contains checksums, policy metadata, result, and supporting evidence.' },
+      { term: 'Workflow artifact', definition: 'A separate session-level record containing workflow status, governed steps, invocation checksums, and lifecycle evidence.' },
       { term: '@governed', definition: 'A decorator that defaults to split enforcement since v0.3.3 (Phase A before the model call, Phase B after). Pass pre_call_enforcement=False for legacy unified mode (deprecated).' },
       { term: 'Fail-closed', definition: 'If a core governance check fails, the invocation is rejected and a FAIL artifact is emitted. The system does not silently continue.' },
     ],
@@ -103,7 +104,7 @@ export const helpContent: Record<number, LabHelp> = {
       'Unified and split enforcement can evaluate the same scenario differently when Phase A blocks before the model call.',
     ],
     howToNavigate: [
-      'Start with Low Risk to establish the baseline, then move to Medium Risk and High Risk.',
+      'Use Preset Scenario and start with Low Risk to establish the baseline, then move to Medium Risk and High Risk.',
       'Keep one scenario fixed and switch modes to see how policy treatment changes at the same threshold.',
       'Use the Enforcement Flow control to compare unified vs split behavior on the same invocation.',
       'Read the score, status badge, threshold, and signal bars together rather than in isolation.',
@@ -111,7 +112,7 @@ export const helpContent: Record<number, LabHelp> = {
     ],
     steps: [
       {
-        title: 'Choose a preset scenario',
+        title: 'Choose a Preset Scenario',
         instruction:
           'Select Low Risk, Medium Risk, or High Risk: Drug Interaction from the scenario panel. ' +
           'The context panel below shows the prompt, policy, model, and role used for that run.',
@@ -132,7 +133,7 @@ export const helpContent: Record<number, LabHelp> = {
       {
         title: 'Run Enforcement',
         instruction:
-          'Click Run Enforcement to evaluate the invocation. The SDK computes the total from the configured signal weights and compares it to the threshold.',
+          'Click Run Enforcement → to evaluate the invocation. The SDK computes the total from the configured signal weights and compares it to the threshold.',
       },
       {
         title: 'Read the signal breakdown',
@@ -173,7 +174,7 @@ export const helpContent: Record<number, LabHelp> = {
       {
         title: 'Generate a key and sign an artifact',
         instruction:
-          'Click Generate to create a random 32-byte hex key, then click Sign Artifact. The SDK computes an HMAC-SHA256 digest of the artifact payload using that key.',
+          'Click Generate to create a random 32-byte hex key, then click Sign Artifact →. The SDK computes an HMAC-SHA256 digest of the artifact payload using that key.',
       },
       {
         title: 'Inspect the signed artifact',
@@ -188,7 +189,7 @@ export const helpContent: Record<number, LabHelp> = {
       {
         title: 'Test tamper detection',
         instruction:
-          'Toggle Tamper to change the payload, then click Verify again. The signature no longer matches, so the result flips to Fail.',
+          'Toggle tamper payload to change the payload, then click Verify again. The signature no longer matches, so the result flips to Fail.',
         tip: 'The Signed metric only tells you the artifact carries a signature. Verification still requires the original key.',
       },
     ],
@@ -216,7 +217,7 @@ export const helpContent: Record<number, LabHelp> = {
       'Add one entry first so you can identify the genesis block.',
       'Add more entries and compare each prev value to the checksum of the block above it.',
       'Verify the chain before tampering so you have a clean reference point.',
-      'Tamper one entry, re-run verification, and then export the JSON chain if you want the full record set.',
+      'Tamper one entry, re-run verification, then use Export Chain (JSON); use reset to start over.',
     ],
     steps: [
       {
@@ -287,7 +288,7 @@ export const helpContent: Record<number, LabHelp> = {
       {
         title: 'Merge and inspect the result',
         instruction:
-          'Click Merge. The merged policy YAML appears below. The roles diff shows which roles were kept, removed, or added. The escalation panel flags new tools or removed postconditions that make the merged policy more permissive than the base.',
+          'Click Merge →. The merged policy YAML appears below. The roles diff shows which roles were kept, removed, or added. The escalation panel flags new tools or removed postconditions that make the merged policy more permissive than the base.',
         tip: 'An escalation means the child granted something the base policy did not.',
       },
     ],
@@ -328,18 +329,18 @@ export const helpContent: Record<number, LabHelp> = {
       {
         title: 'Load or parse a policy',
         instruction:
-          'In FileSystem mode, select a policy from the dropdown and click Load. In InMemory mode, paste or edit YAML in the textarea and click Parse. The loaded YAML and active loader class appear below.',
+          'In FileSystem mode, select a policy from the dropdown and click Load →. In InMemory mode, paste or edit YAML in the textarea and click Parse →. The loaded YAML and active loader class appear below.',
       },
       {
         title: 'Validate policy dates',
         instruction:
-          'Switch to the Versioning tab. Set effective_date, expiration_date, and reference_date, then click Validate Dates. The timeline panel shows the policy validity window and whether the reference date is inside it.',
+          'Switch to the Versioning tab. Set effective_date, expiration_date, and reference_date, then click Validate Dates →. The timeline panel shows the policy validity window and whether the reference date is inside it.',
         tip: 'Set reference_date before effective_date or after expiration_date to see the policy become inactive.',
       },
       {
         title: 'Run policy tests',
         instruction:
-          'Switch to the Testing tab. Select a policy and click Run Tests. The demo generates three policy test cases and reports whether enforcement matched the declared expectations.',
+          'Switch to the Testing tab. Select a policy and click Run Tests →. The demo generates three policy test cases and reports whether enforcement matched the declared expectations.',
       },
     ],
     takeaway:
@@ -366,14 +367,15 @@ export const helpContent: Record<number, LabHelp> = {
       'The artifact records gates_evaluated so operators can prove which gates ran for a decision.',
     ],
     howToNavigate: [
-      'Pick a gate first and read its description before you run anything.',
+      'Use Select Gate first and read its description before you run anything.',
+      'Begin with Authorized Session so the first result is a clean pass.',
       'Use the highlighted pipeline row to anchor where that gate sits in the sequence.',
       'Open show source when you want to connect the behavior back to implementation.',
       'Run contrasting scenarios for the selected gate and compare the gate result panel with the gates_evaluated list in the artifact.',
     ],
     steps: [
       {
-        title: 'Select a gate',
+        title: 'Select Gate',
         instruction:
           'Click a gate name to load its description and insertion point. You can inspect the gate before running any scenario.',
         tip: 'The supported insertion points are fixed: pre_authorization, post_authorization, pre_output, and post_output.',
@@ -386,7 +388,7 @@ export const helpContent: Record<number, LabHelp> = {
       {
         title: 'Select a scenario and run',
         instruction:
-          'Choose a scenario that matches the selected gate, then click Run Gate. Session authorization and domain allowlist gates demonstrate pre_authorization and post_authorization, while confidence, response length, PII detection, and audit metadata cover the output phases.',
+          'Choose a scenario that matches the selected gate, then click Run Gate →. Session authorization and domain allowlist gates demonstrate pre_authorization and post_authorization, while confidence, response length, PII detection, and audit metadata cover the output phases.',
       },
       {
         title: 'Inspect gate result and artifact evidence',
@@ -639,7 +641,7 @@ export const helpContent: Record<number, LabHelp> = {
       'A trace view built from a JSONL audit sink and aegis workflow trace.',
     ],
     howToNavigate: [
-      'Start with Run Minimal, then Run Standard, to compare two-step and three-step completed sessions.',
+      'Open Start Here and run Run Minimal, then Run Standard, to compare two-step and three-step completed sessions.',
       'Use Failure & Fix to trigger a regulated starter failure, diagnose it, then apply the repaired source and rerun.',
       'Open Governed vs Ungoverned to compare workflow artifacts against raw output without governance.',
       'Use Evidence View to build a trace and confirm that invocation checksums resolve back to governed steps.',

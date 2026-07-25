@@ -26,6 +26,12 @@ describe('HelpDrawer', () => {
     expect(screen.getByText('Risk Scoring Guide')).toBeInTheDocument()
   })
 
+  it('renders the current v0.9 candidate identity in Architecture help', () => {
+    renderDrawer(true, vi.fn(), 0)
+    expect(screen.getByText(/aegis-ai-governance==0\.9\.0b1/)).toBeInTheDocument()
+    expect(screen.getByText(/host owns/i)).toBeInTheDocument()
+  })
+
   it('uses the current lab labels for renamed guides', () => {
     renderDrawer(true, vi.fn(), 2)
     expect(screen.getByText('Lab 2 — Signing & Verification')).toBeInTheDocument()
@@ -46,7 +52,7 @@ describe('HelpDrawer', () => {
 
   it('shows at least one step title', () => {
     renderDrawer(true)
-    expect(screen.getByText('Choose a preset scenario')).toBeInTheDocument()
+    expect(screen.getByText('Choose a Preset Scenario')).toBeInTheDocument()
   })
 
   it('renders the narrative framework sections for first-time users', () => {
