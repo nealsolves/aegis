@@ -6,7 +6,6 @@ import argparse
 import hashlib
 import json
 import os
-import re
 import subprocess
 import sys
 import tarfile
@@ -97,6 +96,26 @@ def _sha256(path: Path) -> str:
         for block in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def _canonical_sha256(value: object) -> str:
+    def normalize(item: object) -> object:
+        if isinstance(item, float) and item.is_integer():
+            return int(item)
+        if isinstance(item, dict):
+            return {key: normalize(child) for key, child in item.items()}
+        if isinstance(item, (list, tuple)):
+            return [normalize(child) for child in item]
+        return item
+
+    payload = json.dumps(
+        normalize(value),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
 
 
 def _inspect_artifacts(dist_dir: Path) -> dict[str, object]:
@@ -212,15 +231,54 @@ def _run_starter(
         raise CandidateValidationError(
             f"{profile} starter lint findings: {lint_payload[0]['findings']}"
         )
+    function_name, expected_steps = {
+        "minimal": ("run_minimal_workflow", 2),
+        "standard": ("run_standard_workflow", 3),
+        "regulated-high-assurance": ("run_regulated_workflow", 2),
+    }[profile]
+    artifact_marker = "__AEGIS_ARTIFACT__"
+    runner = (
+        "import importlib.util,json,sys;"
+        "spec=importlib.util.spec_from_file_location('_aegis_starter',sys.argv[1]);"
+        "module=importlib.util.module_from_spec(spec);"
+        "spec.loader.exec_module(module);"
+        f"artifact=getattr(module,{function_name!r})();"
+        f"print({artifact_marker!r}+json.dumps(artifact,sort_keys=True))"
+    )
     run = _run(
-        [str(python), str(starter / "workflow_example.py")],
+        [str(python), "-c", runner, str(starter / "workflow_example.py")],
         cwd=starter,
         env=env,
     )
-    if "Status:  COMPLETED" not in run.stdout:
+    artifact_lines = [
+        line.removeprefix(artifact_marker)
+        for line in run.stdout.splitlines()
+        if line.startswith(artifact_marker)
+    ]
+    if len(artifact_lines) != 1:
         raise CandidateValidationError(
-            f"{profile} starter did not report COMPLETED:\n{run.stdout}"
+            f"{profile} starter did not emit one workflow artifact:\n{run.stdout}"
         )
+    artifact = json.loads(artifact_lines[0])
+    if artifact.get("status") != "COMPLETED":
+        raise CandidateValidationError(
+            f"{profile} starter did not report COMPLETED: {artifact.get('status')!r}"
+        )
+    if len(artifact.get("steps", [])) != expected_steps:
+        raise CandidateValidationError(
+            f"{profile} starter step count mismatch: "
+            f"{len(artifact.get('steps', []))}, expected {expected_steps}"
+        )
+    if profile == "standard":
+        approval_checkpoints = artifact.get("approval_checkpoints", [])
+        if not approval_checkpoints or not all(
+            checkpoint.get("checkpoint_id") == "starter-approval-001"
+            and checkpoint.get("status") == "approved"
+            for checkpoint in approval_checkpoints
+        ):
+            raise CandidateValidationError(
+                "standard starter omitted its approval checkpoint evidence"
+            )
     return starter
 
 
@@ -371,7 +429,8 @@ def _prove_trace_and_exports(
         env=env,
     )
 
-    if json.loads(trace.stdout)[0]["status"] != "COMPLETED":
+    trace_payload = json.loads(trace.stdout)[0]
+    if trace_payload["status"] != "COMPLETED":
         raise CandidateValidationError("workflow trace did not report COMPLETED")
     audit_payload = json.loads(audit.stdout)
     operator_payload = json.loads(operator.stdout)
@@ -382,6 +441,65 @@ def _prove_trace_and_exports(
         raise CandidateValidationError("operator export mode mismatch")
     if "lineage" not in compliance_payload:
         raise CandidateValidationError("compliance export omitted lineage")
+    if trace_payload["unresolved_checksums"]:
+        raise CandidateValidationError(
+            "workflow trace has unresolved invocation checksums"
+        )
+    if audit_payload["integrity"]["unresolved_count"] != 0:
+        raise CandidateValidationError(
+            "audit export has unresolved invocation checksums"
+        )
+    if operator_payload["integrity"]["unresolved_count"] != 0:
+        raise CandidateValidationError(
+            "operator export has unresolved invocation checksums"
+        )
+
+    audit_sessions = audit_payload["sessions"]
+    operator_sessions = operator_payload["sessions"]
+    if len(audit_sessions) != 1 or len(operator_sessions) != 1:
+        raise CandidateValidationError("exports did not contain exactly one session")
+    session_id = trace_payload["session_id"]
+    if not session_id or {
+        audit_sessions[0]["session_id"],
+        operator_sessions[0]["session_id"],
+    } != {session_id}:
+        raise CandidateValidationError("trace/export session IDs do not correlate")
+
+    trace_steps = trace_payload["steps"]
+    audit_steps = audit_sessions[0]["steps"]
+    operator_steps = operator_sessions[0]["steps"]
+    trace_checksums = [
+        step["invocation_artifact_checksum"] for step in trace_steps
+    ]
+    if not trace_checksums or any(
+        not step.get("resolved") or not checksum
+        for step, checksum in zip(trace_steps, trace_checksums)
+    ):
+        raise CandidateValidationError(
+            "trace steps do not resolve invocation artifact checksums"
+        )
+    if [step["invocation_artifact_checksum"] for step in audit_steps] != trace_checksums:
+        raise CandidateValidationError(
+            "audit export invocation checksums do not match the trace"
+        )
+    if [step["invocation_artifact_checksum"] for step in operator_steps] != trace_checksums:
+        raise CandidateValidationError(
+            "operator export invocation checksums do not match the trace"
+        )
+    for step, expected_checksum in zip(operator_steps, trace_checksums):
+        invocation = step.get("invocation_artifact")
+        if not isinstance(invocation, dict):
+            raise CandidateValidationError(
+                "operator export omitted a correlated invocation artifact"
+            )
+        if _canonical_sha256(invocation) != expected_checksum:
+            raise CandidateValidationError(
+                "operator export invocation artifact checksum mismatch"
+            )
+        if invocation.get("context", {}).get("session_id") != session_id:
+            raise CandidateValidationError(
+                "invocation artifact session ID does not match workflow session"
+            )
     public_outputs = audit.stdout
     for forbidden in ("Bearer", "api_key", "must-not-project"):
         if forbidden in public_outputs:
@@ -403,6 +521,11 @@ def _prove_fresh_install(
     _run(
         [str(python), "-m", "pip", "install", "--disable-pip-version-check",
          str(wheel)],
+        cwd=work_dir,
+        env=env,
+    )
+    _run(
+        [str(python), "-m", "pip", "check"],
         cwd=work_dir,
         env=env,
     )
@@ -460,9 +583,10 @@ def _prove_fresh_install(
         "python_version": f"{sys.version_info.major}.{sys.version_info.minor}",
         "import_path": str(imported_path),
         "provider_credentials_removed": removed_provider_variables,
+        "dependency_check": "PASS",
         "profiles": {
             "minimal": "COMPLETED",
-            "standard": "COMPLETED",
+            "standard": "COMPLETED_WITH_APPROVAL_CHECKPOINT",
             "regulated-high-assurance": "FAIL_DOCTOR_FIX_COMPLETED",
         },
         "trace": "COMPLETED",

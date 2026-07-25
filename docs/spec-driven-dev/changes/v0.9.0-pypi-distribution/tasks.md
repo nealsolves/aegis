@@ -48,7 +48,7 @@ Each implementation task maps to the numbered acceptance criteria in
   converge.
   Acceptance: all.
 
-- [ ] **T10 — Release-ready packet**
+- [x] **T10 — Release-ready packet**
   Record exact candidate artifacts, hashes, tests, known gaps, rollback, and
   prohibited publication action.
   Acceptance: 8, 9.

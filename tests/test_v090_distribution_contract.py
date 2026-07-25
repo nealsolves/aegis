@@ -48,3 +48,17 @@ def test_distribution_rename_does_not_change_runtime_dependencies():
 def test_development_extra_installs_the_declared_build_tool():
     dev_section = PYPROJECT.split("dev = [", 1)[1].split("]", 1)[0]
     assert '"build>=1.2"' in dev_section
+
+
+def test_candidate_validator_covers_the_approved_end_to_end_gates():
+    validator = (
+        REPO_ROOT / "scripts" / "validate_v090_distribution_candidate.py"
+    ).read_text(encoding="utf-8")
+    for proof_marker in [
+        '"pip", "check"',
+        '"approval_checkpoints"',
+        '"unresolved_checksums"',
+        '"invocation_artifact_checksum"',
+        '"session_id"',
+    ]:
+        assert proof_marker in validator

@@ -17,7 +17,7 @@ This beta candidate is not yet published to PyPI.
   runtime dependencies.
 - Package the completed `v0.9.0` workflow governance surface as candidate
   version `0.9.0b1`.
-- Validate the candidate against `1899 tests` before release-ready promotion.
+- Validate the candidate against `1901 tests` before release-ready promotion.
 
 ### Fixed
 

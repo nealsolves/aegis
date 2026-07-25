@@ -19,6 +19,7 @@ CORE_TRUTH_DOCS = [
 CURRENT_PUBLIC_DOCS = [
     "README.md",
     "PROJECT.md",
+    "demo-app-react/public/portal.html",
     "docs/PUBLIC_INTEGRATION_CONTRACT.md",
     "docs/reference/WORKFLOW_QUICKSTART.md",
     "docs/reference/WORKFLOW_CLI.md",
@@ -85,6 +86,7 @@ def test_current_public_docs_use_the_new_distribution_install_name():
 
     for rel in [
         "README.md",
+        "demo-app-react/public/portal.html",
         "docs/PUBLIC_INTEGRATION_CONTRACT.md",
         "docs/reference/WORKFLOW_QUICKSTART.md",
         "docs/reference/OPERATIONS_RUNBOOK.md",
@@ -92,6 +94,13 @@ def test_current_public_docs_use_the_new_distribution_install_name():
         assert "aegis-ai-governance" in _read(rel), (
             f"{rel} must identify the v0.9.0 beta distribution"
         )
+
+
+def test_prior_beta_evidence_is_archived_beneath_current_candidate_truth():
+    evidence = _read("docs/releases/v0.9.0-beta-test-evidence.md")
+    assert evidence.startswith("# AEGIS v0.9.0 Beta Test Evidence\n\n> Archived")
+    assert "`aegis-ai-governance==0.9.0b1`" in evidence
+    assert "not yet published to PyPI" in evidence
 
 
 def test_brand_and_version_parity_script_passes():
