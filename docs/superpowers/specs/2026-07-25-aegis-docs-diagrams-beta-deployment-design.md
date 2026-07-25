@@ -2,7 +2,9 @@
 
 **Change ID:** `v0.9.0-docs-diagrams-beta-deployment`
 
-**Status:** Draft for written review
+**Status:** Approved
+
+**Approved by:** Neal Bhattacharya
 
 **Target branch:** `develop`
 

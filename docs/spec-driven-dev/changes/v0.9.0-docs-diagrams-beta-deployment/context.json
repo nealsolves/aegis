@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "change_id": "v0.9.0-docs-diagrams-beta-deployment",
+  "workflow_family": "brownfield",
+  "action": "local_implementation",
+  "current_state": "UNCLASSIFIED",
+  "change_hash": "e08d30b065c885482e47ce04ed325570aeefb274b4711f7dd011d7978b23823e",
+  "facts": {
+    "documentation_only": {
+      "value": false,
+      "source_type": "approved_scope_analysis",
+      "source_ref": "docs/superpowers/specs/2026-07-25-aegis-docs-diagrams-beta-deployment-design.md",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "e08d30b065c885482e47ce04ed325570aeefb274b4711f7dd011d7978b23823e",
+      "corroboration": []
+    },
+    "modifies_runtime_code": {
+      "value": false,
+      "source_type": "approved_scope_analysis",
+      "source_ref": "docs/superpowers/plans/2026-07-25-aegis-docs-diagrams-beta-deployment.md",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "e08d30b065c885482e47ce04ed325570aeefb274b4711f7dd011d7978b23823e",
+      "corroboration": []
+    },
+    "changes_public_contract": {
+      "value": false,
+      "source_type": "approved_scope_analysis",
+      "source_ref": "docs/superpowers/specs/2026-07-25-aegis-docs-diagrams-beta-deployment-design.md",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "e08d30b065c885482e47ce04ed325570aeefb274b4711f7dd011d7978b23823e",
+      "corroboration": []
+    },
+    "changes_infrastructure": {
+      "value": true,
+      "source_type": "deployment_configuration_analysis",
+      "source_ref": "demo-app-api/render.yaml",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "e08d30b065c885482e47ce04ed325570aeefb274b4711f7dd011d7978b23823e",
+      "corroboration": []
+    },
+    "adds_external_dependency": {
+      "value": false,
+      "source_type": "dependency_manifest_analysis",
+      "source_ref": "pyproject.toml",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "e08d30b065c885482e47ce04ed325570aeefb274b4711f7dd011d7978b23823e",
+      "corroboration": []
+    },
+    "deploys_to_production": {
+      "value": true,
+      "source_type": "owner_approved_deployment_scope",
+      "source_ref": "docs/superpowers/specs/2026-07-25-aegis-docs-diagrams-beta-deployment-design.md",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "e08d30b065c885482e47ce04ed325570aeefb274b4711f7dd011d7978b23823e",
+      "corroboration": []
+    },
+    "instruction_system_change": {
+      "value": false,
+      "source_type": "approved_scope_analysis",
+      "source_ref": "docs/superpowers/specs/2026-07-25-aegis-docs-diagrams-beta-deployment-design.md",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "e08d30b065c885482e47ce04ed325570aeefb274b4711f7dd011d7978b23823e",
+      "corroboration": []
+    }
+  },
+  "clarifications": [],
+  "exceptions": [],
+  "authority_constraints": [],
+  "evidence": {},
+  "resources": {
+    "repair_attempts": 0,
+    "ci_reruns": 0,
+    "elapsed_minutes": 0
+  },
+  "open_escalation": null,
+  "responses": []
+}
