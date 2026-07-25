@@ -10,6 +10,10 @@ contract.
 These recipes target the unpublished `aegis-ai-governance==0.9.0b1` candidate
 on `develop`; the import and CLI remain `aegis`.
 
+Source, tags, and release artifacts for versions before `0.9.0` remain in
+[`nealsolves/aigc`](https://github.com/nealsolves/aigc). This repository is the
+AEGIS `0.9.0`-and-later development home.
+
 ## Choosing the right API
 
 - Use `enforce_invocation()` when you already have the model output and want

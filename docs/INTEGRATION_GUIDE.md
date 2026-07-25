@@ -12,6 +12,10 @@ for model calls, tools, credentials, transport, retries, and orchestration. See
 [Workflow Quickstart](reference/WORKFLOW_QUICKSTART.md) for the smallest
 workflow integration.
 
+Source, tags, and release artifacts for versions before `0.9.0` remain in
+[`nealsolves/aigc`](https://github.com/nealsolves/aigc). This repository is the
+AEGIS `0.9.0`-and-later development home.
+
 The SDK enforces policy validation, schema compliance, and audit artifact
 generation. This guide covers what the **integrator** is responsible for
 beyond what the SDK handles at runtime.

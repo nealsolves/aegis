@@ -110,7 +110,7 @@ def test_unpublished_quickstart_does_not_claim_a_candidate_git_tag():
     assert "after publication" in normalized
 
 
-def test_release_matrix_records_the_merged_unpublished_candidate():
+def test_release_matrix_separates_package_and_current_docs_baselines():
     root = SCRIPT_PATH.parents[1]
     release_matrix = (root / "docs/reference/RELEASE_MATRIX.md").read_text(
         encoding="utf-8"
@@ -119,6 +119,8 @@ def test_release_matrix_records_the_merged_unpublished_candidate():
     for anchor in (
         "8be5f54",
         "PR #17",
+        "fdf3649",
+        "PR #18",
         "merged",
         "Pending Trusted Publisher",
         "not on `main`",

@@ -64,6 +64,9 @@ documentation_inventory:
     - docs/superpowers/plans/2026-07-25-v090-truth-audit-demo.md
     - docs/superpowers/specs/2026-07-25-v090-truth-audit-demo-design.md
     - docs/spec-driven-dev/changes/v0.9.0-truth-audit-demo/**
+    - docs/superpowers/plans/2026-07-25-aegis-docs-diagrams-beta-deployment.md
+    - docs/superpowers/specs/2026-07-25-aegis-docs-diagrams-beta-deployment-design.md
+    - docs/spec-driven-dev/changes/v0.9.0-docs-diagrams-beta-deployment/**
   target:
     - docs/architecture/AEGIS_Architecture_Redesign_and_Roadmap.md
     - docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md

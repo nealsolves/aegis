@@ -20,6 +20,10 @@ or PyPI. It extends the framework from invocation governance to
 Workflow init/lint/doctor/trace/export and the optional adapter submodules are
 packaged beta surfaces; the host still owns execution and orchestration.
 
+Source, tags, and release artifacts for versions before `0.9.0` remain in
+[`nealsolves/aigc`](https://github.com/nealsolves/aigc). This repository is the
+AEGIS `0.9.0`-and-later development home.
+
 This document is intentionally evolutionary. Each section starts with the base
 capability and then shows how later releases extended it.
 
