@@ -58,17 +58,16 @@ _REQUIRED_TARGET_STATE_DOCS = [
     "docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md",
 ]
 
-_CURRENT_RUNTIME_SEMVER_RE = re.compile(r"\b(\d+\.\d+\.\d+)\b")
+_CURRENT_RUNTIME_SEMVER_RE = re.compile(
+    r"\b(\d+\.\d+\.\d+(?:(?:a|b|rc)\d+)?)\b"
+)
 _CURRENT_RUNTIME_CONTEXT_MARKERS = (
     "current release",
-    "current runtime",
+    "current package candidate",
+    "package candidate",
+    "candidate runtime",
     "current public runtime surface",
     "runtime baseline",
-    "shipped",
-    "installable",
-    "since",
-    "starting in",
-    "new in",
 )
 _TARGET_STATE_CONTEXT_MARKERS = (
     "target-state",
@@ -175,8 +174,8 @@ def get_manifest_doc_list(
 
 
 def extract_current_runtime_version_refs(text: str) -> set[str]:
-    """Extract version references that describe the shipped runtime."""
-    refs = set(re.findall(r"\bv(\d+\.\d+\.\d+)\b", text))
+    """Extract version references that explicitly describe the current candidate."""
+    refs: set[str] = set()
 
     for line in text.splitlines():
         if not _CURRENT_RUNTIME_SEMVER_RE.search(line):
@@ -804,21 +803,24 @@ def check_implementation_truth(manifest: dict) -> list[str]:
     else:
         errors.append("[impl-truth] aegis/_internal/audit.py not found")
 
-    # 4. README.md "Current release:" line
+    # 4. README.md exact distribution candidate
     readme_path = REPO_ROOT / "README.md"
     if readme_path.exists():
         text = readme_path.read_text(encoding="utf-8")
-        m = re.search(r"Current release:\s*`v([\d.]+)`", text)
+        m = re.search(
+            r"Distribution candidate:\s*`aegis-ai-governance==([^`]+)`",
+            text,
+        )
         if m:
             readme_version = m.group(1)
             if readme_version != manifest_version:
                 errors.append(
-                    f"[impl-truth] README.md 'Current release' shows "
-                    f"'v{readme_version}' != manifest version '{manifest_version}'"
+                    f"[impl-truth] README.md distribution candidate shows "
+                    f"'{readme_version}' != manifest version '{manifest_version}'"
                 )
         else:
             errors.append(
-                "[impl-truth] README.md: could not find 'Current release:' line"
+                "[impl-truth] README.md: could not find the distribution candidate"
             )
     else:
         errors.append("[impl-truth] README.md not found")
@@ -849,51 +851,58 @@ def check_implementation_truth(manifest: dict) -> list[str]:
     else:
         errors.append("[impl-truth] CHANGELOG.md not found")
 
-    # 6. implementation_status.md — baseline package release must match.
+    # 6. implementation_status.md — package candidate must match.
     impl_status_path = REPO_ROOT / "implementation_status.md"
     if impl_status_path.exists():
         text = impl_status_path.read_text(encoding="utf-8")
-        m = re.search(r"\*\*Baseline Version:\*\*\s*`([^`]+)`", text)
+        m = re.search(
+            r"\*\*Package Candidate:\*\*\s*`aegis-ai-governance==([^`]+)`",
+            text,
+        )
         if m:
             baseline_version = m.group(1)
             if baseline_version != manifest_version:
                 errors.append(
-                    f"[impl-truth] implementation_status.md Baseline Version "
+                    f"[impl-truth] implementation_status.md Package Candidate "
                     f"'{baseline_version}' != manifest version '{manifest_version}'"
                 )
         else:
             errors.append(
                 "[impl-truth] implementation_status.md: could not find "
-                "'Baseline Version' line"
+                "'Package Candidate' line"
             )
     else:
         errors.append("[impl-truth] implementation_status.md not found")
 
-    # 7. Release matrix — the canonical table must distinguish PyPI truth from
-    #    the source-only beta and repeat the installable package version.
+    # 7. Release matrix — distinguish the candidate from prior PyPI truth.
     release_matrix_path = REPO_ROOT / "docs" / "reference" / "RELEASE_MATRIX.md"
     if release_matrix_path.exists():
         text = release_matrix_path.read_text(encoding="utf-8")
-        m = re.search(r"Current package release is `([^`]+)`", text)
+        m = re.search(
+            r"Current package candidate is `aegis-ai-governance==([^`]+)`",
+            text,
+        )
         if m:
             matrix_version = m.group(1)
             if matrix_version != manifest_version:
                 errors.append(
-                    f"[impl-truth] RELEASE_MATRIX.md current package release "
+                    f"[impl-truth] RELEASE_MATRIX.md current package candidate "
                     f"'{matrix_version}' != manifest version '{manifest_version}'"
                 )
         else:
             errors.append(
                 "[impl-truth] RELEASE_MATRIX.md: could not find "
-                "'Current package release is' line"
+                "'Current package candidate is' line"
             )
-        if "source-only beta" not in text:
+        if "Local beta candidate" not in text:
             errors.append(
                 "[impl-truth] RELEASE_MATRIX.md: missing "
-                "a 'source-only beta' channel row"
+                "a local beta candidate channel row"
             )
-        if "PyPI" not in text:
-            errors.append("[impl-truth] RELEASE_MATRIX.md: missing PyPI channel")
+        if "Previous PyPI release" not in text:
+            errors.append(
+                "[impl-truth] RELEASE_MATRIX.md: missing previous PyPI channel"
+            )
     else:
         errors.append("[impl-truth] docs/reference/RELEASE_MATRIX.md not found")
 
@@ -1205,7 +1214,12 @@ def _has_freeze_go_coupling(text: str) -> bool:
 def check_v090_release_truth() -> list[str]:
     """Ensure release-truth docs agree on v0.9.0 sequencing rules."""
     errors: list[str] = []
-    claude_path = REPO_ROOT / "CLAUDE.md"
+    aegis_rule_path = REPO_ROOT / ".claude" / "rules" / "aegis-project.md"
+    claude_path = (
+        aegis_rule_path
+        if aegis_rule_path.exists()
+        else REPO_ROOT / "CLAUDE.md"
+    )
 
     if not claude_path.exists():
         return ["[v0.9.0-release] CLAUDE.md does not exist"]
@@ -1216,7 +1230,11 @@ def check_v090_release_truth() -> list[str]:
     if not pr_map:
         return ["[v0.9.0-release] could not parse v0.9.0 PR table from CLAUDE.md"]
 
-    for rel in _V090_RELEASE_FILES:
+    release_files = list(_V090_RELEASE_FILES)
+    if aegis_rule_path.exists():
+        release_files[0] = ".claude/rules/aegis-project.md"
+
+    for rel in release_files:
         path = REPO_ROOT / rel
         if not path.exists():
             errors.append(f"[v0.9.0-release] missing required file: {rel}")

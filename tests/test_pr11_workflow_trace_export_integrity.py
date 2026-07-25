@@ -102,9 +102,8 @@ def test_audit_export_projects_rationale_but_not_raw_provider_payload_or_secrets
 
     assert step["governance"]["rationale"] == "approval_required_before_external_handoff"
     assert "provider_payload" not in step["governance"]
-    projected = json.dumps(step["governance"])
     for sensitive in ["api_key", "authorization", "Bearer", "must-not-project"]:
-        assert sensitive not in projected
+        assert sensitive not in serialized
 
 
 def test_trace_and_export_cli_handle_failed_workflow_evidence(tmp_path):

@@ -11,10 +11,9 @@ architecture, and release context.
 ## Current State
 
 AEGIS is a Python SDK that enforces governance at the AI invocation boundary.
-The current release is `v0.3.3` (`2026-04-10`).
-`v0.3.3` delivers workflow-aware provenance and lineage groundwork: audit
-schema `v1.4`, `AuditLineage`, `ProvenanceGate`, `RiskHistory`, and split
-enforcement as the `@governed` default.
+The current package candidate is `aegis-ai-governance==0.9.0b1`. It preserves
+the `aegis` import package and CLI and is not yet published to PyPI. The
+previous PyPI line is `aegis==0.3.3` (`2026-04-10`).
 
 The shipped runtime supports:
 
@@ -29,11 +28,11 @@ The shipped runtime supports:
 The demo surface in this repo is a React frontend plus FastAPI backend that
 walks through the `v0.3.x` capabilities.
 
-The source-only `v0.9.0` beta workflow governance line adds
+The `v0.9.0` beta workflow governance candidate adds
 `AEGIS.open_session()`, `GovernanceSession`, starter scaffolds,
 `aegis workflow init`, `aegis policy init`, `aegis workflow lint`,
 `aegis workflow doctor`, `aegis workflow trace`, and `aegis workflow export`.
-The source tree also contains optional source-only beta adapter submodules at
+The candidate wheel also contains optional beta adapter submodules at
 `aegis.bedrock_adapter`, `aegis.a2a_adapter`, and
 `aegis.openai_agents_adapter`. They are not re-exported from top-level
 `aegis`; the OpenAI Agents adapter requires the `openai-agents` extra. See the
@@ -105,8 +104,8 @@ aegis/
 │   ├── presets.py                  Thin workflow preset builders
 │   ├── workflow_trace.py           Workflow timeline reconstruction helpers
 │   ├── workflow_export.py          Workflow export helpers
-│   ├── a2a_adapter.py              Optional source-only A2A adapter
-│   ├── bedrock_adapter.py          Optional source-only Bedrock adapter
+│   ├── a2a_adapter.py              Optional beta A2A adapter
+│   ├── bedrock_adapter.py          Optional beta Bedrock adapter
 │   ├── openai_agents_adapter.py    Optional advanced adapter; extra-gated
 │   ├── schemas/                    Runtime schemas packaged with the SDK
 │   └── _internal/                  Runtime implementation
@@ -293,9 +292,9 @@ Released `2026-04-10`.
 
 `0.3.3` extends AEGIS's invocation-governance runtime with provenance,
 lineage, and risk-trend primitives that future workflow governance will build
-on. The currently shipped package remains `v0.3.3`. The source-only `v0.9.0`
-beta line on local `develop` adds `GovernanceSession`,
-`SessionPreCallResult`, and `AEGIS.open_session(...)`.
+on. The `v0.9.0` beta candidate now packages `GovernanceSession`,
+`SessionPreCallResult`, and `AEGIS.open_session(...)` as
+`aegis-ai-governance==0.9.0b1`.
 
 What shipped:
 

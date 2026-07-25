@@ -19,6 +19,8 @@ CORE_TRUTH_DOCS = [
 CURRENT_PUBLIC_DOCS = [
     "README.md",
     "PROJECT.md",
+    "RELEASE_GATES.md",
+    "demo-app-react/public/portal.html",
     "docs/PUBLIC_INTEGRATION_CONTRACT.md",
     "docs/reference/WORKFLOW_QUICKSTART.md",
     "docs/reference/WORKFLOW_CLI.md",
@@ -27,6 +29,7 @@ CURRENT_PUBLIC_DOCS = [
     "docs/reference/STARTER_RECIPES.md",
     "docs/reference/SUPPORTED_ENVIRONMENTS.md",
     "docs/reference/OPERATIONS_RUNBOOK.md",
+    "docs/reference/external/OPENAI_AGENTS_ADAPTER.md",
 ]
 
 
@@ -40,26 +43,32 @@ def _pyproject_version() -> str:
     return match.group(1)
 
 
-def test_runtime_metadata_remains_033_while_source_beta_is_090():
-    assert _pyproject_version() == "0.3.3"
-    assert aegis.__version__ == "0.3.3"
+def _pyproject_name() -> str:
+    match = re.search(r'^name\s*=\s*"([^"]+)"', _read("pyproject.toml"), re.MULTILINE)
+    assert match is not None
+    return match.group(1)
+
+
+def test_runtime_metadata_matches_the_090_beta_distribution_candidate():
+    assert _pyproject_name() == "aegis-ai-governance"
+    assert _pyproject_version() == "0.9.0b1"
+    assert aegis.__version__ == "0.9.0b1"
 
     readme = _read("README.md")
     changelog = _read("CHANGELOG.md")
-    assert "Current beta line: source-only `v0.9.0`" in readme
-    assert "shipped PyPI package remains `v0.3.3`" in readme
-    assert "source-only `v0.9.0` beta" in changelog
-    assert "published package version remains `0.3.3`" in changelog
+    assert "Distribution candidate: `aegis-ai-governance==0.9.0b1`" in readme
+    assert "not yet published to PyPI" in readme
+    assert "## [0.9.0b1] — Unreleased" in changelog
+    assert "not yet published to PyPI" in changelog
 
 
-def test_canonical_release_docs_do_not_contradict_package_version():
+def test_canonical_release_docs_identify_the_beta_candidate():
     for rel in CORE_TRUTH_DOCS:
         text = _read(rel).lower()
-        assert "0.3.3" in text, f"{rel} must mention the shipped package baseline"
-        if "0.9.0" in text:
-            assert "beta" in text or "release/v0.9.0" in text, (
-                f"{rel} must frame 0.9.0 as beta/source/release-candidate context"
-            )
+        assert "0.9.0b1" in text, f"{rel} must mention the package candidate"
+        assert "beta" in text or "release/v0.9.0" in text, (
+            f"{rel} must frame 0.9.0 as beta/release-candidate context"
+        )
 
 
 def test_current_public_cli_docs_use_aegis_not_aigc_commands():
@@ -68,6 +77,44 @@ def test_current_public_cli_docs_use_aegis_not_aigc_commands():
         rel for rel in CURRENT_PUBLIC_DOCS if command_re.search(_read(rel).lower())
     ]
     assert offenders == []
+
+
+def test_current_public_docs_use_the_new_distribution_install_name():
+    legacy_install = re.compile(r"\bpip\s+install\s+[\"']?aegis(?:\[|\s|$)")
+    offenders = [
+        rel for rel in CURRENT_PUBLIC_DOCS if legacy_install.search(_read(rel))
+    ]
+    assert offenders == []
+
+    for rel in [
+        "README.md",
+        "demo-app-react/public/portal.html",
+        "docs/PUBLIC_INTEGRATION_CONTRACT.md",
+        "docs/reference/WORKFLOW_QUICKSTART.md",
+        "docs/reference/OPERATIONS_RUNBOOK.md",
+    ]:
+        assert "aegis-ai-governance" in _read(rel), (
+            f"{rel} must identify the v0.9.0 beta distribution"
+        )
+
+
+def test_prior_beta_evidence_is_archived_beneath_current_candidate_truth():
+    evidence = _read("docs/releases/v0.9.0-beta-test-evidence.md")
+    assert evidence.startswith("# AEGIS v0.9.0 Beta Test Evidence\n\n> Archived")
+    assert "`aegis-ai-governance==0.9.0b1`" in evidence
+    assert "not yet published to PyPI" in evidence
+
+
+def test_current_optional_extra_guidance_uses_distribution_name():
+    for rel in [
+        "RELEASE_GATES.md",
+        "demo-app-react/public/portal.html",
+        "docs/dev/pr_context.md",
+        "docs/reference/external/OPENAI_AGENTS_ADAPTER.md",
+    ]:
+        text = _read(rel)
+        assert "aegis[openai-agents]" not in text
+        assert "aegis-ai-governance[openai-agents]" in text
 
 
 def test_brand_and_version_parity_script_passes():

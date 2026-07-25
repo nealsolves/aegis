@@ -1179,7 +1179,7 @@ footer a { color: var(--text-secondary); }
   <div class="nav-inner">
     <div class="nav-logo">
       <span>AEGIS</span>
-      <span class="nav-badge">v0.3.3</span>
+      <span class="nav-badge">v0.9.0b1 candidate</span>
     </div>
     <ul class="nav-links">
       <li><a href="#boundary">// runtime.boundary</a></li>
@@ -1225,16 +1225,16 @@ footer a { color: var(--text-secondary); }
       <div class="term-body">
         <div class="term-line">
           <span class="term-prompt">$</span>
-          <span class="term-cmd">pip install aegis</span>
+          <span class="term-cmd">pip install aegis-ai-governance==0.9.0b1</span>
         </div>
-        <div class="term-out">Collecting aegis</div>
-        <div class="term-out">  Downloading aegis-0.3.3-py3-none-any.whl (78 kB)</div>
-        <div class="term-out-grn">Successfully installed aegis-0.3.3</div>
+        <div class="term-out">Release candidate command — available after PyPI publication</div>
+        <div class="term-out">Distribution: aegis-ai-governance · import/CLI: aegis</div>
+        <div class="term-out-grn">Candidate validated locally; PyPI publication pending</div>
         <div class="term-line" style="margin-top:0.75rem;">
           <span class="term-prompt">$</span>
           <span class="term-cmd">python -c "import aegis; print(aegis.__version__)"</span>
         </div>
-        <div class="term-out-cyn">0.3.3</div>
+        <div class="term-out-cyn">0.9.0b1</div>
         <div class="term-line" style="margin-top:0.5rem;">
           <span class="term-prompt">$</span>
           <span class="term-cmd"><span class="term-cursor"></span></span>
@@ -1249,10 +1249,9 @@ footer a { color: var(--text-secondary); }
     </div>
 
     <div class="hero-version-note mt2">
-      <strong>v0.3.3</strong> ships on PyPI — invocation governance, split enforcement, audit schema v1.4,
-      AuditLineage, ProvenanceGate, RiskHistory.<br />
-      <em>v0.9.0 beta</em> (source-only, local <code>develop</code>) — workflow governance,
-      GovernanceSession, aegis workflow CLI. PyPI release remains v0.3.3.
+      <strong>v0.9.0b1</strong> is the validated <code>aegis-ai-governance</code>
+      distribution candidate — invocation and workflow governance, GovernanceSession,
+      and the <code>aegis workflow</code> CLI. It is not yet published to PyPI.
     </div>
   </div>
 </section>
@@ -1335,7 +1334,7 @@ footer a { color: var(--text-secondary); }
             <code class="cm">enforce_invocation()</code> or <code class="cm">AEGIS.enforce()</code> — runs the complete gate
             sequence in one call. Input and output are provided together. Simple integration path for non-latency-sensitive cases.
           </p>
-          <div class="tag tag-dim mt1">v0.3.3 current</div>
+          <div class="tag tag-dim mt1">v0.9.0b1 candidate</div>
         </div>
         <div class="panel">
           <div class="panel-title">// split.mode</div>
@@ -1648,8 +1647,9 @@ footer a { color: var(--text-secondary); }
       <h2 class="sh">Multi-step workflow governance</h2>
 
       <div class="beta-banner">
-        <span class="bi">⚠ SOURCE-ONLY BETA:</span>
-        v0.9.0 workflow governance is available on local <code>develop</code> branch. The shipped PyPI package remains v0.3.3.
+        <span class="bi">⚠ RELEASE CANDIDATE:</span>
+        v0.9.0 workflow governance is packaged as <code>aegis-ai-governance==0.9.0b1</code>
+        and validated locally. PyPI publication is still pending.
         No external API keys required for the default first-adopter path.
       </div>
 
@@ -1780,12 +1780,12 @@ footer a { color: var(--text-secondary); }
         <div class="gp-step">
           <div class="gp-dot" style="background:var(--cyan); border:2px solid var(--bg-secondary);"></div>
           <div class="gp-num">step 01 — install</div>
-          <div class="gp-title">Install from source (v0.9.0 beta)</div>
+          <div class="gp-title">Install the v0.9.0b1 candidate artifact</div>
           <div class="gp-detail">
-            Clone the repo, check out <code>develop</code>, create a venv, and install in editable mode.
-            PyPI release remains v0.3.3; workflow CLI is source-only.
+            Install the locally validated wheel now. After the separately authorized
+            PyPI release, use the pinned distribution command below.
           </div>
-          <div class="gp-code">pip install -e '.[dev]'</div>
+          <div class="gp-code">pip install aegis-ai-governance==0.9.0b1</div>
         </div>
 
         <div class="gp-step">
@@ -2182,7 +2182,7 @@ footer a { color: var(--text-secondary); }
             <div class="be-file">
               <span class="be-icon">📄</span>
               <span class="be-name optional">aegis/openai_agents_adapter.py</span>
-              <span class="be-note">aegis[openai-agents]</span>
+              <span class="be-note">aegis-ai-governance[openai-agents]</span>
             </div>
             <div class="be-file">
               <span class="be-icon">📁</span>
@@ -2295,13 +2295,13 @@ footer a { color: var(--text-secondary); }
         <div class="adapter-card adapter-openai">
           <div class="adapter-name">OpenAI Agents SDK</div>
           <div class="adapter-status">
-            <span class="tag tag-green">source-only beta</span>
-            <span class="tag tag-dim">aegis[openai-agents]</span>
+            <span class="tag tag-green">v0.9.0b1 beta candidate</span>
+            <span class="tag tag-dim">aegis-ai-governance[openai-agents]</span>
           </div>
           <div class="adapter-desc">
             Normalizes host-owned <code>openai-agents</code> run, interruption, and optional trace evidence.
             Governed tool support requires adapter-managed wrappers.
-            Available in the v0.9.0 source under <code>aegis.openai_agents_adapter</code>.
+            Included in the v0.9.0b1 candidate under <code>aegis.openai_agents_adapter</code>.
           </div>
           <div class="adapter-note">
             Not re-exported from top-level <code>aegis</code>. Requires the <code>openai-agents</code>
@@ -2313,15 +2313,15 @@ footer a { color: var(--text-secondary); }
         <div class="adapter-card adapter-bedrock">
           <div class="adapter-name">AWS Bedrock Trace</div>
           <div class="adapter-status">
-            <span class="tag tag-orange">planned — follow-on track</span>
+            <span class="tag tag-orange">v0.9.0b1 beta candidate</span>
           </div>
           <div class="adapter-desc">
-            Will normalize host-supplied parsed Bedrock trace parts into AEGIS evidence.
+            Normalizes host-supplied parsed Bedrock trace parts into AEGIS evidence.
             Alias-backed identity required for governed binding.
             Name-only evidence is insufficient when policy requires authoritative identity.
           </div>
           <div class="adapter-note">
-            Not available in v0.3.3 or v0.9.0-beta. Not required for the default first-adopter path.
+            Included as <code>aegis.bedrock_adapter</code>; no AWS SDK is required by the base install.
           </div>
         </div>
 
@@ -2329,15 +2329,15 @@ footer a { color: var(--text-secondary); }
         <div class="adapter-card adapter-a2a">
           <div class="adapter-name">A2A Protocol</div>
           <div class="adapter-status">
-            <span class="tag tag-purple">planned — follow-on track</span>
+            <span class="tag tag-purple">v0.9.0b1 beta candidate</span>
           </div>
           <div class="adapter-desc">
-            Will normalize parsed Agent Card, request metadata, and task envelopes.
+            Normalizes parsed Agent Card, request metadata, and task envelopes.
             Validates <code>supportedInterfaces[].protocolVersion</code>.
             Accepts only normative <code>TASK_STATE_*</code> wire values. gRPC is out of scope for v0.9.0.
           </div>
           <div class="adapter-note">
-            Not available in v0.3.3 or v0.9.0-beta. Not required for the default first-adopter path.
+            Included as <code>aegis.a2a_adapter</code>; no A2A SDK is required by the base install.
           </div>
         </div>
       </div>
@@ -2378,17 +2378,9 @@ footer a { color: var(--text-secondary); }
         <div class="term-body">
           <div class="term-line">
             <span class="term-prompt">$</span>
-            <span class="term-cmd">pip install aegis</span>
+            <span class="term-cmd">pip install aegis-ai-governance==0.9.0b1</span>
           </div>
-          <div class="term-out-grn">Successfully installed aegis-0.3.3</div>
-          <div class="term-line" style="margin-top:0.5rem;">
-            <span class="term-prompt">$</span>
-            <span class="term-cmd"># for v0.9.0 workflow beta:</span>
-          </div>
-          <div class="term-line">
-            <span class="term-prompt">$</span>
-            <span class="term-cmd">git clone &amp;&amp; pip install -e '.[dev]'</span>
-          </div>
+          <div class="term-out-grn">Available after the separately authorized PyPI publication</div>
           <div class="term-line" style="margin-top:0.5rem;">
             <span class="term-prompt">$</span>
             <span class="term-cmd">aegis workflow init --profile minimal</span>
@@ -2405,7 +2397,7 @@ footer a { color: var(--text-secondary); }
       <div class="cta-steps">
         <div class="cta-step">
           <div class="cta-step-num">1</div>
-          <span><code>pip install aegis</code> — shipped v0.3.3, invocation governance</span>
+          <span><code>pip install aegis-ai-governance==0.9.0b1</code> — candidate command after publication</span>
         </div>
         <div class="cta-step">
           <div class="cta-step-num">2</div>
@@ -2434,8 +2426,8 @@ footer a { color: var(--text-secondary); }
     <div style="margin-bottom:0.4rem;">
       <span style="color:var(--cyan);">AEGIS</span>
       &nbsp;·&nbsp; Auditable Enforcement and Governance for Intelligent Systems
-      &nbsp;·&nbsp; <span style="color:var(--green);">v0.3.3</span> PyPI &nbsp;·&nbsp;
-      <span style="color:var(--orange);">v0.9.0-beta</span> source
+      &nbsp;·&nbsp; <span style="color:var(--orange);">v0.9.0b1</span>
+      <code>aegis-ai-governance</code> candidate · PyPI pending
     </div>
     <div>
       <a href="https://nealsolves.github.io/aegis/">Interactive Demo</a>

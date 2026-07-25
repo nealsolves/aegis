@@ -1,0 +1,59 @@
+schema_version: 1
+risk:
+  tiers: [low, moderate, high, critical]
+  factors:
+    documentation_only: low
+    modifies_runtime_code: moderate
+    reads_customer_data: moderate
+    adds_external_dependency: moderate
+    uses_llm: moderate
+    writes_customer_data: high
+    modifies_authentication: high
+    modifies_authorization: high
+    introduces_sensitive_data_use: high
+    changes_public_contract: high
+    changes_infrastructure: high
+    irreversible_migration: critical
+    destructive_production_action: critical
+  escalation:
+    - id: customer_write_external
+      when_all: [writes_customer_data, adds_external_dependency]
+      raise_by: 1
+    - id: authorization_in_production
+      when_all: [modifies_authorization, deploys_to_production]
+      minimum: high
+  automatic_critical: [credential_exposure, unsupported_regulatory_exception, unbounded_financial_commitment]
+authority:
+  outcomes: [autonomous, autonomous_with_enhanced_gates, human_required, prohibited]
+  source_precedence: [external_obligation, constitution, regulated_overlay, project, base_profile, workflow]
+  fact_outcomes:
+    introduces_sensitive_data_use: human_required
+  actions:
+    local_implementation: {low: autonomous, moderate: autonomous, high: autonomous_with_enhanced_gates, critical: human_required}
+    push_branch: {low: autonomous, moderate: autonomous, high: autonomous_with_enhanced_gates, critical: human_required}
+    open_pull_request: {low: autonomous, moderate: autonomous, high: autonomous_with_enhanced_gates, critical: human_required}
+    update_pull_request: {low: autonomous, moderate: autonomous, high: autonomous_with_enhanced_gates, critical: human_required}
+    merge_pull_request: {low: autonomous, moderate: autonomous, high: autonomous_with_enhanced_gates, critical: human_required}
+    create_release: {low: autonomous, moderate: autonomous, high: human_required, critical: prohibited}
+    deploy_production: {low: autonomous, moderate: autonomous_with_enhanced_gates, high: human_required, critical: prohibited}
+    risk_exception: {low: autonomous, moderate: autonomous_with_enhanced_gates, high: human_required, critical: prohibited}
+    instruction_system_change: {low: human_required, moderate: human_required, high: human_required, critical: human_required}
+clarifications:
+  inferable: resolve_and_record
+  reversible_default: apply_configured_default
+  material_business: human_required
+exceptions:
+  low: {allowed: true, autonomous: true, max_duration_days: 30, required: [rationale, owner, remediation_task, expires_at, no_security_boundary_impact, no_regulatory_impact]}
+  moderate: {allowed: true, autonomous: true, max_duration_days: 14, required: [rationale, owner, compensating_control, follow_up_task, expires_at, no_regulatory_impact]}
+  high: {allowed: true, autonomous: false, outcome: human_required}
+  critical: {allowed: false, autonomous: false, outcome: prohibited}
+reviews:
+  low: [combined_engineering]
+  moderate: [general_engineering]
+  high: [correctness, security, test_adequacy, convergence]
+  critical: []
+resources:
+  max_repair_cycles: 3
+  max_ci_reruns_per_change: 2
+  max_elapsed_minutes: 120
+  retry_backoff_seconds: [1, 5, 15]

@@ -45,7 +45,7 @@ def test_sink_classes_and_functions_exported():
 
 def test_public_api_imports():
     assert callable(enforce_invocation)
-    assert __version__ == "0.3.3"
+    assert __version__ == "0.9.0b1"
     assert InvocationValidationError.__name__ == "InvocationValidationError"
 
 

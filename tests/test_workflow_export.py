@@ -216,8 +216,11 @@ class TestAuditExport:
         wa = _workflow_with_governance(metadata)
         result = export_workflow([wa], [INV_ARTIFACT], "audit")
         governance = result["sessions"][0]["steps"][0]["governance"]
+        metadata_governance = result["sessions"][0]["steps"][0]["metadata"]["governance"]
         assert "provider_payload" not in governance
+        assert "provider_payload" not in metadata_governance
         assert "nested_source_ids" not in governance
+        assert "nested_source_ids" not in metadata_governance
         assert governance["decision_basis"] == ["allowed_transitions"]
         assert governance["source_ids"] == ["doc-001"]
 
@@ -225,7 +228,7 @@ class TestAuditExport:
         wa = _workflow_with_governance({"governance": {"provider_payload": {"prompt": "x"}}})
         result = export_workflow([wa], [INV_ARTIFACT], "audit")
         step = result["sessions"][0]["steps"][0]
-        assert "metadata" in step
+        assert "metadata" not in step
         assert "governance" not in step
 
     def test_export_remains_compatible_when_metadata_absent(self):

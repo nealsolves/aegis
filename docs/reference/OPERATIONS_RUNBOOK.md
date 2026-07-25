@@ -1,7 +1,7 @@
 # AEGIS Operations Runbook (`v0.9.0` Beta)
 
-This runbook covers the source-only `v0.9.0` beta workflow path on local
-`develop`.
+This runbook covers the `aegis-ai-governance==0.9.0b1` beta candidate. The
+candidate is not yet published to PyPI.
 
 ## Core Validation Commands
 

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import site
 import subprocess
 import sys
 import tempfile
@@ -44,6 +45,11 @@ def _venv_env(venv_dir: Path) -> dict:
     env["VIRTUAL_ENV"] = str(venv_dir)
     env["PATH"] = str(bin_dir) + os.pathsep + env.get("PATH", "")
     env.pop("PYTHONHOME", None)
+    # A Homebrew-created child venv inherits the base interpreter's
+    # site-packages, not the active project venv's packages. Expose the active
+    # dependency directory explicitly; editable .pth files are not processed
+    # from PYTHONPATH, so the nested install still owns the aegis import.
+    env["PYTHONPATH"] = site.getsitepackages()[0]
     return env
 
 

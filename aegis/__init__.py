@@ -106,7 +106,7 @@ from aegis.policy_testing import (
 # Host applications configure log levels and handlers on their own loggers.
 logging.getLogger("aegis").addHandler(logging.NullHandler())
 
-__version__ = "0.3.3"
+__version__ = "0.9.0b1"
 
 __all__ = [
     "AEGIS",

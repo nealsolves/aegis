@@ -1,8 +1,8 @@
 # Release Gates
 
 This file tracks the release gates for the `v0.9.0` beta train.
-The published package/runtime metadata remains `0.3.3` until an intentional
-package release is cut; `v0.9.0` is the source-only beta train.
+The package candidate is `aegis-ai-governance==0.9.0b1`; it preserves
+`import aegis` and the `aegis` CLI and is not yet published to PyPI.
 
 Do NOT open or merge a PR from `origin/develop` -> `origin/main` until
 `v0.9.0` is formally declared a GO.
@@ -94,7 +94,7 @@ no further public-surface work proceeds until the default path is repaired.
 
 ## PR-10c — OpenAI Agents Adapter Gate
 
-- [x] `OpenAIAgentsAdapter` is optional, fail-closed, and ships behind the `aegis[openai-agents]` extra
+- [x] `OpenAIAgentsAdapter` is optional, fail-closed, and ships behind the `aegis-ai-governance[openai-agents]` extra
 - [x] the default local adopter path is unchanged and green without `openai-agents` installed
 - [x] participant binding, duplicate-name rejection, and trace-required enforcement are tested with fixtures only
 - [x] `GovernanceSession.authorize_step_tool_call` enforces tool budgets and allowlists in real time

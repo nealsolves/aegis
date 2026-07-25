@@ -5,6 +5,32 @@ All notable changes to AEGIS are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0b1] — Unreleased
+
+This beta candidate is not yet published to PyPI.
+
+### Changed
+
+- Rename the distribution from `aegis` to `aegis-ai-governance` because the
+  original project name cannot be registered for this release.
+- Preserve the `aegis` import package, `aegis` CLI, package discovery, and
+  runtime dependencies.
+- Package the completed `v0.9.0` workflow governance surface as candidate
+  version `0.9.0b1`.
+- Validate the candidate against `1903 tests` before release-ready promotion.
+
+### Fixed
+
+- Audit-mode workflow export now preserves normalized adapter metadata while
+  redacting the raw governance metadata subtree, preventing provider payloads
+  or authorization markers from reappearing beside the redacted summary.
+
+### Release boundary
+
+- PyPI publication uses Trusted Publishing from
+  `.github/workflows/publish.yml` and GitHub environment `pypi`.
+- Building, testing, and reaching `RELEASE_READY` do not authorize an upload.
+
 ## [0.3.3] — 2026-04-10
 
 ### Source-Only `v0.9.0` Beta Track Note
