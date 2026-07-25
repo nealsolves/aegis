@@ -96,12 +96,14 @@ The one-time instruction-system and deployment decisions are recorded in the
 | --- | --- | --- |
 | Initial delivery | PR #19 merged to `develop` as `9345e1e0415d466b7365509228be073d1b370887` |
 | Pages CI repair | PR #20 merged to `develop` as `49c0229f171837c941078ce476b0220286d14a30` |
+| Live evidence | PR #21 merged to `develop` as `04f301a0ee46d39d67eeec62d08ea2ffca6371b6` |
 | Render Blueprint | `aegis-beta`, ID `exs-d9ijhd4m0tmc73ctfu2g`, branch `develop` |
 | Render service | `aegis-demo-api`, ID `srv-d9ijhhvavr4c73avb1ng`, free plan |
 | Render deploy | `dep-d9ijhi7avr4c73avb1vg`, commit `9345e1e`, status `Live` |
+| Verified Render baseline | `dep-d9ijmobeo5us73ctu700`, commit `04f301a`, status `Live` |
 | Backend URL | `https://aegis-demo-api.onrender.com` |
 | Pages URL | `https://nealsolves.github.io/aegis/` |
-| Pages workflow | run `30177779500`, successful rerun from `develop` |
+| Pages workflows | runs `30177779500` and `30178022023`, successful from `develop` |
 | Pages environment | only custom deployment branch policy is `develop` |
 | `main` | unchanged at `0ddcee9bb08c850a340d6938124a415948906c57` |
 

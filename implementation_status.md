@@ -17,7 +17,7 @@
 | Instruction modules | Bootstrap installation `complete` |
 | Project owner | Neal Bhattacharya |
 | Escalation owner | neal@nealsolves.com |
-| Remote actions | Disabled by default; one-time hash-bound authority delivered this feature branch through PRs #19 and #20 to `develop` and deployed only the beta targets |
+| Remote actions | Disabled by default; one-time hash-bound authority delivered this feature branch through PRs #19–#21 to `develop` and deployed only the beta targets |
 | Current gate | Public beta verification complete; `main` cutover and PyPI publication remain separate prohibited/pending decisions |
 | Bootstrap decision | `BOOTSTRAP-2026-07-24-AEGIS-SDD` |
 | Baseline commit | `73f1bfc494dd5290a7e579069b3cad72e33457ed` |
