@@ -109,7 +109,7 @@ def test_root_readme_identifies_develop_beta_demo_and_eleven_lab_candidate():
         assert lab in readme
     assert ".github/workflows/deploy-demo-react.yml" in readme
     assert "demo-app-api/render.yaml" in readme
-    assert "configured from `develop`" in readme
+    assert "live from `develop`" in readme
     assert "`main` remains unchanged" in readme
 
 

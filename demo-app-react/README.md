@@ -37,8 +37,10 @@ The demo has two public components:
   repository variable.
 - **FastAPI backend** (`demo-app-api/`) — defined by
   `demo-app-api/render.yaml` and auto-deployed by Render from `develop`. The
-  React app calls it for all lab enforcement, signing, chaining, composition,
-  loader, and workflow operations. No user API keys are required.
+  live beta API is
+  [https://aegis-demo-api.onrender.com](https://aegis-demo-api.onrender.com).
+  The React app calls it for all lab enforcement, signing, chaining,
+  composition, loader, and workflow operations. No user API keys are required.
 
 ## Development
 

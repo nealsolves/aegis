@@ -26,11 +26,12 @@ Each task maps to the numbered acceptance contract in `spec.md`.
   Run documentation, Python, frontend, backend, build, lint, diagram, and
   deployment-contract validation; repair findings and record evidence.
   Acceptance: all.
-- [x] **T7 — Remote delivery decisions (evaluated; prohibited by project policy)**
-  Re-evaluate branch push, pull request, Render deployment, and Pages
-  deployment separately; stop any prohibited action.
+- [x] **T7 — Bounded remote delivery decisions**
+  Record the owner's one-time authorization, enable only the approved feature
+  branch to `develop` path and beta targets, and evaluate branch push, pull
+  request, merge, Render deployment, and Pages deployment separately.
   Acceptance: 4, 5, 6.
-- [ ] **T8 — Live beta verification (blocked until remote delivery is enabled)**
+- [x] **T8 — Live beta verification**
   Verify backend health, API behavior, frontend rendering, browser console,
   CORS, and frontend-to-backend requests at their public URLs.
   Acceptance: 4, 6.

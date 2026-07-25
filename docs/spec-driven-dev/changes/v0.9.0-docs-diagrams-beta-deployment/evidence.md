@@ -66,37 +66,62 @@ The post-implementation review found and repaired:
    write privileges exclusively in the deploy job.
 3. The Pages workflow omitted the already-required React lint step.
 4. A release-truth test still required the retired “last main build” wording.
+5. The Pages job exposed `VITE_API_URL` to unit tests, invalidating the
+   localhost-fallback test. The variable is now scoped to the guard and
+   production build only.
+6. GitHub created the `github-pages` environment with a `main`-only deployment
+   policy. It now has one custom branch policy: `develop`.
 
-## Remote Decisions and Current Blocker
+## Bounded Remote Authority
 
-The repository policy engine returned:
+Before owner approval, the repository policy correctly prohibited remote and
+production actions. The owner then authorized one exact operating window:
 
-| Action | Outcome | Rule |
+- source branch: `feat/v0.9-14-docs-pages-render`
+- pull request base: `develop`
+- deployment targets: the AEGIS Render beta service and
+  `nealsolves/aegis` GitHub Pages
+- `main`: prohibited
+
+The prior trusted policy evaluated the temporary control-plane proposal at
+change hash
+`d53275560025bc0f5cd9dbefe62b3e96ae8a882651a2af354daee6c5ce4cdf16`.
+The one-time instruction-system and deployment decisions are recorded in the
+`remote-authority-*` and `deploy-authority-*` artifacts. The enabled
+`.claude/project.yaml` was never committed.
+
+## Remote Delivery
+
+| Action | Result |
 | --- | --- | --- |
-| Push feature branch | `prohibited` | `remote_actions_disabled` |
-| Open pull request to `develop` | `prohibited` | `remote_actions_disabled` |
-| Deploy Render and GitHub Pages | `prohibited` | `production_actions_disabled` |
+| Initial delivery | PR #19 merged to `develop` as `9345e1e0415d466b7365509228be073d1b370887` |
+| Pages CI repair | PR #20 merged to `develop` as `49c0229f171837c941078ce476b0220286d14a30` |
+| Render Blueprint | `aegis-beta`, ID `exs-d9ijhd4m0tmc73ctfu2g`, branch `develop` |
+| Render service | `aegis-demo-api`, ID `srv-d9ijhhvavr4c73avb1ng`, free plan |
+| Render deploy | `dep-d9ijhi7avr4c73avb1vg`, commit `9345e1e`, status `Live` |
+| Backend URL | `https://aegis-demo-api.onrender.com` |
+| Pages URL | `https://nealsolves.github.io/aegis/` |
+| Pages workflow | run `30177779500`, successful rerun from `develop` |
+| Pages environment | only custom deployment branch policy is `develop` |
+| `main` | unchanged at `0ddcee9bb08c850a340d6938124a415948906c57` |
 
-The exact decisions are stored in `push-evaluation.json`,
-`pull-request-evaluation.json`, and `deploy-evaluation.json`. No prohibited
-external action was attempted.
+## Live Verification
 
-Because the feature branch cannot be delivered to `develop`, neither Render
-nor GitHub Pages can deploy this source. The public Pages target and backend
-therefore remain unverified.
-
-## Deployment Prerequisites After Policy Enablement
-
-1. Push `feat/v0.9-14-docs-pages-render`.
-2. Open and merge a pull request into `develop` only.
-3. Create or synchronize the Render Blueprint from
-   `demo-app-api/render.yaml`; record the assigned `onrender.com` URL.
-4. Set the GitHub repository variable `VITE_API_URL` to that public HTTPS URL.
-5. Enable GitHub Pages with GitHub Actions as its publishing source.
-6. Dispatch or allow the `develop` push to run
-   `.github/workflows/deploy-demo-react.yml`.
-7. Verify `/health`, API/CORS behavior, all eleven lab routes, console/network
-   cleanliness, and `https://nealsolves.github.io/aegis/`.
+- `GET https://aegis-demo-api.onrender.com/health` returned HTTP 200 with
+  `{"status":"ok"}`.
+- A request with origin `https://nealsolves.github.io` returned
+  `access-control-allow-origin: https://nealsolves.github.io`.
+- Pages CI passed React tests, lint, production build, artifact upload, and
+  deployment.
+- The public Architecture route loaded both maintained diagrams and all eleven
+  lab links.
+- Live Lab 1's missing-role split scenario produced
+  `SPLIT_PRE_CALL_ONLY` and blocked in Phase A before model output was consumed.
+- Live Lab 11's minimal workflow completed with two governed steps and a
+  separate workflow artifact.
+- The clean in-app-browser console contained no errors after both live flows.
+- Chrome emitted only its extension's asynchronous message-channel noise; the
+  same flows were clean in the extension-free browser.
 
 ## Rollback
 

@@ -17,8 +17,8 @@
 | Instruction modules | Bootstrap installation `complete` |
 | Project owner | Neal Bhattacharya |
 | Escalation owner | neal@nealsolves.com |
-| Remote actions | Disabled; no push, pull request, merge, release, or deployment authority is configured |
-| Current gate | Documentation, diagram, and beta deployment configuration pass locally; branch delivery and live deployment remain separate policy decisions |
+| Remote actions | Disabled by default; one-time hash-bound authority delivered this feature branch through PRs #19 and #20 to `develop` and deployed only the beta targets |
+| Current gate | Public beta verification complete; `main` cutover and PyPI publication remain separate prohibited/pending decisions |
 | Bootstrap decision | `BOOTSTRAP-2026-07-24-AEGIS-SDD` |
 | Baseline commit | `73f1bfc494dd5290a7e579069b3cad72e33457ed` |
 
@@ -55,7 +55,7 @@ must be updated only after their specific evidence exists.
 | Beta functional gate | complete | PR-11 full functional test harness is merged; distribution and publication remain separate gates |
 | Distribution candidate | merged on `develop` | `aegis-ai-governance==0.9.0b1` metadata and Trusted Publishing are prepared; the candidate is not on `main` and PyPI publication is pending |
 | Truth audit and demo refresh | complete locally | Maintained docs, diagrams, contextual help, adapters, Python coverage, React, build, API, and assembled browser workflows are validated; independent review passed and the policy lifecycle reached `COMPLETE`; the final Python suite is 1919 passed and 2 skipped |
-| Docs, diagrams, and beta deployment | local validation complete; remote pending | Requested docs audited with no deletions, generated SVG overflow repaired and visually inspected, develop-based Pages/Render contracts added, 1923 Python tests and 105 React tests pass, and local Lab 1/Lab 11 browser flows complete without console errors |
+| Docs, diagrams, and beta deployment | live on `develop` | Requested docs audited with no deletions, SVG overflow repaired and visually inspected, Pages and Render deploy only from `develop`, 1923 Python tests and 105 React tests pass, and live Lab 1/Lab 11 flows pass with a clean in-app-browser console |
 
 ---
 

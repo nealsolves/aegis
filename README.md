@@ -259,6 +259,8 @@ The maintained demo is a React frontend plus FastAPI backend:
 - Frontend deployment source:
   `.github/workflows/deploy-demo-react.yml` on `develop`
 - Backend deployment source: `demo-app-api/render.yaml` on `develop`
+- Live backend:
+  [https://aegis-demo-api.onrender.com](https://aegis-demo-api.onrender.com)
 - Candidate source: eleven hands-on labs across risk scoring, signing, audit
   chain, composition, loaders and policy dates, custom gates, compliance
   export, governed knowledge, governed-versus-ungoverned comparison, split
@@ -268,9 +270,10 @@ The maintained demo is a React frontend plus FastAPI backend:
 - Purpose: hands-on orientation to both the `v0.3.x` invocation runtime and the
   `v0.9.0b1` workflow-governance candidate
 
-The beta deployment is configured from `develop`; `main` remains unchanged.
-The exact live backend URL and public smoke-test result are recorded only after
-the corresponding Render and GitHub Pages deployments complete.
+The beta deployment is live from `develop`; `main` remains unchanged. The
+Render `/health` endpoint returns `{"status":"ok"}`, the Pages origin is the
+only public CORS origin, and live browser checks passed for the split
+pre-call block in Lab 1 and the two-step workflow artifact in Lab 11.
 
 ## CLI Surface
 
