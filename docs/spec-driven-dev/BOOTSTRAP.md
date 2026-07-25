@@ -4,7 +4,7 @@
 
 **Date:** 2026-07-24
 
-**Owner and authorizing authority:** Neal Adams
+**Owner and authorizing authority:** Neal Bhattacharya
 
 ## Intent
 
@@ -78,7 +78,7 @@ copy of the reusable template repository.
 | Control | Configured value | Evidence |
 |---|---|---|
 | Project identity | `AEGIS`, `nealsolves/aegis` | `pyproject.toml`, Git remote |
-| Owner | Neal Adams | `pyproject.toml` authors |
+| Owner | Neal Bhattacharya | `pyproject.toml` authors |
 | Escalation owner | `neal@nealsolves.com` | `pyproject.toml` authors |
 | Profile | `solo` | owner instruction and repository history |
 | Spec Kit | disabled; equivalent manual gates allowed | no installed Spec Kit artifacts; existing design/plan process |

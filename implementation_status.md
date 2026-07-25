@@ -15,7 +15,7 @@
 | Active change | `v0.9.0-pypi-distribution` |
 | Active profile | Base profile `solo`; project lifecycle `configured` |
 | Instruction modules | Bootstrap installation `complete` |
-| Project owner | Neal Adams |
+| Project owner | Neal Bhattacharya |
 | Escalation owner | neal@nealsolves.com |
 | Remote actions | Disabled; no push, pull request, merge, release, or deployment authority is configured |
 | Current gate | Local validation complete; release evidence pending |

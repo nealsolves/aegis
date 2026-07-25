@@ -11,7 +11,7 @@ description = "Deterministic, fail-closed governance enforcement for AI model in
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "Apache-2.0"}
-authors = [{ name = "Neal Adams", email = "neal@nealsolves.com" }]
+authors = [{ name = "Neal Bhattacharya", email = "neal@nealsolves.com" }]
 keywords = [
   "governance",
   "audit",

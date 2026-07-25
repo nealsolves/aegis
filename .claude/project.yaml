@@ -9,7 +9,7 @@ project:
 delivery:
   base_profile: solo
   overlays: []
-  owner: Neal Adams
+  owner: Neal Bhattacharya
   escalation_owner: neal@nealsolves.com
 spec_kit:
   enabled: false

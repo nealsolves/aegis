@@ -4,7 +4,7 @@
 
 **Status:** Approved
 
-**Approved by:** Neal Adams
+**Approved by:** Neal Bhattacharya
 
 **Approval basis:** The repository owner approved
 `aegis-ai-governance`, configured its pending PyPI Trusted Publisher, and

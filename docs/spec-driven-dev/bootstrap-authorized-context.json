@@ -157,7 +157,7 @@
         "action=instruction_system_change",
         "rules=action_matrix:instruction_system_change:low,post_bootstrap_instruction_system_change"
       ],
-      "decided_by": "Neal Adams",
+      "decided_by": "Neal Bhattacharya",
       "decision_id": "DEC-BOOTSTRAP-2026-07-24-AEGIS-SDD-AUTH-instruction_system_change",
       "hashes": {
         "change_hash": "6434bf6398bd73be9115734efeefd7c6bf8dfe02a343c99496b02cc5cf91d1fa",
