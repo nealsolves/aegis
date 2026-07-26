@@ -325,8 +325,11 @@ data or medical advice.
 - an authorized nurse requests a limited summary;
 - the deterministic response includes an unsupported treatment recommendation;
 - privacy and clinical-scope custom gates reject the recommendation;
-- strict risk treatment requires physician approval;
-- output is held and the workflow pauses or fails according to the policy.
+- risk scoring is not reached because the custom gate has already stopped the
+  pipeline;
+- the output is held at a physician approval checkpoint;
+- the public response may call the observed state `PAUSED`, while the authentic
+  finalized workflow artifact remains `INCOMPLETE` with the pending checkpoint.
 
 **Primary features:** role authorization, typed preconditions, split
 enforcement, custom gates, strict risk treatment, risk evidence, policy

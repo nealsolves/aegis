@@ -326,6 +326,7 @@ git commit -m "feat: add versioned demo API manifest"
 - Create: `demo-app-api/demo_policies/northstar.yaml`
 - Create: `demo-app-api/demo_policies/meridian.yaml`
 - Create: `demo-app-api/tests/test_demo_scenarios.py`
+- Modify: `demo-app-api/demo_contract.py`
 - Modify: `demo-app-api/demo_routes.py`
 
 **Interfaces:**
@@ -348,7 +349,13 @@ CASES = [
 ]
 ```
 
-For every response, assert `fixture_version == "2026-07-25.1"`, transcript presence, real artifact checksums where an invocation artifact exists, separate workflow artifacts for Meridian, and no network mocking.
+For every response, assert `fixture_version == "2026-07-25.1"`,
+transcript presence, real artifact checksums where an invocation artifact
+exists, separate workflow artifacts for Meridian, and no network mocking.
+For Northstar `authorized_retry`, assert the custom gate is evaluated, the
+risk-scoring gate has `evaluated == false` and `outcome is None`, the response
+decision is `PAUSED`, and the authentic workflow artifact is `INCOMPLETE` with
+its pending approval checkpoint intact.
 
 - [ ] **Step 2: Run the focused tests and verify route failures**
 
@@ -396,9 +403,13 @@ Register demo-only privacy and clinical-scope gates by their documented public
 gate hook. `northstar.yaml` must extend `northstar_base.yaml` with intersect
 composition and strict risk treatment. The first attempt must fail before model
 use for `scheduling_assistant`. The authorized retry must reject the unsupported
-recommendation, attach custom-gate and risk evidence, and leave the workflow at
-a physician approval checkpoint. The corrected run uses the nurse role, a
-limited scheduling summary, and recorded physician approval.
+recommendation, preserve the custom-gate failure in the authentic artifact,
+mark risk scoring as not evaluated because the pipeline stopped at the custom
+gate, and leave the workflow at a physician approval checkpoint. The response
+may report the observed decision as `PAUSED`; the authentic finalized workflow
+artifact remains `INCOMPLETE` and retains its pending checkpoint. The corrected
+run uses the nurse role, a limited scheduling summary, and recorded physician
+approval.
 
 - [ ] **Step 6: Implement Meridian with `GovernanceSession`**
 
@@ -419,14 +430,30 @@ Map SDK failures using:
 ```python
 def _reason_code(exc: Exception) -> str:
     details = getattr(exc, "details", None)
+    if isinstance(details, dict):
+        gate_failures = details.get("custom_gate_failures")
+        if isinstance(gate_failures, list) and gate_failures:
+            specific = gate_failures[0].get("code")
+            if isinstance(specific, str):
+                return specific
+    artifact = getattr(exc, "audit_artifact", None) or {}
+    failures = artifact.get("failures")
+    if isinstance(failures, list) and failures:
+        specific = failures[0].get("code")
+        if isinstance(specific, str):
+            return specific
     if isinstance(details, dict) and isinstance(details.get("reason_code"), str):
         return details["reason_code"]
     code = getattr(exc, "code", None)
     if isinstance(code, str):
         return code
-    artifact = getattr(exc, "audit_artifact", None) or {}
     return str(artifact.get("metadata", {}).get("reason_code", "AEGIS_ENFORCEMENT_FAILED"))
 ```
+
+Extend `DemoGateResult` with `evaluated: bool` and allow `outcome` to be
+`None` only when `evaluated` is false. Specific public custom-gate codes come
+from authentic nested failure evidence before falling back to the outer
+exception code.
 
 Network and unexpected server failures must remain server failures; they must not be converted into PASS responses.
 
@@ -617,7 +644,8 @@ export interface DemoManifest {
 export interface DemoGateResult {
   name: string
   phase: 'pre_call' | 'post_call' | 'workflow'
-  outcome: DemoOutcome
+  evaluated: boolean
+  outcome: DemoOutcome | null
   reason_code: string | null
 }
 
