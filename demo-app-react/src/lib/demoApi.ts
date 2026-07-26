@@ -14,6 +14,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+function isAbortError(error: unknown) {
+  return isRecord(error) && error.name === 'AbortError'
+}
+
 function requestUrl(apiUrl: string, path: string) {
   const base = apiUrl.endsWith('/') ? apiUrl.slice(0, -1) : apiUrl
   const suffix = path.startsWith('/') ? path : `/${path}`
@@ -25,7 +29,8 @@ async function parseError(response: Response): Promise<DemoApiError> {
 
   try {
     body = await response.json()
-  } catch {
+  } catch (error) {
+    if (isAbortError(error)) throw error
     body = null
   }
 

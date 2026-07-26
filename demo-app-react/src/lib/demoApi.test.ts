@@ -77,6 +77,19 @@ describe('demoRequest', () => {
     await expect(request).rejects.toBe(abortError)
   })
 
+  it('propagates AbortError while parsing an error response body', async () => {
+    const abortError = new DOMException('The operation was aborted.', 'AbortError')
+    const response = {
+      ok: false,
+      status: 503,
+      statusText: 'Service Unavailable',
+      json: vi.fn().mockRejectedValue(abortError),
+    } as unknown as Response
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response))
+
+    await expect(demoRequest('/api', '/health')).rejects.toBe(abortError)
+  })
+
   it('returns a mismatched contract value for the service layer to classify', async () => {
     const incompatibleManifest = {
       ...MANIFEST,
