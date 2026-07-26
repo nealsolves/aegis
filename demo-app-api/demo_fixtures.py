@@ -23,6 +23,15 @@ class ScenarioFixture:
     transcript: tuple[dict[str, str], ...]
 
 
+@dataclass(frozen=True)
+class AdapterFixture:
+    adapter_id: str
+    fixture_id: str
+    provider_input: dict[str, Any]
+    output: dict[str, Any]
+    expected_reason_code: str | None = None
+
+
 SCENARIO_FIXTURES: dict[tuple[str, str], ScenarioFixture] = {
     ("atlas", "first_attempt"): ScenarioFixture(
         scenario_id="atlas",
@@ -251,5 +260,130 @@ SCENARIO_FIXTURES: dict[tuple[str, str], ScenarioFixture] = {
 }
 
 
+ADAPTER_FIXTURES: dict[tuple[str, str], AdapterFixture] = {
+    ("bedrock", "valid_trace"): AdapterFixture(
+        adapter_id="bedrock",
+        fixture_id="valid_trace",
+        provider_input={
+            "trace_parts": [
+                {
+                    "agentAliasId": "ALIASID12B",
+                    "agentId": "AGENTID12A",
+                    "trace": {
+                        "orchestrationTrace": {
+                            "traceId": "trace-demo-001",
+                        },
+                    },
+                },
+            ],
+        },
+        output={"result": "Plan recorded", "confidence": 0.98},
+    ),
+    ("bedrock", "wrong_alias"): AdapterFixture(
+        adapter_id="bedrock",
+        fixture_id="wrong_alias",
+        provider_input={
+            "trace_parts": [
+                {
+                    "agentAliasId": "OTHALIAS1B",
+                    "agentId": "OTHERID12A",
+                    "trace": {
+                        "orchestrationTrace": {
+                            "traceId": "trace-demo-001",
+                        },
+                    },
+                },
+            ],
+        },
+        output={"result": "Plan recorded", "confidence": 0.98},
+        expected_reason_code="WORKFLOW_PROTOCOL_TRACE_ALIAS_MISMATCH",
+    ),
+    ("openai_agents", "governed_graph"): AdapterFixture(
+        adapter_id="openai_agents",
+        fixture_id="governed_graph",
+        provider_input={
+            "agent": {
+                "name": "DemoPlanner",
+                "tools": [],
+            },
+        },
+        output={"result": "Plan recorded", "confidence": 0.98},
+    ),
+    ("openai_agents", "predeclared_tool_call"): AdapterFixture(
+        adapter_id="openai_agents",
+        fixture_id="predeclared_tool_call",
+        provider_input={
+            "agent": {
+                "name": "DemoPlanner",
+                "tools": [],
+            },
+            "tool_calls": [
+                {
+                    "id": "call-demo-001",
+                    "name": "unexecuted_demo_tool",
+                },
+            ],
+        },
+        output={"result": "Plan recorded", "confidence": 0.98},
+        expected_reason_code="WORKFLOW_UNSUPPORTED_BINDING",
+    ),
+    ("a2a", "completed_task"): AdapterFixture(
+        adapter_id="a2a",
+        fixture_id="completed_task",
+        provider_input={
+            "agent_card": {
+                "name": "DemoRemotePlanner",
+                "version": "1.0.0",
+                "supportedInterfaces": [
+                    {
+                        "url": "https://demo.invalid/a2a",
+                        "protocolBinding": "JSONRPC",
+                        "protocolVersion": "1.0",
+                    },
+                ],
+            },
+            "task_envelope": {
+                "id": "task-demo-001",
+                "contextId": "context-demo-001",
+                "status": {"state": "TASK_STATE_COMPLETED"},
+                "artifacts": [{"artifactId": "artifact-demo-001"}],
+                "history": [],
+            },
+        },
+        output={"result": "Plan recorded", "confidence": 0.98},
+    ),
+    ("a2a", "grpc_binding"): AdapterFixture(
+        adapter_id="a2a",
+        fixture_id="grpc_binding",
+        provider_input={
+            "agent_card": {
+                "name": "DemoRemotePlanner",
+                "version": "1.0.0",
+                "supportedInterfaces": [
+                    {
+                        "url": "https://demo.invalid/a2a",
+                        "protocolBinding": "GRPC",
+                        "protocolVersion": "1.0",
+                    },
+                ],
+            },
+            "task_envelope": {
+                "id": "task-demo-002",
+                "contextId": "context-demo-002",
+                "status": {"state": "TASK_STATE_COMPLETED"},
+                "artifacts": [],
+                "history": [],
+            },
+        },
+        output={"result": "Plan recorded", "confidence": 0.98},
+        expected_reason_code="WORKFLOW_PROTOCOL_GRPC_UNSUPPORTED",
+    ),
+}
+
+
 def get_fixture(scenario_id: str, variant: str) -> ScenarioFixture:
     return SCENARIO_FIXTURES[(scenario_id, variant)]
+
+
+def get_adapter_fixture(adapter_id: str, fixture_id: str) -> AdapterFixture:
+    return ADAPTER_FIXTURES[(adapter_id, fixture_id)]

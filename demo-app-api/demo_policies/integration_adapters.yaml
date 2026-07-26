@@ -1,0 +1,58 @@
+policy_version: "1.0"
+description: "Deterministic public adapter integration policy"
+roles:
+  - planner
+pre_conditions:
+  required:
+    deterministic_fixture:
+      type: boolean
+      enum:
+        - true
+post_conditions:
+  required:
+    - output_schema_valid
+output_schema:
+  type: object
+  additionalProperties: false
+  required:
+    - result
+    - confidence
+  properties:
+    result:
+      type: string
+    confidence:
+      type: number
+workflow:
+  max_steps: 1
+  participants:
+    - id: bedrock-demo-planner
+      roles:
+        - planner
+      protocols:
+        - bedrock
+    - id: openai-agents-demo-planner
+      roles:
+        - planner
+      protocols:
+        - openai_agents
+    - id: a2a-demo-planner
+      roles:
+        - planner
+      protocols:
+        - a2a
+  allowed_agent_roles:
+    - planner
+  protocol_constraints:
+    bedrock:
+      require_trace: true
+      require_alias_backed_identity: true
+    openai_agents:
+      require_trace: false
+      allow_hosted_tools: false
+      allow_agent_as_tool: true
+      require_unique_agent_names: true
+    a2a:
+      protocol_version: "1.0"
+      allowed_protocol_bindings:
+        - JSONRPC
+      require_task_state: true

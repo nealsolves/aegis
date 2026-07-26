@@ -16,7 +16,7 @@ def test_demo_manifest_reports_versions_and_allowlists():
     assert body["sdk_version"] == "0.9.0b1"
     assert body["fixture_set_version"] == "2026-07-25"
     assert body["scenarios"] == ["atlas", "meridian", "northstar"]
-    assert body["adapters"] == []
+    assert body["adapters"] == ["a2a", "bedrock", "openai_agents"]
 
 
 def test_health_reports_demo_contract():
@@ -40,7 +40,7 @@ def test_demo_routes_reject_unknown_ids_with_structured_detail():
         json={"variant": "not-a-variant"},
     )
     adapter = client.post(
-        "/api/demo/adapters/bedrock/runs",
+        "/api/demo/adapters/not-an-adapter/runs",
         json={"fixture_id": "valid_trace"},
     )
 

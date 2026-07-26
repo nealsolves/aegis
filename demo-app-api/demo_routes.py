@@ -15,10 +15,12 @@ from demo_contract import (
 from demo_registry import (
     SCENARIO_VARIANTS,
     VERIFIED_ADAPTERS,
+    is_known_adapter_fixture,
     is_known_scenario,
     is_known_variant,
     is_verified_adapter,
 )
+from demo_adapter_service import run_adapter
 from demo_scenario_service import run_scenario
 
 
@@ -69,11 +71,7 @@ def run_demo_adapter(
 ) -> AdapterRunResponse:
     if not is_verified_adapter(adapter_id):
         raise _unknown_id("adapter_id", adapter_id)
+    if not is_known_adapter_fixture(adapter_id, request.fixture_id):
+        raise _unknown_id("fixture_id", request.fixture_id)
 
-    raise HTTPException(
-        status_code=501,
-        detail={
-            "code": "DEMO_RUNNER_UNAVAILABLE",
-            "message": "Adapter execution is not installed on this service yet.",
-        },
-    )
+    return run_adapter(adapter_id, request.fixture_id)
