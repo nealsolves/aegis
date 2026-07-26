@@ -1,0 +1,51 @@
+policy_version: "1.0"
+description: "Fictional Northstar scheduling base policy"
+roles:
+  - nurse
+  - scheduling_assistant
+pre_conditions:
+  required:
+    fictional_record_id:
+      type: string
+      pattern: "^NS-[0-9]+$"
+    privacy_scope:
+      type: string
+      enum:
+        - scheduling_only
+post_conditions:
+  required:
+    - output_schema_valid
+output_schema:
+  type: object
+  additionalProperties: false
+  required:
+    - summary
+  properties:
+    clinical_recommendation:
+      type: string
+    scheduling_only:
+      type: boolean
+    summary:
+      type: string
+tools:
+  allowed_tools:
+    - name: fictional_schedule_lookup
+      max_calls: 2
+risk:
+  mode: risk_scored
+  threshold: 0.1
+  factors:
+    - name: external_provider
+      weight: 0.5
+      condition: external_model
+workflow:
+  max_steps: 1
+  max_total_tool_calls: 1
+  participants:
+    - id: northstar-nurse-01
+      roles:
+        - nurse
+  required_sequence:
+    - scheduling_summary
+  allowed_agent_roles:
+    - nurse

@@ -9,7 +9,9 @@ import pydantic
 from pydantic import BaseModel
 
 if pydantic.VERSION.startswith("2."):
-    from pydantic import ConfigDict
+    from pydantic import ConfigDict, model_validator
+else:
+    from pydantic import root_validator
 
 
 API_CONTRACT_VERSION = "1"
@@ -50,8 +52,28 @@ class DemoManifest(BaseModel):
 class DemoGateResult(BaseModel):
     name: str
     phase: Literal["pre_call", "post_call", "workflow"]
-    outcome: Outcome
+    evaluated: bool
+    outcome: Outcome | None
     reason_code: str | None
+
+    if pydantic.VERSION.startswith("2."):
+        @model_validator(mode="after")
+        def _outcome_matches_evaluation(self):
+            if self.evaluated != (self.outcome is not None):
+                raise ValueError(
+                    "outcome must be set exactly when the gate was evaluated"
+                )
+            return self
+    else:
+        @root_validator
+        def _outcome_matches_evaluation(cls, values):
+            evaluated = values.get("evaluated")
+            outcome = values.get("outcome")
+            if evaluated != (outcome is not None):
+                raise ValueError(
+                    "outcome must be set exactly when the gate was evaluated"
+                )
+            return values
 
 
 class DemoError(BaseModel):

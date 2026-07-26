@@ -19,6 +19,7 @@ from demo_registry import (
     is_known_variant,
     is_verified_adapter,
 )
+from demo_scenario_service import run_scenario
 
 
 router = APIRouter(prefix="/api/demo", tags=["demo-v1"])
@@ -58,13 +59,7 @@ def run_demo_scenario(
     if not is_known_variant(scenario_id, request.variant):
         raise _unknown_id("variant", request.variant)
 
-    raise HTTPException(
-        status_code=501,
-        detail={
-            "code": "DEMO_RUNNER_UNAVAILABLE",
-            "message": "Scenario execution is not installed on this service yet.",
-        },
-    )
+    return run_scenario(scenario_id, request.variant)
 
 
 @router.post("/adapters/{adapter_id}/runs", response_model=AdapterRunResponse)

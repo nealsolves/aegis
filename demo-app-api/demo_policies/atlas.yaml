@@ -1,0 +1,35 @@
+policy_version: "1.0"
+description: "Fictional Atlas support governance policy"
+roles:
+  - support
+pre_conditions:
+  required:
+    customer_verified:
+      type: boolean
+    refund_approved:
+      type: boolean
+post_conditions:
+  required:
+    - output_schema_valid
+output_schema:
+  type: object
+  additionalProperties: false
+  required:
+    - policy_citation
+    - refund_commitment
+    - reply
+  properties:
+    policy_citation:
+      type: string
+      enum:
+        - BRV-04
+    refund_commitment:
+      type: string
+    reply:
+      type: string
+tools:
+  allowed_tools:
+    - name: fictional_account_lookup
+      max_calls: 1
+    - name: fictional_refund_review
+      max_calls: 1
