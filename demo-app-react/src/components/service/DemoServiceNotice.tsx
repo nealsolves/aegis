@@ -1,7 +1,5 @@
 import { useDemoService } from '@/context/DemoServiceContext'
-
-const STARTING_COPY =
-  'Starting the demo API. Render may need about a minute after a period of inactivity.'
+import { demoServiceNoticeCopy } from '@/content/demoCopy'
 
 export function DemoServiceNotice() {
   const { status, error, retry } = useDemoService()
@@ -10,31 +8,35 @@ export function DemoServiceNotice() {
 
   if (status === 'starting') {
     return (
-      <div role="status" aria-live="polite">
-        {STARTING_COPY}
+      <div className="demo-service-notice" role="status" aria-live="polite">
+        <div className="demo-service-notice__content">
+          {demoServiceNoticeCopy.starting}
+        </div>
       </div>
     )
   }
 
   if (status === 'mismatch') {
     return (
-      <div role="status" aria-live="polite">
-        Demo API contract mismatch. Frontend contract{' '}
-        {error?.frontendContractVersion ?? '1'};
-        {' '}backend contract {error?.backendContractVersion ?? 'missing'}.
+      <div className="demo-service-notice" role="status" aria-live="polite">
+        <div className="demo-service-notice__content">
+          {demoServiceNoticeCopy.mismatch(
+            error?.frontendContractVersion,
+            error?.backendContractVersion,
+          )}
+        </div>
       </div>
     )
   }
 
   return (
-    <div role="status" aria-live="polite">
-      <p>
-        The governance run did not complete because the{' '}
-        {error?.operation ?? 'readiness check'} operation failed.
-      </p>
-      <button type="button" onClick={retry}>
-        Retry
-      </button>
+    <div className="demo-service-notice" role="status" aria-live="polite">
+      <div className="demo-service-notice__content">
+        <p>{demoServiceNoticeCopy.unavailable(error?.operation)}</p>
+        <button type="button" onClick={retry}>
+          {demoServiceNoticeCopy.retry}
+        </button>
+      </div>
     </div>
   )
 }

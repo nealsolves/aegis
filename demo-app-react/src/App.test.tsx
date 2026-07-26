@@ -7,17 +7,34 @@ import {
   within,
 } from '@testing-library/react'
 import { AigcProvider } from '@/context/AigcContext'
-import { DemoServiceProvider } from '@/context/DemoServiceContext'
+import {
+  DemoServiceProvider,
+  useDemoService,
+} from '@/context/DemoServiceContext'
 import { ThemeProvider } from '@/theme/ThemeContext'
 import App from './App'
 
-function renderRoute(path: string) {
+function jsonResponse(body: unknown, init?: ResponseInit) {
+  return new Response(JSON.stringify(body), {
+    headers: { 'Content-Type': 'application/json' },
+    ...init,
+  })
+}
+
+function DemoServiceStatusProbe() {
+  const { status } = useDemoService()
+
+  return <output data-testid="app-service-status">{status}</output>
+}
+
+function renderRoute(path: string, withServiceStatus = false) {
   window.location.hash = path
 
   return render(
     <ThemeProvider>
       <AigcProvider>
         <DemoServiceProvider>
+          {withServiceStatus && <DemoServiceStatusProbe />}
           <App />
         </DemoServiceProvider>
       </AigcProvider>
@@ -104,5 +121,45 @@ describe('App routing', () => {
     ).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Open lab guide' }))
     expect(screen.getByText('Architecture Guide')).toBeInTheDocument()
+  })
+
+  it('does not render an empty demo service strip while readiness is checking', () => {
+    const { container } = renderRoute('#/demo/architecture')
+
+    expect(container.querySelector('.demo-service-notice')).not.toBeInTheDocument()
+  })
+
+  it('does not render an empty demo service strip when the service is ready', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({
+        status: 'ok',
+        api_contract_version: '1',
+        sdk_version: '0.9.0b1',
+        source: {
+          branch: 'main',
+          commit: 'backend-commit',
+        },
+      }))
+      .mockResolvedValueOnce(jsonResponse({
+        api_contract_version: '1',
+        sdk_version: '0.9.0b1',
+        fixture_set_version: '2026-07-25',
+        scenarios: ['atlas', 'meridian', 'northstar'],
+        adapters: ['a2a', 'bedrock', 'openai_agents'],
+        source: {
+          branch: 'main',
+          commit: 'backend-commit',
+          sdk_version: '0.9.0b1',
+        },
+      }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { container } = renderRoute('#/demo/architecture', true)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('app-service-status')).toHaveTextContent('ready')
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(container.querySelector('.demo-service-notice')).not.toBeInTheDocument()
   })
 })

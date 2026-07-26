@@ -5,10 +5,8 @@ import {
   useDemoService,
 } from '@/context/DemoServiceContext'
 import { DemoServiceNotice } from '@/components/service/DemoServiceNotice'
+import { demoServiceNoticeCopy } from '@/content/demoCopy'
 import type { DemoManifest } from '@/types/demo'
-
-const STARTING_COPY =
-  'Starting the demo API. Render may need about a minute after a period of inactivity.'
 
 const MANIFEST: DemoManifest = {
   api_contract_version: '1',
@@ -90,6 +88,25 @@ describe('DemoServiceProvider', () => {
     vi.unstubAllGlobals()
   })
 
+  it('sources every public service notice string from shared demo copy', () => {
+    expect(demoServiceNoticeCopy.starting).toBe(
+      'Starting the demo API. Render may need about a minute after a period of inactivity.',
+    )
+    expect(demoServiceNoticeCopy.retry).toBe('Retry')
+    expect(demoServiceNoticeCopy.unavailable('/health')).toBe(
+      'The governance run did not complete because the /health operation failed.',
+    )
+    expect(demoServiceNoticeCopy.unavailable()).toBe(
+      'The governance run did not complete because the readiness check operation failed.',
+    )
+    expect(demoServiceNoticeCopy.mismatch('1', '2')).toBe(
+      'Demo API contract mismatch. Frontend contract 1; backend contract 2.',
+    )
+    expect(demoServiceNoticeCopy.mismatch()).toBe(
+      'Demo API contract mismatch. Frontend contract 1; backend contract missing.',
+    )
+  })
+
   it('moves checking -> starting -> ready and enables run controls only when ready', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(
@@ -108,7 +125,9 @@ describe('DemoServiceProvider', () => {
     await advance(0)
 
     expect(screen.getByTestId('service-status')).toHaveTextContent('starting')
-    expect(screen.getByRole('status')).toHaveTextContent(STARTING_COPY)
+    expect(screen.getByRole('status')).toHaveTextContent(
+      demoServiceNoticeCopy.starting,
+    )
     expect(screen.getByRole('button', { name: 'Run scenario' })).toBeDisabled()
 
     await advance(1000)
@@ -132,12 +151,16 @@ describe('DemoServiceProvider', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(7)
     expect(screen.getByTestId('service-status')).toHaveTextContent('unavailable')
-    expect(screen.getByRole('status')).toHaveTextContent('/health')
+    expect(screen.getByRole('status')).toHaveTextContent(
+      demoServiceNoticeCopy.unavailable('/health'),
+    )
 
     fetchMock.mockReset()
       .mockResolvedValueOnce(healthResponse())
       .mockResolvedValueOnce(jsonResponse(MANIFEST))
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    fireEvent.click(
+      screen.getByRole('button', { name: demoServiceNoticeCopy.retry }),
+    )
 
     expect(screen.getByTestId('service-status')).toHaveTextContent('checking')
 
@@ -220,8 +243,9 @@ describe('DemoServiceProvider', () => {
 
     expect(screen.getByTestId('service-status')).toHaveTextContent('mismatch')
     expect(screen.getByRole('status')).toHaveAttribute('aria-live', 'polite')
-    expect(screen.getByRole('status')).toHaveTextContent(/frontend[^1]*1/i)
-    expect(screen.getByRole('status')).toHaveTextContent(/backend[^2]*2/i)
+    expect(screen.getByRole('status')).toHaveTextContent(
+      demoServiceNoticeCopy.mismatch('1', '2'),
+    )
     expect(screen.getByRole('button', { name: 'Run scenario' })).toBeDisabled()
   })
 })

@@ -1,5 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import '@/index.css'
 import IntroductionPage from './IntroductionPage'
 
 function renderPage(path = '/') {
@@ -85,6 +86,17 @@ describe('IntroductionPage', () => {
     expect(within(entries).getAllByRole('article')).toHaveLength(3)
     for (const label of ['Architecture', 'Scenarios', 'Labs']) {
       expect(within(entries).getByRole('link', { name: label })).toBeInTheDocument()
+    }
+  })
+
+  it('uses the 44px target contract for each demo entry link', () => {
+    renderPage()
+    const entries = screen.getByRole('region', { name: 'Choose where to start' })
+
+    for (const label of ['Architecture', 'Scenarios', 'Labs']) {
+      const link = within(entries).getByRole('link', { name: label })
+      expect(link).toHaveClass('entry-card__link')
+      expect(getComputedStyle(link).minHeight).toBe('2.75rem')
     }
   })
 })

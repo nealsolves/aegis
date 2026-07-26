@@ -60,11 +60,7 @@ function AppContent() {
     <div className="app-shell">
       <AppNav />
       {route.showDemoNav && <DemoNav />}
-      {route.showDemoService && (
-        <div className="demo-service-notice">
-          <DemoServiceNotice />
-        </div>
-      )}
+      {route.showDemoService && <DemoServiceNotice />}
       {route.showLabTabs && <LabTabs labs={LABS} />}
       <Routes>
         <Route path="/" element={<IntroductionPage />} />

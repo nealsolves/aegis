@@ -234,7 +234,7 @@ button:focus-visible {
   color: var(--text-secondary);
 }
 
-.demo-service-notice > div {
+.demo-service-notice__content {
   width: min(100%, 1360px);
   margin: 0 auto;
 }
@@ -711,8 +711,23 @@ button:focus-visible {
   padding-top: 1rem;
 }
 
-.entry-card h3 a {
-  display: inline-block;
+.entry-card__link {
+  display: inline-flex;
+  margin-inline: -0.25rem;
+  padding-inline: 0.25rem;
+  align-items: center;
+  border-radius: 0.125rem;
+}
+
+.entry-card__link:hover {
+  background: rgba(15, 98, 254, 0.08);
+  text-decoration-thickness: 0.12em;
+}
+
+.entry-card__link:focus-visible {
+  outline: 0.125rem solid var(--ibm-blue-60);
+  outline-offset: 0.125rem;
+  background: rgba(15, 98, 254, 0.08);
 }
 
 .intro-faq-link {

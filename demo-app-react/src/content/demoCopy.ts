@@ -31,6 +31,19 @@ export const demoNavCopy = {
   ],
 } as const
 
+export const demoServiceNoticeCopy = {
+  starting:
+    'Starting the demo API. Render may need about a minute after a period of inactivity.',
+  retry: 'Retry',
+  unavailable: (operation: string | undefined = undefined) =>
+    `The governance run did not complete because the ${operation || 'readiness check'} operation failed.`,
+  mismatch: (
+    frontendContractVersion: string | undefined = undefined,
+    backendContractVersion: string | undefined = undefined,
+  ) =>
+    `Demo API contract mismatch. Frontend contract ${frontendContractVersion || '1'}; backend contract ${backendContractVersion || 'missing'}.`,
+} as const
+
 export const labRoutesCopy = [
   { num: 1, title: 'Risk Scoring', short: 'Risk', heroTitle: 'Risk Scoring' },
   { num: 2, title: 'Signing', short: 'Sign', heroTitle: 'Signing & Verification' },

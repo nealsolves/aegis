@@ -2,6 +2,8 @@ import { useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { introCopy } from '@/content/demoCopy'
 
+const ENTRY_LINK_STYLE = { minHeight: '2.75rem' } as const
+
 export default function IntroductionPage() {
   const { hash } = useLocation()
 
@@ -166,7 +168,13 @@ export default function IntroductionPage() {
             {introCopy.entries.cards.map((card) => (
               <article key={card.title} className="entry-card">
                 <h3>
-                  <Link to={card.to}>{card.title}</Link>
+                  <Link
+                    className="entry-card__link"
+                    style={ENTRY_LINK_STYLE}
+                    to={card.to}
+                  >
+                    {card.title}
+                  </Link>
                 </h3>
                 <p>{card.description}</p>
               </article>
