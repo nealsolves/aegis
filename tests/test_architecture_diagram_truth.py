@@ -121,6 +121,23 @@ def _overlaps(first: Bounds, second: Bounds) -> bool:
     )
 
 
+def _touches_boundary_port(
+    point: tuple[float, float],
+    bounds: Bounds,
+    port: str,
+) -> bool:
+    x, y = point
+    if port == "top":
+        return y == bounds.top and bounds.left <= x <= bounds.right
+    if port == "right":
+        return x == bounds.right and bounds.top <= y <= bounds.bottom
+    if port == "bottom":
+        return y == bounds.bottom and bounds.left <= x <= bounds.right
+    if port == "left":
+        return x == bounds.left and bounds.top <= y <= bounds.bottom
+    return False
+
+
 def _segments_intersect(first: Segment, second: Segment) -> bool:
     (ax1, ay1), (ax2, ay2) = first.start, first.end
     (bx1, by1), (bx2, by2) = second.start, second.end
@@ -184,7 +201,15 @@ def _geometry_failures(svg_path: Path) -> list[str]:
         connector_id = connector.attrib.get("data-connector-id")
         source = connector.attrib.get("data-from")
         destination = connector.attrib.get("data-to")
-        if not connector_id or not source or not destination:
+        source_port = connector.attrib.get("data-from-port")
+        destination_port = connector.attrib.get("data-to-port")
+        if (
+            not connector_id
+            or not source
+            or not destination
+            or not source_port
+            or not destination_port
+        ):
             failures.append(f"{svg_path.name}: connector missing routing metadata")
             continue
         if source not in nodes or destination not in nodes:
@@ -197,6 +222,26 @@ def _geometry_failures(svg_path: Path) -> list[str]:
             failures.append(f"{svg_path.name}: {connector_id} has no label rectangle")
         segments = _connector_segments(connector.attrib["d"])
         connector_segments[connector_id] = segments
+        if not _touches_boundary_port(
+            segments[0].start,
+            nodes[source],
+            source_port,
+        ):
+            failures.append(
+                f"{svg_path.name}: {connector_id} endpoint "
+                f"{segments[0].start} does not touch source {source} "
+                f"{source_port} port"
+            )
+        if not _touches_boundary_port(
+            segments[-1].end,
+            nodes[destination],
+            destination_port,
+        ):
+            failures.append(
+                f"{svg_path.name}: {connector_id} endpoint "
+                f"{segments[-1].end} does not touch destination {destination} "
+                f"{destination_port} port"
+            )
         for segment in segments:
             for node_id, node_bounds in nodes.items():
                 if _crosses_interior(segment, node_bounds):
@@ -339,6 +384,56 @@ def test_generated_diagram_routes_are_numerically_collision_free():
         failures.extend(_geometry_failures(DIAGRAMS / name))
 
     assert failures == []
+
+
+def test_generated_connectors_declare_source_and_destination_boundary_ports():
+    missing_ports = []
+    for name in GEOMETRY_DIAGRAMS:
+        root = ElementTree.parse(DIAGRAMS / name).getroot()
+        for element in root.iter():
+            if (
+                element.tag.rsplit("}", 1)[-1] == "path"
+                and element.attrib.get("class", "").startswith("connector")
+            ):
+                if not element.attrib.get("data-from-port"):
+                    missing_ports.append(
+                        f"{name}: {element.attrib.get('data-connector-id')} source"
+                    )
+                if not element.attrib.get("data-to-port"):
+                    missing_ports.append(
+                        f"{name}: {element.attrib.get('data-connector-id')} destination"
+                    )
+
+    assert missing_ports == []
+
+
+def test_geometry_validator_rejects_floating_and_wrong_port_endpoints(tmp_path):
+    cases = (
+        ("floating", "right", "M 11 5 L 30 5", "source source right port"),
+        ("wrong-port", "top", "M 10 5 L 30 5", "source source top port"),
+    )
+
+    for case_name, source_port, path_data, expected in cases:
+        svg_path = tmp_path / f"{case_name}.svg"
+        svg_path.write_text(
+            (
+                '<svg xmlns="http://www.w3.org/2000/svg">'
+                '<rect x="0" y="0" width="10" height="10" data-node-id="source" />'
+                '<rect x="30" y="0" width="10" height="10" data-node-id="destination" />'
+                '<rect x="0" y="20" width="10" height="4" '
+                'data-connector-label="route" />'
+                f'<path class="connector" d="{path_data}" '
+                'data-connector-id="route" data-from="source" '
+                f'data-to="destination" data-from-port="{source_port}" '
+                'data-to-port="left" />'
+                "</svg>"
+            ),
+            encoding="utf-8",
+        )
+
+        failures = _geometry_failures(svg_path)
+
+        assert any(expected in failure for failure in failures), failures
 
 
 def test_generator_check_passes_without_creating_legacy_aigc_outputs():

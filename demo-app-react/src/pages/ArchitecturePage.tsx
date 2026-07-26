@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState, type KeyboardEvent } from 'react'
 import ArchitectureDetailPanel, {
   type ArchitectureDetail,
 } from '@/components/architecture/ArchitectureDetailPanel'
@@ -10,6 +10,30 @@ type ArchitectureView = 'how-it-works' | 'technical-map'
 export default function ArchitecturePage() {
   const [view, setView] = useState<ArchitectureView>('how-it-works')
   const [selectedDetail, setSelectedDetail] = useState<ArchitectureDetail | null>(null)
+  const howTabRef = useRef<HTMLButtonElement>(null)
+  const technicalTabRef = useRef<HTMLButtonElement>(null)
+
+  const handleTabKeyDown = (
+    event: KeyboardEvent<HTMLButtonElement>,
+    currentView: ArchitectureView,
+  ) => {
+    let nextView: ArchitectureView | null = null
+    if (event.key === 'Home') {
+      nextView = 'how-it-works'
+    } else if (event.key === 'End') {
+      nextView = 'technical-map'
+    } else if (event.key === 'ArrowRight') {
+      nextView = currentView === 'how-it-works' ? 'technical-map' : 'how-it-works'
+    } else if (event.key === 'ArrowLeft') {
+      nextView = currentView === 'how-it-works' ? 'technical-map' : 'how-it-works'
+    }
+
+    if (nextView === null) return
+    event.preventDefault()
+    setView(nextView)
+    const nextTab = nextView === 'how-it-works' ? howTabRef : technicalTabRef
+    nextTab.current?.focus()
+  }
 
   return (
     <main className="architecture-page">
@@ -31,7 +55,10 @@ export default function ArchitecturePage() {
           id="architecture-tab-how"
           aria-controls="architecture-panel-how"
           aria-selected={view === 'how-it-works'}
+          tabIndex={view === 'how-it-works' ? 0 : -1}
+          ref={howTabRef}
           onClick={() => setView('how-it-works')}
+          onKeyDown={(event) => handleTabKeyDown(event, 'how-it-works')}
         >
           How it works
         </button>
@@ -41,7 +68,10 @@ export default function ArchitecturePage() {
           id="architecture-tab-technical"
           aria-controls="architecture-panel-technical"
           aria-selected={view === 'technical-map'}
+          tabIndex={view === 'technical-map' ? 0 : -1}
+          ref={technicalTabRef}
           onClick={() => setView('technical-map')}
+          onKeyDown={(event) => handleTabKeyDown(event, 'technical-map')}
         >
           Technical map
         </button>

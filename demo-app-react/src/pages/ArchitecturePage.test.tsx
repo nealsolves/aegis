@@ -42,6 +42,55 @@ describe('ArchitecturePage', () => {
     expect(screen.queryByRole('img', { name: /AEGIS v0.9 beta/i })).not.toBeInTheDocument()
   })
 
+  it('keeps only the selected architecture tab in the tab order', () => {
+    renderPage()
+
+    const tabs = screen.getAllByRole('tab')
+    expect(tabs.filter((tab) => tab.tabIndex === 0)).toHaveLength(1)
+    expect(screen.getByRole('tab', { name: 'How it works' })).toHaveAttribute(
+      'tabindex',
+      '0',
+    )
+    expect(screen.getByRole('tab', { name: 'Technical map' })).toHaveAttribute(
+      'tabindex',
+      '-1',
+    )
+  })
+
+  it('automatically selects architecture tabs with wrapped arrow and edge keys', async () => {
+    const user = userEvent.setup()
+    renderPage()
+
+    const howTab = screen.getByRole('tab', { name: 'How it works' })
+    const technicalTab = screen.getByRole('tab', { name: 'Technical map' })
+    howTab.focus()
+
+    await user.keyboard('{ArrowRight}')
+    expect(technicalTab).toHaveFocus()
+    expect(technicalTab).toHaveAttribute('aria-selected', 'true')
+    expect(technicalTab).toHaveAttribute('tabindex', '0')
+    expect(screen.getByRole('tabpanel')).toHaveAttribute(
+      'aria-labelledby',
+      technicalTab.id,
+    )
+
+    await user.keyboard('{ArrowRight}')
+    expect(howTab).toHaveFocus()
+    expect(howTab).toHaveAttribute('aria-selected', 'true')
+
+    await user.keyboard('{End}')
+    expect(technicalTab).toHaveFocus()
+    expect(technicalTab).toHaveAttribute('aria-selected', 'true')
+
+    await user.keyboard('{Home}')
+    expect(howTab).toHaveFocus()
+    expect(howTab).toHaveAttribute('aria-selected', 'true')
+
+    await user.keyboard('{ArrowLeft}')
+    expect(technicalTab).toHaveFocus()
+    expect(technicalTab).toHaveAttribute('aria-selected', 'true')
+  })
+
   it('labels the page with the public beta release', () => {
     const { container } = renderPage()
     expect(screen.getByText('AEGIS v0.9 Beta')).toBeInTheDocument()

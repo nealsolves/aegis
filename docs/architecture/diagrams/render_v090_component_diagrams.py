@@ -62,6 +62,8 @@ class ConnectorSpec:
     connector_id: str
     source: str
     destination: str
+    source_port: str
+    destination_port: str
     points: tuple[tuple[int, int], ...]
     label: str
     label_box: tuple[int, int, int, int]
@@ -294,6 +296,16 @@ def section_label(x: int, y: int, text: str, panel: bool = False) -> str:
 
 
 def connector(spec: ConnectorSpec) -> str:
+    valid_ports = {"top", "right", "bottom", "left"}
+    if spec.source_port not in valid_ports:
+        raise ValueError(
+            f"{spec.connector_id} has invalid source port {spec.source_port!r}"
+        )
+    if spec.destination_port not in valid_ports:
+        raise ValueError(
+            f"{spec.connector_id} has invalid destination port "
+            f"{spec.destination_port!r}"
+        )
     if len(spec.points) < 2:
         raise ValueError(f"{spec.connector_id} needs at least two points")
     for start, end in zip(spec.points, spec.points[1:]):
@@ -328,6 +340,8 @@ def connector(spec: ConnectorSpec) -> str:
         f'<path class="{css_class}" d="{path_data}" '
         f'data-connector-id="{attr(spec.connector_id)}" '
         f'data-from="{attr(spec.source)}" data-to="{attr(spec.destination)}" '
+        f'data-from-port="{attr(spec.source_port)}" '
+        f'data-to-port="{attr(spec.destination_port)}" '
         f'marker-end="url(#{marker})" />'
     )
     return label_rect + label_text + connector_path
@@ -444,6 +458,8 @@ def render_beta(theme: Theme) -> str:
             "host-to-session",
             "host-app",
             "open-session",
+            "bottom",
+            "top",
             ((240, 215), (240, 260), (530, 260), (530, 390)),
             "governed workflow",
             (315, 232, 150, 22),
@@ -453,6 +469,8 @@ def render_beta(theme: Theme) -> str:
             "loader-to-entrypoint",
             "file-policy-loader",
             "enforce-invocation",
+            "bottom",
+            "left",
             ((177, 586), (177, 610), (400, 610), (400, 731), (450, 731)),
             "loads policy",
             (272, 750, 100, 22),
@@ -461,6 +479,8 @@ def render_beta(theme: Theme) -> str:
             "open-to-session",
             "open-session",
             "governance-session",
+            "right",
+            "left",
             ((610, 429), (640, 429)),
             "opens",
             (592, 472, 65, 22),
@@ -469,6 +489,8 @@ def render_beta(theme: Theme) -> str:
             "session-to-token",
             "governance-session",
             "session-pre-call-result",
+            "right",
+            "left",
             ((810, 429), (840, 429)),
             "authorizes",
             (800, 625, 92, 22),
@@ -477,6 +499,8 @@ def render_beta(theme: Theme) -> str:
             "session-to-workflow-evidence",
             "governance-session",
             "workflow-artifact",
+            "bottom",
+            "top",
             ((725, 468), (725, 492), (987, 492), (987, 520)),
             "separate evidence",
             (660, 625, 130, 22),
@@ -486,6 +510,8 @@ def render_beta(theme: Theme) -> str:
             "token-to-split",
             "session-pre-call-result",
             "split-apis",
+            "top",
+            "top",
             ((925, 390), (925, 375), (1190, 375), (1190, 650), (905, 650), (905, 690)),
             "workflow-bound",
             (1035, 620, 120, 22),
@@ -494,6 +520,8 @@ def render_beta(theme: Theme) -> str:
             "gates-to-invocation-evidence",
             "ordered-gates",
             "invocation-artifact",
+            "right",
+            "left",
             ((1155, 731), (1200, 731), (1200, 435), (1240, 435)),
             "per-attempt evidence",
             (1205, 638, 145, 22),
@@ -502,6 +530,8 @@ def render_beta(theme: Theme) -> str:
             "artifact-to-sink",
             "invocation-artifact",
             "audit-sink",
+            "bottom",
+            "top",
             ((1360, 480), (1360, 530)),
             "emits",
             (1372, 494, 74, 22),
@@ -510,6 +540,8 @@ def render_beta(theme: Theme) -> str:
             "sink-to-lineage",
             "audit-sink",
             "audit-lineage",
+            "bottom",
+            "top",
             ((1360, 620), (1360, 680)),
             "analyzes",
             (1372, 638, 82, 22),
@@ -600,10 +632,10 @@ def render_pipeline(theme: Theme) -> str:
         )
     )
     workflow_connectors = (
-        ConnectorSpec("workflow-open", "pipeline-open-session", "pipeline-session", ((320, 350), (350, 350)), "opens", (304, 292, 62, 20)),
-        ConnectorSpec("workflow-authorize", "pipeline-session", "pipeline-token", ((580, 350), (610, 350)), "authorizes", (548, 392, 94, 20)),
-        ConnectorSpec("token-checks-policy", "pipeline-token", "pipeline-workflow-policy", ((860, 350), (890, 350)), "checks", (844, 292, 62, 20)),
-        ConnectorSpec("policy-to-workflow-artifact", "pipeline-workflow-policy", "pipeline-workflow-artifact", ((1140, 350), (1170, 350)), "records", (1122, 392, 68, 20), muted=True),
+        ConnectorSpec("workflow-open", "pipeline-open-session", "pipeline-session", "right", "left", ((320, 350), (350, 350)), "opens", (304, 292, 62, 20)),
+        ConnectorSpec("workflow-authorize", "pipeline-session", "pipeline-token", "right", "left", ((580, 350), (610, 350)), "authorizes", (548, 392, 94, 20)),
+        ConnectorSpec("token-checks-policy", "pipeline-token", "pipeline-workflow-policy", "right", "left", ((860, 350), (890, 350)), "checks", (844, 292, 62, 20)),
+        ConnectorSpec("policy-to-workflow-artifact", "pipeline-workflow-policy", "pipeline-workflow-artifact", "right", "left", ((1140, 350), (1170, 350)), "records", (1122, 392, 68, 20), muted=True),
     )
     parts.extend(connector(spec) for spec in workflow_connectors)
 
@@ -624,11 +656,11 @@ def render_pipeline(theme: Theme) -> str:
     )
     parts.extend(node(spec) for spec in phase_a_nodes)
     phase_a_connectors = (
-        ConnectorSpec("load-to-pre-auth", "pipeline-policy-load", "pipeline-pre-auth", ((250, 575), (280, 575)), "then", (244, 616, 42, 20)),
-        ConnectorSpec("pre-auth-to-guards", "pipeline-pre-auth", "pipeline-guards-role", ((440, 575), (470, 575)), "then", (434, 504, 42, 20)),
-        ConnectorSpec("guards-to-preconditions", "pipeline-guards-role", "pipeline-preconditions", ((630, 575), (660, 575)), "then", (624, 616, 42, 20)),
-        ConnectorSpec("preconditions-to-post-auth", "pipeline-preconditions", "pipeline-post-auth", ((850, 575), (880, 575)), "then", (844, 504, 42, 20)),
-        ConnectorSpec("authorization-to-host", "pipeline-post-auth", "pipeline-host-execution", ((1060, 575), (1190, 575)), "authorized host action", (1068, 616, 142, 20)),
+        ConnectorSpec("load-to-pre-auth", "pipeline-policy-load", "pipeline-pre-auth", "right", "left", ((250, 575), (280, 575)), "then", (244, 616, 42, 20)),
+        ConnectorSpec("pre-auth-to-guards", "pipeline-pre-auth", "pipeline-guards-role", "right", "left", ((440, 575), (470, 575)), "then", (434, 504, 42, 20)),
+        ConnectorSpec("guards-to-preconditions", "pipeline-guards-role", "pipeline-preconditions", "right", "left", ((630, 575), (660, 575)), "then", (624, 616, 42, 20)),
+        ConnectorSpec("preconditions-to-post-auth", "pipeline-preconditions", "pipeline-post-auth", "right", "left", ((850, 575), (880, 575)), "then", (844, 504, 42, 20)),
+        ConnectorSpec("authorization-to-host", "pipeline-post-auth", "pipeline-host-execution", "right", "left", ((1060, 575), (1190, 575)), "authorized host action", (1068, 616, 142, 20)),
     )
     parts.extend(connector(spec) for spec in phase_a_connectors)
 
@@ -651,15 +683,17 @@ def render_pipeline(theme: Theme) -> str:
             "host-to-pre-output",
             "pipeline-host-execution",
             "pipeline-pre-output",
+            "bottom",
+            "top",
             ((1340, 610), (1340, 710), (170, 710), (170, 770)),
             "host supplies output",
             (1090, 678, 150, 22),
         ),
-        ConnectorSpec("pre-output-to-schema", "pipeline-pre-output", "pipeline-output-schema", ((250, 805), (280, 805)), "then", (244, 846, 42, 20)),
-        ConnectorSpec("schema-to-postconditions", "pipeline-output-schema", "pipeline-postconditions", ((440, 805), (470, 805)), "then", (434, 748, 42, 20)),
-        ConnectorSpec("postconditions-to-post-output", "pipeline-postconditions", "pipeline-post-output", ((630, 805), (660, 805)), "then", (624, 846, 42, 20)),
-        ConnectorSpec("post-output-to-risk", "pipeline-post-output", "pipeline-risk", ((820, 805), (850, 805)), "then", (814, 748, 42, 20)),
-        ConnectorSpec("risk-to-invocation-artifact", "pipeline-risk", "pipeline-invocation-artifact", ((1010, 805), (1120, 805)), "emits", (1028, 846, 74, 20)),
+        ConnectorSpec("pre-output-to-schema", "pipeline-pre-output", "pipeline-output-schema", "right", "left", ((250, 805), (280, 805)), "then", (244, 846, 42, 20)),
+        ConnectorSpec("schema-to-postconditions", "pipeline-output-schema", "pipeline-postconditions", "right", "left", ((440, 805), (470, 805)), "then", (434, 748, 42, 20)),
+        ConnectorSpec("postconditions-to-post-output", "pipeline-postconditions", "pipeline-post-output", "right", "left", ((630, 805), (660, 805)), "then", (624, 846, 42, 20)),
+        ConnectorSpec("post-output-to-risk", "pipeline-post-output", "pipeline-risk", "right", "left", ((820, 805), (850, 805)), "then", (814, 748, 42, 20)),
+        ConnectorSpec("risk-to-invocation-artifact", "pipeline-risk", "pipeline-invocation-artifact", "right", "left", ((1010, 805), (1120, 805)), "emits", (1028, 846, 74, 20)),
     )
     parts.extend(connector(spec) for spec in phase_b_connectors)
 
@@ -683,6 +717,8 @@ def render_pipeline(theme: Theme) -> str:
                 "invocation-artifact-to-sink",
                 "pipeline-invocation-artifact",
                 "pipeline-audit-sink",
+                "bottom",
+                "top",
                 ((1305, 840), (1305, 920), (215, 920), (215, 1000)),
                 "sink emission",
                 (570, 885, 112, 22),
@@ -750,6 +786,8 @@ def render_full(theme: Theme) -> str:
                     "full-host-to-adapter",
                     "full-host-app",
                     "full-bedrock-adapter",
+                    "bottom",
+                    "top",
                     ((230, 210), (230, 315)),
                     "host evidence",
                     (245, 232, 105, 22),
@@ -828,28 +866,34 @@ def render_full(theme: Theme) -> str:
             "full-policy-to-workflow",
             "full-policy-loading",
             "full-open-session",
+            "bottom",
+            "top",
             ((927, 600), (927, 635), (217, 635), (217, 710)),
             "validated contracts",
             (535, 605, 140, 22),
         ),
-        ConnectorSpec("full-session-opens", "full-open-session", "full-session", ((320, 745), (344, 745)), "opens", (300, 682, 64, 20)),
-        ConnectorSpec("full-session-tokenizes", "full-session", "full-session-token", ((550, 745), (574, 745)), "authorizes", (512, 682, 100, 20)),
+        ConnectorSpec("full-session-opens", "full-open-session", "full-session", "right", "left", ((320, 745), (344, 745)), "opens", (300, 682, 64, 20)),
+        ConnectorSpec("full-session-tokenizes", "full-session", "full-session-token", "right", "left", ((550, 745), (574, 745)), "authorizes", (512, 682, 100, 20)),
         ConnectorSpec(
             "full-token-to-kernel",
             "full-session-token",
             "full-unified-split",
+            "bottom",
+            "top",
             ((677, 780), (677, 790), (560, 790), (560, 885), (204, 885), (204, 960)),
             "workflow-bound call",
             (590, 852, 145, 22),
         ),
-        ConnectorSpec("full-kernel-order", "full-unified-split", "full-ordered-gates", ((294, 991), (316, 991)), "then", (284, 930, 42, 20)),
-        ConnectorSpec("full-gates-pre-call", "full-ordered-gates", "full-pre-call", ((496, 991), (518, 991)), "then", (486, 1028, 42, 20)),
-        ConnectorSpec("full-pre-to-post", "full-pre-call", "full-post-call", ((698, 991), (720, 991)), "host acts", (680, 930, 62, 20)),
-        ConnectorSpec("full-post-to-risk", "full-post-call", "full-risk", ((900, 991), (922, 991)), "then", (890, 1028, 42, 20)),
+        ConnectorSpec("full-kernel-order", "full-unified-split", "full-ordered-gates", "right", "left", ((294, 991), (316, 991)), "then", (284, 930, 42, 20)),
+        ConnectorSpec("full-gates-pre-call", "full-ordered-gates", "full-pre-call", "right", "left", ((496, 991), (518, 991)), "then", (486, 1028, 42, 20)),
+        ConnectorSpec("full-pre-to-post", "full-pre-call", "full-post-call", "right", "left", ((698, 991), (720, 991)), "host acts", (680, 930, 62, 20)),
+        ConnectorSpec("full-post-to-risk", "full-post-call", "full-risk", "right", "left", ((900, 991), (922, 991)), "then", (890, 1028, 42, 20)),
         ConnectorSpec(
             "full-risk-to-invocation-evidence",
             "full-risk",
             "full-invocation-artifacts",
+            "bottom",
+            "top",
             ((1012, 1022), (1012, 1100), (228, 1100), (228, 1170)),
             "per attempt",
             (620, 1068, 90, 22),
@@ -858,6 +902,8 @@ def render_full(theme: Theme) -> str:
             "full-workflow-to-workflow-evidence",
             "full-workflow-controls",
             "full-workflow-artifacts",
+            "right",
+            "top",
             ((1104, 825), (1138, 825), (1138, 1110), (478, 1110), (478, 1170)),
             "separate session evidence",
             (820, 1118, 165, 22),
