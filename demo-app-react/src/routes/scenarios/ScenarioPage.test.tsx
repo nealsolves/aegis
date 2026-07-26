@@ -219,6 +219,98 @@ const MERIDIAN_FIRST: ScenarioRunResponse = {
   source: SOURCE,
 }
 
+const ATLAS_GATE_STATES: ScenarioRunResponse = {
+  ...ATLAS_FIRST,
+  transcript: [],
+  gates: [
+    {
+      name: 'source_attached',
+      phase: 'pre_call',
+      evaluated: true,
+      outcome: 'PASS',
+      reason_code: null,
+    },
+    {
+      name: 'provenance',
+      phase: 'post_call',
+      evaluated: true,
+      outcome: 'FAIL',
+      reason_code: 'PROVENANCE_MISSING',
+    },
+    {
+      name: 'workflow_completion',
+      phase: 'workflow',
+      evaluated: false,
+      outcome: null,
+      reason_code: null,
+    },
+  ],
+  artifact: null,
+  error: null,
+}
+
+const MALFORMED_RESPONSE_CASES: [string, unknown][] = [
+  ['non-record top level', []],
+  ['missing transcript', { ...ATLAS_FIRST, transcript: undefined }],
+  ['non-array transcript', { ...ATLAS_FIRST, transcript: {} }],
+  [
+    'invalid transcript entry',
+    {
+      ...ATLAS_FIRST,
+      transcript: [{ speaker: 'Atlas', text: 42 }],
+    },
+  ],
+  ['missing gates', { ...ATLAS_FIRST, gates: undefined }],
+  ['non-array gates', { ...ATLAS_FIRST, gates: {} }],
+  [
+    'invalid gate phase',
+    {
+      ...ATLAS_FIRST,
+      gates: [{ ...ATLAS_FIRST.gates[0], phase: 'provider' }],
+    },
+  ],
+  [
+    'invalid gate outcome',
+    {
+      ...ATLAS_FIRST,
+      gates: [{ ...ATLAS_FIRST.gates[0], outcome: 'UNKNOWN' }],
+    },
+  ],
+  [
+    'inconsistent gate evaluation',
+    {
+      ...ATLAS_FIRST,
+      gates: [{
+        ...ATLAS_FIRST.gates[0],
+        evaluated: false,
+        outcome: 'PASS',
+      }],
+    },
+  ],
+  ['invalid decision', { ...ATLAS_FIRST, decision: 'UNKNOWN' }],
+  ['wrong scenario', { ...ATLAS_FIRST, scenario_id: 'northstar' }],
+  ['wrong variant', { ...ATLAS_FIRST, variant: 'corrected' }],
+  ['invalid fixture version', { ...ATLAS_FIRST, fixture_version: null }],
+  ['array invocation artifact', { ...ATLAS_FIRST, artifact: [] }],
+  [
+    'array workflow artifact',
+    { ...ATLAS_FIRST, workflow_artifact: [] },
+  ],
+  ['array error', { ...ATLAS_FIRST, error: [] }],
+  [
+    'invalid error fields',
+    { ...ATLAS_FIRST, error: { code: 401, message: 'Invalid' } },
+  ],
+  ['array source', { ...ATLAS_FIRST, source: [] }],
+  [
+    'invalid source fields',
+    {
+      ...ATLAS_FIRST,
+      source: { branch: 42, commit: null, sdk_version: '0.9.0b1' },
+    },
+  ],
+]
+
 function jsonResponse(body: unknown) {
   return new Response(JSON.stringify(body), {
     headers: { 'Content-Type': 'application/json' },
@@ -350,6 +442,76 @@ describe('ScenarioPage', () => {
     expect(
       screen.getByText('The response omitted a required source.'),
     ).toBeInTheDocument()
+  })
+
+  it.each(MALFORMED_RESPONSE_CASES)(
+    'rejects a malformed 200 response: %s',
+    async (_caseName, responseBody) => {
+      const user = userEvent.setup()
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(jsonResponse(responseBody)),
+      )
+      renderScenario('atlas')
+
+      await user.click(
+        screen.getByRole('radio', {
+          name: 'Send the prepared guidance without attaching a policy source',
+        }),
+      )
+      await user.click(screen.getByRole('button', { name: 'Run judgment' }))
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'The demo service returned an invalid scenario result.',
+      )
+      expect(screen.queryByText('Pass')).not.toBeInTheDocument()
+      expect(screen.queryByText('PROVENANCE_MISSING')).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('heading', { name: 'Invocation artifact' }),
+      ).not.toBeInTheDocument()
+      expect(
+        screen.getByRole('region', { name: 'AEGIS evaluation' }),
+      ).toHaveTextContent(
+        'Run your judgment to request an evaluation from the demo service.',
+      )
+    },
+  )
+
+  it('shows explanatory text for pass, fail, and unevaluated gates', async () => {
+    const user = userEvent.setup()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse(ATLAS_GATE_STATES)),
+    )
+    renderScenario('atlas')
+
+    await user.click(
+      screen.getByRole('radio', {
+        name: 'Send the prepared guidance without attaching a policy source',
+      }),
+    )
+    await user.click(screen.getByRole('button', { name: 'Run judgment' }))
+
+    await screen.findByText('source attached')
+    const gates = screen.getAllByTestId('gate-name')
+    const passGate = gates[0].closest('.scenario-gate')
+    const failGate = gates[1].closest('.scenario-gate')
+    const unevaluatedGate = gates[2].closest('.scenario-gate')
+
+    expect(passGate).toHaveTextContent(
+      'The returned evaluation passed.',
+    )
+    expect(failGate).toHaveTextContent(
+      'The returned evaluation failed.',
+    )
+    expect(failGate).toHaveTextContent(
+      'PROVENANCE_MISSING',
+    )
+    expect(unevaluatedGate).toHaveTextContent(
+      'This gate was not evaluated in the returned run.',
+    )
+    expect(within(unevaluatedGate as HTMLElement).queryByText('Reason code'))
+      .not.toBeInTheDocument()
   })
 
   it('downloads exactly the current returned invocation artifact', async () => {

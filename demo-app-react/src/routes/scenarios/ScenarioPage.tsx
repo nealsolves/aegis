@@ -10,6 +10,7 @@ import { useAigc } from '@/context/AigcContext'
 import { useDemoService } from '@/context/DemoServiceContext'
 import { demoRequest } from '@/lib/demoApi'
 import type { ScenarioRunResponse } from '@/types/demo'
+import { parseScenarioRunResponse } from './parseScenarioRunResponse'
 import ScenarioTimeline from './ScenarioTimeline'
 import {
   isScenarioId,
@@ -124,7 +125,7 @@ function ScenarioController({
     setResponse(null)
 
     try {
-      const nextResponse = await demoRequest<ScenarioRunResponse>(
+      const responseBody = await demoRequest<unknown>(
         apiUrl,
         `/api/demo/scenarios/${content.id}/runs`,
         {
@@ -134,6 +135,10 @@ function ScenarioController({
           signal: controller.signal,
         },
       )
+      const nextResponse = parseScenarioRunResponse(responseBody, {
+        scenarioId: content.id,
+        variant,
+      })
       if (
         requestSequenceRef.current === sequence
         && !controller.signal.aborted

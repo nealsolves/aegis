@@ -67,10 +67,8 @@ function outcomePresentation(outcome: DemoOutcome | null) {
 
 function OutcomeState({
   outcome,
-  compact = false,
 }: {
   outcome: DemoOutcome | null
-  compact?: boolean
 }) {
   const state = outcomePresentation(outcome)
   const Icon = state.icon
@@ -80,7 +78,7 @@ function OutcomeState({
       <Icon aria-hidden="true" />
       <span>
         <strong>{state.label}</strong>
-        {!compact && <span>{state.text}</span>}
+        <span>{state.text}</span>
       </span>
     </div>
   )
@@ -98,7 +96,7 @@ function GateStep({ gate, index }: { gate: DemoGateResult; index: number }) {
             <span className="scenario-gate__phase">{humanize(gate.phase)}</span>
             <strong data-testid="gate-name">{humanize(gate.name)}</strong>
           </div>
-          <OutcomeState outcome={gate.evaluated ? gate.outcome : null} compact />
+          <OutcomeState outcome={gate.evaluated ? gate.outcome : null} />
         </div>
         {gate.reason_code && (
           <p className="scenario-reason">
