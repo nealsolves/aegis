@@ -825,15 +825,25 @@ Assert six nodes exist for one call/workflow step, each connector is a sibling l
 
 - [ ] **Step 2: Add diagram geometry regression assertions**
 
-Extend `test_architecture_diagram_truth.py` to parse generated SVG and assert:
+Extend `test_architecture_diagram_truth.py` to parse generated SVG geometry.
+The generator must mark node rectangles with `data-node-id`, connector paths
+with `data-from` and `data-to`, and opaque connector-label rectangles with
+`data-connector-label`. Parse the `M`, `L`, `H`, and `V` commands into
+axis-aligned segments and assert:
 
 ```python
-assert connector.get("data-route") in {"horizontal", "vertical"}
-assert connector.get("data-crosses-node") == "false"
-assert label.get("data-background") == "opaque"
+for segment in connector_segments:
+    assert not crosses_interior(segment, any_non_endpoint_node_bounds)
+    assert not crosses_interior(segment, connector_label_bounds)
+
+for label_bounds in all_connector_label_bounds:
+    assert not overlaps(label_bounds, any_node_bounds)
 ```
 
-The generator must attach these attributes from its routing model; tests must not infer success from a screenshot alone.
+Touching the declared source or destination node at its named boundary port is
+allowed; entering either node interior is not. The test derives intersections
+from numeric coordinates and must fail if metadata merely claims that a route
+is clear. Desktop and phone screenshots remain a separate visual gate.
 
 - [ ] **Step 3: Run the focused tests and verify failures**
 
