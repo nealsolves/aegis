@@ -1,5 +1,3 @@
-import { demoServiceNoticeCopy } from '@/content/demoCopy'
-
 export interface FaqSource {
   label: string
   href: string
@@ -78,6 +76,14 @@ const ANTHROPIC_COT_SOURCE = {
 const OPENAI_COT_SOURCE = {
   label: 'OpenAI: Detecting misbehavior in frontier reasoning models',
   href: 'https://openai.com/index/chain-of-thought-monitoring/',
+} as const
+
+const AGENTCORE_OVERVIEW_SOURCE = {
+  label: 'AWS: Amazon Bedrock AgentCore overview',
+  href: (
+    'https://docs.aws.amazon.com/bedrock-agentcore/latest/'
+    + 'devguide/what-is-bedrock-agentcore.html'
+  ),
 } as const
 
 const AGENTCORE_POLICY_SOURCE = {
@@ -300,14 +306,6 @@ export const faqCategories: readonly FaqCategory[] = [
               + 'Invocation and workflow artifacts remain separate.'
             ),
           },
-          {
-            type: 'paragraph',
-            text: (
-              'Current deterministic demo validation covers fixed parsed-trace '
-              + 'fixtures. It is not universal AgentCore or live-environment '
-              + 'compatibility.'
-            ),
-          },
         ],
         sources: [AEGIS_BEDROCK_SOURCE],
         requiresAdapter: 'bedrock',
@@ -322,10 +320,22 @@ export const faqCategories: readonly FaqCategory[] = [
           {
             type: 'paragraph',
             text: (
-              'AgentCore and AEGIS own different layers. AgentCore owns managed '
-              + 'runtime and deployment and services such as identity, memory, '
-              + 'Gateway, observability, browser, and code tools where they are '
-              + 'used.'
+              'AEGIS adds host-integrated invocation and workflow checks '
+              + 'around host-owned model calls and workflow steps. These '
+              + 'include pre-call and post-call checks for roles, inputs, '
+              + 'outputs, and risk, plus workflow constraints for '
+              + 'participants, order, handoffs, approvals, budgets, and '
+              + 'lifecycle. It returns portable invocation and workflow '
+              + 'evidence tied to the AEGIS policy.'
+            ),
+          },
+          {
+            type: 'paragraph',
+            text: (
+              'AgentCore is an agentic platform. Its modular services include '
+              + 'Runtime, Memory, Gateway, Identity, Code Interpreter, Browser, '
+              + 'and Observability, and those services can be used together or '
+              + 'independently.'
             ),
           },
           {
@@ -335,23 +345,13 @@ export const faqCategories: readonly FaqCategory[] = [
               + 'policy deterministically authorizes tool requests through '
               + 'AgentCore Gateway before tool access. It can use identity and '
               + 'tool input parameters, and AWS provides monitoring and logs '
-              + 'for policy decisions.'
-            ),
-          },
-          {
-            type: 'paragraph',
-            text: (
-              'AEGIS is an in-process governance SDK around host-owned model '
-              + 'calls and workflow steps. It adds pre-call and post-call '
-              + 'checks for roles, inputs, outputs, and risk, plus workflow '
-              + 'constraints for participants, order, handoffs, approvals, '
-              + 'budgets, and lifecycle. It returns portable invocation and '
-              + 'workflow evidence tied to the AEGIS policy. AEGIS does not '
-              + 'replace AgentCore or its controls.'
+              + 'for policy decisions. AEGIS does not replace AgentCore or its '
+              + 'controls.'
             ),
           },
         ],
         sources: [
+          AGENTCORE_OVERVIEW_SOURCE,
           AGENTCORE_POLICY_SOURCE,
           AGENTCORE_GATEWAY_SOURCE,
           AEGIS_RUNTIME_SOURCE,
@@ -375,10 +375,9 @@ export const faqCategories: readonly FaqCategory[] = [
             type: 'paragraph',
             text: (
               'The host remains responsible for placing both controls on the '
-              + 'intended paths and preserving their evidence. Deterministic '
-              + 'demo fixtures verify the published AEGIS adapter contract; '
-              + 'that does not prove that every combined execution path has '
-              + 'been validated.'
+              + 'intended paths and preserving their evidence. Coexistence at '
+              + 'separate boundaries does not prove that every combined '
+              + 'execution path has been validated.'
             ),
           },
         ],
@@ -433,7 +432,10 @@ export const faqCategories: readonly FaqCategory[] = [
           },
           {
             type: 'paragraph',
-            text: demoServiceNoticeCopy.starting,
+            text: (
+              'Starting the demo API. Render may need about a minute after '
+              + 'a period of inactivity.'
+            ),
           },
           {
             type: 'paragraph',

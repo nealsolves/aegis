@@ -73,6 +73,9 @@ export default function FaqPage() {
                     {item.requiresAdapter === 'bedrock' && (
                       <div
                         className={`faq-adapter-status faq-adapter-status--${bedrockStatus.tone}`}
+                        role="status"
+                        aria-live="polite"
+                        aria-atomic="true"
                       >
                         <span>{faqPageCopy.verificationLabel}</span>
                         <p>{bedrockStatus.text}</p>

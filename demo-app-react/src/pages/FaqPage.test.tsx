@@ -35,10 +35,15 @@ const REQUIRED_QUESTIONS = [
 const REQUIRED_SOURCES = [
   'https://www-cdn.anthropic.com/b9ca6db27f02a9ddf0d4fdb51b26432c99a27be0.pdf',
   'https://openai.com/index/chain-of-thought-monitoring/',
+  'https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/what-is-bedrock-agentcore.html',
   'https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy.html',
   'https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway-create.html',
   'https://github.com/nealsolves/aegis/blob/main/docs/reference/external/BEDROCK_ADAPTER.md',
 ] as const
+
+const STATIC_VERIFICATION_OVERCLAIM = (
+  /current deterministic demo validation|validation covers|\bverified\b|compatib(?:ility|le)|universal AgentCore/i
+)
 
 const HEALTH = {
   status: 'ok',
@@ -231,8 +236,7 @@ describe('FaqPage', () => {
     expect(answer).toMatch(/holds no AWS credentials/i)
     expect(answer).toMatch(/invokes no model, agent, or tool/i)
     expect(answer).toMatch(/owns no transport, retries, or deployment/i)
-    expect(answer).toMatch(/deterministic demo validation/i)
-    expect(answer).toMatch(/not universal AgentCore or live-environment compatibility/i)
+    expect(answer).not.toMatch(STATIC_VERIFICATION_OVERCLAIM)
   })
 
   it('distinguishes AgentCore Gateway policy from AEGIS without an enforcement overclaim', () => {
@@ -241,15 +245,17 @@ describe('FaqPage', () => {
     const coexistenceAnswer = answerText(REQUIRED_QUESTIONS[9])
 
     expect(comparisonAnswer).toMatch(
-      /AgentCore owns managed runtime and deployment/i,
+      /AgentCore is an agentic platform/i,
     )
     expect(comparisonAnswer).toMatch(
-      /identity, memory, Gateway, observability, browser, and code tools/i,
+      /Runtime, Memory, Gateway, Identity, Code Interpreter, Browser, and Observability/,
     )
     expect(comparisonAnswer).toMatch(
       /Cedar policy deterministically authorizes tool requests through AgentCore Gateway/i,
     )
-    expect(comparisonAnswer).toMatch(/AEGIS is an in-process governance SDK/i)
+    expect(comparisonAnswer).toMatch(
+      /AEGIS adds host-integrated invocation and workflow checks/i,
+    )
     expect(comparisonAnswer).toMatch(/pre-call and post-call checks/i)
     expect(comparisonAnswer).toMatch(/portable invocation and workflow evidence/i)
     expect(comparisonAnswer).toMatch(/does not replace AgentCore/i)
@@ -261,7 +267,29 @@ describe('FaqPage', () => {
     )
   })
 
-  it('publishes Bedrock demo verification only when a ready manifest lists bedrock', async () => {
+  it('leads the AgentCore comparison with the direct AEGIS addition and cites service scope separately', () => {
+    renderFaq()
+    const { details } = faqItem(REQUIRED_QUESTIONS[8])
+    const paragraphs = details.querySelectorAll('.faq-answer > p')
+    const overviewLink = details.querySelector<HTMLAnchorElement>(
+      'a[href="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/what-is-bedrock-agentcore.html"]',
+    )
+
+    expect(paragraphs[0]).toHaveTextContent(
+      /^AEGIS adds host-integrated invocation and workflow checks/,
+    )
+    expect(paragraphs[1]).toHaveTextContent(
+      /AgentCore is an agentic platform/i,
+    )
+    expect(paragraphs[1]).toHaveTextContent(
+      /Runtime, Memory, Gateway, Identity, Code Interpreter, Browser, and Observability/,
+    )
+    expect(overviewLink).toHaveAccessibleName(
+      /Amazon Bedrock AgentCore overview/i,
+    )
+  })
+
+  it('keeps positive Bedrock verification prose exclusively in the ready manifest status', async () => {
     vi.stubGlobal('fetch', vi.fn()
       .mockResolvedValueOnce(jsonResponse(HEALTH))
       .mockResolvedValueOnce(jsonResponse(MANIFEST)))
@@ -273,12 +301,16 @@ describe('FaqPage', () => {
         'This demo build publishes Bedrock adapter verification for deterministic fixtures.',
       )).toBeInTheDocument()
     })
+    const answer = answerText(REQUIRED_QUESTIONS[7])
+
+    expect(answer).not.toMatch(STATIC_VERIFICATION_OVERCLAIM)
+    expect(answer.match(/deterministic fixtures/gi)).toHaveLength(1)
     expect(screen.queryByText(
       'Bedrock adapter verification is not published for this demo build.',
     )).not.toBeInTheDocument()
   })
 
-  it('uses the exact unpublished status when a ready manifest omits bedrock', async () => {
+  it('uses the exact unpublished status without positive verification prose', async () => {
     vi.stubGlobal('fetch', vi.fn()
       .mockResolvedValueOnce(jsonResponse(HEALTH))
       .mockResolvedValueOnce(jsonResponse({
@@ -293,12 +325,15 @@ describe('FaqPage', () => {
         'Bedrock adapter verification is not published for this demo build.',
       )).toBeInTheDocument()
     })
+    expect(answerText(REQUIRED_QUESTIONS[7])).not.toMatch(
+      STATIC_VERIFICATION_OVERCLAIM,
+    )
     expect(screen.queryByText(
       'This demo build publishes Bedrock adapter verification for deterministic fixtures.',
     )).not.toBeInTheDocument()
   })
 
-  it('uses a neutral status while readiness is checking or unavailable', async () => {
+  it('uses a neutral status without positive verification prose while readiness is checking or unavailable', async () => {
     const neutralStatus = (
       'Current Bedrock adapter verification status is unavailable until '
       + 'the demo manifest is ready.'
@@ -306,6 +341,9 @@ describe('FaqPage', () => {
     const pending = renderFaq()
 
     expect(screen.getByText(neutralStatus)).toBeInTheDocument()
+    expect(answerText(REQUIRED_QUESTIONS[7])).not.toMatch(
+      STATIC_VERIFICATION_OVERCLAIM,
+    )
     expect(screen.queryByText(
       'Bedrock adapter verification is not published for this demo build.',
     )).not.toBeInTheDocument()
@@ -327,11 +365,43 @@ describe('FaqPage', () => {
     }
 
     expect(screen.getByText(neutralStatus)).toBeInTheDocument()
+    expect(answerText(REQUIRED_QUESTIONS[7])).not.toMatch(
+      STATIC_VERIFICATION_OVERCLAIM,
+    )
     expect(screen.queryByText(
       'Bedrock adapter verification is not published for this demo build.',
     )).not.toBeInTheDocument()
     expect(screen.queryByText(
       'This demo build publishes Bedrock adapter verification for deterministic fixtures.',
     )).not.toBeInTheDocument()
+  })
+
+  it('updates the same polite live region when Bedrock readiness resolves', async () => {
+    let resolveHealth!: (response: Response) => void
+    const healthResponse = new Promise<Response>((resolve) => {
+      resolveHealth = resolve
+    })
+    vi.stubGlobal('fetch', vi.fn()
+      .mockReturnValueOnce(healthResponse)
+      .mockResolvedValueOnce(jsonResponse(MANIFEST)))
+
+    renderFaq()
+    fireEvent.click(faqItem(REQUIRED_QUESTIONS[7]).summary)
+
+    const statusRegion = screen.getByRole('status')
+    expect(statusRegion).toHaveAttribute('aria-live', 'polite')
+    expect(statusRegion).toHaveAttribute('aria-atomic', 'true')
+    expect(statusRegion).toHaveTextContent(
+      'Current Bedrock adapter verification status is unavailable until the demo manifest is ready.',
+    )
+
+    resolveHealth(jsonResponse(HEALTH))
+
+    await waitFor(() => {
+      expect(statusRegion).toHaveTextContent(
+        'This demo build publishes Bedrock adapter verification for deterministic fixtures.',
+      )
+    })
+    expect(screen.getByRole('status')).toBe(statusRegion)
   })
 })
