@@ -1,6 +1,7 @@
 import copy
 import hashlib
 import json
+import os
 import secrets
 import uuid
 from datetime import date
@@ -92,7 +93,13 @@ def get_scenario(scenario_key: str):
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "source": {
+            "branch": os.getenv("RENDER_GIT_BRANCH"),
+            "commit": os.getenv("RENDER_GIT_COMMIT"),
+        },
+    }
 
 
 @app.get("/api/scenarios")
