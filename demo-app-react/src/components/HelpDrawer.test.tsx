@@ -32,9 +32,9 @@ describe('HelpDrawer', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 
-  it('shows the Lab 1 title from helpContent', () => {
+  it('shows the Lab 1 title from the public catalog', () => {
     renderDrawer(true)
-    expect(screen.getByText('Risk Scoring Guide')).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Risk Scoring' })).toBeInTheDocument()
   })
 
   it('renders the current v0.9 candidate identity in Architecture help', () => {
@@ -43,26 +43,22 @@ describe('HelpDrawer', () => {
     expect(screen.getByText(/host owns/i)).toBeInTheDocument()
   })
 
-  it('uses the current lab labels for renamed guides', () => {
-    renderDrawer(true, vi.fn(), 2)
-    expect(screen.getByText('Lab 2 — Signing & Verification')).toBeInTheDocument()
+  it('uses number-free catalog titles for lab guides', () => {
+    const { rerender } = renderDrawer(true, vi.fn(), 2)
+    expect(screen.getByRole('dialog', {
+      name: 'Signing and Verification',
+    })).toBeInTheDocument()
+    expect(screen.queryByText(/\bLab\s+2\b/)).not.toBeInTheDocument()
 
-    renderDrawer(true, vi.fn(), 7)
-    expect(screen.getByText('Lab 7 — Compliance Dashboard')).toBeInTheDocument()
-
-    renderDrawer(true, vi.fn(), 8)
-    expect(screen.getByText('Lab 8 — Governed Knowledge Base')).toBeInTheDocument()
-
-    renderDrawer(true, vi.fn(), 10)
-    expect(screen.getByText('Lab 10 — Split Enforcement Explorer')).toBeInTheDocument()
-
-    renderDrawer(true, vi.fn(), 11)
-    expect(screen.getByText('Lab 11 — Workflow Governance')).toBeInTheDocument()
-    expect(screen.getByText('Workflow Governance Guide')).toBeInTheDocument()
-
-    renderDrawer(true, vi.fn(), 12)
-    expect(screen.getByText('Lab 12 — Integration Adapters')).toBeInTheDocument()
-    expect(screen.getByText('Integration Adapters Guide')).toBeInTheDocument()
+    rerender(
+      <ThemeProvider>
+        <HelpDrawer labId={12} isOpen onClose={vi.fn()} />
+      </ThemeProvider>,
+    )
+    expect(screen.getByRole('dialog', {
+      name: 'Integration Adapters',
+    })).toBeInTheDocument()
+    expect(screen.queryByText(/\bLab\s+12\b/)).not.toBeInTheDocument()
   })
 
   it('shows at least one step title', () => {
@@ -122,8 +118,7 @@ describe('HelpDrawer', () => {
 
   it('renders without crashing when given an invalid labId (falls back to Lab 1)', () => {
     renderDrawer(true, vi.fn(), 99)
-    expect(screen.getByRole('dialog')).toBeInTheDocument()
-    expect(screen.getByText('Risk Scoring Guide')).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Risk Scoring' })).toBeInTheDocument()
   })
 
   it('focuses Close first and traps forward and backward tab movement', () => {

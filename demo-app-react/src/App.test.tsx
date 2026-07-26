@@ -156,7 +156,9 @@ describe('App routing', () => {
       screen.queryByRole('navigation', { name: 'Lab navigation' }),
     ).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Open lab guide' }))
-    expect(screen.getByText('Architecture Guide')).toBeInTheDocument()
+    expect(
+      screen.getByRole('dialog', { name: 'Architecture' }),
+    ).toBeInTheDocument()
   })
 
   it('keeps scenario routes free of the lab Guide launcher', () => {
