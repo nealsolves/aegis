@@ -192,6 +192,17 @@ describe('App routing', () => {
     ).toBeInTheDocument()
   })
 
+  it.each(['#/lab/01', '#/lab/012'])(
+    'keeps noncanonical route %s free of the Guide launcher',
+    path => {
+      renderRoute(path)
+
+      expect(
+        screen.queryByRole('button', { name: 'Open lab guide' }),
+      ).not.toBeInTheDocument()
+    },
+  )
+
   it('does not render an empty demo service strip while readiness is checking', () => {
     const { container } = renderRoute('#/demo/architecture')
 

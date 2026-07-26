@@ -8,7 +8,7 @@ import AppNav from '@/components/layout/AppNav'
 import DemoNav from '@/components/layout/DemoNav'
 import LabRouteLayout from '@/components/layout/LabRouteLayout'
 import { DemoServiceNotice } from '@/components/service/DemoServiceNotice'
-import { LABS, LABS_BY_ID, getLabById } from '@/content/labCatalog'
+import { LABS, LABS_BY_ID } from '@/content/labCatalog'
 import Lab1RiskScoring from '@/labs/Lab1RiskScoring'
 import Lab2Signing from '@/labs/Lab2Signing'
 import Lab3AuditChain from '@/labs/Lab3AuditChain'
@@ -35,16 +35,12 @@ interface RouteDescriptor {
 }
 
 function describeRoute(pathname: string): RouteDescriptor {
-  const labMatch = pathname.match(/^\/lab\/(\d+)$/)
-  const labId = labMatch ? Number.parseInt(labMatch[1], 10) : null
-  const knownLabId = labId !== null && getLabById(labId) !== undefined
-    ? labId
-    : null
+  const knownLab = LABS.find(lab => lab.path === pathname)
   const isDemoRoute = pathname.startsWith('/demo/')
   const isLabRoute = pathname.startsWith('/lab/')
 
   return {
-    helpLabId: pathname === '/demo/architecture' ? 0 : knownLabId,
+    helpLabId: pathname === '/demo/architecture' ? 0 : knownLab?.id ?? null,
     showDemoNav: isDemoRoute || isLabRoute || pathname === '/faq',
     showDemoService: isDemoRoute || isLabRoute,
   }
