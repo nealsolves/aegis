@@ -21,6 +21,21 @@ cross-lab navigation, route heroes, or Help drawer titles.
 The work also incorporates issue #34. Every public lab deep link must expose
 exactly one route-level `<main>` landmark.
 
+### 1.1 Guide launcher scope amendment
+
+After the initial design approval, the Guide launcher requirement changed:
+
+- the launcher is fixed to the bottom-right of the viewport so it remains
+  available while the visitor scrolls;
+- it appears only on routes that already have guide content: Architecture and
+  the twelve individual lab routes;
+- it does not appear on Scenarios, the Labs landing page, FAQ, or other routes
+  without guide content;
+- the drawer content and interaction model remain unchanged.
+
+This user-directed amendment supersedes issue #34's earlier reserve-rail
+acceptance criterion.
+
 ## 2. Approved direction
 
 Use a **guided capability map**.
@@ -198,7 +213,9 @@ gate other destinations.
 
 The Help drawer's interaction model remains unchanged:
 
-- the launcher stays in its existing reserve rail;
+- the launcher remains fixed at the bottom-right of the viewport while its
+  eligible page scrolls;
+- the launcher is absent from routes without existing guide content;
 - focus enters and remains trapped in the open drawer;
 - closing returns focus to the launcher;
 - route-specific content and result help continue to work;
@@ -295,7 +312,8 @@ a separate Labs theme.
 - Keep the demo's square-edged, structured visual language.
 - Use the connected first-visit journey as the single signature element.
 - Keep capability cards and related navigation visually quieter.
-- Preserve the Help reserve rail and prevent it from overlapping content.
+- Keep the fixed Guide launcher clear of viewport safe areas and other fixed
+  controls.
 - At narrow widths, collapse multi-column regions into one logical reading
   order without horizontal scrolling.
 
@@ -324,8 +342,8 @@ The implementation must satisfy all of the following:
 - sufficient contrast in light and dark modes;
 - status and selection conveyed through more than color;
 - logical reading and focus order at desktop and phone widths;
-- no overlap between lab content, the Help launcher reserve rail, or the open
-  drawer.
+- the fixed launcher remains keyboard reachable and does not make underlying
+  controls unreachable at desktop or phone widths.
 
 ## 10. Error and edge behavior
 
@@ -382,7 +400,9 @@ Check both light and dark themes at desktop and phone widths:
 
 - readable type in cards, experiment rows, and navigation;
 - no horizontal overflow;
-- no Guide reserve-rail overlap;
+- the Guide launcher stays at the viewport's bottom-right while scrolling;
+- no Guide launcher on routes without existing guide content;
+- no collision with other fixed controls or viewport safe areas;
 - related navigation moves below experiment content on phones;
 - visible focus treatment;
 - connected journey remains understandable without depending on arrows or
@@ -413,9 +433,11 @@ The work is complete when:
 - existing deep links remain stable;
 - every public lab route contains exactly one main landmark;
 - the Guide drawer behaves exactly as before;
+- the Guide launcher remains fixed and visible while scrolling eligible pages;
+- pages without guide content do not show the launcher;
 - typography, colors, focus, contrast, and responsive behavior match the
   established demo rules;
-- desktop and phone verification shows no content collision with the Guide
-  reserve rail;
+- desktop and phone verification shows no fixed-control collision or
+  unreachable content;
 - Integration Adapters can later add Vertex AI and Google ADK content without
   another Labs navigation redesign.

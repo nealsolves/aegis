@@ -18,7 +18,12 @@
 - Primary labels and controls such as `Without AEGIS` must use readable body/utility text, never eyebrow-sized microcopy.
 - Links and buttons must provide a target of at least 44 by 44 CSS pixels.
 - Keep status and current-page meaning independent of color alone.
-- Preserve the Help launcher reserve rail with no desktop or phone overlap.
+- Fix the Guide launcher to the viewport's bottom-right on routes that already
+  have guide content: Architecture and `/lab/1` through `/lab/12`.
+- Do not render the Guide launcher on Scenarios, the Labs landing page, FAQ, or
+  other routes without existing guide content.
+- Keep the fixed launcher clear of viewport safe areas and other fixed controls;
+  it must not make underlying controls unreachable.
 - Do not implement Vertex AI or Google ADK; keep Integration Adapters structurally ready to add them later.
 - Do not change lab execution, API calls, provider claims, policies, artifacts, or workflow behavior.
 
@@ -42,7 +47,7 @@
 - `demo-app-react/src/pages/LabsIndexPage.test.tsx` — assert capability questions, number-free journey copy, route coverage, and no public numbering.
 - `demo-app-react/src/components/layout/LabHero.tsx` — render a semantic, number-free hero from `LabMeta`.
 - `demo-app-react/src/App.tsx` — remove the global numbered strip and wrap all twelve lab bodies with `LabRouteLayout`.
-- `demo-app-react/src/App.test.tsx` — cover all lab deep links, one-main semantics, number-free chrome, and removal of the old strip.
+- `demo-app-react/src/App.test.tsx` — cover all lab deep links, one-main semantics, number-free chrome, removal of the old strip, and route-scoped floating Guide behavior.
 - `demo-app-react/src/labs/Lab12IntegrationAdapters.tsx` — replace its nested `<main>` and internal `<h1>` so the shared route shell owns the landmark and page title.
 - `demo-app-react/src/components/HelpDrawer.tsx` — derive a number-free dialog title from the shared catalog.
 - `demo-app-react/src/components/HelpDrawer.test.tsx` — update title expectations while retaining all interaction regressions.
@@ -770,6 +775,36 @@ it('uses capability context instead of historical numbering', () => {
 })
 ```
 
+Replace the old `places the shared Guide launcher in a content-reserved rail`
+test with route-scoped behavior:
+
+```ts
+it('shows the Guide launcher only where guide content exists', () => {
+  const architecture = renderRoute('#/demo/architecture')
+  expect(
+    screen.getByRole('button', { name: 'Open lab guide' }),
+  ).toBeInTheDocument()
+
+  architecture.unmount()
+  renderRoute('#/demo/scenarios/atlas')
+  expect(
+    screen.queryByRole('button', { name: 'Open lab guide' }),
+  ).not.toBeInTheDocument()
+
+  cleanup()
+  renderRoute('#/demo/labs')
+  expect(
+    screen.queryByRole('button', { name: 'Open lab guide' }),
+  ).not.toBeInTheDocument()
+
+  cleanup()
+  renderRoute('#/lab/9')
+  expect(
+    screen.getByRole('button', { name: 'Open lab guide' }),
+  ).toBeInTheDocument()
+})
+```
+
 - [ ] **Step 3: Run focused tests and verify they fail**
 
 Run:
@@ -839,8 +874,8 @@ theme-aware accent lookup, but render no numeric text:
 </header>
 ```
 
-Remove the decorative down-arrow suffix. The Help launcher remains in the
-existing reserve rail above the route.
+Remove the decorative down-arrow suffix. The application-level Help launcher
+remains outside the route shell and will be made viewport-fixed in Step 9.
 
 - [ ] **Step 6: Implement `LabRouteLayout`**
 
@@ -896,6 +931,10 @@ In `App.tsx`:
 - remove `showLabTabs` from `RouteDescriptor` and `describeRoute`;
 - remove the application-level `<LabTabs>`;
 - wrap each lab body with `LabRouteLayout`.
+
+Retain the existing `helpLabId` route rule: Architecture and known lab routes
+have guide content, while Scenarios, the Labs landing page, FAQ, and unknown
+routes do not render the launcher.
 
 Inside `AppContent`, define the route bodies after
 `handleResultHelpContext` is available:
@@ -987,8 +1026,26 @@ In `index.css`:
 - give context, related, and continuation links a minimum height of `2.75rem`;
 - set related-link text and experiment-facing labels to at least `1rem`;
 - use existing theme tokens only;
-- preserve normal document flow so the existing `.help-launcher` rail cannot
-  cover route content.
+- replace the `.help-launcher` reserve-rail declarations with:
+
+```css
+.help-launcher {
+  position: fixed;
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  z-index: 150;
+  width: auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+}
+```
+
+- keep the button target at least `2.75rem` high;
+- at `max-width: 30rem`, keep `.help-launcher__button` width `auto` rather
+  than stretching it across the viewport;
+- keep the launcher below the drawer backdrop (`z-index: 200`) and drawer
+  (`z-index: 300`).
 
 - [ ] **Step 10: Run focused route tests**
 
@@ -1236,7 +1293,7 @@ At `#/demo/labs`, check at `1440×1000` and `390×844`:
 
 Capture one screenshot at each width for review.
 
-- [ ] **Step 6: Verify representative lab pages and the Guide reserve rail**
+- [ ] **Step 6: Verify representative lab pages and the floating Guide**
 
 Check `#/lab/1`, `#/lab/9`, and `#/lab/12` at `1440×1000` and `390×844`:
 
@@ -1245,7 +1302,12 @@ Check `#/lab/1`, `#/lab/9`, and `#/lab/12` at `1440×1000` and `390×844`:
   `Lab <number>`;
 - the descriptive title is the only `<h1>`;
 - related navigation is beside content on desktop and below it on phones;
-- the Guide launcher remains in document flow and does not overlap lab content;
+- the Guide launcher stays at the viewport's bottom-right before and after
+  scrolling;
+- Architecture and the three representative lab routes show the launcher;
+- Scenarios, the Labs landing page, and FAQ do not show the launcher;
+- the fixed launcher does not collide with other fixed controls or make
+  underlying controls unreachable;
 - the open drawer does not make controls unreachable;
 - focus enters the drawer, remains trapped, and returns to the launcher;
 - `Without AEGIS` and comparable experiment labels remain readable;
@@ -1311,5 +1373,6 @@ If Step 7 required no changes, do not create an empty commit.
 - [ ] Help drawer behavior and Integration Adapters result help are unchanged.
 - [ ] Primary labels use the established readable type scale.
 - [ ] Light/dark contrast, visible focus, and 44px targets are preserved.
-- [ ] Desktop and phone layouts have no Guide reserve-rail overlap.
+- [ ] The Guide launcher stays fixed at bottom-right on eligible routes only,
+  with no fixed-control collision or unreachable content.
 - [ ] `npm test`, `npm run lint`, `npm run copycheck`, and `npm run build` pass.
