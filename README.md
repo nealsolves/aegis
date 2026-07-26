@@ -268,9 +268,9 @@ The maintained demo is a React frontend plus FastAPI backend:
 - Purpose: hands-on orientation to both the `v0.3.x` invocation runtime and the
   `v0.9.0b1` workflow-governance public beta
 
-The beta deployment is live from `main`. The
-Render `/health` endpoint returns `{"status":"ok"}`, the Pages origin is the
-only public CORS origin, and live browser checks passed for the split
+The beta deployment is live from `main`. The Render `/health` endpoint returns
+`status: ok` plus Render's deployed Git branch and commit, the Pages origin is
+the only public CORS origin, and live browser checks passed for the split
 pre-call block in Lab 1 and the two-step workflow artifact in Lab 11.
 
 ## CLI Surface

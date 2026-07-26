@@ -10,6 +10,20 @@ def test_health():
     assert r.json()["status"] == "ok"
 
 
+def test_health_reports_render_deployment_provenance(monkeypatch):
+    commit = "c116b1cfd4a953b153d1d5c3eb117b23116d22f7"
+    monkeypatch.setenv("RENDER_GIT_BRANCH", "main")
+    monkeypatch.setenv("RENDER_GIT_COMMIT", commit)
+
+    r = client.get("/health")
+
+    assert r.status_code == 200
+    assert r.json()["source"] == {
+        "branch": "main",
+        "commit": commit,
+    }
+
+
 def test_list_scenarios():
     r = client.get("/api/scenarios")
     assert r.status_code == 200
