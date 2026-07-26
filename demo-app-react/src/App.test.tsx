@@ -69,7 +69,9 @@ describe('App routing', () => {
     await waitFor(() => {
       expect(window.location.hash).toBe('#/demo/architecture')
     })
-    expect(screen.getByText('Key Boundaries')).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: 'Architecture is an ownership contract.' }),
+    ).toBeInTheDocument()
   })
 
   it('preserves legacy lab deep links and shows lab tabs only there', () => {

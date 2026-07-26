@@ -1,8 +1,23 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { ThemeProvider } from '@/theme/ThemeContext'
 import ArchitecturePage from './ArchitecturePage'
 
-function renderPage() {
+function setViewportMedia(isMobile: boolean) {
+  vi.stubGlobal('matchMedia', vi.fn().mockImplementation((query: string) => ({
+    matches: query === '(max-width: 47.999rem)' ? isMobile : false,
+    media: query,
+    onchange: null,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  })))
+}
+
+function renderPage({ isMobile = false }: { isMobile?: boolean } = {}) {
+  setViewportMedia(isMobile)
   return render(
     <ThemeProvider>
       <ArchitecturePage />
@@ -11,35 +26,20 @@ function renderPage() {
 }
 
 describe('ArchitecturePage', () => {
-  it('renders the Component View section', () => {
-    renderPage()
-    expect(screen.getByText('Component View')).toBeInTheDocument()
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    localStorage.clear()
   })
 
-  it('renders the Enforcement Pipeline section', () => {
+  it('opens on the semantic How it works thesis', () => {
     renderPage()
-    expect(screen.getByText('Enforcement Pipeline')).toBeInTheDocument()
-  })
 
-  it('renders the Key Boundaries section', () => {
-    renderPage()
-    expect(screen.getByText('Key Boundaries')).toBeInTheDocument()
-  })
-
-  it('renders the current public beta boundary notes', () => {
-    renderPage()
-    for (const label of [
-      'Host Ownership',
-      'Workflow Governance',
-      'Invocation Enforcement',
-      'Optional Adapters',
-      'Evidence Separation',
-      'Public API Boundary',
-      'Signing and AuditChain',
-      'Operator Tooling',
-    ]) {
-      expect(screen.getByText(label)).toBeInTheDocument()
-    }
+    expect(screen.getByRole('tab', { name: 'How it works' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    expect(screen.getByRole('heading', { name: 'One governed call, clearly owned' })).toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: /AEGIS v0.9 beta/i })).not.toBeInTheDocument()
   })
 
   it('labels the page with the public beta release', () => {
@@ -52,18 +52,46 @@ describe('ArchitecturePage', () => {
     expect(container).not.toHaveTextContent('The candidate is on develop')
   })
 
-  it('renders diagram images', () => {
+  it('opens progressive detail with responsibility and ownership boundaries', async () => {
+    const user = userEvent.setup()
     renderPage()
-    const component = screen.getByAltText('AEGIS v0.9 beta component architecture')
-    const pipeline = screen.getByAltText('AEGIS v0.9 beta enforcement pipeline')
 
-    expect(component).toHaveAttribute('aria-describedby', 'diagram-01-summary')
-    expect(pipeline).toHaveAttribute('aria-describedby', 'diagram-02-summary')
-    expect(document.getElementById('diagram-01-summary')).toHaveTextContent(
-      /host-controlled execution.*Bedrock.*A2A.*OpenAI Agents.*separate invocation and workflow evidence/i
+    await user.click(screen.getAllByRole('button', { name: /AEGIS pre-call policy/i })[0])
+
+    const detail = screen.getByRole('region', { name: /AEGIS pre-call policy details/i })
+    expect(detail).toHaveTextContent('Responsibility')
+    expect(detail).toHaveTextContent('Owner')
+    expect(detail).toHaveTextContent('Public API / artifact')
+    expect(detail).toHaveTextContent('AEGIS does not own')
+  })
+
+  it('renders theme-aware desktop technical diagrams on demand', async () => {
+    const user = userEvent.setup()
+    renderPage()
+
+    await user.click(screen.getByRole('tab', { name: 'Technical map' }))
+
+    expect(screen.getByAltText('AEGIS v0.9 beta component architecture')).toHaveAttribute(
+      'src',
+      expect.stringContaining('aegis_architecture_component_light.svg'),
     )
-    expect(document.getElementById('diagram-02-summary')).toHaveTextContent(
-      /Phase A.*before the host model call.*Phase B.*ordered output gates.*invocation artifact.*workflow correlation/i
+
+    await user.click(screen.getByRole('button', { name: 'Enforcement pipeline' }))
+    expect(screen.getByAltText('AEGIS v0.9 beta enforcement pipeline')).toHaveAttribute(
+      'src',
+      expect.stringContaining('aegis_architecture_pipeline_light.svg'),
     )
+  })
+
+  it('renders grouped semantic cards without mounting SVG images below 48rem', async () => {
+    const user = userEvent.setup()
+    renderPage({ isMobile: true })
+
+    await user.click(screen.getByRole('tab', { name: 'Technical map' }))
+
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Host-owned execution' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'AEGIS governance' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Evidence and operations' })).toBeInTheDocument()
   })
 })

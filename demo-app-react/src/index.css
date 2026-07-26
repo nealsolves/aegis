@@ -758,6 +758,468 @@ button:focus-visible {
   font-size: 1.0625rem;
 }
 
+.architecture-page {
+  width: min(100% - 2rem, 84rem);
+  margin: 0 auto;
+  padding: clamp(3.5rem, 7vw, 6rem) 0 6rem;
+}
+
+.architecture-hero {
+  max-width: 62rem;
+  padding-bottom: clamp(2.5rem, 5vw, 4rem);
+}
+
+.architecture-kicker {
+  margin: 0 0 0.75rem;
+  color: var(--ibm-blue-60);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.8125rem;
+  letter-spacing: 0.08em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+[data-theme="dark"] .architecture-kicker {
+  color: var(--ibm-cyan-30);
+}
+
+.architecture-hero h1 {
+  max-width: 18ch;
+  margin: 0;
+  color: var(--text-primary);
+  font-size: clamp(2.5rem, 6vw, 4.75rem);
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1.02;
+}
+
+.architecture-version {
+  margin: 1.5rem 0 0;
+  color: var(--ibm-blue-60);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.9375rem;
+  overflow-wrap: anywhere;
+}
+
+[data-theme="dark"] .architecture-version {
+  color: var(--ibm-cyan-30);
+}
+
+.architecture-lead {
+  max-width: 70ch;
+  margin: 1.25rem 0 0;
+  color: var(--text-secondary);
+  font-size: clamp(1.0625rem, 1.5vw, 1.25rem);
+  line-height: 1.65;
+}
+
+.architecture-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border-ui);
+}
+
+.architecture-tabs button,
+.technical-map__toolbar button,
+.technical-map__index button {
+  min-height: 2.75rem;
+  border: 0;
+  color: var(--text-secondary);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.architecture-tabs button {
+  padding: 0.625rem 1.25rem;
+  border-bottom: 3px solid transparent;
+  font-weight: 600;
+}
+
+.architecture-tabs button[aria-selected="true"] {
+  border-bottom-color: var(--ibm-blue-60);
+  color: var(--text-primary);
+  background: rgba(15, 98, 254, 0.08);
+}
+
+.architecture-panel {
+  padding-top: clamp(2.5rem, 5vw, 4rem);
+}
+
+.architecture-section-heading {
+  max-width: 68ch;
+  margin-bottom: 2rem;
+}
+
+.architecture-section-heading h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.12;
+}
+
+.architecture-section-heading > p:last-child {
+  margin: 1rem 0 0;
+  color: var(--text-secondary);
+  font-size: 1rem;
+}
+
+.ownership-flow__desktop {
+  display: grid;
+  grid-template-columns:
+    minmax(0, 1fr) 2rem minmax(0, 1fr) 2rem minmax(0, 1fr)
+    2rem minmax(0, 1fr) 2rem minmax(0, 1fr) 2rem minmax(0, 1fr);
+  align-items: stretch;
+}
+
+.ownership-flow__mobile {
+  display: none;
+}
+
+.ownership-flow__node {
+  min-width: 0;
+  min-height: 9.5rem;
+  padding: 1.25rem 1rem;
+  border: 1px solid var(--border-ui);
+  border-top: 3px solid var(--ibm-cyan-30);
+  border-radius: 0.25rem;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 140ms ease, background-color 140ms ease;
+}
+
+.ownership-flow__node--aegis {
+  border-top-color: var(--ibm-blue-60);
+  background: rgba(15, 98, 254, 0.06);
+}
+
+[data-theme="dark"] .ownership-flow__node--aegis {
+  background: rgba(15, 98, 254, 0.12);
+}
+
+.ownership-flow__node:hover,
+.ownership-flow__node[aria-pressed="true"] {
+  border-color: var(--ibm-blue-60);
+}
+
+.ownership-flow__node > span,
+.ownership-flow__node > strong {
+  display: block;
+}
+
+.ownership-flow__node > span {
+  margin-bottom: 0.75rem;
+  color: var(--text-secondary);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.ownership-flow__node > strong {
+  font-size: clamp(0.875rem, 1.2vw, 1rem);
+  line-height: 1.35;
+}
+
+.ownership-flow__lane {
+  position: relative;
+  min-width: 0;
+}
+
+.ownership-flow__lane span {
+  position: absolute;
+  top: 50%;
+  right: 0.4rem;
+  left: 0.15rem;
+  height: 2px;
+  background: var(--ibm-blue-60);
+}
+
+.ownership-flow__lane span::after {
+  position: absolute;
+  top: 50%;
+  right: -0.35rem;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-top: 2px solid var(--ibm-blue-60);
+  border-right: 2px solid var(--ibm-blue-60);
+  transform: translateY(-50%) rotate(45deg);
+  content: '';
+}
+
+.architecture-detail {
+  margin-top: 2rem;
+  padding: clamp(1.5rem, 3vw, 2rem);
+  border: 1px solid var(--border-ui);
+  border-left: 3px solid var(--ibm-blue-60);
+  background: var(--bg-surface);
+}
+
+.architecture-detail__heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.architecture-detail__heading h3,
+.technical-map__index h3,
+.technical-group h3 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.architecture-detail__heading button {
+  min-width: 4.5rem;
+  min-height: 2.75rem;
+  padding: 0.5rem 0.875rem;
+  border: 1px solid var(--border-ui);
+  border-radius: 0.25rem;
+  color: var(--text-primary);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.architecture-detail dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 1.5rem 0 0;
+  border-top: 1px solid var(--border-ui);
+}
+
+.architecture-detail dl > div {
+  min-width: 0;
+  padding: 1.25rem;
+}
+
+.architecture-detail dl > div + div {
+  border-left: 1px solid var(--border-ui);
+}
+
+.architecture-detail dt {
+  color: var(--text-secondary);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.architecture-detail dd {
+  margin: 0.625rem 0 0;
+  color: var(--text-primary);
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.architecture-detail code {
+  color: var(--ibm-blue-60);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.8125rem;
+}
+
+[data-theme="dark"] .architecture-detail code {
+  color: var(--ibm-cyan-30);
+}
+
+.technical-map__toolbar {
+  display: flex;
+  border: 1px solid var(--border-ui);
+  border-bottom: 0;
+  background: var(--bg-surface);
+}
+
+.technical-map__toolbar button {
+  padding: 0.625rem 1rem;
+}
+
+.technical-map__toolbar button + button {
+  border-left: 1px solid var(--border-ui);
+}
+
+.technical-map__toolbar button[aria-pressed="true"],
+.technical-map__index button[aria-pressed="true"] {
+  color: #ffffff;
+  background: var(--ibm-blue-60);
+}
+
+.technical-map__diagram {
+  min-height: 24rem;
+  padding: clamp(0.75rem, 2vw, 1.5rem);
+  overflow: auto;
+  border: 1px solid var(--border-ui);
+  background: var(--bg-surface);
+}
+
+.technical-map__diagram img {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-width: 56rem;
+}
+
+.technical-map__diagram > p {
+  margin: 10rem auto;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.technical-map__index {
+  display: grid;
+  grid-template-columns: minmax(14rem, 0.3fr) minmax(0, 0.7fr);
+  gap: 2rem;
+  margin-top: 1.5rem;
+  padding: 1.5rem;
+  border: 1px solid var(--border-ui);
+  background: var(--bg-surface);
+}
+
+.technical-map__index > div:last-child {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: start;
+  gap: 0.5rem;
+}
+
+.technical-map__index button {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border-ui);
+  border-radius: 0.25rem;
+}
+
+.technical-group {
+  padding: 1.5rem 0;
+  border-top: 1px solid var(--border-ui);
+}
+
+.technical-group > div:first-child > p {
+  margin: 0.5rem 0 0;
+  color: var(--text-secondary);
+}
+
+.technical-group__cards {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
+.technical-group__cards button {
+  min-height: 2.75rem;
+  padding: 1rem;
+  border: 1px solid var(--border-ui);
+  border-left: 3px solid var(--ibm-blue-60);
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.technical-group__cards button[aria-pressed="true"] {
+  background: rgba(15, 98, 254, 0.08);
+}
+
+.technical-group__cards strong,
+.technical-group__cards span {
+  display: block;
+}
+
+.technical-group__cards span {
+  margin-top: 0.375rem;
+  color: var(--text-secondary);
+  font-size: 0.9375rem;
+}
+
+@media (max-width: 63.999rem) {
+  .architecture-detail dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .architecture-detail dl > div:nth-child(3) {
+    border-left: 0;
+  }
+
+  .architecture-detail dl > div:nth-child(n + 3) {
+    border-top: 1px solid var(--border-ui);
+  }
+}
+
+@media (max-width: 47.999rem) {
+  .architecture-page {
+    width: min(100% - 1.5rem, 84rem);
+    padding-top: 3rem;
+  }
+
+  .architecture-tabs button {
+    flex: 1 1 50%;
+    padding-inline: 0.75rem;
+  }
+
+  .ownership-flow__desktop {
+    display: none;
+  }
+
+  .ownership-flow__mobile {
+    display: block;
+  }
+
+  .ownership-flow__node {
+    width: 100%;
+    min-height: 6.5rem;
+  }
+
+  .ownership-flow__lane--vertical {
+    width: 100%;
+    height: 3.5rem;
+  }
+
+  .ownership-flow__lane--vertical span {
+    top: 0.25rem;
+    right: auto;
+    bottom: 0.65rem;
+    left: 50%;
+    width: 2px;
+    height: auto;
+    transform: translateX(-50%);
+  }
+
+  .ownership-flow__lane--vertical span::after {
+    top: auto;
+    right: auto;
+    bottom: -0.3rem;
+    left: 50%;
+    transform: translateX(-50%) rotate(135deg);
+  }
+
+  .architecture-detail dl {
+    grid-template-columns: 1fr;
+  }
+
+  .architecture-detail dl > div + div,
+  .architecture-detail dl > div:nth-child(3) {
+    border-top: 1px solid var(--border-ui);
+    border-left: 0;
+  }
+
+  .technical-map__index {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ownership-flow__node {
+    transition: none;
+  }
+}
+
 @media (max-width: 960px) {
   .public-nav__inner {
     flex-wrap: wrap;
