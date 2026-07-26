@@ -241,14 +241,30 @@ export default function ScenarioTimeline({
   response,
   scenarioId,
 }: ScenarioTimelineProps) {
+  const announcedReason = response
+    ? response.error?.code
+      ?? response.gates.find(gate => gate.reason_code)?.reason_code
+      ?? 'no reason code returned'
+    : null
+  const announcement = response
+    ? `Scenario run complete. Decision: ${response.decision}. Reason: ${announcedReason}.`
+    : 'No scenario run has completed.'
+
   if (!response) {
     return (
       <>
+        <p
+          className="sr-only"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          data-testid="scenario-result-announcement"
+        >
+          {announcement}
+        </p>
         <section
           className="scenario-region scenario-region--empty"
           aria-labelledby="scenario-evaluation-title"
-          aria-atomic="true"
-          aria-live="polite"
         >
           <div className="scenario-region__label">03</div>
           <div>
@@ -292,11 +308,18 @@ export default function ScenarioTimeline({
 
   return (
     <>
+      <p
+        className="sr-only"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        data-testid="scenario-result-announcement"
+      >
+        {announcement}
+      </p>
       <section
         className="scenario-region"
         aria-labelledby="scenario-evaluation-title"
-        aria-atomic="true"
-        aria-live="polite"
       >
         <div className="scenario-region__label">03</div>
         <div>

@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 import { chromium } from 'playwright'
+import { pathToFileURL } from 'node:url'
 
 function parseArguments(argv) {
   const options = {
     frontendUrl: '',
+    expectedApiOrigin: '',
     timeoutMs: 15_000,
     viewports: [],
   }
@@ -13,6 +15,9 @@ function parseArguments(argv) {
     const value = argv[index + 1]
     if (argument === '--frontend-url' && value) {
       options.frontendUrl = value
+      index += 1
+    } else if (argument === '--expected-api-origin' && value) {
+      options.expectedApiOrigin = value
       index += 1
     } else if (argument === '--timeout-ms' && value) {
       options.timeoutMs = Number(value)
@@ -33,6 +38,14 @@ function parseArguments(argv) {
   if (!options.frontendUrl) {
     throw new Error('--frontend-url is required')
   }
+  if (!options.expectedApiOrigin) {
+    throw new Error('--expected-api-origin is required')
+  }
+  try {
+    options.expectedApiOrigin = new URL(options.expectedApiOrigin).origin
+  } catch {
+    throw new Error('--expected-api-origin must be an absolute URL')
+  }
   if (!Number.isFinite(options.timeoutMs) || options.timeoutMs <= 0) {
     throw new Error('--timeout-ms must be a positive finite number')
   }
@@ -52,6 +65,43 @@ function parseArguments(argv) {
   }
 
   return options
+}
+
+export function assertExpectedApiResponses(
+  responses,
+  expectedApiOrigin,
+  viewportName,
+) {
+  const expectedOrigin = new URL(expectedApiOrigin).origin
+  const expectedPaths = ['/health', '/api/demo/manifest']
+
+  for (const expectedPath of expectedPaths) {
+    const response = responses.find((candidate) => (
+      new URL(candidate.url).pathname === expectedPath
+    ))
+    if (!response) {
+      throw new Error(
+        `${viewportName}: browser did not request ${expectedPath}`,
+      )
+    }
+    const responseUrl = new URL(response.url)
+    if (responseUrl.origin !== expectedOrigin) {
+      throw new Error(
+        `${viewportName}: expected API origin ${expectedOrigin}; `
+        + `${expectedPath} used ${responseUrl.origin}`,
+      )
+    }
+    if (response.status !== 200) {
+      throw new Error(
+        `${viewportName}: ${expectedPath} returned HTTP ${response.status}`,
+      )
+    }
+    if (response.body?.api_contract_version !== '1') {
+      throw new Error(
+        `${viewportName}: ${expectedPath} did not return contract 1`,
+      )
+    }
+  }
 }
 
 function rectanglesIntersect(first, second) {
@@ -177,7 +227,13 @@ async function assertTechnicalMap(page, viewportName, isPhone) {
   }
 }
 
-async function checkViewport(browser, frontendUrl, viewport, timeoutMs) {
+async function checkViewport(
+  browser,
+  frontendUrl,
+  expectedApiOrigin,
+  viewport,
+  timeoutMs,
+) {
   const context = await browser.newContext({
     viewport: {
       width: viewport.width,
@@ -198,7 +254,25 @@ async function checkViewport(browser, frontendUrl, viewport, timeoutMs) {
   })
 
   try {
+    const healthResponse = page.waitForResponse(
+      response => new URL(response.url()).pathname === '/health',
+    )
+    const manifestResponse = page.waitForResponse(
+      response => new URL(response.url()).pathname === '/api/demo/manifest',
+    )
     await page.goto(frontendUrl, { waitUntil: 'domcontentloaded' })
+    const apiResponses = await Promise.all(
+      [await healthResponse, await manifestResponse].map(async response => ({
+        url: response.url(),
+        status: response.status(),
+        body: await response.json().catch(() => null),
+      })),
+    )
+    assertExpectedApiResponses(
+      apiResponses,
+      expectedApiOrigin,
+      viewport.name,
+    )
     await page.getByRole('heading', {
       name: 'Put policy between the request and the result.',
       exact: true,
@@ -241,6 +315,7 @@ async function main() {
       await checkViewport(
         browser,
         options.frontendUrl,
+        options.expectedApiOrigin,
         viewport,
         options.timeoutMs,
       )
@@ -253,7 +328,12 @@ async function main() {
   process.stdout.write(`${JSON.stringify({ checked })}\n`)
 }
 
-main().catch((error) => {
-  process.stderr.write(`${error.stack || error.message}\n`)
-  process.exitCode = 1
-})
+if (
+  process.argv[1]
+  && import.meta.url === pathToFileURL(process.argv[1]).href
+) {
+  main().catch((error) => {
+    process.stderr.write(`${error.stack || error.message}\n`)
+    process.exitCode = 1
+  })
+}

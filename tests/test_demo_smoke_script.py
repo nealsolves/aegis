@@ -105,10 +105,19 @@ class FixedTransport:
 class BrowserCheckRecorder:
     def __init__(self, error: BaseException | None = None):
         self.error = error
-        self.calls: list[tuple[str, tuple[tuple[str, int, int], ...], float]] = []
+        self.calls: list[
+            tuple[
+                str,
+                str,
+                tuple[tuple[str, int, int], ...],
+                float,
+            ]
+        ] = []
 
-    def __call__(self, frontend_url, viewports, timeout):
-        self.calls.append((frontend_url, viewports, timeout))
+    def __call__(self, frontend_url, expected_api_origin, viewports, timeout):
+        self.calls.append(
+            (frontend_url, expected_api_origin, viewports, timeout),
+        )
         if self.error is not None:
             raise self.error
 
@@ -173,7 +182,7 @@ def test_smoke_loads_pages_waits_for_render_and_requires_atlas_provenance():
         ),
     ]
     assert browser_check.calls == [
-        (FRONTEND_URL, ARCHITECTURE_VIEWPORTS, 15.0),
+        (FRONTEND_URL, API_URL, ARCHITECTURE_VIEWPORTS, 15.0),
     ]
 
 
@@ -254,7 +263,7 @@ def test_smoke_returns_nonzero_when_architecture_browser_check_fails():
         browser_check=browser_check,
     ) != 0
     assert browser_check.calls == [
-        (FRONTEND_URL, ARCHITECTURE_VIEWPORTS, 15.0),
+        (FRONTEND_URL, API_URL, ARCHITECTURE_VIEWPORTS, 15.0),
     ]
 
 

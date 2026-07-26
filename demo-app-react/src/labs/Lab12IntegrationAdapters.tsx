@@ -434,14 +434,28 @@ function AdapterResult({ response }: { response: AdapterRunResponse }) {
   const checks = returnedPolicyChecks(response)
   const decision = decisionPresentation(response.decision)
   const DecisionIcon = decision.icon
+  const announcedReason = response.error?.code
+    ?? (
+      typeof response.normalized_evidence.reason_code === 'string'
+        ? response.normalized_evidence.reason_code
+        : 'no reason code returned'
+    )
 
   return (
-    <div
-      className="adapter-result"
-      data-testid="adapter-result"
-      aria-live="polite"
-      aria-atomic="true"
-    >
+    <>
+      <p
+        className="sr-only"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        data-testid="adapter-result-announcement"
+      >
+        Adapter run complete. Decision: {response.decision}. Reason: {announcedReason}.
+      </p>
+      <div
+        className="adapter-result"
+        data-testid="adapter-result"
+      >
       <section className="adapter-result-panel adapter-result-panel--native">
         <p className="adapter-result-panel__label">Returned provider record</p>
         <h2>Native fixture</h2>
@@ -522,6 +536,7 @@ function AdapterResult({ response }: { response: AdapterRunResponse }) {
           </div>
         </div>
       </section>
-    </div>
+      </div>
+    </>
   )
 }

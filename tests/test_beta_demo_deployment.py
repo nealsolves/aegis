@@ -65,9 +65,14 @@ def test_pages_workflow_builds_and_deploys_only_the_main_beta():
         "python-version": "3.12",
     }
     assert build_steps["Check public copy"]["run"] == (
-        "python scripts/check_demo_copy.py demo-app-react/src/content "
-        "demo-app-react/src/routes/scenarios "
-        "demo-app-react/src/help/helpContent.ts"
+        "python scripts/check_demo_copy.py "
+        "--frontend-root demo-app-react/src"
+    )
+    assert build_steps["Test production smoke contract"]["working-directory"] == (
+        "demo-app-react"
+    )
+    assert build_steps["Test production smoke contract"]["run"] == (
+        "npm run test:smoke"
     )
     step_names = [
         step["name"]

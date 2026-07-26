@@ -12,6 +12,22 @@ export default function ArchitecturePage() {
   const [selectedDetail, setSelectedDetail] = useState<ArchitectureDetail | null>(null)
   const howTabRef = useRef<HTMLButtonElement>(null)
   const technicalTabRef = useRef<HTMLButtonElement>(null)
+  const detailTriggerRef = useRef<HTMLButtonElement | null>(null)
+
+  const selectDetail = (
+    detail: ArchitectureDetail,
+    trigger: HTMLButtonElement,
+  ) => {
+    detailTriggerRef.current = trigger
+    setSelectedDetail(detail)
+  }
+
+  const closeDetail = () => {
+    const trigger = detailTriggerRef.current
+    setSelectedDetail(null)
+    detailTriggerRef.current = null
+    if (trigger?.isConnected) trigger.focus()
+  }
 
   const handleTabKeyDown = (
     event: KeyboardEvent<HTMLButtonElement>,
@@ -87,7 +103,7 @@ export default function ArchitecturePage() {
           <OwnershipFlow
             selectedNodeId={selectedDetail?.id ?? null}
             onSelect={() => undefined}
-            onDetail={setSelectedDetail}
+            onDetail={selectDetail}
           />
         </section>
       ) : (
@@ -108,7 +124,7 @@ export default function ArchitecturePage() {
           </div>
           <TechnicalMap
             selectedNodeId={selectedDetail?.id ?? null}
-            onSelect={setSelectedDetail}
+            onSelect={selectDetail}
           />
         </section>
       )}
@@ -116,7 +132,7 @@ export default function ArchitecturePage() {
       {selectedDetail && (
         <ArchitectureDetailPanel
           detail={selectedDetail}
-          onClose={() => setSelectedDetail(null)}
+          onClose={closeDetail}
         />
       )}
     </main>

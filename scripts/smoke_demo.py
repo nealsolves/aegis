@@ -49,6 +49,7 @@ class ArchitectureBrowserCheck(Protocol):
     def __call__(
         self,
         frontend_url: str,
+        expected_api_origin: str,
         viewports: tuple[tuple[str, int, int], ...],
         timeout: float,
     ) -> None: ...
@@ -201,6 +202,7 @@ def _verify_app_shell(
 
 def run_architecture_browser_check(
     frontend_url: str,
+    expected_api_origin: str,
     viewports: tuple[tuple[str, int, int], ...],
     timeout: float,
 ) -> None:
@@ -209,6 +211,8 @@ def run_architecture_browser_check(
         str(BROWSER_SMOKE_SCRIPT),
         "--frontend-url",
         frontend_url,
+        "--expected-api-origin",
+        expected_api_origin,
         "--timeout-ms",
         str(round(timeout * 1000)),
     ]
@@ -382,7 +386,12 @@ def run_smoke(
     if source.get("sdk_version") != manifest.get("sdk_version"):
         raise SmokeFailure("Atlas source SDK version differs from manifest.")
 
-    browser_check(frontend_url, ARCHITECTURE_VIEWPORTS, timeout)
+    browser_check(
+        frontend_url,
+        api_url,
+        ARCHITECTURE_VIEWPORTS,
+        timeout,
+    )
 
 
 def _positive_int(value: str) -> int:

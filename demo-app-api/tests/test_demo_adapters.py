@@ -109,8 +109,38 @@ def test_bedrock_keeps_provider_trace_separate_from_redacted_metadata():
     )
     assert body["normalized_evidence"]["trace_ids"] == ["trace-demo-001"]
     assert body["normalized_evidence"]["trace_alias_matched"] is True
-    assert "trace" not in body["normalized_evidence"]
-    assert "orchestrationTrace" not in body["normalized_evidence"]
+
+    forbidden_keys = {
+        "orchestrationtrace",
+        "provider_payload",
+        "providerpayload",
+        "prompt",
+        "raw_trace",
+        "trace",
+    }
+
+    def nested_text(value):
+        if isinstance(value, dict):
+            for key, nested_value in value.items():
+                assert str(key).lower() not in forbidden_keys
+                yield str(key)
+                yield from nested_text(nested_value)
+        elif isinstance(value, list):
+            for item in value:
+                yield from nested_text(item)
+        elif isinstance(value, str):
+            yield value
+
+    normalized_text = "\n".join(nested_text(body["normalized_evidence"])).lower()
+    for forbidden in (
+        "orchestrationtrace",
+        "raw_trace",
+        "raw trace",
+        "prompt",
+        "provider_payload",
+        "provider payload",
+    ):
+        assert forbidden not in normalized_text
 
 
 def test_openai_agents_uses_the_governed_empty_tool_graph():

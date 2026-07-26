@@ -1,4 +1,7 @@
-import type { ArchitectureDetail } from './ArchitectureDetailPanel'
+import {
+  ARCHITECTURE_DETAIL_PANEL_ID,
+  type ArchitectureDetail,
+} from './ArchitectureDetailPanel'
 
 const OWNERSHIP_NODES: readonly ArchitectureDetail[] = [
   {
@@ -54,7 +57,10 @@ const OWNERSHIP_NODES: readonly ArchitectureDetail[] = [
 interface OwnershipFlowProps {
   selectedNodeId: string | null
   onSelect: (nodeId: string) => void
-  onDetail?: (detail: ArchitectureDetail) => void
+  onDetail?: (
+    detail: ArchitectureDetail,
+    trigger: HTMLButtonElement,
+  ) => void
 }
 
 function FlowNode({
@@ -64,7 +70,7 @@ function FlowNode({
 }: {
   node: ArchitectureDetail
   selected: boolean
-  onSelect: (nodeId: string) => void
+  onSelect: (nodeId: string, trigger: HTMLButtonElement) => void
 }) {
   const owner = node.owner === 'AEGIS SDK' ? 'AEGIS governs' : 'Host owns'
   return (
@@ -73,7 +79,9 @@ function FlowNode({
       className={`ownership-flow__node ownership-flow__node--${node.owner === 'AEGIS SDK' ? 'aegis' : 'host'}`}
       data-flow-node={node.id}
       aria-pressed={selected}
-      onClick={() => onSelect(node.id)}
+      aria-controls={ARCHITECTURE_DETAIL_PANEL_ID}
+      aria-expanded={selected}
+      onClick={(event) => onSelect(node.id, event.currentTarget)}
     >
       <span>{owner}</span>
       <strong>{node.title}</strong>
@@ -122,9 +130,9 @@ function FlowSequence({
         key={node.id}
         node={node}
         selected={selectedNodeId === node.id}
-        onSelect={(nodeId) => {
+        onSelect={(nodeId, trigger) => {
           onSelect(nodeId)
-          onDetail?.(node)
+          onDetail?.(node, trigger)
         }}
       />
     )

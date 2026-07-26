@@ -6,10 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "copycheck": "python ../scripts/check_demo_copy.py src/content src/routes/scenarios src/help/helpContent.ts",
+    "copycheck": "python ../scripts/check_demo_copy.py --frontend-root src",
     "lint": "eslint .",
     "preview": "vite preview",
     "smoke:architecture": "node scripts/smoke-architecture.mjs",
+    "test:smoke": "node --test scripts/smoke-architecture.node-test.mjs",
     "test": "vitest run"
   },
   "dependencies": {

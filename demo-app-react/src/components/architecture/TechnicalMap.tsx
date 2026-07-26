@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useTheme } from '@/theme/ThemeContext'
-import type { ArchitectureDetail } from './ArchitectureDetailPanel'
+import {
+  ARCHITECTURE_DETAIL_PANEL_ID,
+  type ArchitectureDetail,
+} from './ArchitectureDetailPanel'
 
 type DiagramMode = 'component' | 'pipeline'
 
@@ -118,7 +121,10 @@ function MobileTechnicalCards({
   onSelect,
 }: {
   selectedNodeId: string | null
-  onSelect: (detail: ArchitectureDetail) => void
+  onSelect: (
+    detail: ArchitectureDetail,
+    trigger: HTMLButtonElement,
+  ) => void
 }) {
   return (
     <div className="technical-map__mobile" data-testid="technical-map-mobile">
@@ -134,7 +140,9 @@ function MobileTechnicalCards({
                 type="button"
                 key={item.id}
                 aria-pressed={selectedNodeId === item.id}
-                onClick={() => onSelect(item)}
+                aria-controls={ARCHITECTURE_DETAIL_PANEL_ID}
+                aria-expanded={selectedNodeId === item.id}
+                onClick={(event) => onSelect(item, event.currentTarget)}
               >
                 <strong>{item.title}</strong>
                 <span>{item.responsibility}</span>
@@ -152,7 +160,10 @@ export default function TechnicalMap({
   onSelect,
 }: {
   selectedNodeId: string | null
-  onSelect: (detail: ArchitectureDetail) => void
+  onSelect: (
+    detail: ArchitectureDetail,
+    trigger: HTMLButtonElement,
+  ) => void
 }) {
   const { theme } = useTheme()
   const isMobile = useMobileTechnicalMap()
@@ -225,7 +236,9 @@ export default function TechnicalMap({
               type="button"
               key={item.id}
               aria-pressed={selectedNodeId === item.id}
-              onClick={() => onSelect(item)}
+              aria-controls={ARCHITECTURE_DETAIL_PANEL_ID}
+              aria-expanded={selectedNodeId === item.id}
+              onClick={(event) => onSelect(item, event.currentTarget)}
             >
               {item.title}
             </button>

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ThemeProvider } from '@/theme/ThemeContext'
 import ArchitecturePage from './ArchitecturePage'
@@ -112,6 +112,61 @@ describe('ArchitecturePage', () => {
     expect(detail).toHaveTextContent('Owner')
     expect(detail).toHaveTextContent('Public API / artifact')
     expect(detail).toHaveTextContent('AEGIS does not own')
+  })
+
+  it('links ownership triggers to stable detail and restores mouse focus on close', async () => {
+    const user = userEvent.setup()
+    renderPage()
+
+    const trigger = screen.getAllByRole('button', {
+      name: /AEGIS pre-call policy/i,
+    })[0]
+    expect(trigger).toHaveAttribute(
+      'aria-controls',
+      'architecture-detail-panel',
+    )
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+
+    await user.click(trigger)
+
+    const detail = screen.getByRole('region', {
+      name: /AEGIS pre-call policy details/i,
+    })
+    expect(detail).toHaveAttribute('id', 'architecture-detail-panel')
+    expect(trigger).toHaveAttribute('aria-expanded', 'true')
+
+    await user.click(screen.getByRole('button', {
+      name: /Close AEGIS pre-call policy details/i,
+    }))
+
+    expect(trigger).toHaveFocus()
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('restores keyboard focus to a technical responsibility trigger', async () => {
+    const user = userEvent.setup()
+    renderPage()
+
+    await user.click(screen.getByRole('tab', { name: 'Technical map' }))
+    const index = screen.getByRole('heading', {
+      name: 'Technical responsibilities',
+    }).closest('section')
+    const trigger = within(index as HTMLElement).getByRole('button', {
+      name: 'Workflow governance',
+    })
+    trigger.focus()
+    await user.keyboard('{Enter}')
+
+    expect(trigger).toHaveAttribute(
+      'aria-controls',
+      'architecture-detail-panel',
+    )
+    expect(trigger).toHaveAttribute('aria-expanded', 'true')
+    await user.click(screen.getByRole('button', {
+      name: /Close Workflow governance details/i,
+    }))
+
+    expect(trigger).toHaveFocus()
   })
 
   it('renders theme-aware desktop technical diagrams on demand', async () => {

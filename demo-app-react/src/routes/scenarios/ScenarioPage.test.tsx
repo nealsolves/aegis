@@ -396,7 +396,7 @@ describe('ScenarioPage', () => {
     expect(
       screen.getByRole('button', { name: 'Run judgment' }),
     ).toBeDisabled()
-    expect(screen.getByRole('status')).toHaveTextContent(
+    expect(screen.getByText('Waiting for the demo service.')).toHaveTextContent(
       'Waiting for the demo service.',
     )
   })
@@ -618,7 +618,38 @@ describe('ScenarioPage', () => {
     expect(screen.queryByText(/workflow status/i)).not.toBeInTheDocument()
     expect(
       screen.getByRole('region', { name: 'AEGIS evaluation' }),
-    ).toHaveAttribute('aria-live', 'polite')
+    ).not.toHaveAttribute('aria-live')
+    expect(screen.getByTestId('scenario-result-announcement')).toHaveTextContent(
+      'No scenario run has completed.',
+    )
+  })
+
+  it('announces a concise decision and reason outside the detailed result tree', async () => {
+    const user = userEvent.setup()
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(ATLAS_FIRST)))
+    renderScenario('atlas')
+
+    await user.click(
+      screen.getByRole('radio', {
+        name: 'Send the prepared guidance without attaching a policy source',
+      }),
+    )
+    await user.click(screen.getByRole('button', { name: 'Run judgment' }))
+
+    const announcement = await screen.findByTestId('scenario-result-announcement')
+    expect(announcement).toHaveAttribute('role', 'status')
+    expect(announcement).toHaveAttribute('aria-live', 'polite')
+    expect(announcement).toHaveAttribute('aria-atomic', 'true')
+    expect(announcement).toHaveTextContent(
+      'Scenario run complete. Decision: FAIL. Reason: PROVENANCE_MISSING.',
+    )
+    expect(announcement).not.toHaveTextContent(
+      'The response omitted a required source.',
+    )
+
+    const evaluation = screen.getByRole('region', { name: 'AEGIS evaluation' })
+    expect(evaluation).not.toHaveAttribute('aria-live')
+    expect(evaluation).not.toHaveAttribute('aria-atomic')
   })
 
   it('draws only Meridian relationships confirmed by the returned trace', async () => {
@@ -781,7 +812,7 @@ describe('ScenarioPage', () => {
       }),
     )
     await user.click(screen.getByRole('button', { name: 'Run judgment' }))
-    expect(screen.getByRole('status')).toHaveTextContent(
+    expect(screen.getByText('Requesting the server evaluation.')).toHaveTextContent(
       'Requesting the server evaluation.',
     )
 
@@ -792,7 +823,9 @@ describe('ScenarioPage', () => {
       screen.getByRole('link', { name: 'Switch directly to Atlas' }),
     )
 
-    expect(screen.getByRole('status')).toHaveTextContent(
+    expect(
+      screen.getByText('Choose your judgment, then run the governed case.'),
+    ).toHaveTextContent(
       'Choose your judgment, then run the governed case.',
     )
     expect(screen.getByRole('button', { name: 'Run judgment' })).toBeDisabled()

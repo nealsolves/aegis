@@ -8,7 +8,12 @@ import {
   type ReactNode,
 } from 'react'
 import { useAigc } from '@/context/AigcContext'
-import { demoRequest, DemoApiError } from '@/lib/demoApi'
+import {
+  demoRequest,
+  DemoApiError,
+  parseDemoHealth,
+  parseDemoManifest,
+} from '@/lib/demoApi'
 import type { DemoManifest } from '@/types/demo'
 
 const DEMO_API_CONTRACT_VERSION = '1' as const
@@ -38,20 +43,6 @@ export interface DemoServiceValue {
   manifest: DemoManifest | null
   error: DemoServiceError | null
   retry: () => void
-}
-
-interface HealthResponse {
-  status: string
-  api_contract_version: string
-  sdk_version: string
-  source: {
-    branch: string | null
-    commit: string | null
-  }
-}
-
-type ManifestResponse = Omit<DemoManifest, 'api_contract_version'> & {
-  api_contract_version: string
 }
 
 const DemoServiceContext = createContext<DemoServiceValue | null>(null)
@@ -161,11 +152,11 @@ export function DemoServiceProvider({ children }: { children: ReactNode }) {
         try {
           await waitForDelay(RETRY_DELAYS[attempt], controller.signal)
 
-          const health = await demoRequest<HealthResponse>(
+          const health = parseDemoHealth(await demoRequest<unknown>(
             apiUrl,
             '/health',
             { signal: controller.signal },
-          )
+          ))
           if (!isCurrent()) return
 
           if (health.api_contract_version !== DEMO_API_CONTRACT_VERSION) {
@@ -182,11 +173,11 @@ export function DemoServiceProvider({ children }: { children: ReactNode }) {
           }
 
           operation = '/api/demo/manifest'
-          const manifest = await demoRequest<ManifestResponse>(
+          const manifest = parseDemoManifest(await demoRequest<unknown>(
             apiUrl,
             '/api/demo/manifest',
             { signal: controller.signal },
-          )
+          ))
           if (!isCurrent()) return
 
           if (manifest.api_contract_version !== DEMO_API_CONTRACT_VERSION) {
@@ -203,7 +194,7 @@ export function DemoServiceProvider({ children }: { children: ReactNode }) {
 
           setState({
             status: 'ready',
-            manifest: manifest as DemoManifest,
+            manifest,
             error: null,
           })
           return

@@ -6,6 +6,7 @@ import {
 } from '@/context/DemoServiceContext'
 import { DemoServiceNotice } from '@/components/service/DemoServiceNotice'
 import { demoServiceNoticeCopy } from '@/content/demoCopy'
+import { DEFAULT_DEMO_REQUEST_TIMEOUT_MS } from '@/lib/demoApi'
 import type { DemoManifest } from '@/types/demo'
 
 const MANIFEST: DemoManifest = {
@@ -167,6 +168,53 @@ describe('DemoServiceProvider', () => {
     await advance(0)
 
     expect(screen.getByTestId('service-status')).toHaveTextContent('ready')
+  })
+
+  it('reaches unavailable when every fetch ignores abort and never settles', async () => {
+    const fetchMock = vi.fn(() => new Promise<Response>(() => undefined))
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderService()
+
+    for (const delay of [0, 1000, 2000, 4000, 8000, 15000, 30000]) {
+      await advance(delay)
+      await advance(DEFAULT_DEMO_REQUEST_TIMEOUT_MS)
+    }
+
+    expect(fetchMock).toHaveBeenCalledTimes(7)
+    expect(screen.getByTestId('service-status')).toHaveTextContent('unavailable')
+    expect(screen.getByRole('status')).toHaveTextContent(
+      demoServiceNoticeCopy.unavailable('/health'),
+    )
+  })
+
+  it.each([
+    ['health', {
+      status: 'ok',
+      api_contract_version: '1',
+      sdk_version: '0.9.0b1',
+      source: null,
+    }],
+    ['manifest', { ...MANIFEST, adapters: ['bedrock', 'unknown'] }],
+  ])('keeps malformed %s bodies on the bounded unavailable path', async (
+    responseType,
+    malformedBody,
+  ) => {
+    const fetchMock = responseType === 'health'
+      ? vi.fn().mockResolvedValue(jsonResponse(malformedBody))
+      : vi.fn()
+        .mockResolvedValueOnce(healthResponse())
+        .mockResolvedValue(jsonResponse(malformedBody))
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderService()
+
+    for (const delay of [0, 1000, 2000, 4000, 8000, 15000, 30000]) {
+      await advance(delay)
+    }
+
+    expect(screen.getByTestId('service-status')).toHaveTextContent('unavailable')
+    expect(screen.getByRole('button', { name: 'Run scenario' })).toBeDisabled()
   })
 
   it('aborts the previous cycle on manual retry and ignores its stale response', async () => {

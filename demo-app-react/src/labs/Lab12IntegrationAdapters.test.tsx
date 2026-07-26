@@ -256,6 +256,32 @@ describe('Lab12IntegrationAdapters', () => {
       .toBeInTheDocument()
   })
 
+  it('announces only the concise adapter decision and reason', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse(NEGATIVE_RESPONSE)),
+    )
+    renderLab()
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Fixture case' }), {
+      target: { value: 'wrong_alias' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Run adapter fixture' }))
+
+    const announcement = await screen.findByTestId('adapter-result-announcement')
+    expect(announcement).toHaveAttribute('role', 'status')
+    expect(announcement).toHaveAttribute('aria-live', 'polite')
+    expect(announcement).toHaveAttribute('aria-atomic', 'true')
+    expect(announcement).toHaveTextContent(
+      'Adapter run complete. Decision: FAIL. Reason: RETURNED_ALIAS_MISMATCH.',
+    )
+    expect(announcement).not.toHaveTextContent('trace-returned-2')
+
+    const result = screen.getByTestId('adapter-result')
+    expect(result).not.toHaveAttribute('aria-live')
+    expect(result).not.toHaveAttribute('aria-atomic')
+  })
+
   it('derives Result help only from returned reason code and normalized field names', async () => {
     const onResultHelpContext = vi.fn()
     vi.stubGlobal(

@@ -60,12 +60,16 @@ jobs:
         working-directory: demo-app-react
         run: npm test
 
+      - name: Test production smoke contract
+        working-directory: demo-app-react
+        run: npm run test:smoke
+
       - name: Lint frontend
         working-directory: demo-app-react
         run: npm run lint
 
       - name: Check public copy
-        run: python scripts/check_demo_copy.py demo-app-react/src/content demo-app-react/src/routes/scenarios demo-app-react/src/help/helpContent.ts
+        run: python scripts/check_demo_copy.py --frontend-root demo-app-react/src
 
       - name: Build frontend
         working-directory: demo-app-react

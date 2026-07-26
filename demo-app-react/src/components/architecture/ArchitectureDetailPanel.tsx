@@ -7,6 +7,8 @@ export interface ArchitectureDetail {
   nonOwner: string
 }
 
+export const ARCHITECTURE_DETAIL_PANEL_ID = 'architecture-detail-panel'
+
 interface ArchitectureDetailPanelProps {
   detail: ArchitectureDetail
   onClose: () => void
@@ -18,6 +20,7 @@ export default function ArchitectureDetailPanel({
 }: ArchitectureDetailPanelProps) {
   return (
     <aside
+      id={ARCHITECTURE_DETAIL_PANEL_ID}
       className="architecture-detail"
       role="region"
       aria-label={`${detail.title} details`}

@@ -1,4 +1,10 @@
-import { demoRequest, DemoApiError } from '@/lib/demoApi'
+import {
+  DEFAULT_DEMO_REQUEST_TIMEOUT_MS,
+  demoRequest,
+  DemoApiError,
+  parseDemoHealth,
+  parseDemoManifest,
+} from '@/lib/demoApi'
 import type { DemoManifest } from '@/types/demo'
 
 const MANIFEST: DemoManifest = {
@@ -103,5 +109,91 @@ describe('demoRequest', () => {
     await expect(
       demoRequest<{ api_contract_version: string }>('/api', '/api/demo/manifest'),
     ).resolves.toEqual(incompatibleManifest)
+  })
+
+  it('times out a fetch that never settles even when it ignores abort', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => undefined)))
+
+    const request = demoRequest('/api', '/health')
+    const rejection = expect(request).rejects.toMatchObject({
+      name: 'TimeoutError',
+    })
+    await vi.advanceTimersByTimeAsync(DEFAULT_DEMO_REQUEST_TIMEOUT_MS)
+
+    await rejection
+    expect(vi.getTimerCount()).toBe(0)
+    vi.useRealTimers()
+  })
+
+  it('clears timeout and abort-listener resources after a successful request', async () => {
+    vi.useFakeTimers()
+    const controller = new AbortController()
+    const removeListener = vi.spyOn(controller.signal, 'removeEventListener')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(MANIFEST)))
+
+    await expect(demoRequest('/api', '/api/demo/manifest', {
+      signal: controller.signal,
+    })).resolves.toEqual(MANIFEST)
+
+    expect(removeListener).toHaveBeenCalledWith('abort', expect.any(Function))
+    expect(vi.getTimerCount()).toBe(0)
+    vi.useRealTimers()
+  })
+
+  it('parses complete health and manifest responses', () => {
+    expect(parseDemoHealth({
+      status: 'ok',
+      api_contract_version: '1',
+      sdk_version: '0.9.0b1',
+      source: { branch: 'main', commit: 'server-commit' },
+    })).toEqual({
+      status: 'ok',
+      api_contract_version: '1',
+      sdk_version: '0.9.0b1',
+      source: { branch: 'main', commit: 'server-commit' },
+    })
+    expect(parseDemoManifest(MANIFEST)).toEqual(MANIFEST)
+  })
+
+  it.each([
+    ['null health', null],
+    ['unknown health status', {
+      status: 'warm',
+      api_contract_version: '1',
+      sdk_version: '0.9.0b1',
+      source: { branch: 'main', commit: 'server-commit' },
+    }],
+    ['health with missing source', {
+      status: 'ok',
+      api_contract_version: '1',
+      sdk_version: '0.9.0b1',
+    }],
+    ['health with a numeric contract', {
+      status: 'ok',
+      api_contract_version: 1,
+      sdk_version: '0.9.0b1',
+      source: { branch: 'main', commit: 'server-commit' },
+    }],
+  ])('rejects malformed health: %s', (_name, body) => {
+    expect(() => parseDemoHealth(body)).toThrow(
+      'The demo service returned an invalid health response.',
+    )
+  })
+
+  it.each([
+    ['null manifest', null],
+    ['unknown scenario', { ...MANIFEST, scenarios: ['atlas', 'unknown'] }],
+    ['unknown adapter', { ...MANIFEST, adapters: ['bedrock', 'unknown'] }],
+    ['non-array scenarios', { ...MANIFEST, scenarios: {} }],
+    ['missing source', { ...MANIFEST, source: undefined }],
+    ['source SDK mismatch', {
+      ...MANIFEST,
+      source: { ...MANIFEST.source, sdk_version: '0.8.0' },
+    }],
+  ])('rejects malformed manifest: %s', (_name, body) => {
+    expect(() => parseDemoManifest(body)).toThrow(
+      'The demo service returned an invalid manifest response.',
+    )
   })
 })
