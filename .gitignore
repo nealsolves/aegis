@@ -17,3 +17,5 @@ node_modules/
 .venv/
 aegis-env/
 demo-app-api/aegis-env/
+.superpowers/
+.worktrees/
