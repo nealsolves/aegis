@@ -14,6 +14,7 @@ RENDER_BLUEPRINT = ROOT / "demo-app-api" / "render.yaml"
 PINNED_PAGES_ACTIONS = {
     "actions/checkout": "de0fac2e4500dabe0009e67214ff5f5447ce83dd",
     "actions/setup-node": "49933ea5288caeca8642d1e84afbd3f7d6820020",
+    "actions/setup-python": "a309ff8b426b58ec0e2a45f0f869d46889d02405",
     "actions/configure-pages": "983d7736d9b0ae728b81ab479565c72886d7745b",
     "actions/upload-pages-artifact": "7b1f4a764d45c48632c6b24a0339c27f5614fb0b",
     "actions/deploy-pages": "d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e",
@@ -60,6 +61,22 @@ def test_pages_workflow_builds_and_deploys_only_the_main_beta():
     assert "npm test" in build_commands
     assert "npm run lint" in build_commands
     assert "npm run build" in build_commands
+    assert build_steps["Set up Python"]["with"] == {
+        "python-version": "3.12",
+    }
+    assert build_steps["Check public copy"]["run"] == (
+        "python scripts/check_demo_copy.py demo-app-react/src/content "
+        "demo-app-react/src/routes/scenarios "
+        "demo-app-react/src/help/helpContent.ts"
+    )
+    step_names = [
+        step["name"]
+        for step in build["steps"]
+        if isinstance(step, dict) and "name" in step
+    ]
+    assert step_names.index("Check public copy") < step_names.index(
+        "Build frontend"
+    )
     assert "env" not in build
     assert "env" not in build_steps["Test frontend"]
     assert build_steps["Require the public Render API URL"]["env"] == {
