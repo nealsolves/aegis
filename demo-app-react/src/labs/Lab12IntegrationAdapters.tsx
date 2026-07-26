@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type KeyboardEvent,
@@ -141,7 +142,9 @@ export default function Lab12IntegrationAdapters({
 }: Props) {
   const { apiUrl } = useAigc()
   const { manifest, status } = useDemoService()
-  const manifestAdapters = manifest ? manifest.adapters : []
+  const manifestAdapters = status === 'ready' && manifest
+    ? manifest.adapters
+    : []
   const availableAdapters = uniqueListedAdapters(manifestAdapters)
 
   const [adapterChoice, setAdapterChoice] = useState<AdapterId | null>(null)
@@ -172,24 +175,37 @@ export default function Lab12IntegrationAdapters({
   const requestSequenceRef = useRef(0)
   const controllerRef = useRef<AbortController | null>(null)
   const tabRefs = useRef<Partial<Record<AdapterId, HTMLButtonElement | null>>>({})
+  const effectiveSelectionKey = selectedAdapter && selectedFixture
+    ? `${selectedAdapter}:${selectedFixture}`
+    : 'unavailable'
+  const selectionLifecycleKeyRef = useRef(effectiveSelectionKey)
 
-  useEffect(() => () => {
-    requestSequenceRef.current += 1
-    controllerRef.current?.abort()
-  }, [])
+  useLayoutEffect(() => {
+    if (selectionLifecycleKeyRef.current === effectiveSelectionKey) return
 
-  const clearResult = () => {
+    selectionLifecycleKeyRef.current = effectiveSelectionKey
     requestSequenceRef.current += 1
     controllerRef.current?.abort()
     controllerRef.current = null
     setIsRunning(false)
     setResponse(null)
     setRunError(null)
+    setAdapterChoice(selectedAdapter)
+    setFixtureChoice(selectedFixture)
     onResultHelpContext(null)
-  }
+  }, [
+    effectiveSelectionKey,
+    onResultHelpContext,
+    selectedAdapter,
+    selectedFixture,
+  ])
+
+  useEffect(() => () => {
+    requestSequenceRef.current += 1
+    controllerRef.current?.abort()
+  }, [])
 
   const selectAdapter = (adapterId: AdapterId) => {
-    clearResult()
     setAdapterChoice(adapterId)
     setFixtureChoice(ADAPTER_CONFIG[adapterId].fixtures[0].id)
   }
@@ -219,7 +235,6 @@ export default function Lab12IntegrationAdapters({
 
   const selectFixture = (fixtureId: string) => {
     if (!fixtureChoices.some(fixture => fixture.id === fixtureId)) return
-    clearResult()
     setFixtureChoice(fixtureId)
   }
 
@@ -239,6 +254,7 @@ export default function Lab12IntegrationAdapters({
     controllerRef.current = controller
     const requestSequence = requestSequenceRef.current + 1
     requestSequenceRef.current = requestSequence
+    const requestSelectionKey = effectiveSelectionKey
     setResponse(null)
     setRunError(null)
     setIsRunning(true)
@@ -262,6 +278,7 @@ export default function Lab12IntegrationAdapters({
       if (
         controller.signal.aborted
         || requestSequenceRef.current !== requestSequence
+        || selectionLifecycleKeyRef.current !== requestSelectionKey
       ) {
         return
       }
@@ -271,6 +288,7 @@ export default function Lab12IntegrationAdapters({
       if (
         controller.signal.aborted
         || requestSequenceRef.current !== requestSequence
+        || selectionLifecycleKeyRef.current !== requestSelectionKey
       ) {
         return
       }
@@ -281,6 +299,7 @@ export default function Lab12IntegrationAdapters({
       if (
         !controller.signal.aborted
         && requestSequenceRef.current === requestSequence
+        && selectionLifecycleKeyRef.current === requestSelectionKey
       ) {
         setIsRunning(false)
       }
@@ -403,7 +422,10 @@ export default function Lab12IntegrationAdapters({
         </div>
       )}
 
-      {response && <AdapterResult response={response} />}
+      {response
+        && response.adapter_id === selectedAdapter
+        && response.fixture_id === selectedFixture
+        && <AdapterResult response={response} />}
     </main>
   )
 }

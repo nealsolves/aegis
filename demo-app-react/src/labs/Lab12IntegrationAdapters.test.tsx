@@ -1,10 +1,12 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
   waitFor,
   within,
 } from '@testing-library/react'
+import { StrictMode } from 'react'
 import type { DemoServiceValue } from '@/context/DemoServiceContext'
 import type {
   AdapterRunResponse,
@@ -105,6 +107,12 @@ const NEGATIVE_RESPONSE: AdapterRunResponse = {
     message: 'The returned binding did not match.',
   },
   source: SOURCE,
+}
+
+const OPENAI_PASS_RESPONSE: AdapterRunResponse = {
+  ...PASS_RESPONSE,
+  adapter_id: 'openai_agents',
+  fixture_id: 'governed_graph',
 }
 
 function readyService(
@@ -297,6 +305,164 @@ describe('Lab12IntegrationAdapters', () => {
 
     await waitFor(() => {
       expect(screen.queryByTestId('adapter-result')).not.toBeInTheDocument()
+    })
+  })
+
+  it('clears settled result and help when the manifest removes the active adapter', async () => {
+    const onResultHelpContext = vi.fn()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse(NEGATIVE_RESPONSE)),
+    )
+    const view = renderLab(onResultHelpContext)
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Fixture case' }), {
+      target: { value: 'wrong_alias' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Run adapter fixture' }))
+    expect(await screen.findByTestId('adapter-result')).toBeInTheDocument()
+    expect(onResultHelpContext).toHaveBeenLastCalledWith({
+      reasonCode: 'RETURNED_ALIAS_MISMATCH',
+      fields: ['reason_code', 'binding_name'],
+    })
+
+    serviceValue = readyService(['openai_agents', 'a2a'])
+    view.rerender(
+      <Lab12IntegrationAdapters
+        onResultHelpContext={onResultHelpContext}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('adapter-result')).not.toBeInTheDocument()
+      expect(onResultHelpContext).toHaveBeenLastCalledWith(null)
+    })
+    expect(
+      within(screen.getByRole('tablist', { name: 'Integration adapters' }))
+        .getAllByRole('tab')
+        .map(tab => tab.textContent),
+    ).toEqual(['OpenAI Agents', 'A2A'])
+    expect(screen.getByRole('combobox', { name: 'Fixture case' }))
+      .toHaveValue('governed_graph')
+  })
+
+  it('clears settled result and help when the manifest becomes unavailable', async () => {
+    const onResultHelpContext = vi.fn()
+    const view = renderLab(onResultHelpContext)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run adapter fixture' }))
+    expect(await screen.findByTestId('adapter-result')).toBeInTheDocument()
+
+    serviceValue = {
+      status: 'starting',
+      manifest: null,
+      error: null,
+      retry: vi.fn(),
+    }
+    view.rerender(
+      <Lab12IntegrationAdapters
+        onResultHelpContext={onResultHelpContext}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('adapter-result')).not.toBeInTheDocument()
+      expect(onResultHelpContext).toHaveBeenLastCalledWith(null)
+    })
+    expect(screen.queryByRole('tablist', { name: 'Integration adapters' }))
+      .not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Run adapter fixture' }))
+      .toBeDisabled()
+  })
+
+  it('rejects a late response when the manifest replaces its active adapter', async () => {
+    let resolveRun: ((response: Response) => void) | undefined
+    const onResultHelpContext = vi.fn()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(() => new Promise<Response>((resolve) => {
+        resolveRun = resolve
+      })),
+    )
+    const view = render(
+      <StrictMode>
+        <Lab12IntegrationAdapters
+          onResultHelpContext={onResultHelpContext}
+        />
+      </StrictMode>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run adapter fixture' }))
+    serviceValue = readyService(['openai_agents'])
+    view.rerender(
+      <StrictMode>
+        <Lab12IntegrationAdapters
+          onResultHelpContext={onResultHelpContext}
+        />
+      </StrictMode>,
+    )
+
+    await act(async () => {
+      resolveRun?.(jsonResponse(PASS_RESPONSE))
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(screen.queryByRole('tab', { name: 'Amazon Bedrock' }))
+      .not.toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'OpenAI Agents' }))
+      .toHaveAttribute('aria-selected', 'true')
+    expect(screen.queryByTestId('adapter-result')).not.toBeInTheDocument()
+    expect(onResultHelpContext).toHaveBeenLastCalledWith(null)
+  })
+
+  it('preserves a valid result when manifest order changes but effective selection does not', async () => {
+    const onResultHelpContext = vi.fn()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse(OPENAI_PASS_RESPONSE)),
+    )
+    const view = renderLab(onResultHelpContext)
+
+    fireEvent.click(screen.getByRole('tab', { name: 'OpenAI Agents' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Run adapter fixture' }))
+    expect(await screen.findByTestId('adapter-result')).toBeInTheDocument()
+    const helpCallsBeforeReorder = onResultHelpContext.mock.calls.length
+
+    serviceValue = readyService(['a2a', 'openai_agents', 'bedrock'])
+    view.rerender(
+      <Lab12IntegrationAdapters
+        onResultHelpContext={onResultHelpContext}
+      />,
+    )
+
+    expect(screen.getByTestId('adapter-result')).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'OpenAI Agents' }))
+      .toHaveAttribute('aria-selected', 'true')
+    expect(onResultHelpContext).toHaveBeenCalledTimes(helpCallsBeforeReorder)
+  })
+
+  it('uses the new adapter default fixture after manifest replacement', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValue(jsonResponse(OPENAI_PASS_RESPONSE))
+    vi.stubGlobal('fetch', fetchMock)
+    const view = renderLab()
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Fixture case' }), {
+      target: { value: 'wrong_alias' },
+    })
+    serviceValue = readyService(['openai_agents'])
+    view.rerender(<Lab12IntegrationAdapters />)
+
+    expect(screen.getByRole('combobox', { name: 'Fixture case' }))
+      .toHaveValue('governed_graph')
+    fireEvent.click(screen.getByRole('button', { name: 'Run adapter fixture' }))
+    await screen.findByTestId('adapter-result')
+
+    const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('http://demo.test/api/demo/adapters/openai_agents/runs')
+    expect(JSON.parse(options.body as string)).toEqual({
+      fixture_id: 'governed_graph',
     })
   })
 
