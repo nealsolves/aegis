@@ -1,11 +1,22 @@
-import { render, screen, fireEvent } from '@testing-library/react'
-import HelpDrawer from './HelpDrawer'
+import { fireEvent, render, screen, within } from '@testing-library/react'
+import { useState } from 'react'
+import HelpDrawer, { type ResultHelpContext } from './HelpDrawer'
 import { ThemeProvider } from '@/theme/ThemeContext'
 
-function renderDrawer(isOpen: boolean, onClose = vi.fn(), labId = 1) {
+function renderDrawer(
+  isOpen: boolean,
+  onClose = vi.fn(),
+  labId = 1,
+  resultContext?: ResultHelpContext,
+) {
   return render(
     <ThemeProvider>
-      <HelpDrawer labId={labId} isOpen={isOpen} onClose={onClose} />
+      <HelpDrawer
+        labId={labId}
+        isOpen={isOpen}
+        onClose={onClose}
+        resultContext={resultContext}
+      />
     </ThemeProvider>
   )
 }
@@ -48,6 +59,10 @@ describe('HelpDrawer', () => {
     renderDrawer(true, vi.fn(), 11)
     expect(screen.getByText('Lab 11 — Workflow Governance')).toBeInTheDocument()
     expect(screen.getByText('Workflow Governance Guide')).toBeInTheDocument()
+
+    renderDrawer(true, vi.fn(), 12)
+    expect(screen.getByText('Lab 12 — Integration Adapters')).toBeInTheDocument()
+    expect(screen.getByText('Integration Adapters Guide')).toBeInTheDocument()
   })
 
   it('shows at least one step title', () => {
@@ -109,5 +124,88 @@ describe('HelpDrawer', () => {
     renderDrawer(true, vi.fn(), 99)
     expect(screen.getByRole('dialog')).toBeInTheDocument()
     expect(screen.getByText('Risk Scoring Guide')).toBeInTheDocument()
+  })
+
+  it('focuses Close first and traps forward and backward tab movement', () => {
+    const outside = document.createElement('button')
+    document.body.append(outside)
+    outside.focus()
+    renderDrawer(true)
+
+    const dialog = screen.getByRole('dialog')
+    const close = screen.getByRole('button', { name: 'Close guide' })
+    const focusable = dialog.querySelectorAll<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+    )
+    const last = focusable[focusable.length - 1]
+
+    expect(close).toHaveFocus()
+    last.focus()
+    fireEvent.keyDown(document, { key: 'Tab' })
+    expect(close).toHaveFocus()
+
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true })
+    expect(last).toHaveFocus()
+
+    outside.focus()
+    fireEvent.keyDown(document, { key: 'Tab' })
+    expect(close).toHaveFocus()
+    outside.remove()
+  })
+
+  it('restores focus to the Guide launcher after closing', () => {
+    function Harness() {
+      const [isOpen, setIsOpen] = useState(false)
+      return (
+        <ThemeProvider>
+          <button onClick={() => setIsOpen(true)}>Guide launcher</button>
+          <HelpDrawer
+            labId={12}
+            isOpen={isOpen}
+            onClose={() => setIsOpen(false)}
+          />
+        </ThemeProvider>
+      )
+    }
+
+    render(<Harness />)
+    const launcher = screen.getByRole('button', { name: 'Guide launcher' })
+    launcher.focus()
+    fireEvent.click(launcher)
+    expect(screen.getByRole('button', { name: 'Close guide' })).toHaveFocus()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close guide' }))
+    expect(launcher).toHaveFocus()
+  })
+
+  it('adds Base Guide and Result tabs only when returned context exists', () => {
+    const resultContext = {
+      reasonCode: 'RETURNED_REASON',
+      fields: ['reason_code', 'trace_ids'],
+    }
+    renderDrawer(true, vi.fn(), 12, resultContext)
+
+    const tablist = screen.getByRole('tablist', { name: 'Guide views' })
+    expect(within(tablist).getByRole('tab', { name: 'Base Guide' }))
+      .toHaveAttribute('aria-selected', 'true')
+    expect(within(tablist).getByRole('tab', { name: 'Result' }))
+      .toBeInTheDocument()
+    expect(screen.getByText('Why This Matters')).toBeInTheDocument()
+
+    fireEvent.click(within(tablist).getByRole('tab', { name: 'Result' }))
+    expect(screen.getByRole('heading', { name: 'Returned result context' }))
+      .toBeInTheDocument()
+    expect(screen.getByText('RETURNED_REASON')).toBeInTheDocument()
+    expect(screen.getByText('reason_code')).toBeInTheDocument()
+    expect(screen.getByText('trace_ids')).toBeInTheDocument()
+    expect(within(tablist).getByRole('tab', { name: 'Base Guide' }))
+      .toBeInTheDocument()
+  })
+
+  it('does not add guide tabs without returned result context', () => {
+    renderDrawer(true, vi.fn(), 12)
+    expect(screen.queryByRole('tablist', { name: 'Guide views' }))
+      .not.toBeInTheDocument()
+    expect(screen.getByText('Why This Matters')).toBeInTheDocument()
   })
 })

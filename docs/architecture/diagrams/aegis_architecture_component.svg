@@ -1,198 +1,39 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1390"><defs><style>
-  svg {
-    font-family: 'IBM Plex Sans', 'Avenir Next', 'Segoe UI', sans-serif;
-  }
-  .mono {
-    font-family: 'IBM Plex Mono', 'SFMono-Regular', 'Menlo', monospace;
-  }
-  .page-title {
-    fill: #8ab8ff;
-    font-size: 28px;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-  }
-  .page-subtitle {
-    fill: #a3b2c8;
-    font-size: 15px;
-  }
-  .section-tag {
-    fill: #b4c2d8;
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.16em;
-  }
-  .panel-title {
-    fill: #b4c2d8;
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.14em;
-  }
-  .box-title {
-    fill: #eef4ff;
-    font-size: 18px;
-    font-weight: 600;
-  }
-  .box-title-compact {
-    fill: #eef4ff;
-    font-size: 15px;
-    font-weight: 600;
-  }
-  .box-sub {
-    fill: #c7d3e8;
-    font-size: 13px;
-    font-weight: 500;
-  }
-  .box-sub-compact {
-    fill: #c7d3e8;
-    font-size: 11px;
-    font-weight: 500;
-  }
-  .body {
-    fill: #e2ebf8;
-    font-size: 14px;
-    font-weight: 500;
-  }
-  .body-plus {
-    fill: #e2ebf8;
-    font-size: 15px;
-    font-weight: 500;
-  }
-  .small {
-    fill: #95a6bd;
-    font-size: 12px;
-  }
-  .small-plus {
-    fill: #95a6bd;
-    font-size: 13px;
-  }
-  .footer-note {
-    fill: #e2ebf8;
-    font-size: 14px;
-    font-weight: 500;
-  }
-  .footer-note-lg {
-    fill: #e2ebf8;
-    font-size: 15px;
-    font-weight: 500;
-  }
-  .footer-small {
-    fill: #95a6bd;
-    font-size: 12px;
-  }
-  .footer-small-lg {
-    fill: #95a6bd;
-    font-size: 13px;
-  }
-  .frame {
-    fill: none;
-    stroke: #334153;
-    stroke-width: 1.4;
-  }
-  .band {
-    fill: #131b24;
-    stroke: #334153;
-    stroke-width: 1.4;
-  }
-  .host-box {
-    fill: #131b24;
-    stroke: #405064;
-    stroke-width: 1.4;
-  }
-  .policy-panel {
-    fill: #141d29;
-    stroke: #47576c;
-    stroke-width: 1.5;
-  }
-  .workflow-panel {
-    fill: #11253e;
-    stroke: #68a3ff;
-    stroke-width: 1.7;
-  }
-  .kernel-panel {
-    fill: #22163a;
-    stroke: #9a82ff;
-    stroke-width: 1.7;
-  }
-  .evidence-panel {
-    fill: #13281c;
-    stroke: #57c372;
-    stroke-width: 1.6;
-  }
-  .ops-panel {
-    fill: #151d28;
-    stroke: #3b4758;
-    stroke-width: 1.4;
-  }
-  .adapter-panel {
-    fill: #111826;
-    stroke: #7a8db3;
-    stroke-width: 1.4;
-    stroke-dasharray: 8 7;
-  }
-  .note-box {
-    fill: #101721;
-    stroke: #334152;
-    stroke-width: 1.2;
-  }
-  .node-neutral {
-    fill: #131b24;
-    stroke: #405064;
-    stroke-width: 1.3;
-  }
-  .node-policy {
-    fill: #131b24;
-    stroke: #47576c;
-    stroke-width: 1.3;
-  }
-  .node-workflow {
-    fill: #131b24;
-    stroke: #68a3ff;
-    stroke-width: 1.35;
-  }
-  .node-kernel {
-    fill: #131b24;
-    stroke: #9a82ff;
-    stroke-width: 1.35;
-  }
-  .node-evidence {
-    fill: #131b24;
-    stroke: #57c372;
-    stroke-width: 1.35;
-  }
-  .node-ops {
-    fill: #101721;
-    stroke: #3b4758;
-    stroke-width: 1.25;
-  }
-  .node-adapter {
-    fill: #101721;
-    stroke: #7a8db3;
-    stroke-width: 1.25;
-    stroke-dasharray: 7 6;
-  }
-  .connector {
-    fill: none;
-    stroke: #93acce;
-    stroke-width: 2.3;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-  }
-  .connector-muted {
-    fill: none;
-    stroke: #6a7c94;
-    stroke-width: 2.0;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-    stroke-dasharray: 7 7;
-  }
-  .connector-soft {
-    fill: none;
-    stroke: #93acce;
-    stroke-opacity: 0.68;
-    stroke-width: 1.7;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-  }
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1460"><defs><style>
+  svg { font-family: 'IBM Plex Sans', 'Avenir Next', 'Segoe UI', sans-serif; }
+  .mono { font-family: 'IBM Plex Mono', 'SFMono-Regular', 'Menlo', monospace; }
+  .page-title { fill: #8ab8ff; font-size: 28px; font-weight: 700; letter-spacing: 0.04em; }
+  .page-subtitle { fill: #a3b2c8; font-size: 15px; }
+  .section-tag, .panel-title { fill: #b4c2d8; font-size: 12px; font-weight: 700; letter-spacing: 0.14em; }
+  .box-title { fill: #eef4ff; font-size: 18px; font-weight: 600; }
+  .box-title-compact { fill: #eef4ff; font-size: 15px; font-weight: 600; }
+  .box-sub { fill: #c7d3e8; font-size: 13px; font-weight: 500; }
+  .box-sub-compact { fill: #c7d3e8; font-size: 11px; font-weight: 500; }
+  .body { fill: #e2ebf8; font-size: 14px; font-weight: 500; }
+  .small { fill: #95a6bd; font-size: 12px; }
+  .footer-note { fill: #e2ebf8; font-size: 15px; font-weight: 500; }
+  .footer-small { fill: #95a6bd; font-size: 13px; }
+  .connector-label { fill: #eef4ff; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; }
+  .frame { fill: none; stroke: #334153; stroke-width: 1.4; }
+  .band { fill: #131b24; stroke: #334153; stroke-width: 1.4; }
+  .host-box { fill: #131b24; stroke: #405064; stroke-width: 1.4; }
+  .policy-panel { fill: #141d29; stroke: #47576c; stroke-width: 1.5; }
+  .workflow-panel { fill: #11253e; stroke: #68a3ff; stroke-width: 1.7; }
+  .kernel-panel { fill: #22163a; stroke: #9a82ff; stroke-width: 1.7; }
+  .evidence-panel { fill: #13281c; stroke: #57c372; stroke-width: 1.6; }
+  .ops-panel { fill: #151d28; stroke: #3b4758; stroke-width: 1.4; }
+  .adapter-panel { fill: #111826; stroke: #7a8db3; stroke-width: 1.4; stroke-dasharray: 8 7; }
+  .note-box { fill: #101721; stroke: #334152; stroke-width: 1.2; }
+  .node-neutral { fill: #131b24; stroke: #405064; stroke-width: 1.3; }
+  .node-policy { fill: #131b24; stroke: #47576c; stroke-width: 1.3; }
+  .node-workflow { fill: #131b24; stroke: #68a3ff; stroke-width: 1.35; }
+  .node-kernel { fill: #131b24; stroke: #9a82ff; stroke-width: 1.35; }
+  .node-evidence { fill: #131b24; stroke: #57c372; stroke-width: 1.35; }
+  .node-ops { fill: #101721; stroke: #3b4758; stroke-width: 1.25; }
+  .node-adapter { fill: #101721; stroke: #7a8db3; stroke-width: 1.25; stroke-dasharray: 7 6; }
+  .connector { fill: none; stroke: #93acce; stroke-width: 2.3; stroke-linecap: round; stroke-linejoin: round; }
+  .connector-muted { fill: none; stroke: #6a7c94; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 7 7; }
+  .connector-soft { fill: none; stroke: #93acce; stroke-opacity: 0.72; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .connector-label-fill { fill: #0b1118; stroke: #334153; stroke-width: 1; }
 </style>
 <marker id="arrow" viewBox="0 0 12 10" refX="10" refY="5" markerWidth="10" markerHeight="8" orient="auto">
   <path d="M0 0 L12 5 L0 10 z" fill="#93acce" />
@@ -201,5 +42,5 @@
   <path d="M0 0 L12 5 L0 10 z" fill="#6a7c94" />
 </marker>
 <marker id="arrow-soft" viewBox="0 0 12 10" refX="10" refY="5" markerWidth="10" markerHeight="8" orient="auto">
-  <path d="M0 0 L12 5 L0 10 z" fill="#93acce" fill-opacity="0.68" />
-</marker></defs><rect width="1600" height="1390" fill="#0b1118" rx="24" /><rect x="36" y="36" width="1528" height="1318" class="frame" rx="24" /><text class="page-title mono" x="60" y="44">AEGIS v0.9 BETA</text><text class="page-subtitle" x="60" y="68">aegis-ai-governance==0.9.0b1 | public beta | released from main</text><rect x="60" y="72" width="1480" height="138" rx="24" class="band" /><text class="section-tag mono" x="84" y="96">HOST APPLICATION</text><rect x="92" y="114" width="302" height="72" rx="18" class="host-box" /><text class="box-title" x="243" y="150.0" text-anchor="middle">App / Agent / Orchestrator</text><rect x="418" y="114" width="338" height="72" rx="18" class="host-box" /><text class="box-title" x="587" y="136.0" text-anchor="middle">Provider / Tool /</text><text class="box-title" x="587" y="164.0" text-anchor="middle">Transport Runtime</text><rect x="782" y="110" width="670" height="80" rx="18" class="note-box" /><text class="body" x="1117" y="140.0" text-anchor="middle">Host owns execution, retries, credentials, and business state.</text><text class="small" x="1117" y="162.0" text-anchor="middle">Provider and tool calls remain outside AEGIS after authorization.</text><rect x="60" y="238" width="1480" height="764" rx="24" class="band" /><text class="section-tag mono" x="84" y="262">AEGIS SDK v0.9.0 BETA SURFACE</text><rect x="90" y="286" width="300" height="480" rx="22" class="policy-panel" /><text class="panel-title mono" x="114" y="314">POLICY + LOADING</text><rect x="418" y="286" width="780" height="258" rx="22" class="workflow-panel" /><text class="panel-title mono" x="444" y="314">WORKFLOW GOVERNANCE LAYER</text><rect x="418" y="570" width="780" height="296" rx="22" class="kernel-panel" /><text class="panel-title mono" x="444" y="590">INVOCATION ENTRYPOINTS + DETERMINISTIC KERNEL</text><rect x="1222" y="286" width="290" height="580" rx="22" class="evidence-panel" /><text class="panel-title mono" x="1246" y="314">EVIDENCE + SUPPORT</text><rect x="112" y="336" width="124" height="78" rx="18" class="node-policy" /><text class="box-title-compact" x="174" y="375.0" text-anchor="middle">Policy YAML</text><rect x="254" y="336" width="124" height="78" rx="18" class="node-policy" /><text class="box-title-compact" x="316" y="375.0" text-anchor="middle">PolicyCache</text><rect x="106" y="432" width="136" height="90" rx="18" class="node-policy" /><text class="box-title-compact" x="174" y="455.0" text-anchor="middle">FilePolicy</text><text class="box-title-compact" x="174" y="479.0" text-anchor="middle">Loader</text><text class="box-sub-compact" x="174" y="501.0" text-anchor="middle">or PolicyLoaderBase</text><rect x="254" y="432" width="124" height="90" rx="18" class="node-policy" /><text class="box-title-compact" x="316" y="465.0" text-anchor="middle">JSON</text><text class="box-title-compact" x="316" y="489.0" text-anchor="middle">Schemas</text><rect x="110" y="558" width="268" height="126" rx="18" class="note-box" /><text class="body" x="244" y="589.0" text-anchor="middle">Load, validate, cache, and</text><text class="body" x="244" y="613.0" text-anchor="middle">compose policy contracts.</text><text class="small" x="244" y="635.0" text-anchor="middle">This surface remains SDK-owned</text><text class="small" x="244" y="655.0" text-anchor="middle">and deterministic.</text><rect x="448" y="336" width="168" height="88" rx="18" class="node-workflow" /><text class="box-title-compact" x="532" y="368.0" text-anchor="middle">AEGIS.</text><text class="box-title-compact" x="532" y="392.0" text-anchor="middle">open_session()</text><rect x="642" y="336" width="174" height="88" rx="18" class="node-workflow" /><text class="box-title-compact" x="729" y="380.0" text-anchor="middle">GovernanceSession</text><rect x="842" y="336" width="188" height="88" rx="18" class="node-workflow" /><text class="box-title-compact" x="936" y="370.0" text-anchor="middle">SessionPreCallResult</text><text class="box-sub-compact" x="936" y="392.0" text-anchor="middle">workflow-bound split token</text><rect x="1042" y="336" width="134" height="88" rx="18" class="node-workflow" /><text class="box-title-compact" x="1109" y="360.0" text-anchor="middle">Workflow DSL</text><text class="box-sub-compact" x="1109" y="382.0" text-anchor="middle">sequence, budgets,</text><text class="box-sub-compact" x="1109" y="402.0" text-anchor="middle">approvals</text><rect x="448" y="454" width="374" height="72" rx="18" class="note-box" /><text class="body" x="635" y="478.0" text-anchor="middle">Tracks steps, checkpoints,</text><text class="body" x="635" y="502.0" text-anchor="middle">participants, and budgets.</text><rect x="842" y="446" width="334" height="94" rx="18" class="node-evidence" /><text class="box-title" x="1009" y="470.0" text-anchor="middle">Workflow artifact</text><text class="box-sub" x="1009" y="495.5" text-anchor="middle">COMPLETED | FAILED |</text><text class="box-sub" x="1009" y="518.5" text-anchor="middle">CANCELED | INCOMPLETE</text><rect x="448" y="620" width="190" height="88" rx="18" class="node-kernel" /><text class="box-title-compact" x="543" y="664.0" text-anchor="middle">enforce_invocation()</text><rect x="642" y="620" width="176" height="88" rx="18" class="node-kernel" /><text class="box-title-compact" x="730" y="664.0" text-anchor="middle">AEGIS.enforce()</text><rect x="828" y="620" width="188" height="88" rx="18" class="node-kernel" /><text class="box-title" x="922" y="652.5" text-anchor="middle">split APIs</text><text class="box-sub" x="922" y="678.0" text-anchor="middle">pre_call / post_call</text><rect x="1026" y="620" width="150" height="88" rx="18" class="node-kernel" /><text class="box-title-compact" x="1101" y="644.0" text-anchor="middle">ordered gates</text><text class="box-sub-compact" x="1101" y="666.0" text-anchor="middle">auth -&gt; output</text><text class="box-sub-compact" x="1101" y="686.0" text-anchor="middle">-&gt; risk</text><rect x="448" y="736" width="728" height="96" rx="18" class="node-kernel" /><text class="body" x="812" y="760.0" text-anchor="middle">pre_authorization -&gt; guards -&gt; role -&gt; preconditions</text><text class="body" x="812" y="784.0" text-anchor="middle">tools -&gt; post_authorization -&gt; pre_output -&gt; schema</text><text class="body" x="812" y="808.0" text-anchor="middle">postconditions -&gt; post_output -&gt; risk</text><rect x="1246" y="336" width="242" height="88" rx="18" class="node-evidence" /><text class="box-title" x="1367" y="357.0" text-anchor="middle">Invocation artifact</text><text class="box-sub" x="1367" y="382.5" text-anchor="middle">PASS or FAIL</text><text class="box-sub" x="1367" y="405.5" text-anchor="middle">per invocation attempt</text><rect x="1246" y="466" width="242" height="96" rx="18" class="node-evidence" /><text class="box-title" x="1367" y="491.0" text-anchor="middle">AuditSink + signing</text><text class="box-sub" x="1367" y="516.5" text-anchor="middle">JSONL, callback, custom sink,</text><text class="box-sub" x="1367" y="539.5" text-anchor="middle">optional signer</text><rect x="1246" y="604" width="242" height="100" rx="18" class="node-ops" /><text class="box-title-compact" x="1367" y="618.5" text-anchor="middle">AuditLineage</text><text class="box-title-compact" x="1367" y="642.5" text-anchor="middle">compliance export</text><text class="box-title-compact" x="1367" y="666.5" text-anchor="middle">--lineage</text><text class="box-sub" x="1367" y="690.0" text-anchor="middle">stored-trail analysis</text><rect x="1242" y="736" width="250" height="124" rx="18" class="note-box" /><text class="body-plus" x="1367" y="752.0" text-anchor="middle">Workflow evidence</text><text class="body-plus" x="1367" y="777.0" text-anchor="middle">stays separate from</text><text class="body-plus" x="1367" y="802.0" text-anchor="middle">invocation artifacts.</text><text class="small-plus" x="1367" y="825.0" text-anchor="middle">Correlation is additive.</text><text class="small-plus" x="1367" y="846.0" text-anchor="middle">It does not replace evidence.</text><rect x="60" y="1028" width="1480" height="100" rx="24" class="ops-panel" /><text class="section-tag mono" x="84" y="1052">OPTIONAL NORMALIZATION ADAPTERS</text><rect x="92" y="1060" width="250" height="46" rx="14" class="node-adapter" /><text class="box-title" x="217" y="1083.0" text-anchor="middle">Bedrock adapter</text><rect x="364" y="1060" width="250" height="46" rx="14" class="node-adapter" /><text class="box-title" x="489" y="1083.0" text-anchor="middle">A2A adapter</text><rect x="636" y="1060" width="280" height="46" rx="14" class="node-adapter" /><text class="box-title" x="776" y="1083.0" text-anchor="middle">OpenAI Agents adapter</text><rect x="944" y="1054" width="564" height="58" rx="18" class="note-box" /><text class="body" x="1226" y="1083.0" text-anchor="middle">Host owns SDK clients, credentials, transport, retries, and execution.</text><rect x="60" y="1150" width="1480" height="100" rx="24" class="ops-panel" /><text class="section-tag mono" x="84" y="1174">ADOPTION + OPERATOR TOOLING</text><rect x="92" y="1182" width="258" height="46" rx="14" class="node-ops" /><text class="box-title" x="221" y="1205.0" text-anchor="middle">aegis workflow init</text><rect x="372" y="1182" width="258" height="46" rx="14" class="node-ops" /><text class="box-title" x="501" y="1205.0" text-anchor="middle">aegis workflow lint</text><rect x="652" y="1182" width="258" height="46" rx="14" class="node-ops" /><text class="box-title" x="781" y="1205.0" text-anchor="middle">aegis workflow doctor</text><rect x="932" y="1182" width="258" height="46" rx="14" class="node-ops" /><text class="box-title" x="1061" y="1205.0" text-anchor="middle">aegis workflow trace</text><rect x="1212" y="1182" width="258" height="46" rx="14" class="node-ops" /><text class="box-title" x="1341" y="1205.0" text-anchor="middle">aegis workflow export</text><path class="connector-soft" d="M243 186 V214 H532 V336" marker-end="url(#arrow-soft)" /><path class="connector" d="M378 375 H418 V380 H448" marker-end="url(#arrow)" /><path class="connector" d="M378 477 H404 V664 H448" marker-end="url(#arrow)" /><path class="connector" d="M808 544 V570" marker-end="url(#arrow)" /><path class="connector" d="M936 424 V436 H832 V578 H922 V620" marker-end="url(#arrow)" /><path class="connector" d="M1176 493 H1220 V514 H1246" marker-end="url(#arrow)" /><path class="connector" d="M1176 664 H1214 V380 H1246" marker-end="url(#arrow)" /><path class="connector" d="M1367 424 V466" marker-end="url(#arrow)" /><path class="connector" d="M1367 562 V604" marker-end="url(#arrow)" /><text class="footer-note-lg" x="60" y="1290.0" text-anchor="start">The host still performs provider and tool calls after AEGIS authorizes a step or invocation.</text><text class="footer-note-lg" x="60" y="1320.0" text-anchor="start">The beta adds workflow evidence. It does not collapse AEGIS into a hosted orchestrator.</text><text class="footer-small-lg" x="60" y="1341.5" text-anchor="start">Public boundary: workflow sessions and adapter submodules are packaged; internal implementation details</text><text class="footer-small-lg" x="60" y="1362.5" text-anchor="start">and target-state identity/manifest types are intentionally absent from this current-candidate view.</text></svg>
+  <path d="M0 0 L12 5 L0 10 z" fill="#93acce" fill-opacity="0.72" />
+</marker></defs><rect width="1600" height="1460" fill="#0b1118" rx="24" /><rect x="36" y="36" width="1528" height="1388" class="frame" rx="24" /><text class="page-title mono" x="60" y="44">AEGIS v0.9 BETA</text><text class="page-subtitle" x="60" y="68">aegis-ai-governance==0.9.0b1 | public beta | released from main</text><rect x="60" y="90" width="1480" height="160" rx="24" class="band" /><text class="section-tag mono" x="84" y="118">HOST APPLICATION</text><rect x="90" y="145" width="300" height="70" rx="16" class="host-box" data-node-id="host-app" /><text class="box-title" x="240.0" y="186.2" text-anchor="middle">App / Agent / Orchestrator</text><rect x="430" y="145" width="330" height="70" rx="16" class="host-box" data-node-id="host-runtime" /><text class="box-title-compact" x="595.0" y="175.5" text-anchor="middle">Provider / Tool / Transport</text><text class="box-sub-compact" x="595.0" y="195.4" text-anchor="middle">host runtime</text><rect x="800" y="135" width="690" height="90" rx="16" class="note-box" /><text class="body" x="1145.0" y="175.5" text-anchor="middle">Host owns execution, retries, credentials, and business state.</text><text class="small" x="1145.0" y="195.4" text-anchor="middle">Provider and tool calls remain outside AEGIS after authorization.</text><rect x="60" y="280" width="1480" height="720" rx="24" class="band" /><text class="section-tag mono" x="84" y="308">AEGIS SDK v0.9.0 BETA SURFACE</text><rect x="90" y="330" width="300" height="620" rx="22" class="policy-panel" /><text class="panel-title mono" x="114" y="358">POLICY + LOADING</text><rect x="420" y="330" width="760" height="620" rx="22" class="workflow-panel" /><text class="panel-title mono" x="444" y="358">WORKFLOW + INVOCATION GOVERNANCE</text><rect x="1210" y="330" width="300" height="620" rx="22" class="evidence-panel" /><text class="panel-title mono" x="1234" y="358">EVIDENCE + SUPPORT</text><rect x="115" y="390" width="120" height="70" rx="16" class="node-policy" data-node-id="policy-yaml" /><text class="box-title-compact" x="175.0" y="430.0" text-anchor="middle">Policy YAML</text><rect x="255" y="390" width="115" height="70" rx="16" class="node-policy" data-node-id="policy-cache" /><text class="box-title-compact" x="312.5" y="430.0" text-anchor="middle">PolicyCache</text><rect x="110" y="500" width="135" height="86" rx="16" class="node-policy" data-node-id="file-policy-loader" /><text class="box-title-compact" x="177.5" y="517.5" text-anchor="middle">FilePolicy</text><text class="box-title-compact" x="177.5" y="540.5" text-anchor="middle">Loader</text><text class="box-sub-compact" x="177.5" y="560.4" text-anchor="middle">or PolicyLoader</text><text class="box-sub-compact" x="177.5" y="579.4" text-anchor="middle">Base</text><rect x="265" y="500" width="105" height="86" rx="16" class="node-policy" data-node-id="json-schemas" /><text class="box-title-compact" x="317.5" y="536.5" text-anchor="middle">JSON</text><text class="box-title-compact" x="317.5" y="559.5" text-anchor="middle">Schemas</text><rect x="450" y="390" width="160" height="78" rx="16" class="node-workflow" data-node-id="open-session" /><text class="box-title-compact" x="530.0" y="422.5" text-anchor="middle">AEGIS.</text><text class="box-title-compact" x="530.0" y="445.5" text-anchor="middle">open_session()</text><rect x="640" y="390" width="170" height="78" rx="16" class="node-workflow" data-node-id="governance-session" /><text class="box-title-compact" x="725.0" y="434.0" text-anchor="middle">GovernanceSession</text><rect x="840" y="390" width="170" height="78" rx="16" class="node-workflow" data-node-id="session-pre-call-result" /><text class="box-title-compact" x="925.0" y="413.0" text-anchor="middle">SessionPreCall</text><text class="box-title-compact" x="925.0" y="436.0" text-anchor="middle">Result</text><text class="box-sub-compact" x="925.0" y="455.9" text-anchor="middle">workflow-bound token</text><rect x="1030" y="390" width="125" height="78" rx="16" class="node-workflow" data-node-id="workflow-dsl" /><text class="box-title-compact" x="1092.5" y="403.5" text-anchor="middle">Workflow</text><text class="box-title-compact" x="1092.5" y="426.5" text-anchor="middle">DSL</text><text class="box-sub-compact" x="1092.5" y="446.4" text-anchor="middle">budgets +</text><text class="box-sub-compact" x="1092.5" y="465.4" text-anchor="middle">approvals</text><rect x="820" y="520" width="335" height="92" rx="16" class="node-evidence" data-node-id="workflow-artifact" /><text class="box-title-compact" x="987.5" y="552.0" text-anchor="middle">Workflow artifact</text><text class="box-sub-compact" x="987.5" y="571.9" text-anchor="middle">COMPLETED | FAILED</text><text class="box-sub-compact" x="987.5" y="590.9" text-anchor="middle">CANCELED | INCOMPLETE</text><rect x="450" y="690" width="170" height="82" rx="16" class="node-kernel" data-node-id="enforce-invocation" /><text class="box-title-compact" x="535.0" y="724.5" text-anchor="middle">enforce_</text><text class="box-title-compact" x="535.0" y="747.5" text-anchor="middle">invocation()</text><rect x="650" y="690" width="150" height="82" rx="16" class="node-kernel" data-node-id="aegis-enforce" /><text class="box-title-compact" x="725.0" y="736.0" text-anchor="middle">AEGIS.enforce()</text><rect x="830" y="690" width="150" height="82" rx="16" class="node-kernel" data-node-id="split-apis" /><text class="box-title-compact" x="905.0" y="726.5" text-anchor="middle">split APIs</text><text class="box-sub-compact" x="905.0" y="746.4" text-anchor="middle">pre_call / post_call</text><rect x="1010" y="690" width="145" height="82" rx="16" class="node-kernel" data-node-id="ordered-gates" /><text class="box-title-compact" x="1082.5" y="717.0" text-anchor="middle">ordered gates</text><text class="box-sub-compact" x="1082.5" y="736.9" text-anchor="middle">auth -&gt; output</text><text class="box-sub-compact" x="1082.5" y="755.9" text-anchor="middle">-&gt; risk</text><rect x="1240" y="390" width="240" height="90" rx="16" class="node-evidence" data-node-id="invocation-artifact" /><text class="box-title-compact" x="1360.0" y="421.0" text-anchor="middle">Invocation artifact</text><text class="box-sub-compact" x="1360.0" y="440.9" text-anchor="middle">PASS or FAIL</text><text class="box-sub-compact" x="1360.0" y="459.9" text-anchor="middle">per attempt</text><rect x="1240" y="530" width="240" height="90" rx="16" class="node-evidence" data-node-id="audit-sink" /><text class="box-title-compact" x="1360.0" y="561.0" text-anchor="middle">AuditSink + signing</text><text class="box-sub-compact" x="1360.0" y="580.9" text-anchor="middle">JSONL / callback / custom</text><text class="box-sub-compact" x="1360.0" y="599.9" text-anchor="middle">optional signer</text><rect x="1240" y="680" width="240" height="100" rx="16" class="node-ops" data-node-id="audit-lineage" /><text class="box-title-compact" x="1360.0" y="702.5" text-anchor="middle">AuditLineage</text><text class="box-title-compact" x="1360.0" y="725.5" text-anchor="middle">compliance export</text><text class="box-title-compact" x="1360.0" y="748.5" text-anchor="middle">--lineage</text><text class="box-sub-compact" x="1360.0" y="768.4" text-anchor="middle">stored-trail analysis</text><rect x="115" y="630" width="250" height="110" rx="16" class="note-box" /><text class="body" x="240.0" y="669.0" text-anchor="middle">Load, validate, cache, and</text><text class="body" x="240.0" y="692.0" text-anchor="middle">compose policy contracts.</text><text class="small" x="240.0" y="711.9" text-anchor="middle">SDK-owned and deterministic.</text><rect x="450" y="520" width="330" height="92" rx="16" class="note-box" /><text class="body" x="615.0" y="559.5" text-anchor="middle">Tracks steps, checkpoints,</text><text class="body" x="615.0" y="582.5" text-anchor="middle">participants, and budgets.</text><rect x="450" y="820" width="705" height="92" rx="16" class="note-box" /><text class="body" x="802.5" y="859.5" text-anchor="middle">Gate order: pre-authorization -&gt; guards -&gt; role -&gt; preconditions -&gt; tools</text><text class="body" x="802.5" y="882.5" text-anchor="middle">post-authorization -&gt; pre-output -&gt; schema -&gt; postconditions -&gt; post-output -&gt; risk</text><rect x="1240" y="820" width="240" height="110" rx="16" class="note-box" /><text class="body" x="1360.0" y="847.5" text-anchor="middle">Workflow evidence</text><text class="body" x="1360.0" y="870.5" text-anchor="middle">stays separate</text><text class="body" x="1360.0" y="893.5" text-anchor="middle">from invocation artifacts.</text><text class="small" x="1360.0" y="913.4" text-anchor="middle">Correlation is additive.</text><rect x="315" y="232" width="150" height="22" rx="7" class="connector-label-fill" data-connector-label="host-to-session" /><text class="connector-label mono" x="390.0" y="247.0" text-anchor="middle">governed workflow</text><path class="connector-soft" d="M 240 215 L 240 260 L 530 260 L 530 390" data-connector-id="host-to-session" data-from="host-app" data-to="open-session" data-from-port="bottom" data-to-port="top" marker-end="url(#arrow-soft)" /><rect x="272" y="750" width="100" height="22" rx="7" class="connector-label-fill" data-connector-label="loader-to-entrypoint" /><text class="connector-label mono" x="322.0" y="765.0" text-anchor="middle">loads policy</text><path class="connector" d="M 177 586 L 177 610 L 400 610 L 400 731 L 450 731" data-connector-id="loader-to-entrypoint" data-from="file-policy-loader" data-to="enforce-invocation" data-from-port="bottom" data-to-port="left" marker-end="url(#arrow)" /><rect x="592" y="472" width="65" height="22" rx="7" class="connector-label-fill" data-connector-label="open-to-session" /><text class="connector-label mono" x="624.5" y="487.0" text-anchor="middle">opens</text><path class="connector" d="M 610 429 L 640 429" data-connector-id="open-to-session" data-from="open-session" data-to="governance-session" data-from-port="right" data-to-port="left" marker-end="url(#arrow)" /><rect x="800" y="625" width="92" height="22" rx="7" class="connector-label-fill" data-connector-label="session-to-token" /><text class="connector-label mono" x="846.0" y="640.0" text-anchor="middle">authorizes</text><path class="connector" d="M 810 429 L 840 429" data-connector-id="session-to-token" data-from="governance-session" data-to="session-pre-call-result" data-from-port="right" data-to-port="left" marker-end="url(#arrow)" /><rect x="660" y="625" width="130" height="22" rx="7" class="connector-label-fill" data-connector-label="session-to-workflow-evidence" /><text class="connector-label mono" x="725.0" y="640.0" text-anchor="middle">separate evidence</text><path class="connector-muted" d="M 725 468 L 725 492 L 987 492 L 987 520" data-connector-id="session-to-workflow-evidence" data-from="governance-session" data-to="workflow-artifact" data-from-port="bottom" data-to-port="top" marker-end="url(#arrow-muted)" /><rect x="1035" y="620" width="120" height="22" rx="7" class="connector-label-fill" data-connector-label="token-to-split" /><text class="connector-label mono" x="1095.0" y="635.0" text-anchor="middle">workflow-bound</text><path class="connector" d="M 925 390 L 925 375 L 1190 375 L 1190 650 L 905 650 L 905 690" data-connector-id="token-to-split" data-from="session-pre-call-result" data-to="split-apis" data-from-port="top" data-to-port="top" marker-end="url(#arrow)" /><rect x="1205" y="638" width="145" height="22" rx="7" class="connector-label-fill" data-connector-label="gates-to-invocation-evidence" /><text class="connector-label mono" x="1277.5" y="653.0" text-anchor="middle">per-attempt evidence</text><path class="connector" d="M 1155 731 L 1200 731 L 1200 435 L 1240 435" data-connector-id="gates-to-invocation-evidence" data-from="ordered-gates" data-to="invocation-artifact" data-from-port="right" data-to-port="left" marker-end="url(#arrow)" /><rect x="1372" y="494" width="74" height="22" rx="7" class="connector-label-fill" data-connector-label="artifact-to-sink" /><text class="connector-label mono" x="1409.0" y="509.0" text-anchor="middle">emits</text><path class="connector" d="M 1360 480 L 1360 530" data-connector-id="artifact-to-sink" data-from="invocation-artifact" data-to="audit-sink" data-from-port="bottom" data-to-port="top" marker-end="url(#arrow)" /><rect x="1372" y="638" width="82" height="22" rx="7" class="connector-label-fill" data-connector-label="sink-to-lineage" /><text class="connector-label mono" x="1413.0" y="653.0" text-anchor="middle">analyzes</text><path class="connector-muted" d="M 1360 620 L 1360 680" data-connector-id="sink-to-lineage" data-from="audit-sink" data-to="audit-lineage" data-from-port="bottom" data-to-port="top" marker-end="url(#arrow-muted)" /><rect x="60" y="1030" width="1480" height="110" rx="24" class="adapter-panel" /><text class="section-tag mono" x="84" y="1058">OPTIONAL NORMALIZATION ADAPTERS</text><rect x="90" y="1080" width="250" height="44" rx="13" class="node-adapter" data-node-id="bedrock-adapter" /><text class="box-title-compact" x="215.0" y="1107.0" text-anchor="middle">Bedrock adapter</text><rect x="365" y="1080" width="250" height="44" rx="13" class="node-adapter" data-node-id="a2a-adapter" /><text class="box-title-compact" x="490.0" y="1107.0" text-anchor="middle">A2A adapter</text><rect x="640" y="1080" width="280" height="44" rx="13" class="node-adapter" data-node-id="openai-agents-adapter" /><text class="box-title-compact" x="780.0" y="1107.0" text-anchor="middle">OpenAI Agents adapter</text><rect x="950" y="1070" width="550" height="64" rx="16" class="note-box" /><text class="body" x="1225.0" y="1107.0" text-anchor="middle">Host owns clients, credentials, transport, retries, and execution.</text><rect x="60" y="1170" width="1480" height="110" rx="24" class="ops-panel" /><text class="section-tag mono" x="84" y="1198">ADOPTION + OPERATOR TOOLING</text><rect x="90" y="1220" width="250" height="44" rx="13" class="node-ops" data-node-id="workflow-init" /><text class="box-title-compact" x="215.0" y="1247.0" text-anchor="middle">aegis workflow init</text><rect x="365" y="1220" width="250" height="44" rx="13" class="node-ops" data-node-id="workflow-lint" /><text class="box-title-compact" x="490.0" y="1247.0" text-anchor="middle">aegis workflow lint</text><rect x="640" y="1220" width="250" height="44" rx="13" class="node-ops" data-node-id="workflow-doctor" /><text class="box-title-compact" x="765.0" y="1247.0" text-anchor="middle">aegis workflow doctor</text><rect x="915" y="1220" width="250" height="44" rx="13" class="node-ops" data-node-id="workflow-trace" /><text class="box-title-compact" x="1040.0" y="1247.0" text-anchor="middle">aegis workflow trace</text><rect x="1190" y="1220" width="280" height="44" rx="13" class="node-ops" data-node-id="workflow-export" /><text class="box-title-compact" x="1330.0" y="1247.0" text-anchor="middle">aegis workflow export</text><text class="footer-note" x="60" y="1335">The host performs provider and tool calls after AEGIS authorizes a step or invocation.</text><text class="footer-note" x="60" y="1365">The beta adds workflow evidence. It does not turn AEGIS into a hosted orchestrator.</text><text class="footer-small" x="60" y="1400">Public beta: workflow sessions and adapter submodules are packaged; internal implementation details</text><text class="footer-small" x="60" y="1422">and target-state identity / manifest types are intentionally absent from this current view.</text></svg>

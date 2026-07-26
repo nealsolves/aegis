@@ -1,0 +1,22 @@
+policy_version: "1.0"
+
+roles:
+  - support_agent
+
+pre_conditions:
+  required:
+    customer_verified:
+      type: boolean
+
+post_conditions:
+  required:
+    - output_schema_valid
+
+output_schema:
+  $schema: "http://json-schema.org/draft-07/schema#"
+  type: object
+  properties:
+    result:
+      type: string
+  required:
+    - result

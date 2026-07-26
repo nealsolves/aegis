@@ -1,0 +1,13 @@
+extends: "northstar_base.yaml"
+composition_strategy: "intersect"
+policy_version: "1.0-restricted"
+description: "Fictional Northstar nurse-only scheduling policy"
+roles:
+  - nurse
+risk:
+  mode: strict
+  threshold: 0.1
+  factors:
+    - name: external_provider
+      weight: 0.5
+      condition: external_model

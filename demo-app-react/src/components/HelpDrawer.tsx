@@ -1,11 +1,23 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+} from 'react'
 import { useTheme } from '@/theme/ThemeContext'
 import { helpContent } from '@/help/helpContent'
+
+export interface ResultHelpContext {
+  reasonCode?: string
+  fields?: readonly string[]
+}
 
 interface Props {
   labId: number
   isOpen: boolean
   onClose: () => void
+  resultContext?: ResultHelpContext
 }
 
 const LABS_LABEL: Record<number, string> = {
@@ -21,18 +33,35 @@ const LABS_LABEL: Record<number, string> = {
   9: 'Lab 9 — Governed vs. Ungoverned',
   10: 'Lab 10 — Split Enforcement Explorer',
   11: 'Lab 11 — Workflow Governance',
+  12: 'Lab 12 — Integration Adapters',
 }
 
-export default function HelpDrawer({ labId, isOpen, onClose }: Props) {
+export default function HelpDrawer({
+  labId,
+  isOpen,
+  onClose,
+  resultContext,
+}: Props) {
   const { theme } = useTheme()
   const closeButtonRef = useRef<HTMLButtonElement>(null)
   const drawerRef = useRef<HTMLDivElement>(null)
   const prevFocusRef = useRef<HTMLElement | null>(null)
   const [glossaryState, setGlossaryState] = useState({ labId, open: false })
+  const [viewState, setViewState] = useState<{
+    labId: number
+    view: 'base' | 'result'
+  }>({ labId, view: 'base' })
 
   const lab = helpContent[labId] ?? helpContent[1]
   const isDark = theme === 'dark'
   const glossaryOpen = glossaryState.labId === labId ? glossaryState.open : false
+  const hasResultContext = resultContext !== undefined
+  const activeView = (
+    hasResultContext
+    && viewState.labId === labId
+  )
+    ? viewState.view
+    : 'base'
 
   // Focus close button on open; handle Escape and Tab focus trap
   useEffect(() => {
@@ -53,6 +82,11 @@ export default function HelpDrawer({ labId, isOpen, onClose }: Props) {
         if (!focusable || focusable.length === 0) { e.preventDefault(); return }
         const first = focusable[0]
         const last = focusable[focusable.length - 1]
+        if (!drawerRef.current?.contains(document.activeElement)) {
+          e.preventDefault()
+          ;(e.shiftKey ? last : first).focus()
+          return
+        }
         if (e.shiftKey) {
           if (document.activeElement === first) { e.preventDefault(); last.focus() }
         } else {
@@ -99,6 +133,36 @@ export default function HelpDrawer({ labId, isOpen, onClose }: Props) {
   const closeBtnColor = isDark ? '#8d8d9e' : '#525252'
   const backdropBg = isDark ? 'rgba(0,0,0,0.55)' : 'rgba(22,22,22,0.45)'
   const stepsLabelColor = isDark ? '#6b7280' : '#525252'
+
+  const selectView = (view: 'base' | 'result') => {
+    setViewState({ labId, view })
+  }
+
+  const handleViewKeyDown = (
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+    view: 'base' | 'result',
+  ) => {
+    if (
+      event.key !== 'ArrowLeft'
+      && event.key !== 'ArrowRight'
+      && event.key !== 'Home'
+      && event.key !== 'End'
+    ) {
+      return
+    }
+    event.preventDefault()
+    const nextView = (
+      event.key === 'Home'
+      || (event.key === 'ArrowLeft' && view === 'result')
+      || (event.key === 'ArrowRight' && view === 'result')
+    )
+      ? 'base'
+      : 'result'
+    selectView(nextView)
+    drawerRef.current
+      ?.querySelector<HTMLButtonElement>(`#help-view-${nextView}`)
+      ?.focus()
+  }
 
   return (
     <>
@@ -184,8 +248,8 @@ export default function HelpDrawer({ labId, isOpen, onClose }: Props) {
               border: `1px solid ${borderColor}`,
               color: closeBtnColor,
               borderRadius: '4px',
-              width: '2rem',
-              height: '2rem',
+              width: '2.75rem',
+              height: '2.75rem',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -200,8 +264,68 @@ export default function HelpDrawer({ labId, isOpen, onClose }: Props) {
           </button>
         </div>
 
+        {hasResultContext && (
+          <div
+            role="tablist"
+            aria-label="Guide views"
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              borderBottom: `1px solid ${borderColor}`,
+              background: headerBg,
+              flexShrink: 0,
+            }}
+          >
+            {(['base', 'result'] as const).map(view => (
+              <button
+                type="button"
+                role="tab"
+                id={`help-view-${view}`}
+                aria-controls={`help-panel-${view}`}
+                aria-selected={activeView === view}
+                tabIndex={activeView === view ? 0 : -1}
+                onClick={() => selectView(view)}
+                onKeyDown={event => handleViewKeyDown(event, view)}
+                key={view}
+                style={{
+                  minHeight: '2.75rem',
+                  padding: '0.625rem 1rem',
+                  border: 0,
+                  borderBottom: activeView === view
+                    ? `3px solid ${labelColor}`
+                    : '3px solid transparent',
+                  background: activeView === view ? sectionLabelBg : 'transparent',
+                  color: activeView === view ? titleColor : stepTextColor,
+                  fontFamily: "'IBM Plex Sans', sans-serif",
+                  fontSize: '0.9375rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                {view === 'base' ? 'Base Guide' : 'Result'}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Body */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem' }}>
+        <div
+          role={hasResultContext ? 'tabpanel' : undefined}
+          id={hasResultContext ? `help-panel-${activeView}` : undefined}
+          aria-labelledby={hasResultContext ? `help-view-${activeView}` : undefined}
+          style={{ flex: 1, overflowY: 'auto', padding: '1.5rem' }}
+        >
+          {activeView === 'result' && resultContext ? (
+            <ResultContextView
+              context={resultContext}
+              titleColor={titleColor}
+              textColor={sectionTextColor}
+              labelColor={labelColor}
+              borderColor={borderColor}
+              cardBg={sectionCardBg}
+            />
+          ) : (
+            <>
           {/* Overview */}
           <p
             style={{
@@ -444,6 +568,8 @@ export default function HelpDrawer({ labId, isOpen, onClose }: Props) {
               )}
             </div>
           )}
+            </>
+          )}
         </div>
 
         {/* Footer */}
@@ -478,6 +604,122 @@ export default function HelpDrawer({ labId, isOpen, onClose }: Props) {
         </div>
       </div>
     </>
+  )
+}
+
+function ResultContextView({
+  context,
+  titleColor,
+  textColor,
+  labelColor,
+  borderColor,
+  cardBg,
+}: {
+  context: ResultHelpContext
+  titleColor: string
+  textColor: string
+  labelColor: string
+  borderColor: string
+  cardBg: string
+}) {
+  const fields = context.fields ?? []
+
+  return (
+    <section aria-labelledby="returned-result-context-title">
+      <p
+        style={{
+          margin: '0 0 0.5rem',
+          color: labelColor,
+          fontFamily: "'IBM Plex Mono', monospace",
+          fontSize: '0.75rem',
+          letterSpacing: '0.08em',
+          textTransform: 'uppercase',
+        }}
+      >
+        Current response
+      </p>
+      <h2
+        id="returned-result-context-title"
+        style={{
+          margin: 0,
+          color: titleColor,
+          fontSize: '1.25rem',
+          lineHeight: 1.3,
+        }}
+      >
+        Returned result context
+      </h2>
+      <p
+        style={{
+          margin: '0.75rem 0 1.5rem',
+          color: textColor,
+          fontSize: '0.9375rem',
+          lineHeight: 1.6,
+        }}
+      >
+        This view repeats identifiers from the current validated adapter
+        response. Use Base Guide for the lab instructions.
+      </p>
+
+      {context.reasonCode && (
+        <div
+          style={{
+            marginBottom: '1rem',
+            padding: '1rem',
+            border: `1px solid ${borderColor}`,
+            background: cardBg,
+          }}
+        >
+          <h3 style={{ margin: '0 0 0.5rem', color: titleColor, fontSize: '1rem' }}>
+            Returned reason code
+          </h3>
+          <code
+            style={{
+              color: labelColor,
+              fontFamily: "'IBM Plex Mono', monospace",
+              fontSize: '0.8125rem',
+              overflowWrap: 'anywhere',
+            }}
+          >
+            {context.reasonCode}
+          </code>
+        </div>
+      )}
+
+      <div
+        style={{
+          padding: '1rem',
+          border: `1px solid ${borderColor}`,
+          background: cardBg,
+        }}
+      >
+        <h3 style={{ margin: '0 0 0.75rem', color: titleColor, fontSize: '1rem' }}>
+          Returned normalized fields
+        </h3>
+        {fields.length > 0 ? (
+          <ul style={{ margin: 0, paddingLeft: '1.25rem', color: textColor }}>
+            {fields.map(field => (
+              <li key={field} style={{ marginBottom: '0.5rem' }}>
+                <code
+                  style={{
+                    color: labelColor,
+                    fontFamily: "'IBM Plex Mono', monospace",
+                    fontSize: '0.8125rem',
+                    overflowWrap: 'anywhere',
+                  }}
+                >
+                  {field}
+                </code>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p style={{ margin: 0, color: textColor }}>
+            No normalized field names were returned.
+          </p>
+        )}
+      </div>
+    </section>
   )
 }
 
