@@ -46,7 +46,7 @@ the main-only selector cutover.
 PRs #24 and #25 promoted the main-only deployment selector cutover through
 `develop` and `main`. PRs #26 and #27 then corrected stale prerelease copy
 found by the live browser check. The resulting `main` merge commit was
-`b72436c3eb74289fda2fba7e7619602115ad4932`.
+`b72436c3d1dfe2ab7dabf23962bbd07dd1d4b077`.
 
 The GitHub Pages production environment was changed from a `develop` branch
 policy to a `main` branch policy. Pages runs `30179744636` and `30179937483`
