@@ -44,50 +44,6 @@ export const demoServiceNoticeCopy = {
     `Demo API contract mismatch. Frontend contract ${frontendContractVersion || '1'}; backend contract ${backendContractVersion || 'missing'}.`,
 } as const
 
-export const labRoutesCopy = [
-  { num: 1, title: 'Risk Scoring', short: 'Risk', heroTitle: 'Risk Scoring' },
-  { num: 2, title: 'Signing', short: 'Sign', heroTitle: 'Signing & Verification' },
-  { num: 3, title: 'Audit Chain', short: 'Chain', heroTitle: 'Audit Chain' },
-  { num: 4, title: 'Composition', short: 'Compose', heroTitle: 'Policy Composition' },
-  { num: 5, title: 'Loaders', short: 'Loaders', heroTitle: 'Loaders & Versioning' },
-  { num: 6, title: 'Custom Gates', short: 'Gates', heroTitle: 'Custom Gates' },
-  { num: 7, title: 'Compliance', short: 'Comply', heroTitle: 'Compliance Dashboard' },
-  {
-    num: 8,
-    title: 'Knowledge Base',
-    short: 'KB',
-    heroTitle: 'Governed Knowledge Base',
-  },
-  {
-    num: 9,
-    title: 'Governed vs Ungoverned',
-    short: 'Compare',
-    heroTitle: 'Governed vs. Ungoverned',
-  },
-  {
-    num: 10,
-    title: 'Split Enforcement',
-    short: 'Split',
-    heroTitle: 'Split Enforcement Explorer',
-  },
-  {
-    num: 11,
-    title: 'Workflow Lab (v0.9.0 Beta)',
-    short: 'Workflow',
-    heroTitle: 'Workflow Governance (v0.9.0 Beta)',
-  },
-  {
-    num: 12,
-    title: 'Integration Adapters',
-    short: 'Adapters',
-    heroTitle: 'Integration Adapters',
-  },
-] as const
-
-export const labNavCopy = {
-  ariaLabel: 'Lab navigation',
-} as const
-
 export const introCopy = {
   hero: {
     eyebrow: 'Policy checkpoints for AI calls and agent workflows',

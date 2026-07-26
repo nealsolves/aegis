@@ -316,10 +316,10 @@ export default function Lab12IntegrationAdapters({
   )
 
   return (
-    <main className="adapter-lab">
+    <div className="adapter-lab">
       <header className="adapter-lab__intro">
         <p className="scenario-kicker">Release-gated adapter fixtures</p>
-        <h1>Inspect normalization at the governance boundary.</h1>
+        <h2>Inspect normalization at the governance boundary.</h2>
         <p>
           Select an adapter exposed by the current demo manifest. The service
           runs a server-owned deterministic fixture through the installed
@@ -426,7 +426,7 @@ export default function Lab12IntegrationAdapters({
         && response.adapter_id === selectedAdapter
         && response.fixture_id === selectedFixture
         && <AdapterResult response={response} />}
-    </main>
+    </div>
   )
 }
 

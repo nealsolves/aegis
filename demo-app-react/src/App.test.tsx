@@ -74,15 +74,29 @@ describe('App routing', () => {
     ).toBeInTheDocument()
   })
 
-  it('preserves legacy lab deep links and shows lab tabs only there', () => {
-    renderRoute('#/lab/1')
+  it.each(Array.from({ length: 12 }, (_, index) => index + 1))(
+    'keeps /lab/%s stable with exactly one main landmark',
+    labId => {
+      const { container } = renderRoute(`#/lab/${labId}`)
+      expect(container.querySelectorAll('main')).toHaveLength(1)
+      expect(
+        screen.queryByRole('navigation', { name: 'Lab navigation' }),
+      ).not.toBeInTheDocument()
+    },
+  )
 
+  it('uses capability context instead of historical numbering', () => {
+    renderRoute('#/lab/9')
     expect(
-      screen.getByRole('button', { name: 'Run Enforcement →' }),
+      screen.getByRole('heading', {
+        level: 1,
+        name: 'Governed vs. Ungoverned',
+      }),
     ).toBeInTheDocument()
     expect(
-      screen.getByRole('navigation', { name: 'Lab navigation' }),
+      screen.getByRole('navigation', { name: 'Also in Decisions' }),
     ).toBeInTheDocument()
+    expect(screen.getByRole('main')).not.toHaveTextContent(/\bLab\s+\d+\b/)
   })
 
   it('renders the grouped labs index and the Lab 12 deep link', () => {
@@ -102,9 +116,6 @@ describe('App routing', () => {
       screen.getByRole('heading', {
         name: 'Inspect normalization at the governance boundary.',
       }),
-    ).toBeInTheDocument()
-    expect(
-      screen.getByRole('navigation', { name: 'Lab navigation' }),
     ).toBeInTheDocument()
   })
 
@@ -156,16 +167,29 @@ describe('App routing', () => {
     ).not.toBeInTheDocument()
   })
 
-  it('places the shared Guide launcher in a content-reserved rail', () => {
-    const { container } = renderRoute('#/demo/architecture')
-    const main = container.querySelector('main')
-    const rail = container.querySelector('.help-launcher')
-    const button = screen.getByRole('button', { name: 'Open lab guide' })
+  it('shows the Guide launcher only where guide content exists', () => {
+    const architecture = renderRoute('#/demo/architecture')
+    expect(
+      screen.getByRole('button', { name: 'Open lab guide' }),
+    ).toBeInTheDocument()
 
-    expect(rail).not.toBeNull()
-    expect(main?.previousElementSibling).toBe(rail)
-    expect(rail).toContainElement(button)
-    expect(button).not.toHaveStyle({ position: 'fixed' })
+    architecture.unmount()
+    renderRoute('#/demo/scenarios/atlas')
+    expect(
+      screen.queryByRole('button', { name: 'Open lab guide' }),
+    ).not.toBeInTheDocument()
+
+    cleanup()
+    renderRoute('#/demo/labs')
+    expect(
+      screen.queryByRole('button', { name: 'Open lab guide' }),
+    ).not.toBeInTheDocument()
+
+    cleanup()
+    renderRoute('#/lab/9')
+    expect(
+      screen.getByRole('button', { name: 'Open lab guide' }),
+    ).toBeInTheDocument()
   })
 
   it('does not render an empty demo service strip while readiness is checking', () => {

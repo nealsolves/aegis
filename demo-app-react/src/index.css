@@ -171,15 +171,13 @@ button:focus-visible {
   border-color: rgba(255, 255, 255, 0.18);
 }
 
-.demo-nav,
-.lab-nav {
+.demo-nav {
   background: var(--bg-nav);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   overflow-x: auto;
 }
 
-.demo-nav__inner,
-.lab-nav__inner {
+.demo-nav__inner {
   width: min(100%, 1440px);
   min-height: 3.25rem;
   margin: 0 auto;
@@ -189,8 +187,7 @@ button:focus-visible {
   gap: 0.25rem;
 }
 
-.demo-nav__link,
-.lab-nav__link {
+.demo-nav__link {
   min-height: 2.75rem;
   display: inline-flex;
   align-items: center;
@@ -204,27 +201,14 @@ button:focus-visible {
   transition: color 140ms ease, border-color 140ms ease, background-color 140ms ease;
 }
 
-.demo-nav__link:hover,
-.lab-nav__link:hover {
+.demo-nav__link:hover {
   color: #ffffff;
   background: rgba(255, 255, 255, 0.06);
 }
 
-.demo-nav__link--active,
-.lab-nav__link--active {
+.demo-nav__link--active {
   color: var(--ibm-cyan-30);
   border-bottom-color: var(--ibm-blue-60);
-}
-
-.lab-nav__inner {
-  width: max-content;
-  min-width: 100%;
-}
-
-.lab-nav__link {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 0.875rem;
-  letter-spacing: 0.02em;
 }
 
 .demo-service-notice {
@@ -2158,6 +2142,194 @@ button:focus-visible {
   }
 }
 
+/* Capability-aware lab routes */
+
+.lab-route {
+  flex: 1;
+  padding-bottom: 5rem;
+}
+
+.lab-context {
+  border-bottom: 1px solid var(--border-ui);
+  background: var(--bg-surface);
+}
+
+.lab-context__inner {
+  width: min(100% - 2rem, 84rem);
+  min-height: 3.5rem;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-secondary);
+  font-size: 1rem;
+}
+
+.lab-context__inner a {
+  min-height: 2.75rem;
+  display: inline-flex;
+  align-items: center;
+  color: var(--ibm-blue-60);
+  font-weight: 600;
+  text-underline-offset: 0.2em;
+}
+
+[data-theme="dark"] .lab-context__inner a {
+  color: var(--ibm-cyan-30);
+}
+
+.lab-context__inner svg {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+}
+
+.lab-route__hero {
+  width: min(100% - 2rem, 84rem);
+  margin: 0 auto;
+  padding: clamp(3.5rem, 7vw, 6.5rem) 0 clamp(2.75rem, 6vw, 5rem);
+  border-bottom: 1px solid var(--border-ui);
+}
+
+.lab-route__hero h1 {
+  max-width: 16ch;
+  margin: 0;
+  color: var(--text-primary);
+  font-size: clamp(2.5rem, 5.5vw, 4.5rem);
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1.02;
+}
+
+.lab-route__hero .scenario-kicker {
+  color: var(--lab-accent-light);
+}
+
+[data-theme="dark"] .lab-route__hero .scenario-kicker {
+  color: var(--lab-accent-dark);
+}
+
+.lab-route__hero > p:last-child {
+  max-width: 70ch;
+  margin: 1.5rem 0 0;
+  color: var(--text-secondary);
+  font-size: clamp(1.0625rem, 1.7vw, 1.25rem);
+  line-height: 1.65;
+}
+
+.lab-route__layout {
+  width: min(100% - 2rem, 84rem);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(15rem, 19rem);
+  align-items: start;
+  gap: clamp(2rem, 5vw, 4.5rem);
+}
+
+.lab-route__experiment {
+  min-width: 0;
+}
+
+.lab-related {
+  margin-top: clamp(3rem, 6vw, 5rem);
+  border-top: 1px solid var(--border-ui);
+}
+
+.lab-related > p,
+.lab-route__continue > p {
+  margin: 0;
+  padding: 1rem;
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.lab-related ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lab-related li {
+  border-top: 1px solid var(--border-ui);
+}
+
+.lab-related a {
+  min-height: 2.75rem;
+  padding: 0.875rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  font-size: 1rem;
+  line-height: 1.4;
+  text-decoration: none;
+}
+
+.lab-related a:hover {
+  color: var(--ibm-blue-60);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+[data-theme="dark"] .lab-related a:hover {
+  color: var(--ibm-cyan-30);
+}
+
+.lab-related a[aria-current="page"] {
+  border-left: 3px solid var(--ibm-blue-60);
+  font-weight: 600;
+}
+
+[data-theme="dark"] .lab-related a[aria-current="page"] {
+  border-left-color: var(--ibm-cyan-30);
+}
+
+.lab-related a svg,
+.lab-route__continue a svg {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+}
+
+.lab-route__continue {
+  width: min(100% - 2rem, 84rem);
+  margin: 0 auto;
+  border-top: 1px solid var(--border-ui);
+  border-bottom: 1px solid var(--border-ui);
+  display: grid;
+  grid-template-columns: minmax(15rem, 0.34fr) minmax(0, 0.66fr);
+}
+
+.lab-route__continue a {
+  min-height: 2.75rem;
+  padding: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-left: 1px solid var(--border-ui);
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  font-size: 1rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.lab-route__continue a:hover {
+  color: var(--ibm-blue-60);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+[data-theme="dark"] .lab-route__continue a:hover {
+  color: var(--ibm-cyan-30);
+}
+
 /* Grouped lab discovery */
 
 .labs-index {
@@ -2408,7 +2580,7 @@ button:focus-visible {
   padding-bottom: clamp(2rem, 5vw, 3.5rem);
 }
 
-.adapter-lab__intro h1 {
+.adapter-lab__intro h2 {
   max-width: 18ch;
   margin: 0;
   color: var(--text-primary);
@@ -2732,16 +2904,15 @@ button:focus-visible {
   color: var(--text-secondary);
 }
 
-/* The Guide launcher participates in document flow and reserves its own space. */
-
 .help-launcher {
-  width: min(100% - 2rem, 84rem);
-  min-height: 5.75rem;
-  margin: 0 auto;
-  padding: 1rem 0 2rem;
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-end;
+  position: fixed;
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  z-index: 150;
+  width: auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
 }
 
 .help-launcher__button {
@@ -3009,6 +3180,14 @@ button:focus-visible {
 }
 
 @media (max-width: 64rem) {
+  .lab-route__layout {
+    grid-template-columns: 1fr;
+  }
+
+  .lab-related {
+    margin-top: 0;
+  }
+
   .labs-journey,
   .labs-group {
     grid-template-columns: 1fr;
@@ -3032,9 +3211,24 @@ button:focus-visible {
 @media (max-width: 48rem) {
   .labs-index,
   .adapter-lab,
-  .faq-page,
-  .help-launcher {
+  .faq-page {
     width: min(100% - 1.5rem, 84rem);
+  }
+
+  .lab-context__inner,
+  .lab-route__hero,
+  .lab-route__layout,
+  .lab-route__continue {
+    width: min(100% - 1.5rem, 84rem);
+  }
+
+  .lab-route__continue {
+    grid-template-columns: 1fr;
+  }
+
+  .lab-route__continue a {
+    border-top: 1px solid var(--border-ui);
+    border-left: 0;
   }
 
   .faq-category {
@@ -3104,7 +3298,7 @@ button:focus-visible {
   }
 
   .help-launcher__button {
-    width: 100%;
+    width: auto;
     justify-content: center;
   }
 

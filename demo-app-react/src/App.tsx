@@ -6,10 +6,9 @@ import HelpDrawer, {
 } from '@/components/HelpDrawer'
 import AppNav from '@/components/layout/AppNav'
 import DemoNav from '@/components/layout/DemoNav'
-import LabHero from '@/components/layout/LabHero'
-import LabTabs from '@/components/layout/LabTabs'
+import LabRouteLayout from '@/components/layout/LabRouteLayout'
 import { DemoServiceNotice } from '@/components/service/DemoServiceNotice'
-import { labRoutesCopy } from '@/content/demoCopy'
+import { LABS, LABS_BY_ID, getLabById } from '@/content/labCatalog'
 import Lab1RiskScoring from '@/labs/Lab1RiskScoring'
 import Lab2Signing from '@/labs/Lab2Signing'
 import Lab3AuditChain from '@/labs/Lab3AuditChain'
@@ -29,19 +28,16 @@ import LabsIndexPage from '@/pages/LabsIndexPage'
 import ScenariosIndexPage from '@/pages/ScenariosIndexPage'
 import ScenarioPage from '@/routes/scenarios/ScenarioPage'
 
-const LABS = labRoutesCopy
-
 interface RouteDescriptor {
   helpLabId: number | null
   showDemoNav: boolean
   showDemoService: boolean
-  showLabTabs: boolean
 }
 
 function describeRoute(pathname: string): RouteDescriptor {
   const labMatch = pathname.match(/^\/lab\/(\d+)$/)
   const labId = labMatch ? Number.parseInt(labMatch[1], 10) : null
-  const knownLabId = labId !== null && LABS.some((lab) => lab.num === labId)
+  const knownLabId = labId !== null && getLabById(labId) !== undefined
     ? labId
     : null
   const isDemoRoute = pathname.startsWith('/demo/')
@@ -51,7 +47,6 @@ function describeRoute(pathname: string): RouteDescriptor {
     helpLabId: pathname === '/demo/architecture' ? 0 : knownLabId,
     showDemoNav: isDemoRoute || isLabRoute || pathname === '/faq',
     showDemoService: isDemoRoute || isLabRoute,
-    showLabTabs: knownLabId !== null,
   }
 }
 
@@ -75,6 +70,27 @@ function AppContent() {
     },
     [location.key],
   )
+  const labRoutes = [
+    { lab: LABS_BY_ID[1], body: <Lab1RiskScoring /> },
+    { lab: LABS_BY_ID[2], body: <Lab2Signing /> },
+    { lab: LABS_BY_ID[3], body: <Lab3AuditChain /> },
+    { lab: LABS_BY_ID[4], body: <Lab4Composition /> },
+    { lab: LABS_BY_ID[5], body: <Lab5Loaders /> },
+    { lab: LABS_BY_ID[6], body: <Lab6CustomGates /> },
+    { lab: LABS_BY_ID[7], body: <Lab7Compliance /> },
+    { lab: LABS_BY_ID[8], body: <Lab8GovernedKnowledgeBase /> },
+    { lab: LABS_BY_ID[9], body: <Lab9GovernedVsUngoverned /> },
+    { lab: LABS_BY_ID[10], body: <Lab10SplitEnforcementExplorer /> },
+    { lab: LABS_BY_ID[11], body: <Lab11WorkflowLab /> },
+    {
+      lab: LABS_BY_ID[12],
+      body: (
+        <Lab12IntegrationAdapters
+          onResultHelpContext={handleResultHelpContext}
+        />
+      ),
+    },
+  ] as const
   const resultHelpContext = (
     route.helpLabId === 12
     && resultHelpState?.locationKey === location.key
@@ -87,7 +103,6 @@ function AppContent() {
       <AppNav />
       {route.showDemoNav && <DemoNav />}
       {route.showDemoService && <DemoServiceNotice />}
-      {route.showLabTabs && <LabTabs labs={LABS} />}
       {route.helpLabId !== null && (
         <div className="help-launcher">
           <HelpButton isOpen={isHelpOpen} onOpen={handleOpen} />
@@ -104,28 +119,13 @@ function AppContent() {
           element={<LabsIndexPage />}
         />
         <Route path="/faq" element={<FaqPage />} />
-        <Route path="/lab/1" element={<><LabHero labNum={1} title={LABS[0].heroTitle} /><Lab1RiskScoring /></>} />
-        <Route path="/lab/2" element={<><LabHero labNum={2} title={LABS[1].heroTitle} /><Lab2Signing /></>} />
-        <Route path="/lab/3" element={<><LabHero labNum={3} title={LABS[2].heroTitle} /><Lab3AuditChain /></>} />
-        <Route path="/lab/4" element={<><LabHero labNum={4} title={LABS[3].heroTitle} /><Lab4Composition /></>} />
-        <Route path="/lab/5" element={<><LabHero labNum={5} title={LABS[4].heroTitle} /><Lab5Loaders /></>} />
-        <Route path="/lab/6" element={<><LabHero labNum={6} title={LABS[5].heroTitle} /><Lab6CustomGates /></>} />
-        <Route path="/lab/7" element={<><LabHero labNum={7} title={LABS[6].heroTitle} /><Lab7Compliance /></>} />
-        <Route path="/lab/8" element={<><LabHero labNum={8} title={LABS[7].heroTitle} /><Lab8GovernedKnowledgeBase /></>} />
-        <Route path="/lab/9" element={<><LabHero labNum={9} title={LABS[8].heroTitle} /><Lab9GovernedVsUngoverned /></>} />
-        <Route path="/lab/10" element={<><LabHero labNum={10} title={LABS[9].heroTitle} /><Lab10SplitEnforcementExplorer /></>} />
-        <Route path="/lab/11" element={<><LabHero labNum={11} title={LABS[10].heroTitle} /><Lab11WorkflowLab /></>} />
-        <Route
-          path="/lab/12"
-          element={(
-            <>
-              <LabHero labNum={12} title={LABS[11].heroTitle} />
-              <Lab12IntegrationAdapters
-                onResultHelpContext={handleResultHelpContext}
-              />
-            </>
-          )}
-        />
+        {labRoutes.map(({ lab, body }) => (
+          <Route
+            path={lab.path}
+            element={<LabRouteLayout lab={lab}>{body}</LabRouteLayout>}
+            key={lab.id}
+          />
+        ))}
       </Routes>
       {route.helpLabId !== null && (
         <HelpDrawer
