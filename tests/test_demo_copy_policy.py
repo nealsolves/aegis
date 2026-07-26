@@ -191,3 +191,86 @@ def test_frontend_root_ignores_internal_identifier_but_scans_visible_copy(
 
     assert main(["--frontend-root", str(visible_root)]) == 1
     assert "journey" in capsys.readouterr().out
+
+
+def test_frontend_root_recurses_into_jsx_returned_by_map_callbacks(
+    capsys,
+    tmp_path,
+):
+    page = tmp_path / "MappedPage.tsx"
+    page.write_text(
+        """
+        export function MappedPage({ items }) {
+          return <section>{items.map(() => (
+            <p>At its <strong>core</strong>, AEGIS checks policy.</p>
+          ))}</section>
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    assert main(["--frontend-root", str(tmp_path)]) == 1
+    assert "at its core" in capsys.readouterr().out
+
+
+def test_frontend_root_scans_public_capitalized_component_props_only(
+    capsys,
+    tmp_path,
+):
+    internal_root = tmp_path / "internal"
+    internal_root.mkdir()
+    (internal_root / "InternalCard.tsx").write_text(
+        """
+        export const card = (
+          <FeatureCard
+            state="journey_state"
+            href="https://example.test/journey"
+            style={{ background: 'var(--journey-state)' }}
+          />
+        )
+        """,
+        encoding="utf-8",
+    )
+    public_root = tmp_path / "public"
+    public_root.mkdir()
+    public_page = public_root / "PublicCard.tsx"
+    public_page.write_text(
+        """
+        export const card = (
+          <FeatureCard
+            description="At its core, AEGIS checks policy."
+            state="journey_state"
+            href="https://example.test/journey"
+          />
+        )
+        """,
+        encoding="utf-8",
+    )
+
+    assert main(["--frontend-root", str(internal_root)]) == 0
+    assert capsys.readouterr().out == ""
+
+    assert main(["--frontend-root", str(public_root)]) == 1
+    output = capsys.readouterr().out
+    assert "at its core" in output
+    assert "journey" not in output
+
+
+def test_frontend_root_keeps_router_links_inline_with_source_line_mapping(
+    capsys,
+    tmp_path,
+):
+    page = tmp_path / "LinkedPage.tsx"
+    page.write_text(
+        """import { Link } from 'react-router-dom'
+        export function LinkedPage() {
+          return <p>At its <Link to="/core">core</Link>, AEGIS checks policy.</p>
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    assert main(["--frontend-root", str(tmp_path)]) == 1
+    output = capsys.readouterr().out
+    assert "at its core" in output
+    assert f"{page}:3:" in output

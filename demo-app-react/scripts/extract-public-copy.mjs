@@ -19,11 +19,33 @@ const INLINE_TAGS = new Set([
   'time',
 ])
 
+const INLINE_COMPONENTS = new Set([
+  'Link',
+  'NavLink',
+])
+
 const PUBLIC_ATTRIBUTES = new Set([
   'alt',
   'aria-description',
   'aria-label',
   'placeholder',
+  'title',
+])
+
+const PUBLIC_COMPONENT_PROPS = new Set([
+  'caption',
+  'content',
+  'description',
+  'emptyState',
+  'eyebrow',
+  'label',
+  'lead',
+  'message',
+  'question',
+  'subtitle',
+  'summary',
+  'text',
+  'tip',
   'title',
 ])
 
@@ -263,22 +285,31 @@ function extractFile(path, source) {
       return
     }
 
-    ts.forEachChild(node, (child) => {
+    function renderNestedJsx(child) {
       if (
         ts.isJsxElement(child)
         || ts.isJsxFragment(child)
         || ts.isJsxSelfClosingElement(child)
       ) {
         renderJsx(child)
+        return
       }
-    })
+      ts.forEachChild(child, renderNestedJsx)
+    }
+
+    ts.forEachChild(node, renderNestedJsx)
   }
 
-  function extractPublicAttributes(attributes) {
+  function extractPublicAttributes(attributes, isComponent) {
     for (const attribute of attributes.properties) {
       if (!ts.isJsxAttribute(attribute)) continue
       const name = attribute.name.getText(sourceFile)
-      if (!PUBLIC_ATTRIBUTES.has(name)) continue
+      if (
+        !PUBLIC_ATTRIBUTES.has(name)
+        && !(isComponent && PUBLIC_COMPONENT_PROPS.has(name))
+      ) {
+        continue
+      }
       const value = staticText(attribute.initializer)
       if (value !== null) standalone(value, attribute)
     }
@@ -291,10 +322,14 @@ function extractFile(path, source) {
     }
 
     const opening = ts.isJsxElement(node) ? node.openingElement : node
-    const tagName = opening.tagName.getText(sourceFile).toLowerCase()
-    const isBlock = !INLINE_TAGS.has(tagName)
+    const tagName = opening.tagName.getText(sourceFile)
+    const isComponent = /^[A-Z]/.test(tagName)
+    const isBlock = !(
+      INLINE_TAGS.has(tagName.toLowerCase())
+      || INLINE_COMPONENTS.has(tagName)
+    )
     if (isBlock) boundary()
-    extractPublicAttributes(opening.attributes)
+    extractPublicAttributes(opening.attributes, isComponent)
     if (ts.isJsxElement(node)) {
       for (const child of node.children) renderJsxChild(child)
     }
