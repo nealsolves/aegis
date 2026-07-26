@@ -725,16 +725,16 @@ describe('LabRouteLayout', () => {
     })).toHaveAttribute('href', '/lab/10')
   })
 
-  it('shows continuation only for the first-visit journey', () => {
+  it('shows continuation only for the first-visit path', () => {
     const journey = renderLayout(9)
     expect(screen.getByRole('navigation', {
-      name: 'Continue the first-visit journey',
+      name: 'Continue the first-visit path',
     })).toHaveTextContent('Explore checkpoints')
 
     journey.unmount()
     renderLayout(1)
     expect(screen.queryByRole('navigation', {
-      name: 'Continue the first-visit journey',
+      name: 'Continue the first-visit path',
     })).not.toBeInTheDocument()
   })
 })
@@ -904,9 +904,9 @@ export default function LabRouteLayout({
       {nextJourneyLab && (
         <nav
           className="lab-route__continue"
-          aria-label="Continue the first-visit journey"
+          aria-label="Continue the first-visit path"
         >
-          <p>Continue the first-visit journey</p>
+          <p>Continue the first-visit path</p>
           <Link to={nextJourneyLab.path}>
             Next: {nextJourneyLab.journey!.action}
             <ArrowRight aria-hidden="true" />
@@ -1284,7 +1284,7 @@ successful demo API response to verify their layout and semantics.
 At `#/demo/labs`, check at `1440×1000` and `390×844`:
 
 - the hero reads `See where governance changes the outcome.`;
-- the first-visit journey contains no lab numbers;
+- the first-visit path contains no lab numbers;
 - all four capability groups and twelve destinations are visible;
 - card titles and journey actions are readable body text;
 - keyboard focus is visible;
@@ -1367,7 +1367,7 @@ If Step 7 required no changes, do not create an empty commit.
 - [ ] All twelve stable deep links resolve.
 - [ ] All twelve lab routes expose exactly one `<main>`.
 - [ ] The Labs index contains every lab exactly once under the approved group.
-- [ ] The first-visit journey uses outcomes, not route numbers.
+- [ ] The first-visit path uses outcomes, not route numbers.
 - [ ] Route heroes, related navigation, and Help titles contain no `Lab N`.
 - [ ] The flat twelve-item lab strip is gone.
 - [ ] Help drawer behavior and Integration Adapters result help are unchanged.
