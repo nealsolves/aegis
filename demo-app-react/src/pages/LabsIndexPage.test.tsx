@@ -4,24 +4,24 @@ import LabsIndexPage from './LabsIndexPage'
 
 const EXPECTED_GROUPS = {
   Decisions: [
-    ['Lab 9', 'Governed vs. Ungoverned', '/lab/9'],
-    ['Lab 10', 'Split Enforcement', '/lab/10'],
-    ['Lab 1', 'Risk Scoring', '/lab/1'],
+    ['Governed vs. Ungoverned', '/lab/9'],
+    ['Split Enforcement', '/lab/10'],
+    ['Risk Scoring', '/lab/1'],
   ],
   'Policies and gates': [
-    ['Lab 4', 'Policy Composition', '/lab/4'],
-    ['Lab 5', 'Loaders and Versioning', '/lab/5'],
-    ['Lab 6', 'Custom Gates', '/lab/6'],
+    ['Policy Composition', '/lab/4'],
+    ['Loaders and Versioning', '/lab/5'],
+    ['Custom Gates', '/lab/6'],
   ],
   Evidence: [
-    ['Lab 2', 'Signing and Verification', '/lab/2'],
-    ['Lab 3', 'Audit Chain', '/lab/3'],
-    ['Lab 7', 'Compliance Dashboard', '/lab/7'],
+    ['Signing and Verification', '/lab/2'],
+    ['Audit Chain', '/lab/3'],
+    ['Compliance Dashboard', '/lab/7'],
   ],
   'Systems and workflows': [
-    ['Lab 8', 'Governed Knowledge Base', '/lab/8'],
-    ['Lab 11', 'Workflow Governance', '/lab/11'],
-    ['Lab 12', 'Integration Adapters', '/lab/12'],
+    ['Governed Knowledge Base', '/lab/8'],
+    ['Workflow Governance', '/lab/11'],
+    ['Integration Adapters', '/lab/12'],
   ],
 } as const
 
@@ -45,23 +45,22 @@ describe('LabsIndexPage', () => {
       const links = within(section!).getAllByRole('link')
       expect(links).toHaveLength(expectedLabs.length)
       expect(links.map(link => link.getAttribute('href'))).toEqual(
-        expectedLabs.map(([, , href]) => href),
+        expectedLabs.map(([, href]) => href),
       )
 
-      expectedLabs.forEach(([labNumber, title], index) => {
-        expect(links[index]).toHaveTextContent(labNumber)
+      expectedLabs.forEach(([title], index) => {
         expect(links[index]).toHaveTextContent(title)
       })
     }
   })
 
-  it('shows the real 9 to 10 to 11 recommended first visit path', () => {
+  it('shows the approved number-free first-visit path', () => {
     renderPage()
 
-    const path = screen.getByRole('navigation', {
-      name: 'Recommended first visit',
+    const journey = screen.getByRole('navigation', {
+      name: 'First-visit path',
     })
-    const links = within(path).getAllByRole('link')
+    const links = within(journey).getAllByRole('link')
 
     expect(links.map(link => link.getAttribute('href'))).toEqual([
       '/lab/9',
@@ -69,13 +68,19 @@ describe('LabsIndexPage', () => {
       '/lab/11',
     ])
     expect(links.map(link => link.textContent)).toEqual([
-      expect.stringContaining('9'),
-      expect.stringContaining('10'),
-      expect.stringContaining('11'),
+      expect.stringContaining('Compare enforcement'),
+      expect.stringContaining('Explore checkpoints'),
+      expect.stringContaining('Govern the handoff'),
     ])
   })
 
-  it('preserves every legacy lab destination and adds Lab 12', () => {
+  it('does not expose historical lab numbers', () => {
+    const { container } = renderPage()
+
+    expect(container.textContent).not.toMatch(/\bLab\s+\d+\b/)
+  })
+
+  it('preserves every lab destination', () => {
     renderPage()
 
     const groupedLabs = screen.getByTestId('grouped-labs')

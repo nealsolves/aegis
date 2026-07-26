@@ -88,7 +88,9 @@ describe('App routing', () => {
   it('renders the grouped labs index and the Lab 12 deep link', () => {
     const index = renderRoute('#/demo/labs')
     expect(
-      screen.getByRole('heading', { name: 'Choose a governance question.' }),
+      screen.getByRole('heading', {
+        name: 'See where governance changes the outcome.',
+      }),
     ).toBeInTheDocument()
     expect(
       screen.getByRole('heading', { name: 'Systems and workflows' }),

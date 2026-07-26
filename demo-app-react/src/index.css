@@ -2189,21 +2189,21 @@ button:focus-visible {
   line-height: 1.65;
 }
 
-.labs-recommended {
+.labs-journey {
   display: grid;
   grid-template-columns: minmax(15rem, 0.34fr) minmax(0, 0.66fr);
   border: 1px solid var(--border-ui);
   background: var(--bg-surface);
 }
 
-.labs-recommended__heading {
+.labs-journey__heading {
   padding: clamp(1.5rem, 3vw, 2.25rem);
   border-right: 1px solid var(--border-ui);
   background: rgba(15, 98, 254, 0.06);
 }
 
-.labs-recommended__heading p,
-.labs-group__heading::before,
+.labs-journey__heading p,
+.labs-group__heading > p:first-child,
 .adapter-run-panel > div:first-child > p,
 .adapter-result-panel__label {
   color: var(--ibm-blue-60);
@@ -2214,18 +2214,18 @@ button:focus-visible {
   text-transform: uppercase;
 }
 
-[data-theme="dark"] .labs-recommended__heading p,
-[data-theme="dark"] .labs-group__heading::before,
+[data-theme="dark"] .labs-journey__heading p,
+[data-theme="dark"] .labs-group__heading > p:first-child,
 [data-theme="dark"] .adapter-run-panel > div:first-child > p,
 [data-theme="dark"] .adapter-result-panel__label {
   color: var(--ibm-cyan-30);
 }
 
-.labs-recommended__heading p {
+.labs-journey__heading p {
   margin: 0 0 0.75rem;
 }
 
-.labs-recommended__heading h2 {
+.labs-journey__heading h2 {
   max-width: 20ch;
   margin: 0;
   font-size: clamp(1.35rem, 2vw, 1.75rem);
@@ -2233,7 +2233,7 @@ button:focus-visible {
   line-height: 1.25;
 }
 
-.labs-recommended ol {
+.labs-journey ol {
   margin: 0;
   padding: 0;
   display: grid;
@@ -2241,26 +2241,26 @@ button:focus-visible {
   list-style: none;
 }
 
-.labs-recommended li {
+.labs-journey li {
   min-width: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 1.25rem;
   align-items: center;
 }
 
-.labs-recommended li:last-child {
+.labs-journey li:last-child {
   grid-template-columns: minmax(0, 1fr);
 }
 
-.labs-recommended li > svg {
+.labs-journey li > svg {
   width: 1rem;
   height: 1rem;
   color: var(--text-secondary);
 }
 
-.labs-recommended a {
+.labs-journey a {
   min-width: 0;
-  min-height: 7.5rem;
+  min-height: 2.75rem;
   padding: 1.25rem 1rem;
   display: flex;
   justify-content: center;
@@ -2269,21 +2269,35 @@ button:focus-visible {
   text-decoration: none;
 }
 
-.labs-recommended a:hover {
+.labs-journey a:hover {
   background: rgba(15, 98, 254, 0.08);
 }
 
-.labs-recommended a span {
+.labs-journey a span {
   color: var(--ibm-blue-60);
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 0.875rem;
+  font-size: 0.9375rem;
 }
 
-[data-theme="dark"] .labs-recommended a span {
+[data-theme="dark"] .labs-journey a span {
   color: var(--ibm-cyan-30);
 }
 
-.labs-recommended a strong {
+.labs-journey a .labs-journey__lab-title {
+  margin-top: 0.375rem;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 1rem;
+  letter-spacing: normal;
+  line-height: 1.5;
+  text-transform: none;
+}
+
+[data-theme="dark"] .labs-journey a .labs-journey__lab-title {
+  color: var(--text-secondary);
+}
+
+.labs-journey a strong {
   margin-top: 0.5rem;
   font-size: 1rem;
   line-height: 1.35;
@@ -2304,10 +2318,8 @@ button:focus-visible {
   padding: clamp(2rem, 4vw, 3rem) clamp(1rem, 3vw, 2rem) clamp(2rem, 4vw, 3rem) 0;
 }
 
-.labs-group__heading::before {
-  content: 'Capability group';
-  display: block;
-  margin-bottom: 0.75rem;
+.labs-group__heading > p:first-child {
+  margin: 0 0 0.75rem;
 }
 
 .labs-group__heading h2 {
@@ -2317,7 +2329,16 @@ button:focus-visible {
   line-height: 1.2;
 }
 
-.labs-group__heading p {
+.labs-group__heading h3 {
+  max-width: 18ch;
+  margin: 0.75rem 0 0;
+  color: var(--text-primary);
+  font-size: clamp(1.25rem, 2vw, 1.625rem);
+  font-weight: 500;
+  line-height: 1.25;
+}
+
+.labs-group__heading > p:last-child {
   max-width: 34ch;
   margin: 0.875rem 0 0;
   color: var(--text-secondary);
@@ -2333,7 +2354,7 @@ button:focus-visible {
 
 .lab-index-card {
   min-width: 0;
-  min-height: 11rem;
+  min-height: 2.75rem;
   padding: 1.5rem;
   display: flex;
   flex-direction: column;
@@ -2352,14 +2373,14 @@ button:focus-visible {
 }
 
 .lab-index-card span {
+  margin-top: 1rem;
   color: var(--text-secondary);
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 0.8125rem;
+  font-size: 0.9375rem;
+  line-height: 1.6;
 }
 
 .lab-index-card strong {
-  margin-top: 1rem;
-  font-size: 1.125rem;
+  font-size: 1rem;
   line-height: 1.35;
 }
 
@@ -2988,12 +3009,12 @@ button:focus-visible {
 }
 
 @media (max-width: 64rem) {
-  .labs-recommended,
+  .labs-journey,
   .labs-group {
     grid-template-columns: 1fr;
   }
 
-  .labs-recommended__heading,
+  .labs-journey__heading,
   .labs-group__heading {
     border-right: 0;
   }
@@ -3033,29 +3054,29 @@ button:focus-visible {
     border-left: 0;
   }
 
-  .labs-recommended ol,
+  .labs-journey ol,
   .labs-group__cards,
   .adapter-artifacts {
     grid-template-columns: 1fr;
   }
 
-  .labs-recommended li,
-  .labs-recommended li:last-child {
+  .labs-journey li,
+  .labs-journey li:last-child {
     grid-template-columns: 1fr;
   }
 
-  .labs-recommended li + li,
+  .labs-journey li + li,
   .lab-index-card + .lab-index-card {
     border-top: 1px solid var(--border-ui);
     border-left: 0;
   }
 
-  .labs-recommended li > svg {
+  .labs-journey li > svg {
     display: none;
   }
 
-  .labs-recommended a {
-    min-height: 5.75rem;
+  .labs-journey a {
+    min-height: 2.75rem;
   }
 
   .lab-index-card {
