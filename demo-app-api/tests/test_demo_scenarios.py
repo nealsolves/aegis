@@ -1,13 +1,22 @@
 from __future__ import annotations
 
-import hashlib
-import json
+import re
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
-from aegis import AuditLineage, HMACSigner, verify_artifact
+from aegis import (
+    AEGIS,
+    AuditLineage,
+    HMACSigner,
+    PreconditionError,
+    ProvenanceGate,
+    verify_artifact,
+)
+from aegis.audit import checksum
 from demo_contract import DemoGateResult
+from demo_fixtures import get_fixture
 from main import app
 
 
@@ -38,16 +47,6 @@ CASES = [
 ATLAS_DEMO_ONLY_TEST_KEY = b"aegis-atlas-demo-only-hmac-key-v1"
 
 
-def _canonical_checksum(value: dict) -> str:
-    encoded = json.dumps(
-        value,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-    ).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
-
-
 def _invocation_artifacts(body: dict) -> list[dict]:
     artifact = body["artifact"]
     if artifact is None:
@@ -55,6 +54,26 @@ def _invocation_artifacts(body: dict) -> list[dict]:
     if "invocation_artifacts" in artifact:
         return artifact["invocation_artifacts"]
     return [artifact]
+
+
+def _expected_outputs(scenario_id: str, variant: str) -> list[dict]:
+    fixture = get_fixture(scenario_id, variant)
+    if scenario_id == "northstar" and variant == "first_attempt":
+        return [{}]
+    if scenario_id == "meridian" and variant == "first_attempt":
+        return [fixture.output["invoice_intake"]]
+    if scenario_id == "meridian":
+        return [
+            fixture.output[step_id]
+            for step_id in (
+                "invoice_intake",
+                "vendor_verification",
+                "risk_review",
+                "payment_preparation",
+                "approval",
+            )
+        ]
+    return [fixture.output]
 
 
 @pytest.mark.parametrize(
@@ -87,10 +106,16 @@ def test_scenario_outcome_matrix(
     else:
         assert body["error"]["code"] == reason_code
 
-    for artifact in _invocation_artifacts(body):
+    artifacts = _invocation_artifacts(body)
+    expected_outputs = _expected_outputs(scenario_id, variant)
+    assert len(artifacts) == len(expected_outputs)
+    fixture = get_fixture(scenario_id, variant)
+    for artifact, expected_output in zip(artifacts, expected_outputs, strict=True):
         assert artifact["enforcement_result"] in {"PASS", "FAIL"}
-        assert len(artifact["input_checksum"]) == 64
-        assert len(artifact["output_checksum"]) == 64
+        assert re.fullmatch(r"[0-9a-f]{64}", artifact["input_checksum"])
+        assert re.fullmatch(r"[0-9a-f]{64}", artifact["output_checksum"])
+        assert artifact["input_checksum"] == checksum({"prompt": fixture.prompt})
+        assert artifact["output_checksum"] == checksum(expected_output)
 
 
 def test_demo_gate_result_requires_outcome_exactly_when_evaluated():
@@ -130,7 +155,7 @@ def test_atlas_corrected_artifact_is_signed_and_checksums_fixture_output():
     artifact = response.json()["artifact"]
 
     assert verify_artifact(artifact, HMACSigner(ATLAS_DEMO_ONLY_TEST_KEY))
-    assert artifact["output_checksum"] == _canonical_checksum(
+    assert artifact["output_checksum"] == checksum(
         {
             "policy_citation": "BRV-04",
             "refund_commitment": (
@@ -155,7 +180,7 @@ def test_northstar_first_attempt_fails_during_pre_call():
     assert body["error"]["code"] == "ROLE_NOT_ALLOWED"
     assert artifact["enforcement_result"] == "FAIL"
     assert artifact["metadata"]["enforcement_mode"] == "split_pre_call_only"
-    assert artifact["output_checksum"] == _canonical_checksum({})
+    assert artifact["output_checksum"] == checksum({})
     assert gates["privacy_scope"]["outcome"] == "PASS"
     assert gates["role_validation"]["evaluated"] is True
     assert gates["role_validation"]["outcome"] == "FAIL"
@@ -275,3 +300,31 @@ def test_meridian_corrected_returns_correlated_trace_and_audit_export():
     assert exported["export_mode"] == "audit"
     assert exported["compliance_summary"]["COMPLETED"] == 1
     assert exported["integrity"]["unresolved_count"] == 0
+
+
+def test_atlas_false_refund_approval_blocks_before_refund_commitment():
+    """Catches false satisfying the approval precondition before a commitment."""
+    fixture = get_fixture("atlas", "corrected")
+    context = dict(fixture.context)
+    context["refund_approved"] = False
+    invocation = {
+        "policy_file": str(
+            Path(__file__).resolve().parents[1] / "demo_policies" / "atlas.yaml"
+        ),
+        "model_provider": "internal",
+        "model_identifier": "deterministic-fixture-v1",
+        "role": fixture.role,
+        "input": {"prompt": fixture.prompt},
+        "context": context,
+        "tool_calls": [
+            {"name": "fictional_account_lookup", "call_id": "atlas-negative-01"},
+            {"name": "fictional_refund_review", "call_id": "atlas-negative-02"},
+        ],
+    }
+    governance = AEGIS(custom_gates=[ProvenanceGate()])
+
+    with pytest.raises(PreconditionError) as exc_info:
+        governance.enforce_pre_call(invocation)
+
+    assert exc_info.value.code == "PRECONDITION_FAILED"
+    assert exc_info.value.audit_artifact["enforcement_result"] == "FAIL"

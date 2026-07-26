@@ -8,6 +8,8 @@ pre_conditions:
       type: boolean
     refund_approved:
       type: boolean
+      enum:
+        - true
 post_conditions:
   required:
     - output_schema_valid
