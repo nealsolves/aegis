@@ -21,6 +21,8 @@ import Lab10SplitEnforcementExplorer from '@/labs/Lab10SplitEnforcementExplorer'
 import Lab11WorkflowLab from '@/labs/Lab11WorkflowLab'
 import ArchitecturePage from '@/pages/ArchitecturePage'
 import IntroductionPage from '@/pages/IntroductionPage'
+import ScenariosIndexPage from '@/pages/ScenariosIndexPage'
+import ScenarioPage from '@/routes/scenarios/ScenarioPage'
 
 const LABS = labRoutesCopy
 
@@ -66,10 +68,8 @@ function AppContent() {
         <Route path="/" element={<IntroductionPage />} />
         <Route path="/architecture" element={<Navigate to="/demo/architecture" replace />} />
         <Route path="/demo/architecture" element={<ArchitecturePage />} />
-        <Route
-          path="/demo/scenarios"
-          element={<PlaceholderPage copy={placeholderCopy.scenarios} />}
-        />
+        <Route path="/demo/scenarios" element={<ScenariosIndexPage />} />
+        <Route path="/demo/scenarios/:scenarioId" element={<ScenarioPage />} />
         <Route
           path="/demo/labs"
           element={<PlaceholderPage copy={placeholderCopy.labs} />}
