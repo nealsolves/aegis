@@ -37,3 +37,15 @@ export interface ScenarioRunResponse {
   error: { code: string; message: string } | null
   source: DemoSource
 }
+
+export interface AdapterRunResponse {
+  adapter_id: AdapterId
+  fixture_id: string
+  provider_input: Record<string, unknown>
+  normalized_evidence: Record<string, unknown>
+  decision: DemoOutcome
+  artifact: Record<string, unknown> | null
+  workflow_artifact: Record<string, unknown> | null
+  error: { code: string; message: string } | null
+  source: DemoSource
+}

@@ -76,6 +76,12 @@ export const labRoutesCopy = [
     short: 'Workflow',
     heroTitle: 'Workflow Governance (v0.9.0 Beta)',
   },
+  {
+    num: 12,
+    title: 'Integration Adapters',
+    short: 'Adapters',
+    heroTitle: 'Integration Adapters',
+  },
 ] as const
 
 export const labNavCopy = {

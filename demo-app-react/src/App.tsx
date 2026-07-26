@@ -1,7 +1,9 @@
 import { useCallback, useState } from 'react'
 import { HashRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import HelpButton from '@/components/HelpButton'
-import HelpDrawer from '@/components/HelpDrawer'
+import HelpDrawer, {
+  type ResultHelpContext,
+} from '@/components/HelpDrawer'
 import AppNav from '@/components/layout/AppNav'
 import DemoNav from '@/components/layout/DemoNav'
 import LabHero from '@/components/layout/LabHero'
@@ -19,8 +21,10 @@ import Lab8GovernedKnowledgeBase from '@/labs/Lab8GovernedKnowledgeBase'
 import Lab9GovernedVsUngoverned from '@/labs/Lab9GovernedVsUngoverned'
 import Lab10SplitEnforcementExplorer from '@/labs/Lab10SplitEnforcementExplorer'
 import Lab11WorkflowLab from '@/labs/Lab11WorkflowLab'
+import Lab12IntegrationAdapters from '@/labs/Lab12IntegrationAdapters'
 import ArchitecturePage from '@/pages/ArchitecturePage'
 import IntroductionPage from '@/pages/IntroductionPage'
+import LabsIndexPage from '@/pages/LabsIndexPage'
 import ScenariosIndexPage from '@/pages/ScenariosIndexPage'
 import ScenarioPage from '@/routes/scenarios/ScenarioPage'
 
@@ -53,10 +57,29 @@ function describeRoute(pathname: string): RouteDescriptor {
 function AppContent() {
   const location = useLocation()
   const [isHelpOpen, setIsHelpOpen] = useState(false)
+  const [resultHelpState, setResultHelpState] = useState<{
+    locationKey: string
+    context: ResultHelpContext | null
+  } | null>(null)
   const route = describeRoute(location.pathname)
 
   const handleOpen = useCallback(() => setIsHelpOpen(true), [])
   const handleClose = useCallback(() => setIsHelpOpen(false), [])
+  const handleResultHelpContext = useCallback(
+    (context: ResultHelpContext | null) => {
+      setResultHelpState({
+        locationKey: location.key,
+        context,
+      })
+    },
+    [location.key],
+  )
+  const resultHelpContext = (
+    route.helpLabId === 12
+    && resultHelpState?.locationKey === location.key
+  )
+    ? resultHelpState.context ?? undefined
+    : undefined
 
   return (
     <div className="app-shell">
@@ -64,6 +87,11 @@ function AppContent() {
       {route.showDemoNav && <DemoNav />}
       {route.showDemoService && <DemoServiceNotice />}
       {route.showLabTabs && <LabTabs labs={LABS} />}
+      {route.helpLabId !== null && (
+        <div className="help-launcher">
+          <HelpButton isOpen={isHelpOpen} onOpen={handleOpen} />
+        </div>
+      )}
       <Routes>
         <Route path="/" element={<IntroductionPage />} />
         <Route path="/architecture" element={<Navigate to="/demo/architecture" replace />} />
@@ -72,7 +100,7 @@ function AppContent() {
         <Route path="/demo/scenarios/:scenarioId" element={<ScenarioPage />} />
         <Route
           path="/demo/labs"
-          element={<PlaceholderPage copy={placeholderCopy.labs} />}
+          element={<LabsIndexPage />}
         />
         <Route path="/faq" element={<PlaceholderPage copy={placeholderCopy.faq} />} />
         <Route path="/lab/1" element={<><LabHero labNum={1} title={LABS[0].heroTitle} /><Lab1RiskScoring /></>} />
@@ -86,16 +114,25 @@ function AppContent() {
         <Route path="/lab/9" element={<><LabHero labNum={9} title={LABS[8].heroTitle} /><Lab9GovernedVsUngoverned /></>} />
         <Route path="/lab/10" element={<><LabHero labNum={10} title={LABS[9].heroTitle} /><Lab10SplitEnforcementExplorer /></>} />
         <Route path="/lab/11" element={<><LabHero labNum={11} title={LABS[10].heroTitle} /><Lab11WorkflowLab /></>} />
+        <Route
+          path="/lab/12"
+          element={(
+            <>
+              <LabHero labNum={12} title={LABS[11].heroTitle} />
+              <Lab12IntegrationAdapters
+                onResultHelpContext={handleResultHelpContext}
+              />
+            </>
+          )}
+        />
       </Routes>
       {route.helpLabId !== null && (
-        <>
-          <HelpButton isOpen={isHelpOpen} onOpen={handleOpen} />
-          <HelpDrawer
-            labId={route.helpLabId}
-            isOpen={isHelpOpen}
-            onClose={handleClose}
-          />
-        </>
+        <HelpDrawer
+          labId={route.helpLabId}
+          isOpen={isHelpOpen}
+          onClose={handleClose}
+          resultContext={resultHelpContext}
+        />
       )}
     </div>
   )

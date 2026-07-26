@@ -682,4 +682,58 @@ export const helpContent: Record<number, LabHelp> = {
       { term: 'workflow trace', definition: 'A reconstructed timeline produced from JSONL audit records that resolves workflow steps to invocation artifacts.' },
     ],
   },
+  12: {
+    title: 'Integration Adapters Guide',
+    overview:
+      'This lab runs server-owned deterministic fixtures through the integration adapters listed by the current demo manifest. It keeps the provider-native input and AEGIS-normalized evidence in separate panels so their roles stay explicit.',
+    whyItMatters:
+      'Adapter integrations translate framework- or protocol-specific records into evidence AEGIS can evaluate. The lab shows that normalization boundary using release-gated fixtures and the installed SDK.',
+    whatThisLabShows: [
+      'The manifest controls which Amazon Bedrock, OpenAI Agents, and A2A adapter tabs are available.',
+      'Each fixture begins as provider- or protocol-native input and returns normalized evidence as a separate record.',
+      'The current response supplies the policy checks, decision, invocation artifact, workflow artifact, and source metadata.',
+      'Positive and typed-negative cases exercise deterministic adapter seams without a remote provider request.',
+    ],
+    howToNavigate: [
+      'Choose a manifest-listed adapter tab, then select a Positive fixture or Typed-negative fixture from Fixture case.',
+      'Click Run adapter fixture and read the five returned-result panels from native input through artifact evidence.',
+      'Compare Native fixture with Normalized invocation and evidence before reading the returned policy checks and decision.',
+      'Open Result help after a run to review the actual returned reason code and normalized field names.',
+    ],
+    steps: [
+      {
+        title: 'Choose a listed adapter',
+        instruction:
+          'Select Amazon Bedrock, OpenAI Agents, or A2A when that tab is present. A tab appears only when the current demo manifest lists the adapter.',
+      },
+      {
+        title: 'Choose a deterministic case',
+        instruction:
+          'Use Fixture case to select the Positive fixture or Typed-negative fixture. These labels identify the server-owned test case category and do not predict the displayed result.',
+      },
+      {
+        title: 'Run the adapter fixture',
+        instruction:
+          'Click Run adapter fixture. The browser sends the selected server fixture ID to the selected manifest-listed adapter route.',
+      },
+      {
+        title: 'Keep native and normalized records distinct',
+        instruction:
+          'Read Native fixture as provider- or protocol-native input. Read Normalized invocation and evidence as the separate adapter-normalized record returned by the service.',
+      },
+      {
+        title: 'Inspect the returned judgment and evidence',
+        instruction:
+          'Continue through Policy checks, Decision, and Artifact. Empty or error states show only what the current response supplied.',
+      },
+    ],
+    takeaway:
+      'A deterministic adapter run makes normalization inspectable while the manifest and current service response remain the source of available adapters and displayed governance results.',
+    glossary: [
+      { term: 'Provider-native input', definition: 'The deterministic framework- or protocol-specific record supplied to the adapter.' },
+      { term: 'Normalized evidence', definition: 'The separate record produced by the adapter in the shape used by the AEGIS governance boundary.' },
+      { term: 'Manifest-listed adapter', definition: 'An adapter exposed by the current demo manifest after its release-gating tests have passed.' },
+      { term: 'Typed-negative fixture', definition: 'A server-owned deterministic case that exercises a structured adapter rejection path.' },
+    ],
+  },
 }

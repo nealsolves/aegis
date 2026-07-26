@@ -85,6 +85,27 @@ describe('App routing', () => {
     ).toBeInTheDocument()
   })
 
+  it('renders the grouped labs index and the Lab 12 deep link', () => {
+    const index = renderRoute('#/demo/labs')
+    expect(
+      screen.getByRole('heading', { name: 'Choose a governance question.' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: 'Systems and workflows' }),
+    ).toBeInTheDocument()
+
+    index.unmount()
+    renderRoute('#/lab/12')
+    expect(
+      screen.getByRole('heading', {
+        name: 'Inspect normalization at the governance boundary.',
+      }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('navigation', { name: 'Lab navigation' }),
+    ).toBeInTheDocument()
+  })
+
   it('exposes the shared public navigation', () => {
     renderRoute('#/')
     const nav = screen.getByRole('navigation', { name: 'Primary navigation' })
@@ -123,6 +144,26 @@ describe('App routing', () => {
     ).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Open lab guide' }))
     expect(screen.getByText('Architecture Guide')).toBeInTheDocument()
+  })
+
+  it('keeps scenario routes free of the lab Guide launcher', () => {
+    renderRoute('#/demo/scenarios/atlas')
+
+    expect(
+      screen.queryByRole('button', { name: 'Open lab guide' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('places the shared Guide launcher in a content-reserved rail', () => {
+    const { container } = renderRoute('#/demo/architecture')
+    const main = container.querySelector('main')
+    const rail = container.querySelector('.help-launcher')
+    const button = screen.getByRole('button', { name: 'Open lab guide' })
+
+    expect(rail).not.toBeNull()
+    expect(main?.previousElementSibling).toBe(rail)
+    expect(rail).toContainElement(button)
+    expect(button).not.toHaveStyle({ position: 'fixed' })
   })
 
   it('does not render an empty demo service strip while readiness is checking', () => {

@@ -15,15 +15,15 @@ function guideText(labId: number) {
 }
 
 describe('helpContent', () => {
-  it('has an architecture entry and entries for all 11 labs', () => {
+  it('has an architecture entry and entries for all 12 labs', () => {
     expect(helpContent[0]).toBeDefined()
-    for (let i = 1; i <= 11; i++) {
+    for (let i = 1; i <= 12; i++) {
       expect(helpContent[i]).toBeDefined()
     }
   })
 
   it('every guide has a non-empty title, overview, whyItMatters, and takeaway', () => {
-    for (let i = 0; i <= 11; i++) {
+    for (let i = 0; i <= 12; i++) {
       expect(helpContent[i].title.length).toBeGreaterThan(0)
       expect(helpContent[i].overview.length).toBeGreaterThan(0)
       expect(helpContent[i].whyItMatters.length).toBeGreaterThan(0)
@@ -32,20 +32,20 @@ describe('helpContent', () => {
   })
 
   it('every guide has at least 3 steps', () => {
-    for (let i = 0; i <= 11; i++) {
+    for (let i = 0; i <= 12; i++) {
       expect(helpContent[i].steps.length).toBeGreaterThanOrEqual(3)
     }
   })
 
   it('every guide has framework sections for learning and navigation', () => {
-    for (let i = 0; i <= 11; i++) {
+    for (let i = 0; i <= 12; i++) {
       expect(helpContent[i].whatThisLabShows.length).toBeGreaterThanOrEqual(2)
       expect(helpContent[i].howToNavigate.length).toBeGreaterThanOrEqual(2)
     }
   })
 
   it('every step has a non-empty title and instruction', () => {
-    for (let i = 0; i <= 11; i++) {
+    for (let i = 0; i <= 12; i++) {
       for (const step of helpContent[i].steps) {
         expect(step.title.length).toBeGreaterThan(0)
         expect(step.instruction.length).toBeGreaterThan(0)
@@ -107,6 +107,7 @@ describe('helpContent', () => {
       9: ['Low risk (governed PASS)', 'High risk (governed FAIL)', 'Compare'],
       10: ['Low risk (both phases pass)', 'Pre-call block (Phase A fails)', 'Run Split Trace'],
       11: ['Start Here', 'Run Minimal', 'Failure & Fix', 'workflow doctor', 'Build Evidence Trace', 'workflow trace'],
+      12: ['Amazon Bedrock', 'OpenAI Agents', 'A2A', 'Fixture case', 'Run adapter fixture'],
     }
 
     for (const [labId, labels] of Object.entries(exactLabels)) {
@@ -213,8 +214,8 @@ describe('helpContent', () => {
     expect(content).toMatch(/aegis compliance export/i)
   })
 
-  it('labs 8-11 keep the newer guides aligned with the established guide naming and depth', () => {
-    for (const labId of [8, 9, 10, 11] as const) {
+  it('labs 8-12 keep the newer guides aligned with the established guide naming and depth', () => {
+    for (const labId of [8, 9, 10, 11, 12] as const) {
       expect(helpContent[labId].title).toMatch(/Guide$/)
       expect(helpContent[labId].steps.length).toBeGreaterThanOrEqual(4)
       expect((helpContent[labId].glossary ?? []).length).toBeGreaterThanOrEqual(3)
@@ -277,6 +278,17 @@ describe('helpContent', () => {
     expect(content).toMatch(/workflow doctor/i)
     expect(content).toMatch(/Build Evidence Trace/i)
     expect(content).toMatch(/workflow trace/i)
+  })
+
+  it('lab 12 guide keeps provider input separate from normalized evidence', () => {
+    const content = guideText(12)
+
+    expect(content).toMatch(/deterministic/i)
+    expect(content).toMatch(/provider-native/i)
+    expect(content).toMatch(/normalized evidence/i)
+    expect(content).toMatch(/manifest/i)
+    expect(content).toMatch(/Run adapter fixture/i)
+    expect(content).not.toMatch(/enter.*credential|paste.*key|live provider call/i)
   })
 
   it('architecture content explains split default mode and unified opt-out', () => {
