@@ -103,3 +103,91 @@ def test_frontend_root_ignores_tests_identifiers_urls_and_generated_assets(
 
     assert main(["--frontend-root", str(tmp_path)]) == 0
     assert capsys.readouterr().out == ""
+
+
+def test_frontend_root_reconstructs_public_copy_across_inline_jsx(
+    capsys,
+    tmp_path,
+):
+    page = tmp_path / "InlinePage.tsx"
+    page.write_text(
+        """
+        export function InlinePage() {
+          return <p>At its <strong>core</strong>, AEGIS checks policy.</p>
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    assert main(["--frontend-root", str(tmp_path)]) == 1
+    assert "at its core" in capsys.readouterr().out
+
+
+def test_frontend_root_joins_visible_static_literal_concatenation(
+    capsys,
+    tmp_path,
+):
+    page = tmp_path / "ConcatenatedPage.tsx"
+    page.write_text(
+        """
+        export function ConcatenatedPage() {
+          return <p>{'At its ' + 'core, AEGIS checks policy.'}</p>
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    assert main(["--frontend-root", str(tmp_path)]) == 1
+    assert "at its core" in capsys.readouterr().out
+
+
+def test_frontend_root_checks_not_but_across_inline_markup_not_blocks(
+    capsys,
+    tmp_path,
+):
+    page = tmp_path / "StructuralPage.tsx"
+    page.write_text(
+        """
+        export function StructuralPage() {
+          return (
+            <main>
+              <p>This is not a prompt <strong>but</strong> an enforced policy.</p>
+              <p>This is not a report <em>but</em> runtime evidence.</p>
+              <p>This boundary is not a model.</p>
+              <p>But it records a governed result.</p>
+            </main>
+          )
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    assert main(["--frontend-root", str(tmp_path)]) == 1
+    output = capsys.readouterr().out
+    assert output.count("repeated_not_but") == 1
+
+
+def test_frontend_root_ignores_internal_identifier_but_scans_visible_copy(
+    capsys,
+    tmp_path,
+):
+    implementation_root = tmp_path / "implementation"
+    implementation_root.mkdir()
+    implementation = implementation_root / "Implementation.ts"
+    implementation.write_text(
+        "export const routeState = 'journey_state'",
+        encoding="utf-8",
+    )
+    visible_root = tmp_path / "visible"
+    visible_root.mkdir()
+    visible = visible_root / "VisiblePage.tsx"
+    visible.write_text(
+        "export function VisiblePage() { return <p>Review the journey state.</p> }",
+        encoding="utf-8",
+    )
+
+    assert main(["--frontend-root", str(implementation_root)]) == 0
+    assert capsys.readouterr().out == ""
+
+    assert main(["--frontend-root", str(visible_root)]) == 1
+    assert "journey" in capsys.readouterr().out
