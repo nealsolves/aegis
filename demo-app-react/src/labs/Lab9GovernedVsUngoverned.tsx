@@ -88,7 +88,7 @@ export default function Lab9GovernedVsUngoverned() {
             {/* Governed panel */}
             <div className="rounded border p-3" style={{ borderColor: 'var(--border-ui)' }}>
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-xs font-semibold uppercase" style={{ color: IBM_COLORS.orange40 }}>
+                <span className="text-base font-semibold uppercase" style={{ color: IBM_COLORS.orange40 }}>
                   Governed
                 </span>
                 {govResult && <StatusBadge status={govResult} />}
@@ -107,7 +107,7 @@ export default function Lab9GovernedVsUngoverned() {
             {/* Ungoverned panel */}
             <div className="rounded border p-3" style={{ borderColor: 'var(--border-ui)' }}>
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-xs font-semibold uppercase" style={{ color: 'var(--text-secondary)' }}>
+                <span className="text-base font-semibold uppercase" style={{ color: 'var(--text-secondary)' }}>
                   Ungoverned
                 </span>
                 <span className="text-xs font-mono px-1 rounded" style={{ background: 'var(--bg-surface)', color: 'var(--text-secondary)' }}>
