@@ -19,7 +19,13 @@ def test_demo_api_imports_and_health_route():
     assert app.version == "0.9.0b1"
     response = client.get("/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert response.json() == {
+        "status": "ok",
+        "source": {
+            "branch": None,
+            "commit": None,
+        },
+    }
 
 
 def test_all_existing_lab_routes_return_deterministic_shapes():
