@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "copycheck": "python ../scripts/check_demo_copy.py src/content src/routes/scenarios src/help/helpContent.ts",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run"

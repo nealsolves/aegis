@@ -35,6 +35,11 @@ jobs:
           cache: npm
           cache-dependency-path: demo-app-react/package-lock.json
 
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+
       - name: Configure GitHub Pages
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
 
@@ -58,6 +63,9 @@ jobs:
       - name: Lint frontend
         working-directory: demo-app-react
         run: npm run lint
+
+      - name: Check public copy
+        run: python scripts/check_demo_copy.py demo-app-react/src/content demo-app-react/src/routes/scenarios demo-app-react/src/help/helpContent.ts
 
       - name: Build frontend
         working-directory: demo-app-react
