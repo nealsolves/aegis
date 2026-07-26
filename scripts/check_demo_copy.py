@@ -64,8 +64,13 @@ def _find_structural_matches(text: str, checks: Iterable[str]) -> list[Finding]:
                 )
             )
     if "rhetorical_question_cluster" in checks:
-        paragraph_offset = 0
-        for paragraph in re.split(r"\n\s*\n", text):
+        paragraph_start = 0
+        paragraphs: list[tuple[int, str]] = []
+        for separator in re.finditer(r"\n\s*\n", text):
+            paragraphs.append((paragraph_start, text[paragraph_start:separator.start()]))
+            paragraph_start = separator.end()
+        paragraphs.append((paragraph_start, text[paragraph_start:]))
+        for paragraph_offset, paragraph in paragraphs:
             if paragraph.count("?") >= 3:
                 findings.append(
                     Finding(
@@ -73,7 +78,6 @@ def _find_structural_matches(text: str, checks: Iterable[str]) -> list[Finding]:
                         *_line_and_excerpt(text, paragraph_offset),
                     )
                 )
-            paragraph_offset += len(paragraph) + 2
     return findings
 
 
@@ -98,7 +102,7 @@ def _iter_files(paths: Iterable[Path]) -> Iterable[Path]:
             yield from (
                 candidate
                 for candidate in path.rglob("*")
-                if candidate.suffix in SCAN_SUFFIXES
+                if candidate.is_file() and candidate.suffix in SCAN_SUFFIXES
             )
 
 
