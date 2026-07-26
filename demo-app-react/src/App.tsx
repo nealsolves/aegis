@@ -9,7 +9,7 @@ import DemoNav from '@/components/layout/DemoNav'
 import LabHero from '@/components/layout/LabHero'
 import LabTabs from '@/components/layout/LabTabs'
 import { DemoServiceNotice } from '@/components/service/DemoServiceNotice'
-import { labRoutesCopy, placeholderCopy } from '@/content/demoCopy'
+import { labRoutesCopy } from '@/content/demoCopy'
 import Lab1RiskScoring from '@/labs/Lab1RiskScoring'
 import Lab2Signing from '@/labs/Lab2Signing'
 import Lab3AuditChain from '@/labs/Lab3AuditChain'
@@ -23,6 +23,7 @@ import Lab10SplitEnforcementExplorer from '@/labs/Lab10SplitEnforcementExplorer'
 import Lab11WorkflowLab from '@/labs/Lab11WorkflowLab'
 import Lab12IntegrationAdapters from '@/labs/Lab12IntegrationAdapters'
 import ArchitecturePage from '@/pages/ArchitecturePage'
+import FaqPage from '@/pages/FaqPage'
 import IntroductionPage from '@/pages/IntroductionPage'
 import LabsIndexPage from '@/pages/LabsIndexPage'
 import ScenariosIndexPage from '@/pages/ScenariosIndexPage'
@@ -102,7 +103,7 @@ function AppContent() {
           path="/demo/labs"
           element={<LabsIndexPage />}
         />
-        <Route path="/faq" element={<PlaceholderPage copy={placeholderCopy.faq} />} />
+        <Route path="/faq" element={<FaqPage />} />
         <Route path="/lab/1" element={<><LabHero labNum={1} title={LABS[0].heroTitle} /><Lab1RiskScoring /></>} />
         <Route path="/lab/2" element={<><LabHero labNum={2} title={LABS[1].heroTitle} /><Lab2Signing /></>} />
         <Route path="/lab/3" element={<><LabHero labNum={3} title={LABS[2].heroTitle} /><Lab3AuditChain /></>} />
@@ -135,24 +136,6 @@ function AppContent() {
         />
       )}
     </div>
-  )
-}
-
-function PlaceholderPage({
-  copy,
-}: {
-  copy: {
-    eyebrow: string
-    title: string
-    description: string
-  }
-}) {
-  return (
-    <main className="placeholder-page">
-      <p className="intro-eyebrow">{copy.eyebrow}</p>
-      <h1>{copy.title}</h1>
-      <p>{copy.description}</p>
-    </main>
   )
 }
 
