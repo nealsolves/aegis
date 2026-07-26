@@ -37,14 +37,19 @@ describe('Lab9GovernedVsUngoverned', () => {
     expect(screen.getByText(/governed vs.*ungoverned/i)).toBeInTheDocument()
   })
 
-  it('renders governed and ungoverned panel labels at readable body size', async () => {
+  it('renders semantic comparison labels with readable theme-aware text', async () => {
     render(<Lab9GovernedVsUngoverned />)
     fireEvent.click(screen.getByRole('button', { name: /compare/i }))
 
-    expect(await screen.findByText('Governed', { exact: true }))
+    const governed = await screen.findByText('Governed', { exact: true })
+    const ungoverned = screen.getByText('Ungoverned', { exact: true })
+
+    expect(governed)
       .toHaveClass('text-base')
-    expect(screen.getByText('Ungoverned', { exact: true }))
+    expect(ungoverned)
       .toHaveClass('text-base')
+    expect(governed).toHaveStyle({ color: 'var(--text-primary)' })
+    expect(ungoverned).toHaveStyle({ color: 'var(--text-secondary)' })
   })
 
   it('renders the Compare button', () => {

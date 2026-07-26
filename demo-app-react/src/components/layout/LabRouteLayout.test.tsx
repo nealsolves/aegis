@@ -53,4 +53,11 @@ describe('LabRouteLayout', () => {
       name: 'Continue the first-visit path',
     })).not.toBeInTheDocument()
   })
+
+  it('gives experiment buttons the shared 44px target contract', () => {
+    const { container } = renderLayout(9)
+    expect(container.querySelector('.lab-route__experiment')).toHaveStyle({
+      '--lab-experiment-target-size': '2.75rem',
+    })
+  })
 })

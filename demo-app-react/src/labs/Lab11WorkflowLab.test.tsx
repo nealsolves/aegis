@@ -69,6 +69,39 @@ describe('Lab11WorkflowLab', () => {
     expect(screen.getByRole('button', { name: /governed vs ungoverned/i })).toBeInTheDocument()
   })
 
+  it('renders governed and ungoverned workflow labels at readable body size', async () => {
+    const compareCall = vi.fn(async () => ({
+      governed: {
+        artifact: {
+          status: 'COMPLETED',
+        },
+        error: null,
+      },
+      ungoverned: {
+        artifact: {
+          status: 'COMPLETED',
+        },
+        error: null,
+      },
+    }))
+    mockUseApiStates([
+      buildApiState(),
+      buildApiState({ call: compareCall }),
+      buildApiState(),
+      buildApiState(),
+    ])
+
+    render(<Lab11WorkflowLab />)
+    fireEvent.click(screen.getByRole('button', { name: /governed vs ungoverned/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^compare$/i }))
+
+    expect(await screen.findByText('Governed', { exact: true }))
+      .toHaveClass('text-base')
+    expect(screen.getByText('Ungoverned', { exact: true }))
+      .toHaveClass('text-base')
+    expect(compareCall).toHaveBeenCalledWith('/api/workflow/v090/compare', {})
+  })
+
   it('renders Evidence View tab button', () => {
     render(<Lab11WorkflowLab />)
     expect(screen.getByRole('button', { name: /evidence view/i })).toBeInTheDocument()

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { ArrowRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import {
@@ -25,7 +25,12 @@ export default function LabRouteLayout({
       <LabContextNav lab={lab} />
       <LabHero lab={lab} />
       <div className="lab-route__layout">
-        <div className="lab-route__experiment">{children}</div>
+        <div
+          className="lab-route__experiment"
+          style={{ '--lab-experiment-target-size': '2.75rem' } as CSSProperties}
+        >
+          {children}
+        </div>
         <LabRelatedNav lab={lab} />
       </div>
       {nextJourneyLab && (

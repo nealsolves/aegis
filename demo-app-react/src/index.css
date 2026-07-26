@@ -2230,6 +2230,11 @@ button:focus-visible {
   min-width: 0;
 }
 
+.lab-route__experiment button {
+  min-width: var(--lab-experiment-target-size);
+  min-height: var(--lab-experiment-target-size);
+}
+
 .lab-related {
   margin-top: clamp(3rem, 6vw, 5rem);
   border-top: 1px solid var(--border-ui);
