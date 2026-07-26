@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { introCopy } from '@/content/demoCopy'
 
-const ENTRY_LINK_STYLE = { minHeight: '2.75rem' } as const
+const ENTRY_LINK_STYLE = { minHeight: '44px' } as const
 
 export default function IntroductionPage() {
   const { hash } = useLocation()

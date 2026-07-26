@@ -96,7 +96,9 @@ describe('IntroductionPage', () => {
     for (const label of ['Architecture', 'Scenarios', 'Labs']) {
       const link = within(entries).getByRole('link', { name: label })
       expect(link).toHaveClass('entry-card__link')
-      expect(getComputedStyle(link).minHeight).toBe('2.75rem')
+      const minimumHeight = getComputedStyle(link).minHeight
+      expect(minimumHeight).toMatch(/^\d+(?:\.\d+)?px$/)
+      expect(Number.parseFloat(minimumHeight)).toBeGreaterThanOrEqual(44)
     }
   })
 })
