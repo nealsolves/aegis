@@ -35,13 +35,14 @@ interface RouteDescriptor {
 }
 
 function describeRoute(pathname: string): RouteDescriptor {
-  const knownLab = LABS.find(lab => lab.path === pathname)
-  const isDemoRoute = pathname.startsWith('/demo/')
-  const isLabRoute = pathname.startsWith('/lab/')
+  const normalizedPathname = (pathname.replace(/\/+$/, '') || '/').toLowerCase()
+  const knownLab = LABS.find(lab => lab.path === normalizedPathname)
+  const isDemoRoute = normalizedPathname.startsWith('/demo/')
+  const isLabRoute = normalizedPathname.startsWith('/lab/')
 
   return {
-    helpLabId: pathname === '/demo/architecture' ? 0 : knownLab?.id ?? null,
-    showDemoNav: isDemoRoute || isLabRoute || pathname === '/faq',
+    helpLabId: normalizedPathname === '/demo/architecture' ? 0 : knownLab?.id ?? null,
+    showDemoNav: isDemoRoute || isLabRoute || normalizedPathname === '/faq',
     showDemoService: isDemoRoute || isLabRoute,
   }
 }

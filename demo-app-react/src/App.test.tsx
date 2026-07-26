@@ -74,11 +74,28 @@ describe('App routing', () => {
     ).toBeInTheDocument()
   })
 
-  it.each(Array.from({ length: 12 }, (_, index) => index + 1))(
-    'keeps /lab/%s stable with exactly one main landmark',
-    labId => {
+  it.each([
+    [1, 'Risk Scoring'],
+    [2, 'Signing and Verification'],
+    [3, 'Audit Chain'],
+    [4, 'Policy Composition'],
+    [5, 'Loaders and Versioning'],
+    [6, 'Custom Gates'],
+    [7, 'Compliance Dashboard'],
+    [8, 'Governed Knowledge Base'],
+    [9, 'Governed vs. Ungoverned'],
+    [10, 'Split Enforcement Explorer'],
+    [11, 'Workflow Governance'],
+    [12, 'Integration Adapters'],
+  ])(
+    'keeps /lab/%s stable with one main landmark and the public heading "%s"',
+    (labId, publicTitle) => {
       const { container } = renderRoute(`#/lab/${labId}`)
       expect(container.querySelectorAll('main')).toHaveLength(1)
+      expect(container.querySelectorAll('h1')).toHaveLength(1)
+      expect(
+        screen.getByRole('heading', { level: 1, name: publicTitle }),
+      ).toBeInTheDocument()
       expect(
         screen.queryByRole('navigation', { name: 'Lab navigation' }),
       ).not.toBeInTheDocument()
@@ -193,6 +210,27 @@ describe('App routing', () => {
       screen.getByRole('button', { name: 'Open lab guide' }),
     ).toBeInTheDocument()
   })
+
+  it.each([
+    ['#/lab/1/', 'Risk Scoring'],
+    ['#/LAB/1', 'Risk Scoring'],
+    ['#/demo/architecture/', 'Architecture is an ownership contract.'],
+  ])(
+    'keeps route-aware chrome aligned with the rendered page at %s',
+    (path, heading) => {
+      renderRoute(path)
+
+      expect(
+        screen.getByRole('heading', { level: 1, name: heading }),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByRole('navigation', { name: 'Demo navigation' }),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: 'Open lab guide' }),
+      ).toBeInTheDocument()
+    },
+  )
 
   it.each(['#/lab/01', '#/lab/012'])(
     'keeps noncanonical route %s free of the Guide launcher',

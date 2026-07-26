@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import '@/index.css'
 import Lab11WorkflowLab from './Lab11WorkflowLab'
 import { useApi } from '@/hooks/useApi'
 
@@ -39,7 +40,33 @@ function mockUseApiStates(states: ApiHookState[]) {
   })
 }
 
+function luminance(hex: string) {
+  const channels = hex.match(/[a-f\d]{2}/gi)?.map(channel => {
+    const value = Number.parseInt(channel, 16) / 255
+    return value <= 0.04045
+      ? value / 12.92
+      : ((value + 0.055) / 1.055) ** 2.4
+  })
+
+  if (!channels || channels.length !== 3) {
+    throw new Error(`Expected a six-digit hex color, received "${hex}"`)
+  }
+
+  return (
+    channels[0] * 0.2126
+    + channels[1] * 0.7152
+    + channels[2] * 0.0722
+  )
+}
+
+function contrastRatio(foreground: string, background: string) {
+  const lighter = Math.max(luminance(foreground), luminance(background))
+  const darker = Math.min(luminance(foreground), luminance(background))
+  return (lighter + 0.05) / (darker + 0.05)
+}
+
 beforeEach(() => {
+  document.documentElement.removeAttribute('data-theme')
   mockUseApiStates([
     buildApiState(),
     buildApiState(),
@@ -100,6 +127,40 @@ describe('Lab11WorkflowLab', () => {
     expect(screen.getByText('Ungoverned', { exact: true }))
       .toHaveClass('text-base')
     expect(compareCall).toHaveBeenCalledWith('/api/workflow/v090/compare', {})
+  })
+
+  it('keeps the governed workflow label readable on the dark surface', async () => {
+    document.documentElement.setAttribute('data-theme', 'dark')
+    const compareCall = vi.fn(async () => ({
+      governed: {
+        artifact: {
+          status: 'COMPLETED',
+        },
+        error: null,
+      },
+      ungoverned: {
+        artifact: {
+          status: 'COMPLETED',
+        },
+        error: null,
+      },
+    }))
+    mockUseApiStates([
+      buildApiState(),
+      buildApiState({ call: compareCall }),
+      buildApiState(),
+      buildApiState(),
+    ])
+
+    render(<Lab11WorkflowLab />)
+    fireEvent.click(screen.getByRole('button', { name: /governed vs ungoverned/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^compare$/i }))
+
+    const governed = await screen.findByText('Governed', { exact: true })
+    const foregroundToken = governed.style.color.match(/^var\((--[^)]+)\)$/)?.[1]
+
+    expect(foregroundToken).toBe('--text-primary')
+    expect(contrastRatio('#f2f4f8', '#08080f')).toBeGreaterThanOrEqual(4.5)
   })
 
   it('renders Evidence View tab button', () => {

@@ -444,7 +444,7 @@ export default function Lab11WorkflowLab() {
               {/* Governed panel */}
               <div className="rounded border p-3" style={{ borderColor: 'var(--border-ui)' }}>
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="text-base font-semibold uppercase" style={{ color: IBM_COLORS.blue60 }}>
+                  <span className="text-base font-semibold uppercase" style={{ color: 'var(--text-primary)' }}>
                     Governed
                   </span>
                   {compareResult.governed.artifact?.status && (
