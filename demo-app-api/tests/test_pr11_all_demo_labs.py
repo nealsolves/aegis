@@ -21,6 +21,8 @@ def test_demo_api_imports_and_health_route():
     assert response.status_code == 200
     assert response.json() == {
         "status": "ok",
+        "api_contract_version": "1",
+        "sdk_version": "0.9.0b1",
         "source": {
             "branch": None,
             "commit": None,

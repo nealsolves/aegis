@@ -26,6 +26,8 @@ from gates import GATES, get_gate_info
 from loaders import InMemoryPolicyLoader
 import yaml as yaml_lib
 from workflow_routes import router as workflow_router
+from demo_contract import API_CONTRACT_VERSION, demo_source, installed_sdk_version
+from demo_routes import router as demo_router
 
 app = FastAPI(title="AEGIS Demo API", version="0.9.0b1")
 
@@ -41,6 +43,7 @@ app.add_middleware(
 )
 
 app.include_router(workflow_router)
+app.include_router(demo_router)
 
 SAMPLE_POLICIES_DIR = Path(__file__).resolve().parent / "sample_policies"
 
@@ -93,11 +96,14 @@ def get_scenario(scenario_key: str):
 
 @app.get("/health")
 def health():
+    source = demo_source()
     return {
         "status": "ok",
+        "api_contract_version": API_CONTRACT_VERSION,
+        "sdk_version": installed_sdk_version(),
         "source": {
-            "branch": os.getenv("RENDER_GIT_BRANCH"),
-            "commit": os.getenv("RENDER_GIT_COMMIT"),
+            "branch": source.branch,
+            "commit": source.commit,
         },
     }
 
