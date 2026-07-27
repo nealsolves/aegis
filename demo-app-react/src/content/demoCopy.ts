@@ -2,12 +2,17 @@ export const publicNavCopy = {
   ariaLabel: 'Primary navigation',
   brand: 'AEGIS',
   brandLabel: 'AEGIS home',
-  descriptor: 'policy checkpoints',
+  descriptor: 'Auditable Enforcement and Governance for Intelligent Systems',
   links: [
-    { label: 'What it does', to: '/#what-it-does', emphasis: false },
-    { label: 'Install', to: '/#install', emphasis: false },
-    { label: 'Open demo', to: '/demo/architecture', emphasis: true },
-    { label: 'FAQ', to: '/faq', emphasis: false },
+    { id: 'install', label: 'Install', to: '/#install', emphasis: false },
+    {
+      id: 'demo',
+      label: 'Open demo',
+      currentLabel: 'Demo',
+      to: '/demo/architecture',
+      emphasis: true,
+    },
+    { id: 'faq', label: 'FAQ', to: '/faq', emphasis: false },
   ],
   github: {
     label: 'GitHub',
@@ -46,100 +51,115 @@ export const demoServiceNoticeCopy = {
 
 export const introCopy = {
   hero: {
-    eyebrow: 'Policy checkpoints for AI calls and agent workflows',
-    title: 'Put policy between the request and the result.',
+    eyebrow: 'Runtime governance for AI calls and agent workflows',
+    title: 'The deterministic wrapper around a probabilistic core.',
     lead:
-      'AEGIS checks an AI call before it runs and checks the result before your application uses it. Your policy decides who may act, which tools are allowed, what output is acceptable, and when a person must approve.',
+      'AI works in possibilities. Enterprise systems need a definite decision: '
+      + 'allow, block, pause, or escalate. AEGIS enforces your enterprise policy '
+      + 'at the boundary—before an AI acts and before its output becomes an '
+      + 'operational outcome.',
     workflow:
-      'AEGIS governs participants, step order, handoffs, approvals, budgets, and session lifecycle.',
+      'AEGIS applies declared policy to participants, steps, handoffs, approvals, '
+      + 'budgets, and session lifecycle.',
     host:
-      'Your application or agent framework still executes the agents, model calls, and tools.',
+      'Your application or agent framework continues to execute models, agents, '
+      + 'and tools.',
     actions: [
       { label: 'See the demo', to: '/demo/architecture', emphasis: true },
       { label: 'Install AEGIS', to: '/#install', emphasis: false },
     ],
-    callFlowLabel: 'One governed call',
+    callFlowLabel: 'The governed boundary',
     callFlow: [
       {
-        owner: 'Host application',
-        title: 'Prepare the request',
-        detail: 'The host supplies the prompt, role, policy, and context.',
+        owner: 'Enterprise application',
+        title: 'Declare the request',
+        detail: 'The host supplies the role, input, policy, and runtime context.',
         kind: 'host',
       },
       {
-        owner: 'AEGIS pre-call check',
-        title: 'Allow, block, or pause',
-        detail: 'Policy is applied before the model or tool runs.',
+        owner: 'Deterministic pre-call gate',
+        title: 'Allow, block, pause, or escalate',
+        detail: 'AEGIS applies enterprise policy before the model, agent, or tool runs.',
         kind: 'policy',
       },
       {
-        owner: 'Host application',
-        title: 'Execute the model or tool',
+        owner: 'Probabilistic core',
+        title: 'Execute the model or agent',
         detail: 'The host keeps its provider client, credentials, retries, and business state.',
         kind: 'host-owned',
       },
       {
-        owner: 'AEGIS post-call check',
+        owner: 'Deterministic post-call gate',
         title: 'Accept or reject the output',
-        detail: 'Output rules run before the host application uses the result.',
+        detail: 'AEGIS applies output rules before the host uses the result.',
         kind: 'policy',
       },
       {
-        owner: 'Evidence',
-        title: 'Record the decision',
-        detail: 'The artifact includes reason codes, policy version, checksums, and workflow context.',
+        owner: 'Independent evidence',
+        title: 'Record the governance decision',
+        detail: 'The artifact carries reason codes, policy metadata, checksums, and workflow context.',
         kind: 'evidence',
       },
     ],
   },
   ownership: {
     id: 'what-it-does',
-    eyebrow: 'Ownership boundary',
-    title: 'Your application runs the work. AEGIS applies the checkpoints.',
+    eyebrow: 'The enterprise boundary',
+    title: 'Let AI handle possibility. Make policy decide permission.',
     intro:
-      'The boundary remains explicit for one model call and for a multi-step agent workflow.',
+      'Models and agents can reason through ambiguity. Enterprise permission '
+      + 'resolves against declared, versioned policy before a proposed action '
+      + 'becomes an operational outcome.',
     areas: [
       {
-        title: 'Your application',
+        title: 'Probabilistic core',
         detail:
-          'Orchestration, provider clients, credentials, retries, model calls, tool execution, and business state.',
+          'Models and agents reason, plan, generate, and propose tool actions '
+          + 'across ambiguous situations.',
       },
       {
-        title: 'AEGIS',
+        title: 'Deterministic governance',
         detail:
-          'Policies, roles, participants, transitions, handoffs, approvals, budgets, output rules, lifecycle, and risk treatment.',
+          'AEGIS enforces roles, preconditions, tool limits, approvals, budgets, '
+          + 'output rules, and risk treatment.',
       },
       {
-        title: 'Evidence',
+        title: 'Enterprise operation',
         detail:
-          'Separate invocation and workflow artifacts, with trace and export for operator review.',
+          'Your application owns orchestration, credentials, execution, business '
+          + 'state, downstream action, and storage of governance evidence.',
       },
     ],
   },
   comparison: {
-    eyebrow: 'External governance evidence',
-    title: 'Use each record for the job it can support.',
+    eyebrow: 'Independent governance evidence',
+    title: 'An explanation is not a control.',
     intro:
-      'A model thought trace can help with debugging and behavioral inspection. An external governance record applies policy and records the resulting decision.',
+      'A thought trace can help a team understand model behavior. It remains an '
+      + 'account produced by the system being inspected. Enterprise governance '
+      + 'needs a separate record showing which policy ran, what was allowed or '
+      + 'blocked, and why.',
     columns: [
       {
-        title: 'Model thought trace: useful for inspection',
+        title: "The model's account",
+        label: 'Useful clues for understanding behavior',
         items: [
-          'Generated by the model being inspected.',
-          'Useful for debugging and behavioral inspection.',
-          'May omit an influence or produce a plausible account after the fact.',
-          'Cannot independently stop an unauthorized action before execution.',
-          'Does not prove which company policy was applied.',
+          'Produced by the model being inspected.',
+          'Helps with debugging and behavioral inspection.',
+          'May omit an influence or construct a plausible explanation after the fact.',
+          'Cannot independently authorize or stop an enterprise action.',
+          'Does not prove which enterprise policy was executed.',
         ],
       },
       {
-        title: 'AEGIS governance record: produced outside the model',
+        title: "The system's receipt",
+        label: 'Independent evidence of the governance decision',
         items: [
-          'Generated outside the model.',
-          'Tied to a versioned policy and ordered checks.',
-          'May stop a request before the model or tool runs.',
-          'May reject output before the host application uses it.',
-          'Records the decision, reason codes, checksums, policy metadata, and workflow context.',
+          'Produced by AEGIS outside the model.',
+          'Tied to a versioned policy and ordered enforcement gates.',
+          'Records allow, block, pause, or escalation outcomes.',
+          'Can stop a request before execution or reject output before use.',
+          'Captures reason codes, checksums, policy metadata, and workflow context.',
         ],
       },
     ],
@@ -152,9 +172,11 @@ export const introCopy = {
   install: {
     id: 'install',
     eyebrow: 'First integration',
-    title: 'Add AEGIS around the call you already own.',
+    title:
+      'Add AEGIS to an AI invocation or agentic workflow you already own.',
     intro:
-      'Run one check before execution and one after. The host model call stays visible between the policy checkpoints.',
+      'Apply policy before execution and validate the result after it. The '
+      + 'host-owned call remains visible between the two checkpoints.',
     command: 'pip install aegis-ai-governance==0.9.0b1',
     commandLabel: 'Install the AEGIS public beta',
     steps: [
@@ -196,26 +218,35 @@ export const introCopy = {
       { text: 'artifact = enforce_post_call(pre, {"result": reply})', kind: 'post' },
     ],
   },
+  principle: {
+    eyebrow: 'The operating principle',
+    title: 'Governance is infrastructure.',
+    intro:
+      'Models, providers, and agent frameworks can change. Your governance '
+      + 'boundary remains declared, executable, independently observable, and '
+      + 'auditable.',
+  },
   entries: {
     eyebrow: 'Explore the demo',
     title: 'Choose where to start',
     regionLabel: 'Choose where to start',
     intro:
-      'Start with the product boundary, follow a governed case, or inspect one control at a time.',
+      'Understand the ownership boundary, follow a governed enterprise case, '
+      + 'or inspect one control at a time.',
     cards: [
       {
         title: 'Architecture',
-        description: 'See ownership and technical maps.',
+        description: 'Understand the ownership boundary and technical map.',
         to: '/demo/architecture',
       },
       {
         title: 'Scenarios',
-        description: 'Work through three roleplay cases.',
+        description: 'Follow governed enterprise cases.',
         to: '/demo/scenarios',
       },
       {
         title: 'Labs',
-        description: 'Use isolated controls with route-specific help.',
+        description: 'Inspect individual controls and evidence.',
         to: '/demo/labs',
       },
     ],

@@ -4,9 +4,8 @@ import HelpButton from '@/components/HelpButton'
 import HelpDrawer, {
   type ResultHelpContext,
 } from '@/components/HelpDrawer'
-import AppNav from '@/components/layout/AppNav'
-import DemoNav from '@/components/layout/DemoNav'
 import LabRouteLayout from '@/components/layout/LabRouteLayout'
+import SiteHeader from '@/components/layout/SiteHeader'
 import { DemoServiceNotice } from '@/components/service/DemoServiceNotice'
 import { LABS, LABS_BY_ID } from '@/content/labCatalog'
 import Lab1RiskScoring from '@/labs/Lab1RiskScoring'
@@ -32,6 +31,8 @@ interface RouteDescriptor {
   helpLabId: number | null
   showDemoNav: boolean
   showDemoService: boolean
+  isDemoContext: boolean
+  emphasizeDemoLink: boolean
 }
 
 function describeRoute(pathname: string): RouteDescriptor {
@@ -44,6 +45,8 @@ function describeRoute(pathname: string): RouteDescriptor {
     helpLabId: normalizedPathname === '/demo/architecture' ? 0 : knownLab?.id ?? null,
     showDemoNav: isDemoRoute || isLabRoute || normalizedPathname === '/faq',
     showDemoService: isDemoRoute || isLabRoute,
+    isDemoContext: isDemoRoute || isLabRoute,
+    emphasizeDemoLink: normalizedPathname === '/',
   }
 }
 
@@ -97,8 +100,11 @@ function AppContent() {
 
   return (
     <div className="app-shell">
-      <AppNav />
-      {route.showDemoNav && <DemoNav />}
+      <SiteHeader
+        showDemoNav={route.showDemoNav}
+        isDemoContext={route.isDemoContext}
+        emphasizeDemoLink={route.emphasizeDemoLink}
+      />
       {route.showDemoService && <DemoServiceNotice />}
       {route.helpLabId !== null && (
         <div className="help-launcher">

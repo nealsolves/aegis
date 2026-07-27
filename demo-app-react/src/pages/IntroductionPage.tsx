@@ -90,6 +90,7 @@ export default function IntroductionPage() {
             {introCopy.comparison.columns.map((column) => (
               <article key={column.title} className="comparison-card">
                 <h3>{column.title}</h3>
+                <p className="comparison-card__label">{column.label}</p>
                 <ul>
                   {column.items.map((item) => <li key={item}>{item}</li>)}
                 </ul>
@@ -149,6 +150,20 @@ export default function IntroductionPage() {
               </code>
             </pre>
           </div>
+        </div>
+      </section>
+
+      <section
+        className="intro-section intro-principle"
+        aria-labelledby="principle-title"
+      >
+        <div className="intro-shell">
+          <SectionHeading
+            eyebrow={introCopy.principle.eyebrow}
+            id="principle-title"
+            title={introCopy.principle.title}
+            intro={introCopy.principle.intro}
+          />
         </div>
       </section>
 

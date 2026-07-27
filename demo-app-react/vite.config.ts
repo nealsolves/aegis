@@ -14,6 +14,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
+    css: true,
     environmentOptions: {
       jsdom: {
         url: 'http://localhost',

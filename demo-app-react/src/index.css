@@ -4,6 +4,9 @@
 @tailwind utilities;
 
 :root {
+  --site-header-primary-height: 4rem;
+  --site-header-secondary-height: 3.25rem;
+
   /* IBM color tokens — identical in both themes */
   --ibm-blue-60:    #0f62fe;
   --ibm-blue-40:    #78a9ff;
@@ -84,16 +87,46 @@ button:focus-visible {
   color: var(--text-primary);
 }
 
+.site-header {
+  flex: 0 0 calc(
+    var(--site-header-primary-height) + var(--site-header-secondary-height)
+  );
+  height: calc(
+    var(--site-header-primary-height) + var(--site-header-secondary-height)
+  );
+  background: var(--bg-nav);
+}
+
+.site-header__row {
+  height: var(--site-header-secondary-height);
+  min-height: var(--site-header-secondary-height);
+}
+
 .public-nav {
   background: var(--bg-nav);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   color: var(--text-on-nav);
 }
 
-.public-nav__inner {
+.public-nav.site-header__row {
+  height: var(--site-header-primary-height);
+  min-height: var(--site-header-primary-height);
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.public-nav__inner,
+.demo-nav__inner,
+.site-header__context-inner {
   width: min(100%, 1440px);
-  min-height: 4rem;
+  min-width: max-content;
+  height: 100%;
+  min-height: 100%;
   margin: 0 auto;
+  box-sizing: border-box;
+}
+
+.public-nav__inner {
   padding: 0.5rem clamp(1rem, 3vw, 2.5rem);
   display: flex;
   align-items: center;
@@ -117,11 +150,6 @@ button:focus-visible {
   letter-spacing: 0.08em;
 }
 
-.public-nav__brand span {
-  color: rgba(255, 255, 255, 0.62);
-  font-size: 1rem;
-}
-
 .public-nav__links {
   margin-left: auto;
   display: flex;
@@ -130,6 +158,7 @@ button:focus-visible {
 }
 
 .public-nav__link,
+.public-nav__current,
 .public-nav__theme {
   min-height: 2.75rem;
   display: inline-flex;
@@ -166,6 +195,13 @@ button:focus-visible {
   text-underline-offset: 0.2em;
 }
 
+.public-nav__current {
+  border-color: var(--ibm-blue-60);
+  color: var(--ibm-cyan-30);
+  background: transparent;
+  cursor: default;
+}
+
 .public-nav__theme {
   flex: 0 0 auto;
   border-color: rgba(255, 255, 255, 0.18);
@@ -178,13 +214,24 @@ button:focus-visible {
 }
 
 .demo-nav__inner {
-  width: min(100%, 1440px);
-  min-height: 3.25rem;
-  margin: 0 auto;
   padding: 0.25rem clamp(1rem, 3vw, 2.5rem);
   display: flex;
   align-items: center;
   gap: 0.25rem;
+}
+
+.site-header__context {
+  overflow-x: auto;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.68);
+  background: var(--bg-nav);
+}
+
+.site-header__context-inner {
+  display: flex;
+  align-items: center;
+  padding: 0.25rem clamp(1rem, 3vw, 2.5rem);
+  white-space: nowrap;
 }
 
 .demo-nav__link {
@@ -243,7 +290,7 @@ button:focus-visible {
 }
 
 .intro-shell {
-  width: min(100% - 2rem, 1200px);
+  width: min(100% - 2rem, 1360px);
   margin: 0 auto;
 }
 
@@ -255,13 +302,13 @@ button:focus-visible {
 
 .intro-hero__grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(21rem, 0.9fr);
+  grid-template-columns: minmax(0, 1.18fr) minmax(20rem, 0.82fr);
   align-items: center;
-  gap: clamp(3rem, 7vw, 6rem);
+  gap: clamp(2.5rem, 6vw, 5rem);
 }
 
 .intro-hero__copy {
-  max-width: 45rem;
+  max-width: 52rem;
 }
 
 .intro-eyebrow {
@@ -486,7 +533,7 @@ button:focus-visible {
 }
 
 .intro-section-heading {
-  max-width: 70ch;
+  max-width: 100ch;
   margin-bottom: 2.5rem;
 }
 
@@ -566,8 +613,16 @@ button:focus-visible {
   line-height: 1.35;
 }
 
+.comparison-card__label {
+  margin: 0.5rem 0 0;
+  color: var(--text-primary);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.8125rem;
+  letter-spacing: 0.03em;
+}
+
 .comparison-card ul {
-  margin: 1.5rem 0 0;
+  margin: 1.25rem 0 0;
   padding-left: 1.25rem;
 }
 
@@ -582,7 +637,7 @@ button:focus-visible {
 }
 
 .intro-source {
-  max-width: 70ch;
+  max-width: 100ch;
   margin: 1.5rem 0 0;
   color: var(--text-secondary);
   font-size: 1rem;
@@ -605,13 +660,19 @@ button:focus-visible {
 
 .intro-install__grid {
   display: grid;
-  grid-template-columns: minmax(17rem, 0.72fr) minmax(0, 1.28fr);
+  grid-template-columns: minmax(28rem, 1.15fr) minmax(0, 0.85fr);
   align-items: start;
   gap: clamp(2rem, 5vw, 4rem);
 }
 
+.intro-install__grid > * {
+  min-width: 0;
+}
+
 .install-command {
+  max-width: 100%;
   padding: 1.25rem;
+  overflow-x: auto;
   border-left: 3px solid var(--ibm-blue-60);
   background: var(--bg-surface);
 }
@@ -628,11 +689,14 @@ button:focus-visible {
 }
 
 .install-command code {
-  overflow-wrap: anywhere;
+  width: max-content;
+  min-width: 100%;
+  overflow-wrap: normal;
   color: var(--text-primary);
   font-family: 'IBM Plex Mono', monospace;
   font-size: 0.9375rem;
   letter-spacing: 0.015em;
+  white-space: nowrap;
 }
 
 .install-steps {
@@ -656,6 +720,7 @@ button:focus-visible {
 }
 
 .intro-code {
+  width: 100%;
   max-width: 100%;
   margin: 0;
   padding: 1.25rem 0;
@@ -691,8 +756,29 @@ button:focus-visible {
   color: var(--ibm-cyan-30);
 }
 
+.intro-principle {
+  border-block: 1px solid var(--border-ui);
+  background: var(--bg-nav);
+}
+
+.intro-principle .intro-eyebrow {
+  color: var(--ibm-cyan-30);
+}
+
+.intro-principle .intro-section-heading {
+  margin-bottom: 0;
+}
+
+.intro-principle .intro-section-heading h2 {
+  color: #ffffff;
+}
+
+.intro-principle .intro-section-heading > p:last-child {
+  color: rgba(255, 255, 255, 0.72);
+}
+
 .intro-entries {
-  padding-top: 1rem;
+  padding-top: clamp(4rem, 8vw, 7rem);
 }
 
 .entry-card__link {
@@ -1205,23 +1291,6 @@ button:focus-visible {
 }
 
 @media (max-width: 960px) {
-  .public-nav__inner {
-    flex-wrap: wrap;
-    gap: 0.25rem 0.75rem;
-  }
-
-  .public-nav__links {
-    order: 3;
-    width: 100%;
-    margin-left: 0;
-    padding-bottom: 0.25rem;
-    overflow-x: auto;
-  }
-
-  .public-nav__theme {
-    margin-left: auto;
-  }
-
   .intro-hero__grid,
   .intro-install__grid {
     grid-template-columns: 1fr;
@@ -1233,15 +1302,12 @@ button:focus-visible {
 }
 
 @media (max-width: 680px) {
-  .public-nav__brand span {
-    display: none;
-  }
-
   .public-nav__links {
     gap: 0;
   }
 
-  .public-nav__link {
+  .public-nav__link,
+  .public-nav__current {
     padding-inline: 0.625rem;
   }
 
