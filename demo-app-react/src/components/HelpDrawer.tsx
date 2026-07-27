@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from 'react'
 import { useTheme } from '@/theme/ThemeContext'
+import { getLabById } from '@/content/labCatalog'
 import { helpContent } from '@/help/helpContent'
 
 export interface ResultHelpContext {
@@ -18,22 +19,6 @@ interface Props {
   isOpen: boolean
   onClose: () => void
   resultContext?: ResultHelpContext
-}
-
-const LABS_LABEL: Record<number, string> = {
-  0: 'Architecture',
-  1: 'Lab 1 — Risk Scoring',
-  2: 'Lab 2 — Signing & Verification',
-  3: 'Lab 3 — Audit Chain',
-  4: 'Lab 4 — Policy Composition',
-  5: 'Lab 5 — Loaders & Versioning',
-  6: 'Lab 6 — Custom Gates',
-  7: 'Lab 7 — Compliance Dashboard',
-  8: 'Lab 8 — Governed Knowledge Base',
-  9: 'Lab 9 — Governed vs. Ungoverned',
-  10: 'Lab 10 — Split Enforcement Explorer',
-  11: 'Lab 11 — Workflow Governance',
-  12: 'Lab 12 — Integration Adapters',
 }
 
 export default function HelpDrawer({
@@ -53,6 +38,10 @@ export default function HelpDrawer({
   }>({ labId, view: 'base' })
 
   const lab = helpContent[labId] ?? helpContent[1]
+  const publicLab = getLabById(labId) ?? getLabById(1)
+  const publicTitle = labId === 0
+    ? 'Architecture'
+    : publicLab?.heroTitle ?? 'Risk Scoring'
   const isDark = theme === 'dark'
   const glossaryOpen = glossaryState.labId === labId ? glossaryState.open : false
   const hasResultContext = resultContext !== undefined
@@ -183,7 +172,7 @@ export default function HelpDrawer({
         ref={drawerRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Lab guide"
+        aria-labelledby="help-drawer-title"
         style={{
           position: 'fixed',
           top: 0,
@@ -213,7 +202,8 @@ export default function HelpDrawer({
           }}
         >
           <div>
-            <div
+            <p
+              className="help-drawer__eyebrow"
               style={{
                 fontSize: '0.75rem',
                 color: labelColor,
@@ -224,10 +214,13 @@ export default function HelpDrawer({
                 fontFamily: "'IBM Plex Sans', sans-serif",
               }}
             >
-              {LABS_LABEL[labId] ?? `Lab ${labId}`}
-            </div>
-            <div
+              Capability guide
+            </p>
+            <h2
+              id="help-drawer-title"
+              className="help-drawer__title"
               style={{
+                margin: 0,
                 fontFamily: "'IBM Plex Mono', monospace",
                 fontSize: '1.0625rem',
                 color: titleColor,
@@ -235,8 +228,8 @@ export default function HelpDrawer({
                 lineHeight: 1.4,
               }}
             >
-              {lab.title}
-            </div>
+              {publicTitle}
+            </h2>
           </div>
 
           <button
