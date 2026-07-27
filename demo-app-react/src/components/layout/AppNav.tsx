@@ -3,14 +3,21 @@ import { Link } from 'react-router-dom'
 import { publicNavCopy } from '@/content/demoCopy'
 import { useTheme } from '@/theme/ThemeContext'
 
-export default function AppNav() {
+export default function AppNav({
+  isDemoContext,
+}: {
+  isDemoContext: boolean
+}) {
   const { theme, toggleTheme } = useTheme()
   const nextTheme = theme === 'light'
     ? publicNavCopy.theme.dark
     : publicNavCopy.theme.light
 
   return (
-    <nav className="public-nav" aria-label={publicNavCopy.ariaLabel}>
+    <nav
+      className="public-nav site-header__row"
+      aria-label={publicNavCopy.ariaLabel}
+    >
       <div className="public-nav__inner">
         <Link
           to="/"
@@ -18,20 +25,29 @@ export default function AppNav() {
           aria-label={publicNavCopy.brandLabel}
         >
           <strong>{publicNavCopy.brand}</strong>
-          <span>{publicNavCopy.descriptor}</span>
         </Link>
 
         <div className="public-nav__links">
-          {publicNavCopy.links.map((link) => (
-            <Link
-              key={link.label}
-              to={link.to}
-              className={link.emphasis
-                ? 'public-nav__link public-nav__link--primary'
-                : 'public-nav__link'}
-            >
-              {link.label}
-            </Link>
+          {publicNavCopy.links.map(link => (
+            link.id === 'demo' && isDemoContext ? (
+              <span
+                key={link.id}
+                className="public-nav__link public-nav__link--current"
+                aria-current="location"
+              >
+                {link.currentLabel}
+              </span>
+            ) : (
+              <Link
+                key={link.id}
+                to={link.to}
+                className={link.emphasis
+                  ? 'public-nav__link public-nav__link--primary'
+                  : 'public-nav__link'}
+              >
+                {link.label}
+              </Link>
+            )
           ))}
           <a
             href={publicNavCopy.github.href}

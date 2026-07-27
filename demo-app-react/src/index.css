@@ -4,6 +4,9 @@
 @tailwind utilities;
 
 :root {
+  --site-header-primary-height: 4rem;
+  --site-header-secondary-height: 3.25rem;
+
   /* IBM color tokens — identical in both themes */
   --ibm-blue-60:    #0f62fe;
   --ibm-blue-40:    #78a9ff;
@@ -84,16 +87,46 @@ button:focus-visible {
   color: var(--text-primary);
 }
 
+.site-header {
+  flex: 0 0 calc(
+    var(--site-header-primary-height) + var(--site-header-secondary-height)
+  );
+  height: calc(
+    var(--site-header-primary-height) + var(--site-header-secondary-height)
+  );
+  background: var(--bg-nav);
+}
+
+.site-header__row {
+  height: var(--site-header-secondary-height);
+  min-height: var(--site-header-secondary-height);
+}
+
 .public-nav {
   background: var(--bg-nav);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   color: var(--text-on-nav);
 }
 
-.public-nav__inner {
+.public-nav.site-header__row {
+  height: var(--site-header-primary-height);
+  min-height: var(--site-header-primary-height);
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.public-nav__inner,
+.demo-nav__inner,
+.site-header__context-inner {
   width: min(100%, 1440px);
-  min-height: 4rem;
+  min-width: max-content;
+  height: 100%;
+  min-height: 100%;
   margin: 0 auto;
+  box-sizing: border-box;
+}
+
+.public-nav__inner {
   padding: 0.5rem clamp(1rem, 3vw, 2.5rem);
   display: flex;
   align-items: center;
@@ -115,11 +148,6 @@ button:focus-visible {
   font-size: 1rem;
   font-weight: 400;
   letter-spacing: 0.08em;
-}
-
-.public-nav__brand span {
-  color: rgba(255, 255, 255, 0.62);
-  font-size: 1rem;
 }
 
 .public-nav__links {
@@ -166,6 +194,13 @@ button:focus-visible {
   text-underline-offset: 0.2em;
 }
 
+.public-nav__link--current {
+  border-color: var(--ibm-blue-60);
+  color: var(--ibm-cyan-30);
+  background: transparent;
+  cursor: default;
+}
+
 .public-nav__theme {
   flex: 0 0 auto;
   border-color: rgba(255, 255, 255, 0.18);
@@ -178,13 +213,24 @@ button:focus-visible {
 }
 
 .demo-nav__inner {
-  width: min(100%, 1440px);
-  min-height: 3.25rem;
-  margin: 0 auto;
   padding: 0.25rem clamp(1rem, 3vw, 2.5rem);
   display: flex;
   align-items: center;
   gap: 0.25rem;
+}
+
+.site-header__context {
+  overflow-x: auto;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.68);
+  background: var(--bg-nav);
+}
+
+.site-header__context-inner {
+  display: flex;
+  align-items: center;
+  padding: 0.25rem clamp(1rem, 3vw, 2.5rem);
+  white-space: nowrap;
 }
 
 .demo-nav__link {
@@ -1205,23 +1251,6 @@ button:focus-visible {
 }
 
 @media (max-width: 960px) {
-  .public-nav__inner {
-    flex-wrap: wrap;
-    gap: 0.25rem 0.75rem;
-  }
-
-  .public-nav__links {
-    order: 3;
-    width: 100%;
-    margin-left: 0;
-    padding-bottom: 0.25rem;
-    overflow-x: auto;
-  }
-
-  .public-nav__theme {
-    margin-left: auto;
-  }
-
   .intro-hero__grid,
   .intro-install__grid {
     grid-template-columns: 1fr;
@@ -1233,10 +1262,6 @@ button:focus-visible {
 }
 
 @media (max-width: 680px) {
-  .public-nav__brand span {
-    display: none;
-  }
-
   .public-nav__links {
     gap: 0;
   }

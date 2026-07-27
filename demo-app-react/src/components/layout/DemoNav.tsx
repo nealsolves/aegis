@@ -3,7 +3,10 @@ import { demoNavCopy } from '@/content/demoCopy'
 
 export default function DemoNav() {
   return (
-    <nav className="demo-nav" aria-label={demoNavCopy.ariaLabel}>
+    <nav
+      className="demo-nav site-header__row"
+      aria-label={demoNavCopy.ariaLabel}
+    >
       <div className="demo-nav__inner">
         {demoNavCopy.links.map((link) => (
           <NavLink

@@ -2,12 +2,17 @@ export const publicNavCopy = {
   ariaLabel: 'Primary navigation',
   brand: 'AEGIS',
   brandLabel: 'AEGIS home',
-  descriptor: 'policy checkpoints',
+  descriptor: 'Auditable Enforcement and Governance for Intelligent Systems',
   links: [
-    { label: 'What it does', to: '/#what-it-does', emphasis: false },
-    { label: 'Install', to: '/#install', emphasis: false },
-    { label: 'Open demo', to: '/demo/architecture', emphasis: true },
-    { label: 'FAQ', to: '/faq', emphasis: false },
+    { id: 'install', label: 'Install', to: '/#install', emphasis: false },
+    {
+      id: 'demo',
+      label: 'Open demo',
+      currentLabel: 'Demo',
+      to: '/demo/architecture',
+      emphasis: true,
+    },
+    { id: 'faq', label: 'FAQ', to: '/faq', emphasis: false },
   ],
   github: {
     label: 'GitHub',

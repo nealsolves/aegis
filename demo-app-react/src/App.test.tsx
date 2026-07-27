@@ -6,6 +6,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react'
+import '@/index.css'
 import { AigcProvider } from '@/context/AigcContext'
 import {
   DemoServiceProvider,
@@ -136,13 +137,73 @@ describe('App routing', () => {
     ).toBeInTheDocument()
   })
 
-  it('exposes the shared public navigation', () => {
-    renderRoute('#/')
-    const nav = screen.getByRole('navigation', { name: 'Primary navigation' })
+  it('uses a two-row public header without the removed landing link', () => {
+    const { container } = renderRoute('#/')
+    const header = container.querySelector<HTMLElement>('.site-header')
+    const primary = screen.getByRole('navigation', { name: 'Primary navigation' })
 
-    for (const label of ['What it does', 'Install', 'Open demo', 'FAQ', 'GitHub']) {
-      expect(within(nav).getByRole('link', { name: label })).toBeInTheDocument()
-    }
+    expect(header).not.toBeNull()
+    if (!header) throw new Error('Expected site header')
+    expect(header.querySelectorAll(':scope > .site-header__row')).toHaveLength(2)
+    expect(
+      within(header).getByText(
+        'Auditable Enforcement and Governance for Intelligent Systems',
+      ),
+    ).toBeInTheDocument()
+    expect(within(primary).queryByText('What it does')).not.toBeInTheDocument()
+    expect(
+      within(primary).getByRole('link', { name: 'Open demo' }),
+    ).toBeInTheDocument()
+    expect(container.querySelector('.site-header__context')).toBeInTheDocument()
+  })
+
+  it('marks Demo as the current location without exposing a link on demo routes', () => {
+    renderRoute('#/demo/architecture')
+    const primary = screen.getByRole('navigation', { name: 'Primary navigation' })
+    const demo = within(primary).getByText('Demo')
+
+    expect(demo.tagName).toBe('SPAN')
+    expect(demo).toHaveAttribute('aria-current', 'location')
+    expect(demo).not.toHaveAttribute('href')
+    expect(
+      screen.getByRole('navigation', { name: 'Demo navigation' }),
+    ).toBeInTheDocument()
+  })
+
+  it('keeps Open demo available on the shared FAQ route', () => {
+    renderRoute('#/faq')
+
+    expect(
+      within(
+        screen.getByRole('navigation', { name: 'Primary navigation' }),
+      ).getByRole('link', { name: 'Open demo' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('navigation', { name: 'Demo navigation' }),
+    ).toBeInTheDocument()
+  })
+
+  it('uses identical fixed row heights across public and demo routes', () => {
+    const heights = ['#/', '#/demo/architecture', '#/lab/1', '#/faq'].map(path => {
+      const view = renderRoute(path)
+      const header = view.container.querySelector<HTMLElement>('.site-header')
+      expect(header).not.toBeNull()
+      if (!header) throw new Error('Expected site header')
+      const rows = [
+        ...header.querySelectorAll<HTMLElement>(
+          ':scope > .site-header__row',
+        ),
+      ].map(row => getComputedStyle(row).height)
+      view.unmount()
+      return rows
+    })
+
+    expect(heights.every(rows => rows.length === 2)).toBe(true)
+    expect(heights.every(rows => rows[0] === heights[0][0])).toBe(true)
+    expect(heights.every(rows => rows[1] === heights[0][1])).toBe(true)
+    expect(
+      heights.flat().every(height => height !== 'auto' && height !== ''),
+    ).toBe(true)
   })
 
   it('shows demo navigation only inside demo, lab, and FAQ routes', () => {
