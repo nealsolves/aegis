@@ -34,7 +34,7 @@ export default function AppNav({
             link.id === 'demo' && isDemoContext ? (
               <span
                 key={link.id}
-                className="public-nav__link public-nav__link--current"
+                className="public-nav__current"
                 aria-current="location"
               >
                 {link.currentLabel}

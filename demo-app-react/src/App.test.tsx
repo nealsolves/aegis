@@ -165,9 +165,20 @@ describe('App routing', () => {
     expect(demo.tagName).toBe('SPAN')
     expect(demo).toHaveAttribute('aria-current', 'location')
     expect(demo).not.toHaveAttribute('href')
+    expect(demo).toHaveClass('public-nav__current')
+    expect(demo).not.toHaveClass('public-nav__link')
     expect(
       screen.getByRole('navigation', { name: 'Demo navigation' }),
     ).toBeInTheDocument()
+  })
+
+  it('marks Labs as the current page on lab detail routes', () => {
+    renderRoute('#/lab/1')
+    const demoNav = screen.getByRole('navigation', { name: 'Demo navigation' })
+    const labs = within(demoNav).getByRole('link', { name: 'Labs' })
+
+    expect(labs).toHaveClass('demo-nav__link--active')
+    expect(labs).toHaveAttribute('aria-current', 'page')
   })
 
   it('keeps Open demo available on the shared FAQ route', () => {

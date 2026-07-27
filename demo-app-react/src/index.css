@@ -158,6 +158,7 @@ button:focus-visible {
 }
 
 .public-nav__link,
+.public-nav__current,
 .public-nav__theme {
   min-height: 2.75rem;
   display: inline-flex;
@@ -194,7 +195,7 @@ button:focus-visible {
   text-underline-offset: 0.2em;
 }
 
-.public-nav__link--current {
+.public-nav__current {
   border-color: var(--ibm-blue-60);
   color: var(--ibm-cyan-30);
   background: transparent;
@@ -1305,7 +1306,8 @@ button:focus-visible {
     gap: 0;
   }
 
-  .public-nav__link {
+  .public-nav__link,
+  .public-nav__current {
     padding-inline: 0.625rem;
   }
 
