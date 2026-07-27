@@ -160,4 +160,23 @@ describe('IntroductionPage', () => {
       expect(Number.parseFloat(minimumHeight)).toBeGreaterThanOrEqual(44)
     }
   })
+
+  it('keeps the public beta install command on one line inside its own scroller', () => {
+    renderPage()
+    const command = screen.getByText('pip install aegis-ai-governance==0.9.0b1')
+    const container = command.closest('.install-command')
+
+    expect(getComputedStyle(command).whiteSpace).toBe('nowrap')
+    expect(container).not.toBeNull()
+    expect(getComputedStyle(container as Element).overflowX).toBe('auto')
+  })
+
+  it('uses the wide prose contract for section introductions and sources', () => {
+    const { container } = renderPage()
+    const heading = container.querySelector('.intro-section-heading')
+    const source = container.querySelector('.intro-source')
+
+    expect(getComputedStyle(heading as Element).maxWidth).toBe('100ch')
+    expect(getComputedStyle(source as Element).maxWidth).toBe('100ch')
+  })
 })

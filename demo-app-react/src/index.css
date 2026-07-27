@@ -289,7 +289,7 @@ button:focus-visible {
 }
 
 .intro-shell {
-  width: min(100% - 2rem, 1200px);
+  width: min(100% - 2rem, 1360px);
   margin: 0 auto;
 }
 
@@ -301,13 +301,13 @@ button:focus-visible {
 
 .intro-hero__grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(21rem, 0.9fr);
+  grid-template-columns: minmax(0, 1.18fr) minmax(20rem, 0.82fr);
   align-items: center;
-  gap: clamp(3rem, 7vw, 6rem);
+  gap: clamp(2.5rem, 6vw, 5rem);
 }
 
 .intro-hero__copy {
-  max-width: 45rem;
+  max-width: 52rem;
 }
 
 .intro-eyebrow {
@@ -532,7 +532,7 @@ button:focus-visible {
 }
 
 .intro-section-heading {
-  max-width: 70ch;
+  max-width: 100ch;
   margin-bottom: 2.5rem;
 }
 
@@ -612,8 +612,16 @@ button:focus-visible {
   line-height: 1.35;
 }
 
+.comparison-card__label {
+  margin: 0.5rem 0 0;
+  color: var(--text-primary);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.8125rem;
+  letter-spacing: 0.03em;
+}
+
 .comparison-card ul {
-  margin: 1.5rem 0 0;
+  margin: 1.25rem 0 0;
   padding-left: 1.25rem;
 }
 
@@ -628,7 +636,7 @@ button:focus-visible {
 }
 
 .intro-source {
-  max-width: 70ch;
+  max-width: 100ch;
   margin: 1.5rem 0 0;
   color: var(--text-secondary);
   font-size: 1rem;
@@ -651,13 +659,19 @@ button:focus-visible {
 
 .intro-install__grid {
   display: grid;
-  grid-template-columns: minmax(17rem, 0.72fr) minmax(0, 1.28fr);
+  grid-template-columns: minmax(28rem, 1.15fr) minmax(0, 0.85fr);
   align-items: start;
   gap: clamp(2rem, 5vw, 4rem);
 }
 
+.intro-install__grid > * {
+  min-width: 0;
+}
+
 .install-command {
+  max-width: 100%;
   padding: 1.25rem;
+  overflow-x: auto;
   border-left: 3px solid var(--ibm-blue-60);
   background: var(--bg-surface);
 }
@@ -674,11 +688,14 @@ button:focus-visible {
 }
 
 .install-command code {
-  overflow-wrap: anywhere;
+  width: max-content;
+  min-width: 100%;
+  overflow-wrap: normal;
   color: var(--text-primary);
   font-family: 'IBM Plex Mono', monospace;
   font-size: 0.9375rem;
   letter-spacing: 0.015em;
+  white-space: nowrap;
 }
 
 .install-steps {
@@ -702,6 +719,7 @@ button:focus-visible {
 }
 
 .intro-code {
+  width: 100%;
   max-width: 100%;
   margin: 0;
   padding: 1.25rem 0;
@@ -737,8 +755,29 @@ button:focus-visible {
   color: var(--ibm-cyan-30);
 }
 
+.intro-principle {
+  border-block: 1px solid var(--border-ui);
+  background: var(--bg-nav);
+}
+
+.intro-principle .intro-eyebrow {
+  color: var(--ibm-cyan-30);
+}
+
+.intro-principle .intro-section-heading {
+  margin-bottom: 0;
+}
+
+.intro-principle .intro-section-heading h2 {
+  color: #ffffff;
+}
+
+.intro-principle .intro-section-heading > p:last-child {
+  color: rgba(255, 255, 255, 0.72);
+}
+
 .intro-entries {
-  padding-top: 1rem;
+  padding-top: clamp(4rem, 8vw, 7rem);
 }
 
 .entry-card__link {

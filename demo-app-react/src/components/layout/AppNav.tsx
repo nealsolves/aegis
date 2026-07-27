@@ -5,8 +5,10 @@ import { useTheme } from '@/theme/ThemeContext'
 
 export default function AppNav({
   isDemoContext,
+  emphasizeDemoLink,
 }: {
   isDemoContext: boolean
+  emphasizeDemoLink: boolean
 }) {
   const { theme, toggleTheme } = useTheme()
   const nextTheme = theme === 'light'
@@ -41,7 +43,7 @@ export default function AppNav({
               <Link
                 key={link.id}
                 to={link.to}
-                className={link.emphasis
+                className={link.emphasis && emphasizeDemoLink
                   ? 'public-nav__link public-nav__link--primary'
                   : 'public-nav__link'}
               >

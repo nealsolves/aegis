@@ -173,14 +173,23 @@ describe('App routing', () => {
   it('keeps Open demo available on the shared FAQ route', () => {
     renderRoute('#/faq')
 
-    expect(
-      within(
-        screen.getByRole('navigation', { name: 'Primary navigation' }),
-      ).getByRole('link', { name: 'Open demo' }),
-    ).toBeInTheDocument()
+    const openDemo = within(
+      screen.getByRole('navigation', { name: 'Primary navigation' }),
+    ).getByRole('link', { name: 'Open demo' })
+
+    expect(openDemo).toBeInTheDocument()
     expect(
       screen.getByRole('navigation', { name: 'Demo navigation' }),
     ).toBeInTheDocument()
+  })
+
+  it('renders the FAQ Open demo link without landing-page fill', () => {
+    renderRoute('#/faq')
+    const openDemo = within(
+      screen.getByRole('navigation', { name: 'Primary navigation' }),
+    ).getByRole('link', { name: 'Open demo' })
+
+    expect(openDemo).not.toHaveClass('public-nav__link--primary')
   })
 
   it('uses identical fixed row heights across public and demo routes', () => {

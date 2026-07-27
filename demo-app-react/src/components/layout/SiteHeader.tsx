@@ -5,15 +5,20 @@ import { publicNavCopy } from '@/content/demoCopy'
 interface SiteHeaderProps {
   showDemoNav: boolean
   isDemoContext: boolean
+  emphasizeDemoLink: boolean
 }
 
 export default function SiteHeader({
   showDemoNav,
   isDemoContext,
+  emphasizeDemoLink,
 }: SiteHeaderProps) {
   return (
     <header className="site-header">
-      <AppNav isDemoContext={isDemoContext} />
+      <AppNav
+        isDemoContext={isDemoContext}
+        emphasizeDemoLink={emphasizeDemoLink}
+      />
       {showDemoNav ? (
         <DemoNav />
       ) : (

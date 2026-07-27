@@ -32,6 +32,7 @@ interface RouteDescriptor {
   showDemoNav: boolean
   showDemoService: boolean
   isDemoContext: boolean
+  emphasizeDemoLink: boolean
 }
 
 function describeRoute(pathname: string): RouteDescriptor {
@@ -45,6 +46,7 @@ function describeRoute(pathname: string): RouteDescriptor {
     showDemoNav: isDemoRoute || isLabRoute || normalizedPathname === '/faq',
     showDemoService: isDemoRoute || isLabRoute,
     isDemoContext: isDemoRoute || isLabRoute,
+    emphasizeDemoLink: normalizedPathname === '/',
   }
 }
 
@@ -101,6 +103,7 @@ function AppContent() {
       <SiteHeader
         showDemoNav={route.showDemoNav}
         isDemoContext={route.isDemoContext}
+        emphasizeDemoLink={route.emphasizeDemoLink}
       />
       {route.showDemoService && <DemoServiceNotice />}
       {route.helpLabId !== null && (
