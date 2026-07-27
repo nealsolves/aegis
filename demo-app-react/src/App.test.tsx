@@ -59,7 +59,7 @@ describe('App routing', () => {
 
     expect(
       screen.getByRole('heading', {
-        name: 'Put policy between the request and the result.',
+        name: 'The deterministic wrapper around a probabilistic core.',
       }),
     ).toBeInTheDocument()
   })
