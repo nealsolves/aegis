@@ -177,10 +177,15 @@ def _assert_unchanged(artifact: dict[str, Any], snapshot: dict[str, Any]) -> Non
 
 def _make_signed_artifact(
     signed_artifact_factory: SignedArtifactFactory, key_version: str
-) -> tuple[SignedArtifactFixture, _LogCapture]:
+) -> SignedArtifactFixture:
     with _capture_logs() as logs:
         fixture = signed_artifact_factory(key_version)
-    return fixture, logs
+    _assert_not_redacted(
+        logs.text,
+        payloads=(fixture.canonical_payload,),
+        raw_signature=fixture.artifact["signature"],
+    )
+    return fixture
 
 
 def assert_external_signer_conformance(signer_factory: SignerFactory) -> None:
@@ -291,7 +296,7 @@ def assert_external_verifier_conformance(
         ),
     )
     for version, status, anchor, reason in cases:
-        fixture, setup_logs = _make_signed_artifact(signed_artifact_factory, version)
+        fixture = _make_signed_artifact(signed_artifact_factory, version)
         artifact = fixture.artifact
         snapshot = deepcopy(artifact)
         with _capture_logs() as logs:
@@ -305,13 +310,13 @@ def assert_external_verifier_conformance(
         )
         _assert_safe_result(
             result,
-            setup_logs.text + logs.text,
+            logs,
             canonical_payload=fixture.canonical_payload,
             raw_signature=artifact["signature"],
         )
         _assert_unchanged(artifact, snapshot)
 
-    fixture, setup_logs = _make_signed_artifact(
+    fixture = _make_signed_artifact(
         signed_artifact_factory, "version/current"
     )
     unknown = fixture.artifact
@@ -328,13 +333,13 @@ def assert_external_verifier_conformance(
     )
     _assert_safe_result(
         result,
-        setup_logs.text + logs.text,
+        logs,
         canonical_payload=fixture.canonical_payload,
         raw_signature=unknown["signature"],
     )
     _assert_unchanged(unknown, snapshot)
 
-    fixture, setup_logs = _make_signed_artifact(
+    fixture = _make_signed_artifact(
         signed_artifact_factory, "version/current"
     )
     invalid_signature = fixture.artifact
@@ -351,13 +356,13 @@ def assert_external_verifier_conformance(
     )
     _assert_safe_result(
         result,
-        setup_logs.text + logs.text,
+        logs,
         canonical_payload=fixture.canonical_payload,
         raw_signature=invalid_signature["signature"],
     )
     _assert_unchanged(invalid_signature, snapshot)
 
-    fixture, setup_logs = _make_signed_artifact(
+    fixture = _make_signed_artifact(
         signed_artifact_factory, "version/current"
     )
     algorithm_denied = fixture.artifact
@@ -374,13 +379,13 @@ def assert_external_verifier_conformance(
     )
     _assert_safe_result(
         result,
-        setup_logs.text + logs.text,
+        logs,
         canonical_payload=fixture.canonical_payload,
         raw_signature=algorithm_denied["signature"],
     )
     _assert_unchanged(algorithm_denied, snapshot)
 
-    fixture, setup_logs = _make_signed_artifact(
+    fixture = _make_signed_artifact(
         signed_artifact_factory, "version/current"
     )
     unavailable = fixture.artifact
@@ -394,13 +399,13 @@ def assert_external_verifier_conformance(
     )
     _assert_safe_result(
         result,
-        setup_logs.text + logs.text,
+        logs,
         canonical_payload=fixture.canonical_payload,
         raw_signature=unavailable["signature"],
     )
     _assert_unchanged(unavailable, snapshot)
 
-    fixture, setup_logs = _make_signed_artifact(
+    fixture = _make_signed_artifact(
         signed_artifact_factory, "version/current"
     )
     unavailable = fixture.artifact
@@ -412,7 +417,7 @@ def assert_external_verifier_conformance(
     assert result.reason_code is VerificationReasonCode.VERIFIER_UNAVAILABLE
     _assert_safe_result(
         result,
-        setup_logs.text + logs.text,
+        logs,
         canonical_payload=fixture.canonical_payload,
         raw_signature=unavailable["signature"],
     )
@@ -423,7 +428,7 @@ def assert_external_verifier_conformance(
         VerifierScenario.MALFORMED_COMBINATION,
         VerifierScenario.UNEXPECTED,
     ):
-        fixture, setup_logs = _make_signed_artifact(
+        fixture = _make_signed_artifact(
             signed_artifact_factory, "version/current"
         )
         artifact = fixture.artifact
@@ -435,7 +440,7 @@ def assert_external_verifier_conformance(
                 )
         _assert_safe_error(
             caught.value,
-            setup_logs.text + logs.text,
+            logs,
             payloads=(fixture.canonical_payload,),
             raw_signature=artifact["signature"],
         )

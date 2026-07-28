@@ -3,6 +3,7 @@
 from copy import deepcopy
 from hashlib import sha256
 from hmac import new
+import logging
 
 import pytest
 
@@ -13,6 +14,7 @@ from tests.signing_conformance import (
     SignerFixture,
     SignerScenario,
     VerifierScenario,
+    _make_signed_artifact,
     assert_external_signer_conformance,
     assert_external_verifier_conformance,
 )
@@ -97,6 +99,16 @@ def test_deterministic_signer_rejects_a_forged_key_reference_for_a_known_version
 
     with pytest.raises(ArtifactSigningError, match="does not recognize key identity"):
         signer.sign(b"exact payload", identity)
+
+
+def test_signed_fixture_setup_rejects_an_original_signature_log_leak() -> None:
+    def leaky_signed_artifact(key_version: str) -> SignedArtifactFixture:
+        fixture = _signed_artifact(key_version)
+        logging.getLogger(__name__).warning("original signature=%s", fixture.artifact["signature"])
+        return fixture
+
+    with pytest.raises(AssertionError):
+        _make_signed_artifact(leaky_signed_artifact, "version/current")
 
 
 def test_receipt_alias_rotation_is_rejected_atomically() -> None:
