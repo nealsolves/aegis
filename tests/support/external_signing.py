@@ -122,9 +122,15 @@ class DeterministicExternalSigner:
         if self._mode == "malformed_receipt":
             return object()  # type: ignore[return-value]
 
-        signature = new(
-            self._key_records[identity.key_version].key_material, payload, sha256
-        ).hexdigest()
+        record = self._key_records.get(identity.key_version)
+        if record is None or identity != SignerIdentity(
+            _DEFAULT_ALGORITHM,
+            SignatureEncoding.HEX,
+            record.key_reference,
+            record.key_version,
+        ):
+            raise ArtifactSigningError("External signer does not recognize key identity")
+        signature = new(record.key_material, payload, sha256).hexdigest()
         receipt_version = (
             "version/rotated" if self._mode == "rotate_receipt" else identity.key_version
         )
