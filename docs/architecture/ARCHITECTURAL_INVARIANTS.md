@@ -140,7 +140,9 @@ This mechanism proves that enforcement occurred before output propagation.
 
 ## 6. Tamper-Evident Audit Artifacts
 
-Audit artifacts must be immutable and verifiable.
+Audit artifacts must be verifiable for covered-content changes. AEGIS
+checksums, HMAC signatures, and hash-chain links provide tamper-evidence; they
+do not make a mutable artifact or its storage immutable.
 
 Each artifact includes:
 
@@ -155,7 +157,14 @@ Artifacts include governance-enrichment fields introduced in v0.3.0 (M2):
 
 * `risk_score` — populated by the risk scoring engine when the policy declares risk configuration
 * `signature` — populated by `ArtifactSigner` (HMAC-SHA256 via `HMACSigner`) when signing is enabled
+* optional strict `signature_metadata` — populated only by
+  `sign_artifact_with_metadata()` and covered by that signature
 * `chain_id`, `chain_index`, `previous_audit_checksum` — populated by `AuditChain` for sequential integrity verification
+
+Hash-chain verification applies to the sequence supplied for verification. It
+does not detect replacement of a complete otherwise-valid chain without an
+external trusted checkpoint, establish sequence completeness, or provide WORM
+storage.
 
 ---
 
@@ -224,7 +233,7 @@ is implemented in v0.3.0 (M2) through the `composition_strategy` policy field.
 
 ## 10. Replayable Governance
 
-Every enforcement must be replayable.
+Every enforcement must be reproducible for investigation.
 
 Replay requires:
 
@@ -232,9 +241,12 @@ Replay requires:
 * invocation
 * context
 
-Golden replay tests verify that replay produces identical results.
+Golden replay tests verify that repeating the same inputs produces identical
+results.
 
-Replay capability is required for compliance investigations.
+This diagnostic replayability is not a security claim that signed artifacts
+cannot be replayed. AEGIS does not prevent presentation or reuse of otherwise
+valid evidence.
 
 ---
 
@@ -313,6 +325,38 @@ observe. They are observers, not participants.
 
 ---
 
+## 18. External Signature Trust Boundary
+
+Metadata-aware signing is additive and opt-in. It must not change the legacy
+`ArtifactSigner`, `HMACSigner`, `sign_artifact()`, `verify_artifact()`, or
+`AEGIS(signer=...)` contracts.
+
+The following rules are invariant:
+
+* `signature_metadata` is strict, versioned, and entirely covered by the
+  metadata-aware signature.
+* signer identity and receipt must agree on algorithm, encoding, opaque key
+  reference, and exact immutable key version before the artifact is mutated
+* signing failure leaves the artifact unchanged; detailed verification never
+  mutates the artifact
+* the host-configured verifier resolves the exact key reference and version;
+  artifact data never triggers provider or network lookup
+* the metadata-declared algorithm is not authorization; the resolved key policy
+  must permit it
+* signature validity and external anchoring are independent status axes; valid
+  does not mean anchored
+* unavailable signing or verification never weakens or changes the governance
+  decision already recorded by the artifact
+* `signed_at` is host-observed time, not trusted timestamp evidence
+
+The host owns key resolution, trusted-anchor configuration, credentials,
+provider transport, retry and timeout behavior, availability policy, and
+artifact storage. AEGIS does not claim replay prevention, sequence
+completeness, complete-chain replacement detection, trusted time, immutable or
+WORM storage, certification, or regulatory compliance.
+
+---
+
 ## Summary
 
 The architectural invariants guarantee:
@@ -321,6 +365,8 @@ The architectural invariants guarantee:
 * provable enforcement
 * auditability
 * security
-* compliance readiness
+
+They can support host-owned audit and assurance programs, but do not certify a
+deployment or establish compliance.
 
 Any change that weakens these guarantees must not be accepted.

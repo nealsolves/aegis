@@ -10,6 +10,15 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 This public beta is released as the `aegis-ai-governance` distribution from
 `main`; its import package and console command remain `aegis`.
 
+### Added
+
+- Add provider-neutral `ExternalArtifactSigner` and
+  `ExternalArtifactVerifier` protocols, strict signed metadata,
+  `sign_artifact_with_metadata()`, and two-axis
+  `verify_artifact_detailed()` results. Legacy HMAC and boolean verification
+  remain unchanged; external keys, credentials, transport, availability
+  behavior, trusted checkpoints, and storage remain host-owned.
+
 ### Changed
 
 - Rename the distribution from `aegis` to `aegis-ai-governance` because the
