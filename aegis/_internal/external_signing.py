@@ -133,6 +133,30 @@ def _normalized_string(value: object) -> str:
     return value
 
 
+def _trusted_metadata_input(value: object) -> object:
+    """Copy metadata into exact JSON-native built-ins before parsing."""
+    value_type = type(value)
+    if value_type is not dict:
+        if value_type in (str, int, float, bool, type(None), list):
+            return value
+        raise SignatureMetadataError("signature metadata is invalid", details={})
+
+    trusted: dict[str, object] = {}
+    for key, field_value in dict.items(value):
+        if type(key) is not str:
+            raise SignatureMetadataError("signature metadata is invalid", details={})
+        field_type = type(field_value)
+        if field_type in (str, int, float, bool, type(None)):
+            trusted[key] = field_value
+        elif field_type is list:
+            trusted[key] = []
+        elif field_type is dict:
+            trusted[key] = {}
+        else:
+            raise SignatureMetadataError("signature metadata is invalid", details={})
+    return trusted
+
+
 def _normalize_identity(identity: object) -> SignerIdentity:
     """Return a validated, provider-independent signer identity."""
     identity_invalid = False
@@ -353,11 +377,12 @@ def verify_artifact_detailed(
             "signature is invalid", details={"field": "signature"}
         )
 
+    trusted_metadata = _trusted_metadata_input(artifact["signature_metadata"])
     metadata_error_message: str | None = None
     metadata_error_details: dict[str, Any] | None = None
     metadata_invalid = False
     try:
-        metadata = SignatureMetadata.from_dict(artifact["signature_metadata"])
+        metadata = SignatureMetadata.from_dict(trusted_metadata)
     except SignatureMetadataError as error:
         metadata_error_message = str(error)
         metadata_error_details = error.details.copy()

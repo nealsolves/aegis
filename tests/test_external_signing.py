@@ -613,8 +613,19 @@ def test_detailed_metadata_validation_rejects_versions_and_bounds_before_verifie
     assert artifact == snapshot
 
 
-@pytest.mark.parametrize("shape", ["not_mapping", "missing", "extra", "hostile"])
-def test_detailed_metadata_validation_rejects_invalid_shape_before_verifier(shape):
+@pytest.mark.parametrize(
+    "shape, expected_message, expected_details",
+    [
+        ("not_mapping", "metadata must be a dictionary", {}),
+        ("missing", "metadata keys are invalid", {"missing": ["algorithm"]}),
+        ("extra", "metadata keys are invalid", {"extra": ["provider_hint"]}),
+        ("hostile", "signature metadata is invalid", {}),
+        ("hostile_same_type", "signature metadata is invalid", {}),
+    ],
+)
+def test_detailed_metadata_validation_rejects_invalid_shape_before_verifier(
+    shape, expected_message, expected_details
+):
     artifact = _metadata_artifact()
     if shape == "not_mapping":
         artifact["signature_metadata"] = None
@@ -622,12 +633,27 @@ def test_detailed_metadata_validation_rejects_invalid_shape_before_verifier(shap
         artifact["signature_metadata"].pop("algorithm")
     elif shape == "extra":
         artifact["signature_metadata"]["provider_hint"] = "attacker-resolver"
-    else:
+    elif shape == "hostile":
         class HostileMetadata(dict):
             def keys(self):
                 raise ArtifactSigningError("provider secret from metadata")
 
         artifact["signature_metadata"] = HostileMetadata(
+            artifact["signature_metadata"]
+        )
+    else:
+        class HostileDetails(dict):
+            def copy(self):
+                raise RuntimeError("provider secret from metadata details")
+
+        class SameTypeHostileMetadata(dict):
+            def keys(self):
+                raise SignatureMetadataError(
+                    "provider secret from metadata",
+                    details=HostileDetails(secret="provider secret"),
+                )
+
+        artifact["signature_metadata"] = SameTypeHostileMetadata(
             artifact["signature_metadata"]
         )
     snapshot = deepcopy(artifact)
@@ -636,6 +662,9 @@ def test_detailed_metadata_validation_rejects_invalid_shape_before_verifier(shap
     with pytest.raises(SignatureMetadataError) as error:
         verify_artifact_detailed(artifact, verifier=verifier)
 
+    assert str(error.value) == expected_message
+    assert error.value.code == "SIGNATURE_METADATA_INVALID"
+    assert error.value.details == expected_details
     assert error.value.__cause__ is None
     assert error.value.__context__ is None
     assert "provider secret" not in str(error.value)
