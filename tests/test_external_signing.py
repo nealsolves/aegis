@@ -471,6 +471,75 @@ def test_sign_artifact_with_metadata_rejects_alias_rotation_without_mutation():
     assert artifact == original
 
 
+def test_sign_artifact_with_metadata_redacts_hostile_identity_fields_without_mutation():
+    class HostileAlgorithm(str):
+        def __len__(self) -> int:
+            raise ArtifactSigningError("provider secret from identity")
+
+    signer = RecordingSigner()
+    object.__setattr__(signer.identity, "algorithm", HostileAlgorithm("HSM-SHA256"))
+    artifact = _unsigned_artifact()
+    original = deepcopy(artifact)
+
+    with pytest.raises(
+        SigningContractError, match="Signer returned an invalid identity"
+    ) as error:
+        sign_artifact_with_metadata(artifact, signer, signed_at=1)
+
+    assert "provider secret" not in str(error.value)
+    assert artifact == original
+
+
+def test_sign_artifact_with_metadata_redacts_hostile_receipt_fields_without_mutation():
+    class HostileKeyVersion(str):
+        def __eq__(self, other: object) -> bool:
+            raise ArtifactSigningError("provider secret from receipt")
+
+    signer = RecordingSigner()
+    receipt = signer.receipt
+    object.__setattr__(receipt, "key_version", HostileKeyVersion("version/7"))
+    artifact = _unsigned_artifact()
+    original = deepcopy(artifact)
+
+    with pytest.raises(
+        SigningContractError, match="Signing receipt does not match prepared identity"
+    ) as error:
+        sign_artifact_with_metadata(artifact, signer, signed_at=1)
+
+    assert "provider secret" not in str(error.value)
+    assert artifact == original
+
+
+def test_sign_artifact_with_metadata_redacts_hostile_signature_without_mutation():
+    class HostileBase64Signature(str):
+        def encode(self, *args: object, **kwargs: object) -> bytes:
+            raise ArtifactSigningError("provider secret from signature")
+
+    identity = SignerIdentity(
+        "HSM-SHA256", SignatureEncoding.BASE64, "audit-key", "version/7"
+    )
+    receipt = SigningReceipt(
+        "YWE=",
+        identity.algorithm,
+        identity.signature_encoding,
+        identity.key_reference,
+        identity.key_version,
+    )
+    object.__setattr__(receipt, "signature", HostileBase64Signature("YWE="))
+    artifact = _unsigned_artifact()
+    original = deepcopy(artifact)
+
+    with pytest.raises(
+        ArtifactSigningError, match="Signer returned an invalid encoded signature"
+    ) as error:
+        sign_artifact_with_metadata(
+            artifact, RecordingSigner(identity=identity, receipt=receipt), signed_at=1
+        )
+
+    assert "provider secret" not in str(error.value)
+    assert artifact == original
+
+
 @pytest.mark.parametrize(
     "mutate",
     [

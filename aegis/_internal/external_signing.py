@@ -80,22 +80,51 @@ def _metadata_signing_payload(
     )
 
 
+def _normalized_string(value: object) -> str:
+    if type(value) is not str:
+        raise TypeError
+    return value
+
+
+def _normalize_identity(identity: object) -> SignerIdentity:
+    """Return a validated, provider-independent signer identity."""
+    try:
+        if not isinstance(identity, SignerIdentity):
+            raise TypeError
+        return SignerIdentity(
+            algorithm=_normalized_string(identity.algorithm),
+            signature_encoding=identity.signature_encoding,
+            key_reference=_normalized_string(identity.key_reference),
+            key_version=_normalized_string(identity.key_version),
+        )
+    except Exception:
+        raise SigningContractError("Signer returned an invalid identity", details={}) from None
+
+
 def _validate_receipt(receipt: object, identity: SignerIdentity) -> None:
     """Ensure a signing receipt echoes the identity prepared for this request."""
-    if not isinstance(receipt, SigningReceipt) or (
-        receipt.algorithm,
-        receipt.signature_encoding,
-        receipt.key_reference,
-        receipt.key_version,
-    ) != (
-        identity.algorithm,
-        identity.signature_encoding,
-        identity.key_reference,
-        identity.key_version,
-    ):
+    try:
+        if not isinstance(receipt, SigningReceipt):
+            raise TypeError
+        receipt_identity = SignerIdentity(
+            algorithm=_normalized_string(receipt.algorithm),
+            signature_encoding=receipt.signature_encoding,
+            key_reference=_normalized_string(receipt.key_reference),
+            key_version=_normalized_string(receipt.key_version),
+        )
+        if receipt_identity != identity:
+            raise ValueError
+    except Exception:
         raise SigningContractError(
             "Signing receipt does not match prepared identity", details={}
-        )
+        ) from None
+
+
+def _normalized_signature(receipt: SigningReceipt) -> str:
+    try:
+        return _normalized_string(receipt.signature)
+    except Exception:
+        raise ArtifactSigningError("Signer returned an invalid encoded signature") from None
 
 
 def sign_artifact_with_metadata(
@@ -115,8 +144,7 @@ def sign_artifact_with_metadata(
     except Exception:
         raise ArtifactSigningError("External signer could not prepare identity") from None
 
-    if not isinstance(identity, SignerIdentity):
-        raise SigningContractError("Signer returned an invalid identity", details={})
+    identity = _normalize_identity(identity)
 
     metadata = _metadata_from_identity(identity, signed_at)
     payload = _metadata_signing_payload(artifact, metadata)
@@ -127,13 +155,14 @@ def sign_artifact_with_metadata(
         raise ArtifactSigningError("External signer did not produce a signature") from None
 
     _validate_receipt(receipt, identity)
+    signature = _normalized_signature(receipt)
     try:
-        validate_encoded_signature(receipt.signature, identity.signature_encoding)
-    except SigningContractError:
+        validate_encoded_signature(signature, identity.signature_encoding)
+    except Exception:
         raise ArtifactSigningError("Signer returned an invalid encoded signature") from None
 
     artifact.update(
         signature_metadata=metadata.to_dict(),
-        signature=receipt.signature,
+        signature=signature,
     )
     return artifact
