@@ -507,7 +507,7 @@ git commit -m "feat(signing): define external signing byte contract"
 - `sign_artifact_with_metadata(artifact, signer, *, signed_at) -> dict[str, Any]`.
 - Internal `_validate_receipt(receipt, identity) -> None`.
 
-- [ ] **Step 1: Write failing happy-path and atomicity tests**
+- [x] **Step 1: Write failing happy-path and atomicity tests**
 
 Use a recording signer that exposes a stable identity and returns a matching receipt. Assert:
 
@@ -548,7 +548,7 @@ For each failure mode, deep-copy before the call and assert exact equality after
 - algorithm, encoding, key reference, or key version differs between identity and receipt;
 - simulated alias rotation changes receipt key version.
 
-- [ ] **Step 2: Run tests and verify the missing helper failure**
+- [x] **Step 2: Run tests and verify the missing helper failure**
 
 Run:
 
@@ -558,7 +558,7 @@ Run:
 
 Expected: tests fail because `sign_artifact_with_metadata` does not exist.
 
-- [ ] **Step 3: Implement validation-before-mutation flow**
+- [x] **Step 3: Implement validation-before-mutation flow**
 
 The helper must follow this order:
 
@@ -609,7 +609,7 @@ with no sensitive values in `details`.
 
 Map malformed encoded signature content to `ArtifactSigningError("Signer returned an invalid encoded signature")`; preserve no validation error text that may contain the signature.
 
-- [ ] **Step 4: Add the success-path tamper test**
+- [x] **Step 4: Add the success-path tamper test**
 
 After signing, change each of these independently and assert a separately constructed verifier no longer accepts the recorded payload/signature pair:
 
@@ -624,7 +624,7 @@ After signing, change each of these independently and assert a separately constr
 
 For the three fixed contract fields, mutate the stored dictionary directly; detailed parsing will later reject the unsupported value before verifier invocation.
 
-- [ ] **Step 5: Run focused tests**
+- [x] **Step 5: Run focused tests**
 
 Run:
 
@@ -634,7 +634,7 @@ Run:
 
 Expected: all payload, signing, receipt, atomicity, and mutation tests pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add aegis/_internal/external_signing.py tests/test_external_signing.py
