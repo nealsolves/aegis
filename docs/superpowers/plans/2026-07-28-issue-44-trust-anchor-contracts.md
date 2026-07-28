@@ -757,7 +757,7 @@ git commit -m "feat(signing): add detailed legacy verification"
 - Internal `_normalize_external_outcome(outcome, metadata)`.
 - Internal fixed `_SAFE_REASON_MESSAGES` mapping.
 
-- [ ] **Step 1: Write failing tests for every external outcome**
+- [x] **Step 1: Write failing tests for every external outcome**
 
 For a valid metadata-aware artifact, parameterize all externally valid rows:
 
@@ -791,7 +791,7 @@ Assert the normalized result retains parsed metadata and exposes the correct con
 - provider `message` content is not copied into the normalized result;
 - the input remains deeply equal before and after success, evidence outcomes, and exceptions.
 
-- [ ] **Step 2: Run metadata-aware tests and verify intended failures**
+- [x] **Step 2: Run metadata-aware tests and verify intended failures**
 
 Run:
 
@@ -801,7 +801,7 @@ Run:
 
 Expected: metadata-aware cases fail because the verifier branch is not implemented.
 
-- [ ] **Step 3: Implement parse-before-provider verification**
+- [x] **Step 3: Implement parse-before-provider verification**
 
 After the unsigned and legacy branches:
 
@@ -846,7 +846,7 @@ _SAFE_REASON_MESSAGES = {
 
 Do not add logging on the metadata-aware path. A declared timeout or unavailability is an `ExternalVerificationOutcome`, not an exception.
 
-- [ ] **Step 4: Add cross-type and downgrade defenses**
+- [x] **Step 4: Add cross-type and downgrade defenses**
 
 Assert:
 
@@ -857,7 +857,7 @@ Assert:
 - the verifier receives the parsed immutable version, never a mutable caller dictionary;
 - artifact-supplied fields never cause any resolver other than the supplied verifier call.
 
-- [ ] **Step 5: Run focused tests**
+- [x] **Step 5: Run focused tests**
 
 Run:
 
@@ -867,7 +867,7 @@ Run:
 
 Expected: all model, signing, detailed verification, downgrade, and compatibility tests pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add aegis/_internal/external_signing.py tests/test_external_signing.py
