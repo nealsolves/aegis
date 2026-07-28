@@ -21,6 +21,38 @@ class AIGCError(Exception):
         self.audit_artifact: dict | None = None
 
 
+class SignatureMetadataError(AIGCError):
+    """Raised when signature metadata does not meet its contract."""
+
+    def __init__(self, message: str, *, details: dict | None = None):
+        super().__init__(
+            message, code="SIGNATURE_METADATA_INVALID", details=details
+        )
+
+
+class ArtifactSigningError(AIGCError):
+    """Raised when signing an artifact fails."""
+
+    def __init__(self, message: str, *, details: dict | None = None):
+        super().__init__(message, code="ARTIFACT_SIGNING_ERROR", details=details)
+
+
+class SigningContractError(AIGCError):
+    """Raised when a signing value does not meet its contract."""
+
+    def __init__(self, message: str, *, details: dict | None = None):
+        super().__init__(message, code="SIGNING_CONTRACT_ERROR", details=details)
+
+
+class VerificationContractError(AIGCError):
+    """Raised when a verification value does not meet its contract."""
+
+    def __init__(self, message: str, *, details: dict | None = None):
+        super().__init__(
+            message, code="VERIFICATION_CONTRACT_ERROR", details=details
+        )
+
+
 class GovernanceViolationError(AIGCError):
     """Raised on any violation of an AEGIS invariant."""
 
