@@ -6,6 +6,7 @@ from typing import Any, Mapping, Protocol, runtime_checkable
 
 from aegis._internal.errors import (
     ArtifactSigningError,
+    SignatureMetadataError,
     SigningContractError,
     VerificationContractError,
 )
@@ -23,12 +24,49 @@ from aegis._internal.signature_models import (
     SigningReceipt,
     VerificationReasonCode,
     validate_encoded_signature,
+    validate_verification_outcome,
 )
 from aegis._internal.signing import ArtifactSigner, HMACSigner, _canonical_signing_payload
 from aegis._internal.utils import canonical_json_bytes
 
 
 _SIGNATURE_DOMAIN = b"AEGIS-SIGNATURE\x00"
+
+_SAFE_REASON_MESSAGES = {
+    VerificationReasonCode.UNSIGNED: "Artifact is unsigned",
+    VerificationReasonCode.LEGACY_SIGNATURE_VALID: "Legacy signature is valid",
+    VerificationReasonCode.LEGACY_SIGNATURE_INVALID: "Legacy signature is invalid",
+    VerificationReasonCode.SIGNATURE_VALID_UNANCHORED: (
+        "Signature is valid but not externally anchored"
+    ),
+    VerificationReasonCode.SIGNATURE_VALID_ANCHORED: (
+        "Signature is valid and externally anchored"
+    ),
+    VerificationReasonCode.SIGNATURE_INVALID: "Signature is invalid",
+    VerificationReasonCode.SIGNATURE_METADATA_MISSING: (
+        "Signature metadata is unavailable"
+    ),
+    VerificationReasonCode.ALGORITHM_NOT_ALLOWED: (
+        "The configured key does not permit the declared algorithm"
+    ),
+    VerificationReasonCode.KEY_UNKNOWN: (
+        "The configured verifier does not recognize the key version"
+    ),
+    VerificationReasonCode.KEY_REVOKED: (
+        "The configured verifier reports the key version as revoked"
+    ),
+    VerificationReasonCode.VERIFIER_UNAVAILABLE: (
+        "External verification is unavailable"
+    ),
+    VerificationReasonCode.ANCHOR_INVALID: "The external anchor is invalid",
+}
+
+_CONTEXTUALLY_IMPOSSIBLE_EXTERNAL_REASONS = {
+    VerificationReasonCode.UNSIGNED,
+    VerificationReasonCode.LEGACY_SIGNATURE_VALID,
+    VerificationReasonCode.LEGACY_SIGNATURE_INVALID,
+    VerificationReasonCode.SIGNATURE_METADATA_MISSING,
+}
 
 
 @runtime_checkable
@@ -213,13 +251,49 @@ def _verify_legacy_artifact(
     )
 
 
+def _normalize_external_outcome(
+    outcome: object,
+    metadata: SignatureMetadata,
+) -> ArtifactVerificationResult:
+    """Validate and normalize a provider outcome at the core trust boundary."""
+    if not isinstance(outcome, ExternalVerificationOutcome):
+        raise VerificationContractError(
+            "External verifier returned an invalid outcome", details={}
+        )
+
+    try:
+        signature_status = outcome.signature_status
+        anchor_status = outcome.anchor_status
+        reason_code = outcome.reason_code
+        validate_verification_outcome(signature_status, anchor_status, reason_code)
+        if reason_code in _CONTEXTUALLY_IMPOSSIBLE_EXTERNAL_REASONS:
+            raise VerificationContractError(
+                "External verifier returned an invalid outcome", details={}
+            )
+        message = _SAFE_REASON_MESSAGES[reason_code]
+    except VerificationContractError:
+        raise
+    except Exception:
+        raise VerificationContractError(
+            "External verifier returned an invalid outcome", details={}
+        ) from None
+
+    return ArtifactVerificationResult(
+        signature_status,
+        anchor_status,
+        reason_code,
+        message,
+        metadata,
+    )
+
+
 def verify_artifact_detailed(
     artifact: Mapping[str, Any],
     *,
     legacy_signer: ArtifactSigner | None = None,
     verifier: ExternalArtifactVerifier | None = None,
 ) -> ArtifactVerificationResult:
-    """Return a non-mutating detailed result for unsigned and legacy artifacts."""
+    """Return a non-mutating detailed artifact verification result."""
     if artifact.get("signature") is None:
         return ArtifactVerificationResult(
             SignatureStatus.UNSIGNED,
@@ -240,6 +314,43 @@ def verify_artifact_detailed(
             )
         return _verify_legacy_artifact(artifact, legacy_signer)
 
-    raise VerificationContractError(
-        "Metadata-aware verification is unavailable", details={}
-    )
+    signature = artifact["signature"]
+    if type(signature) is not str:
+        raise SignatureMetadataError(
+            "signature is invalid", details={"field": "signature"}
+        )
+
+    try:
+        metadata = SignatureMetadata.from_dict(artifact["signature_metadata"])
+    except SignatureMetadataError:
+        raise
+    except Exception:
+        raise SignatureMetadataError(
+            "signature metadata is invalid", details={}
+        ) from None
+
+    try:
+        validate_encoded_signature(signature, metadata.signature_encoding)
+    except Exception:
+        raise SignatureMetadataError(
+            "signature is invalid", details={"field": "signature"}
+        ) from None
+
+    payload = _metadata_signing_payload(dict(artifact), metadata)
+    if verifier is None:
+        return ArtifactVerificationResult(
+            SignatureStatus.INDETERMINATE,
+            AnchorStatus.NOT_EVALUATED,
+            VerificationReasonCode.VERIFIER_UNAVAILABLE,
+            _SAFE_REASON_MESSAGES[VerificationReasonCode.VERIFIER_UNAVAILABLE],
+            metadata,
+        )
+
+    try:
+        outcome = verifier.verify(payload, signature, metadata)
+    except Exception:
+        raise VerificationContractError(
+            "External verifier failed unexpectedly", details={}
+        ) from None
+
+    return _normalize_external_outcome(outcome, metadata)

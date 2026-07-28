@@ -276,6 +276,44 @@ class ExplodingExternalVerifier:
         raise AssertionError("external verifier should not be called")
 
 
+class RecordingExternalVerifier:
+    def __init__(self, response: object) -> None:
+        self.response = response
+        self.calls: list[tuple[bytes, str, SignatureMetadata]] = []
+
+    def verify(
+        self, payload: bytes, signature: str, metadata: SignatureMetadata
+    ) -> object:
+        self.calls.append((payload, signature, metadata))
+        return self.response
+
+
+def _metadata_artifact(
+    *,
+    key_version: str = "version/7",
+) -> dict[str, object]:
+    return {
+        "audit_schema_version": "1.4",
+        "nested": {"items": ["one", "two"]},
+        "signature_metadata": _metadata(key_version=key_version).to_dict(),
+        "signature": "aa",
+    }
+
+
+def _unchecked_outcome(
+    signature_status: object,
+    anchor_status: object,
+    reason_code: object,
+    message: object = "provider-controlled-message",
+) -> ExternalVerificationOutcome:
+    outcome = object.__new__(ExternalVerificationOutcome)
+    object.__setattr__(outcome, "signature_status", signature_status)
+    object.__setattr__(outcome, "anchor_status", anchor_status)
+    object.__setattr__(outcome, "reason_code", reason_code)
+    object.__setattr__(outcome, "message", message)
+    return outcome
+
+
 def _legacy_artifact() -> dict[str, object]:
     return {
         "audit_schema_version": "1.4",
@@ -393,6 +431,442 @@ def test_detailed_legacy_verification_sanitizes_unexpected_verifier_errors():
     assert str(error.value) == "Legacy signature verification failed"
     assert error.value.details == {}
     assert "secret" not in str(error.value)
+    assert artifact == snapshot
+
+
+@pytest.mark.parametrize(
+    "signature_status, anchor_status, reason_code, safe_message",
+    [
+        (
+            SignatureStatus.VALID,
+            AnchorStatus.UNANCHORED,
+            VerificationReasonCode.SIGNATURE_VALID_UNANCHORED,
+            "Signature is valid but not externally anchored",
+        ),
+        (
+            SignatureStatus.VALID,
+            AnchorStatus.ANCHORED,
+            VerificationReasonCode.SIGNATURE_VALID_ANCHORED,
+            "Signature is valid and externally anchored",
+        ),
+        (
+            SignatureStatus.VALID,
+            AnchorStatus.INVALID,
+            VerificationReasonCode.ANCHOR_INVALID,
+            "The external anchor is invalid",
+        ),
+        (
+            SignatureStatus.INVALID,
+            AnchorStatus.NOT_EVALUATED,
+            VerificationReasonCode.SIGNATURE_INVALID,
+            "Signature is invalid",
+        ),
+        (
+            SignatureStatus.INVALID,
+            AnchorStatus.NOT_EVALUATED,
+            VerificationReasonCode.ALGORITHM_NOT_ALLOWED,
+            "The configured key does not permit the declared algorithm",
+        ),
+        (
+            SignatureStatus.UNKNOWN_KEY,
+            AnchorStatus.NOT_EVALUATED,
+            VerificationReasonCode.KEY_UNKNOWN,
+            "The configured verifier does not recognize the key version",
+        ),
+        (
+            SignatureStatus.REVOKED,
+            AnchorStatus.NOT_EVALUATED,
+            VerificationReasonCode.KEY_REVOKED,
+            "The configured verifier reports the key version as revoked",
+        ),
+        (
+            SignatureStatus.INDETERMINATE,
+            AnchorStatus.NOT_EVALUATED,
+            VerificationReasonCode.VERIFIER_UNAVAILABLE,
+            "External verification is unavailable",
+        ),
+    ],
+)
+def test_detailed_metadata_outcomes_are_normalized_with_core_owned_messages(
+    signature_status,
+    anchor_status,
+    reason_code,
+    safe_message,
+):
+    artifact = _metadata_artifact()
+    snapshot = deepcopy(artifact)
+    outcome = ExternalVerificationOutcome(
+        signature_status,
+        anchor_status,
+        reason_code,
+        "provider credential=top-secret",
+    )
+    verifier = RecordingExternalVerifier(outcome)
+
+    result = verify_artifact_detailed(artifact, verifier=verifier)
+
+    assert result.signature_status is signature_status
+    assert result.anchor_status is anchor_status
+    assert result.reason_code is reason_code
+    assert result.message == safe_message
+    assert "top-secret" not in result.message
+    assert result.signature_metadata == _metadata()
+    assert result.signature_metadata is not artifact["signature_metadata"]
+    assert result.is_signature_valid is (signature_status is SignatureStatus.VALID)
+    assert result.is_anchored is (anchor_status is AnchorStatus.ANCHORED)
+    assert len(verifier.calls) == 1
+    assert artifact == snapshot
+
+
+@pytest.mark.parametrize("key_version", ["version/current", "version/6"])
+def test_detailed_metadata_verifier_receives_exact_immutable_key_version(key_version):
+    artifact = _metadata_artifact(key_version=key_version)
+    snapshot = deepcopy(artifact)
+    outcome = ExternalVerificationOutcome(
+        SignatureStatus.UNKNOWN_KEY,
+        AnchorStatus.NOT_EVALUATED,
+        VerificationReasonCode.KEY_UNKNOWN,
+        "unknown",
+    )
+    verifier = RecordingExternalVerifier(outcome)
+
+    result = verify_artifact_detailed(artifact, verifier=verifier)
+
+    expected_metadata = _metadata(key_version=key_version)
+    assert result.signature_status is SignatureStatus.UNKNOWN_KEY
+    assert len(verifier.calls) == 1
+    payload, signature, parsed_metadata = verifier.calls[0]
+    assert signature == "aa"
+    assert parsed_metadata == expected_metadata
+    assert parsed_metadata.key_version == key_version
+    assert parsed_metadata is not artifact["signature_metadata"]
+    assert payload == _metadata_signing_payload(dict(artifact), expected_metadata)
+    assert artifact == snapshot
+
+
+def test_detailed_metadata_without_verifier_returns_fixed_unavailable_outcome():
+    artifact = _metadata_artifact()
+    snapshot = deepcopy(artifact)
+
+    result = verify_artifact_detailed(artifact)
+
+    assert result.signature_status is SignatureStatus.INDETERMINATE
+    assert result.anchor_status is AnchorStatus.NOT_EVALUATED
+    assert result.reason_code is VerificationReasonCode.VERIFIER_UNAVAILABLE
+    assert result.message == "External verification is unavailable"
+    assert result.signature_metadata == _metadata()
+    assert artifact == snapshot
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("schema_version", "2"),
+        ("signing_profile", "other-profile"),
+        ("canonicalization_version", "other-canonicalization"),
+        ("payload_type", "other-payload"),
+        ("algorithm", ""),
+        ("algorithm", "a" * 129),
+        ("key_reference", ""),
+        ("key_reference", "k" * 513),
+        ("key_version", ""),
+        ("key_version", "v" * 129),
+        ("signed_at", -1),
+        ("signed_at", True),
+    ],
+)
+def test_detailed_metadata_validation_rejects_versions_and_bounds_before_verifier(
+    field, value
+):
+    artifact = _metadata_artifact()
+    artifact["signature_metadata"][field] = value
+    snapshot = deepcopy(artifact)
+    verifier = RecordingExternalVerifier(object())
+
+    with pytest.raises(SignatureMetadataError):
+        verify_artifact_detailed(artifact, verifier=verifier)
+
+    assert verifier.calls == []
+    assert artifact == snapshot
+
+
+@pytest.mark.parametrize("shape", ["not_mapping", "missing", "extra"])
+def test_detailed_metadata_validation_rejects_invalid_shape_before_verifier(shape):
+    artifact = _metadata_artifact()
+    if shape == "not_mapping":
+        artifact["signature_metadata"] = None
+    elif shape == "missing":
+        artifact["signature_metadata"].pop("algorithm")
+    else:
+        artifact["signature_metadata"]["provider_hint"] = "attacker-resolver"
+    snapshot = deepcopy(artifact)
+    verifier = RecordingExternalVerifier(object())
+
+    with pytest.raises(SignatureMetadataError):
+        verify_artifact_detailed(artifact, verifier=verifier)
+
+    assert verifier.calls == []
+    assert artifact == snapshot
+
+
+@pytest.mark.parametrize(
+    "signature, encoding",
+    [
+        ("", "hex"),
+        ("AA", "hex"),
+        ("a", "hex"),
+        ("a" * 16_385, "hex"),
+        ("Zm 9v", "base64"),
+        ("Zh==", "base64"),
+    ],
+)
+def test_detailed_metadata_validation_rejects_bad_signature_before_verifier(
+    signature, encoding
+):
+    artifact = _metadata_artifact()
+    artifact["signature"] = signature
+    artifact["signature_metadata"]["signature_encoding"] = encoding
+    snapshot = deepcopy(artifact)
+    verifier = RecordingExternalVerifier(object())
+
+    with pytest.raises(SignatureMetadataError):
+        verify_artifact_detailed(artifact, verifier=verifier)
+
+    assert verifier.calls == []
+    assert artifact == snapshot
+
+
+def test_detailed_metadata_validation_rejects_non_string_signature_before_verifier():
+    artifact = _metadata_artifact()
+    artifact["signature"] = 123
+    snapshot = deepcopy(artifact)
+    verifier = RecordingExternalVerifier(object())
+
+    with pytest.raises(SignatureMetadataError):
+        verify_artifact_detailed(artifact, verifier=verifier)
+
+    assert verifier.calls == []
+    assert artifact == snapshot
+
+
+_EXTERNAL_OUTCOME_ROWS = {
+    (
+        SignatureStatus.VALID,
+        AnchorStatus.UNANCHORED,
+        VerificationReasonCode.SIGNATURE_VALID_UNANCHORED,
+    ),
+    (
+        SignatureStatus.VALID,
+        AnchorStatus.ANCHORED,
+        VerificationReasonCode.SIGNATURE_VALID_ANCHORED,
+    ),
+    (
+        SignatureStatus.VALID,
+        AnchorStatus.INVALID,
+        VerificationReasonCode.ANCHOR_INVALID,
+    ),
+    (
+        SignatureStatus.INVALID,
+        AnchorStatus.NOT_EVALUATED,
+        VerificationReasonCode.SIGNATURE_INVALID,
+    ),
+    (
+        SignatureStatus.INVALID,
+        AnchorStatus.NOT_EVALUATED,
+        VerificationReasonCode.ALGORITHM_NOT_ALLOWED,
+    ),
+    (
+        SignatureStatus.UNKNOWN_KEY,
+        AnchorStatus.NOT_EVALUATED,
+        VerificationReasonCode.KEY_UNKNOWN,
+    ),
+    (
+        SignatureStatus.REVOKED,
+        AnchorStatus.NOT_EVALUATED,
+        VerificationReasonCode.KEY_REVOKED,
+    ),
+    (
+        SignatureStatus.INDETERMINATE,
+        AnchorStatus.NOT_EVALUATED,
+        VerificationReasonCode.VERIFIER_UNAVAILABLE,
+    ),
+}
+_IMPOSSIBLE_EXTERNAL_OUTCOME_ROWS = [
+    (signature_status, anchor_status, reason_code)
+    for signature_status in SignatureStatus
+    for anchor_status in AnchorStatus
+    for reason_code in VerificationReasonCode
+    if (signature_status, anchor_status, reason_code) not in _EXTERNAL_OUTCOME_ROWS
+]
+
+
+@pytest.mark.parametrize(
+    "signature_status, anchor_status, reason_code",
+    _IMPOSSIBLE_EXTERNAL_OUTCOME_ROWS,
+)
+def test_detailed_metadata_verifier_rejects_every_impossible_external_outcome(
+    signature_status, anchor_status, reason_code
+):
+    artifact = _metadata_artifact()
+    snapshot = deepcopy(artifact)
+    outcome = _unchecked_outcome(signature_status, anchor_status, reason_code)
+    verifier = RecordingExternalVerifier(outcome)
+
+    with pytest.raises(VerificationContractError):
+        verify_artifact_detailed(artifact, verifier=verifier)
+
+    assert len(verifier.calls) == 1
+    assert artifact == snapshot
+
+
+@pytest.mark.parametrize("response", [None, {}, object()])
+def test_detailed_metadata_verifier_rejects_non_outcome_response(response):
+    artifact = _metadata_artifact()
+    snapshot = deepcopy(artifact)
+    verifier = RecordingExternalVerifier(response)
+
+    with pytest.raises(VerificationContractError):
+        verify_artifact_detailed(artifact, verifier=verifier)
+
+    assert len(verifier.calls) == 1
+    assert artifact == snapshot
+
+
+@pytest.mark.parametrize(
+    "exception",
+    [
+        RuntimeError("credential=top-secret payload=do-not-disclose"),
+        ArtifactSigningError("adapter-created AEGIS error with top-secret"),
+    ],
+)
+def test_detailed_metadata_verifier_sanitizes_every_adapter_exception(exception):
+    class FailingVerifier:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def verify(
+            self, payload: bytes, signature: str, metadata: SignatureMetadata
+        ) -> ExternalVerificationOutcome:
+            self.calls += 1
+            raise exception
+
+    artifact = _metadata_artifact()
+    snapshot = deepcopy(artifact)
+    verifier = FailingVerifier()
+
+    with pytest.raises(
+        VerificationContractError, match="External verifier failed unexpectedly"
+    ) as error:
+        verify_artifact_detailed(artifact, verifier=verifier)
+
+    assert error.value.details == {}
+    assert error.value.__cause__ is None
+    assert "top-secret" not in str(error.value)
+    assert verifier.calls == 1
+    assert artifact == snapshot
+
+
+def test_detailed_metadata_removal_never_downgrades_to_external_verifier():
+    artifact = _metadata_artifact()
+    artifact.pop("signature_metadata")
+    snapshot = deepcopy(artifact)
+    verifier = RecordingExternalVerifier(object())
+
+    result = verify_artifact_detailed(artifact, verifier=verifier)
+
+    assert result.signature_status is SignatureStatus.INDETERMINATE
+    assert result.reason_code is VerificationReasonCode.SIGNATURE_METADATA_MISSING
+    assert verifier.calls == []
+    assert artifact == snapshot
+
+
+def test_detailed_metadata_signature_copied_to_legacy_artifact_does_not_validate():
+    metadata_artifact = {"audit_schema_version": "1.4", "signature": None}
+    sign_artifact_with_metadata(metadata_artifact, DigestSigner(), signed_at=123)
+    legacy_artifact = _legacy_artifact()
+    legacy_artifact["signature"] = metadata_artifact["signature"]
+    snapshot = deepcopy(legacy_artifact)
+    verifier = RecordingExternalVerifier(object())
+
+    result = verify_artifact_detailed(
+        legacy_artifact,
+        legacy_signer=HMACSigner(key=b"legacy-key"),
+        verifier=verifier,
+    )
+
+    assert result.signature_status is SignatureStatus.INVALID
+    assert result.reason_code is VerificationReasonCode.LEGACY_SIGNATURE_INVALID
+    assert verifier.calls == []
+    assert legacy_artifact == snapshot
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("payload_type", "other-payload"),
+        ("signing_profile", "other-profile"),
+        ("canonicalization_version", "other-canonicalization"),
+    ],
+)
+def test_detailed_metadata_contract_changes_do_not_retry_or_fall_back(field, value):
+    artifact = _metadata_artifact()
+    artifact["signature_metadata"][field] = value
+    snapshot = deepcopy(artifact)
+    verifier = RecordingExternalVerifier(object())
+
+    with pytest.raises(SignatureMetadataError):
+        verify_artifact_detailed(
+            artifact,
+            legacy_signer=ExplodingLegacySigner(),
+            verifier=verifier,
+        )
+
+    assert verifier.calls == []
+    assert artifact == snapshot
+
+
+def test_detailed_metadata_verifier_receives_parsed_value_not_caller_dictionary():
+    artifact = _metadata_artifact()
+    caller_metadata = artifact["signature_metadata"]
+    snapshot = deepcopy(artifact)
+    outcome = ExternalVerificationOutcome(
+        SignatureStatus.REVOKED,
+        AnchorStatus.NOT_EVALUATED,
+        VerificationReasonCode.KEY_REVOKED,
+        "revoked",
+    )
+    verifier = RecordingExternalVerifier(outcome)
+
+    verify_artifact_detailed(artifact, verifier=verifier)
+
+    assert len(verifier.calls) == 1
+    parsed_metadata = verifier.calls[0][2]
+    assert isinstance(parsed_metadata, SignatureMetadata)
+    assert parsed_metadata.to_dict() == caller_metadata
+    assert parsed_metadata is not caller_metadata
+    assert artifact == snapshot
+
+
+def test_detailed_metadata_artifact_hints_cannot_select_another_resolver():
+    artifact = _metadata_artifact()
+    artifact.update(
+        resolver="https://attacker.invalid/keys",
+        provider="attacker-provider",
+        retry=True,
+    )
+    snapshot = deepcopy(artifact)
+    outcome = ExternalVerificationOutcome(
+        SignatureStatus.VALID,
+        AnchorStatus.UNANCHORED,
+        VerificationReasonCode.SIGNATURE_VALID_UNANCHORED,
+        "valid",
+    )
+    verifier = RecordingExternalVerifier(outcome)
+
+    result = verify_artifact_detailed(artifact, verifier=verifier)
+
+    assert result.signature_status is SignatureStatus.VALID
+    assert len(verifier.calls) == 1
     assert artifact == snapshot
 
 
