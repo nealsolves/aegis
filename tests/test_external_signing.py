@@ -7,6 +7,12 @@ from hashlib import sha256
 
 import pytest
 
+from tests.support.external_signing import (
+    DeterministicExternalSigner,
+    DeterministicExternalVerifier,
+    SENSITIVE_CORPUS,
+)
+
 from aegis._internal.errors import (
     ArtifactSigningError,
     SignatureMetadataError,
@@ -1272,3 +1278,48 @@ def test_metadata_aware_signature_payload_detects_signed_artifact_tampering(muta
         tampered_payload = None
 
     assert not verifier.accepts(tampered_payload or b"", artifact["signature"])
+
+
+def test_external_signing_boundary_redacts_adversarial_provider_data_and_logs(caplog):
+    """Provider details never escape exceptions, results, or log capture."""
+    artifact = _unsigned_artifact()
+    snapshot = deepcopy(artifact)
+    caplog.set_level("DEBUG")
+
+    failing_signer = DeterministicExternalSigner(mode="signing_unexpected")
+    with pytest.raises(ArtifactSigningError) as caught:
+        sign_artifact_with_metadata(
+            artifact,
+            failing_signer,
+            signed_at=123,
+        )
+
+    assert artifact == snapshot
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
+    assert caught.value.details == {}
+    recorded_canonical_payload = failing_signer.payloads[0].decode("utf-8")
+
+    signed: dict[str, object] = {
+        "audit_schema_version": "1.4",
+        "private": "payload-fragment",
+        "signature": None,
+    }
+    sign_artifact_with_metadata(signed, DeterministicExternalSigner(), signed_at=123)
+    raw_signature = signed["signature"]
+    result = verify_artifact_detailed(
+        signed, verifier=DeterministicExternalVerifier()
+    )
+
+    rendered = "\n".join(
+        (
+            str(caught.value),
+            repr(caught.value.details),
+            repr(result),
+            caplog.text,
+        )
+    )
+    assert raw_signature not in rendered
+    assert recorded_canonical_payload not in rendered
+    for sensitive_value in SENSITIVE_CORPUS:
+        assert sensitive_value not in rendered
