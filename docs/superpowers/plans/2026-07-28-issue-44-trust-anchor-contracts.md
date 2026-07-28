@@ -1138,37 +1138,27 @@ git commit -m "test(signing): add external signer conformance kit"
 - Modify: `docs/PUBLIC_INTEGRATION_CONTRACT.md`
 - Modify: `README.md`
 - Modify: `CHANGELOG.md`
-- Modify: `tests/test_external_signing_schema.py`
 
 **Interfaces:**
 
 - Accepted ADR and maintained public documentation matching the implemented names and behavior.
 
-- [ ] **Step 1: Add a failing documentation-contract test**
+- [ ] **Step 1: Record the approved documentation-only TDD exception and baseline**
 
-Add assertions to `tests/test_external_signing_schema.py` that the maintained documents contain these exact semantic anchors:
-
-```text
-sign_artifact_with_metadata
-verify_artifact_detailed
-aegis-signature-v1
-valid signature does not imply external anchoring
-host-observed signing time is not trusted timestamp evidence
-```
-
-Also assert ADR-0012 exists and names issues `#45`, `#46`, and `#47` as deferred ownership.
-
-- [ ] **Step 2: Run the documentation test and verify failure**
+Human prose does not receive source-text change-detector tests. The user
+approved validating this task with executable public examples, repository
+documentation checks, and two manual review passes instead.
 
 Run:
 
 ```bash
-../../.venv/bin/python -m pytest tests/test_external_signing_schema.py -k documentation -v
+../../.venv/bin/python -m doctest docs/PUBLIC_INTEGRATION_CONTRACT.md
+../../.venv/bin/python scripts/check_public_docs_no_internal_imports.py
 ```
 
-Expected: failure because ADR-0012 and maintained contract language are absent.
+Expected: the existing documentation baseline passes before edits.
 
-- [ ] **Step 3: Write ADR-0012**
+- [ ] **Step 2: Write ADR-0012**
 
 Use the repository ADR template and set status `Accepted`. Include:
 
@@ -1188,9 +1178,10 @@ Use the repository ADR template and set status `Accepted`. Include:
   re-signing and asynchronous contracts remain out of scope;
 - #45, #46, and #47 ownership.
 
-- [ ] **Step 4: Update maintained architecture and integration documents**
+- [ ] **Step 3: Update maintained architecture and integration documents**
 
-`docs/PUBLIC_INTEGRATION_CONTRACT.md` must contain importable examples for:
+`docs/PUBLIC_INTEGRATION_CONTRACT.md` must contain doctest-executable public
+examples for:
 
 1. defining an `ExternalArtifactSigner`;
 2. signing with an explicit integer `signed_at`;
@@ -1211,22 +1202,34 @@ The threat model and invariants must state:
 
 README and CHANGELOG get concise language only; do not duplicate the full contract.
 
-- [ ] **Step 5: Check every documented snippet against the public API**
+- [ ] **Step 4: Check every documented snippet against the public API**
 
 Run:
 
 ```bash
 ../../.venv/bin/python -m doctest docs/PUBLIC_INTEGRATION_CONTRACT.md
-../../.venv/bin/python -m pytest tests/test_external_signing_schema.py -k documentation -v
 ../../.venv/bin/python scripts/check_public_docs_no_internal_imports.py
+../../.venv/bin/python scripts/check_doc_parity.py
 ```
 
-Expected: doctest, documentation assertions, and public-import check all pass.
+Expected: doctest and public-import checks pass. Documentation parity introduces
+no #44 regression; record the four unrelated baseline inventory failures
+separately if they remain.
+
+- [ ] **Step 5: Perform two documentation review passes**
+
+Pass 1 checks that all public names, signatures, constants, status semantics,
+error codes, and examples match the implemented API.
+
+Pass 2 checks every security claim and non-goal from the approved design,
+including valid-versus-anchored, HMAC/hash-chain limitations, observational
+time, host ownership, availability, replay, complete-chain replacement, WORM,
+and #45/#46/#47 boundaries.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add docs/decisions/ADR-0012-external-trust-anchor-signing.md docs/architecture/AEGIS_THREAT_MODEL.md docs/architecture/ARCHITECTURAL_INVARIANTS.md docs/PUBLIC_INTEGRATION_CONTRACT.md README.md CHANGELOG.md tests/test_external_signing_schema.py
+git add docs/decisions/ADR-0012-external-trust-anchor-signing.md docs/architecture/AEGIS_THREAT_MODEL.md docs/architecture/ARCHITECTURAL_INVARIANTS.md docs/PUBLIC_INTEGRATION_CONTRACT.md README.md CHANGELOG.md
 git commit -m "docs(signing): define external trust-anchor boundary"
 ```
 
