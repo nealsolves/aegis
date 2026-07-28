@@ -79,6 +79,20 @@ def test_metadata_signing_payload_preserves_artifact_and_replaces_temporary_meta
     assert b'"temporary":true' not in payload
 
 
+def test_metadata_signing_payload_rejects_unvalidated_metadata_objects():
+    class FakeMetadata:
+        def to_dict(self):
+            return {
+                "signing_profile": "attacker-profile",
+                "payload_type": "attacker-payload",
+            }
+
+    with pytest.raises(SigningContractError):
+        _metadata_signing_payload(
+            {"audit_schema_version": "1.4", "signature": None}, FakeMetadata()
+        )
+
+
 @pytest.mark.parametrize(
     "artifact, metadata",
     [

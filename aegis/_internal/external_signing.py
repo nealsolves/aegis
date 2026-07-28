@@ -64,6 +64,8 @@ def _metadata_signing_payload(
     artifact: dict[str, Any], metadata: SignatureMetadata
 ) -> bytes:
     """Return the domain-separated canonical payload for an audit artifact."""
+    if not isinstance(metadata, SignatureMetadata):
+        raise SigningContractError("metadata must be a SignatureMetadata", details={})
     signable = artifact.copy()
     signable.pop("signature", None)
     signable["signature_metadata"] = metadata.to_dict()
