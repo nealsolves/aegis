@@ -384,3 +384,169 @@ def test_all_list_completeness():
     all_set = set(aegis.__all__)
     missing = expected_m2_symbols - all_set
     assert not missing, f"Missing from __all__: {sorted(missing)}"
+
+
+def test_trust_anchor_signing_contracts_are_public_and_identical():
+    """Trust-anchor contracts have explicit module and package import paths."""
+    import aegis.signing as signing_module
+    from aegis.signing import (
+        ArtifactSigner as signing_ArtifactSigner,
+        HMACSigner as signing_HMACSigner,
+        sign_artifact as signing_sign_artifact,
+        verify_artifact as signing_verify_artifact,
+        SIGNATURE_METADATA_SCHEMA_VERSION as signing_metadata_schema_version,
+        SIGNING_PROFILE as signing_profile,
+        CANONICALIZATION_VERSION as signing_canonicalization_version,
+        EvidenceType as signing_EvidenceType,
+        SignatureEncoding as signing_SignatureEncoding,
+        SignatureStatus as signing_SignatureStatus,
+        AnchorStatus as signing_AnchorStatus,
+        VerificationReasonCode as signing_VerificationReasonCode,
+        SignerIdentity as signing_SignerIdentity,
+        SignatureMetadata as signing_SignatureMetadata,
+        SigningReceipt as signing_SigningReceipt,
+        ExternalVerificationOutcome as signing_ExternalVerificationOutcome,
+        ArtifactVerificationResult as signing_ArtifactVerificationResult,
+        ExternalArtifactSigner as signing_ExternalArtifactSigner,
+        ExternalArtifactVerifier as signing_ExternalArtifactVerifier,
+        sign_artifact_with_metadata as signing_sign_artifact_with_metadata,
+        verify_artifact_detailed as signing_verify_artifact_detailed,
+    )
+    from aegis import (
+        ArtifactSigner as top_ArtifactSigner,
+        HMACSigner as top_HMACSigner,
+        sign_artifact as top_sign_artifact,
+        verify_artifact as top_verify_artifact,
+        SIGNATURE_METADATA_SCHEMA_VERSION as top_metadata_schema_version,
+        SIGNING_PROFILE as top_signing_profile,
+        CANONICALIZATION_VERSION as top_canonicalization_version,
+        EvidenceType as top_EvidenceType,
+        SignatureEncoding as top_SignatureEncoding,
+        SignatureStatus as top_SignatureStatus,
+        AnchorStatus as top_AnchorStatus,
+        VerificationReasonCode as top_VerificationReasonCode,
+        SignerIdentity as top_SignerIdentity,
+        SignatureMetadata as top_SignatureMetadata,
+        SigningReceipt as top_SigningReceipt,
+        ExternalVerificationOutcome as top_ExternalVerificationOutcome,
+        ArtifactVerificationResult as top_ArtifactVerificationResult,
+        ExternalArtifactSigner as top_ExternalArtifactSigner,
+        ExternalArtifactVerifier as top_ExternalArtifactVerifier,
+        sign_artifact_with_metadata as top_sign_artifact_with_metadata,
+        verify_artifact_detailed as top_verify_artifact_detailed,
+    )
+
+    module_exports = (
+        signing_ArtifactSigner,
+        signing_HMACSigner,
+        signing_sign_artifact,
+        signing_verify_artifact,
+        signing_metadata_schema_version,
+        signing_profile,
+        signing_canonicalization_version,
+        signing_EvidenceType,
+        signing_SignatureEncoding,
+        signing_SignatureStatus,
+        signing_AnchorStatus,
+        signing_VerificationReasonCode,
+        signing_SignerIdentity,
+        signing_SignatureMetadata,
+        signing_SigningReceipt,
+        signing_ExternalVerificationOutcome,
+        signing_ArtifactVerificationResult,
+        signing_ExternalArtifactSigner,
+        signing_ExternalArtifactVerifier,
+        signing_sign_artifact_with_metadata,
+        signing_verify_artifact_detailed,
+    )
+    top_level_exports = (
+        top_ArtifactSigner,
+        top_HMACSigner,
+        top_sign_artifact,
+        top_verify_artifact,
+        top_metadata_schema_version,
+        top_signing_profile,
+        top_canonicalization_version,
+        top_EvidenceType,
+        top_SignatureEncoding,
+        top_SignatureStatus,
+        top_AnchorStatus,
+        top_VerificationReasonCode,
+        top_SignerIdentity,
+        top_SignatureMetadata,
+        top_SigningReceipt,
+        top_ExternalVerificationOutcome,
+        top_ArtifactVerificationResult,
+        top_ExternalArtifactSigner,
+        top_ExternalArtifactVerifier,
+        top_sign_artifact_with_metadata,
+        top_verify_artifact_detailed,
+    )
+    expected_names = {
+        "ArtifactSigner",
+        "HMACSigner",
+        "sign_artifact",
+        "verify_artifact",
+        "SIGNATURE_METADATA_SCHEMA_VERSION",
+        "SIGNING_PROFILE",
+        "CANONICALIZATION_VERSION",
+        "EvidenceType",
+        "SignatureEncoding",
+        "SignatureStatus",
+        "AnchorStatus",
+        "VerificationReasonCode",
+        "SignerIdentity",
+        "SignatureMetadata",
+        "SigningReceipt",
+        "ExternalVerificationOutcome",
+        "ArtifactVerificationResult",
+        "ExternalArtifactSigner",
+        "ExternalArtifactVerifier",
+        "sign_artifact_with_metadata",
+        "verify_artifact_detailed",
+    }
+
+    assert all(top is module for top, module in zip(top_level_exports, module_exports))
+    assert expected_names <= set(signing_module.__all__)
+    assert expected_names <= set(aegis.__all__)
+
+
+def test_trust_anchor_errors_are_public_and_identical():
+    """Signing error contracts have explicit module and package import paths."""
+    import aegis.errors as errors_module
+    from aegis.errors import (
+        ArtifactSigningError as errors_ArtifactSigningError,
+        SignatureMetadataError as errors_SignatureMetadataError,
+        SigningContractError as errors_SigningContractError,
+        VerificationContractError as errors_VerificationContractError,
+    )
+    from aegis import (
+        ArtifactSigningError as top_ArtifactSigningError,
+        SignatureMetadataError as top_SignatureMetadataError,
+        SigningContractError as top_SigningContractError,
+        VerificationContractError as top_VerificationContractError,
+    )
+
+    module_exports = (
+        errors_ArtifactSigningError,
+        errors_SignatureMetadataError,
+        errors_SigningContractError,
+        errors_VerificationContractError,
+    )
+    top_level_exports = (
+        top_ArtifactSigningError,
+        top_SignatureMetadataError,
+        top_SigningContractError,
+        top_VerificationContractError,
+    )
+    expected_names = {
+        "ArtifactSigningError",
+        "SignatureMetadataError",
+        "SigningContractError",
+        "VerificationContractError",
+    }
+
+    assert all(top is module for top, module in zip(top_level_exports, module_exports))
+    assert all(issubclass(error, AIGCError) for error in module_exports)
+    assert expected_names <= set(errors_module.__all__)
+    assert expected_names <= set(aegis.__all__)

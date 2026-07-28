@@ -201,7 +201,7 @@ def test_artifact_contains_risk_score_null():
 
 
 def test_artifact_contains_signature_null():
-    """Verify artifact includes signature: None placeholder."""
+    """Generated artifacts remain unsigned and omit optional signature metadata."""
     invocation = load_json(GOLDEN_SUCCESS)
     audit = generate_audit_artifact(
         invocation,
@@ -210,6 +210,8 @@ def test_artifact_contains_signature_null():
     )
     assert "signature" in audit
     assert audit["signature"] is None
+    assert "signature_metadata" not in audit
+    validate(instance=audit, schema=load_json(AUDIT_SCHEMA))
 
 
 def test_sanitize_api_key():

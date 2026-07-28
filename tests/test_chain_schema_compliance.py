@@ -60,6 +60,27 @@ def test_chained_artifact_passes_audit_schema():
     jsonschema_validate(instance=chained, schema=schema)
 
 
+def test_chained_metadata_aware_artifact_passes_audit_schema():
+    """Chain fields remain compatible with a strict metadata-aware signature."""
+    artifact = _make_base_artifact()
+    artifact["signature"] = "aabb"
+    artifact["signature_metadata"] = {
+        "schema_version": "1",
+        "signing_profile": "aegis-signature-v1",
+        "canonicalization_version": "aegis-canonical-json-v1",
+        "payload_type": "audit_artifact",
+        "algorithm": "HSM-SHA256",
+        "signature_encoding": "hex",
+        "key_reference": "kms://audit/key",
+        "key_version": "version/7",
+        "signed_at": 1_721_600_000,
+    }
+
+    chained = AuditChain().append(artifact)
+
+    jsonschema_validate(instance=chained, schema=_audit_schema())
+
+
 def test_multiple_chained_artifacts_all_pass_schema():
     """Every artifact in a multi-link chain must be schema-valid."""
     chain = AuditChain()
