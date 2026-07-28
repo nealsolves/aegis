@@ -346,11 +346,16 @@ def verify_artifact_detailed(
             metadata,
         )
 
+    outcome: object = None
+    verifier_failed = False
     try:
         outcome = verifier.verify(payload, signature, metadata)
     except Exception:
+        verifier_failed = True
+
+    if verifier_failed:
         raise VerificationContractError(
             "External verifier failed unexpectedly", details={}
-        ) from None
+        )
 
     return _normalize_external_outcome(outcome, metadata)

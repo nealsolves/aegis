@@ -761,6 +761,7 @@ def test_detailed_metadata_verifier_sanitizes_every_adapter_exception(exception)
 
     assert error.value.details == {}
     assert error.value.__cause__ is None
+    assert error.value.__context__ is None
     assert "top-secret" not in str(error.value)
     assert verifier.calls == 1
     assert artifact == snapshot
