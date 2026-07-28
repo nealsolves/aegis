@@ -357,7 +357,7 @@ git commit -m "feat(signing): add trust-anchor value contracts"
 - Internal `_metadata_signing_payload(artifact, metadata) -> bytes`.
 - Internal `_metadata_from_identity(identity, signed_at) -> SignatureMetadata`.
 
-- [ ] **Step 1: Write the failing protocol and golden-payload tests**
+- [x] **Step 1: Write the failing protocol and golden-payload tests**
 
 Use a minimal artifact and hard-code the expected bytes:
 
@@ -401,7 +401,7 @@ Also assert:
 - changing any artifact field or any one of the nine metadata fields changes the payload, except unsupported fixed versions are rejected before payload construction;
 - concrete structural test doubles satisfy the runtime protocols.
 
-- [ ] **Step 2: Run the test and verify the missing module failure**
+- [x] **Step 2: Run the test and verify the missing module failure**
 
 Run:
 
@@ -411,7 +411,7 @@ Run:
 
 Expected: collection fails because `aegis._internal.external_signing` does not exist.
 
-- [ ] **Step 3: Add the exact protocol methods**
+- [x] **Step 3: Add the exact protocol methods**
 
 ```python
 @runtime_checkable
@@ -438,7 +438,7 @@ class ExternalArtifactVerifier(Protocol):
 
 These protocols import no provider module and perform no I/O.
 
-- [ ] **Step 4: Implement exact metadata and payload construction**
+- [x] **Step 4: Implement exact metadata and payload construction**
 
 `_metadata_from_identity()` must require an actual `SignerIdentity`, reject `bool` timestamps, and copy the four identity fields into fixed metadata:
 
@@ -476,7 +476,7 @@ return (
 )
 ```
 
-- [ ] **Step 5: Run focused tests**
+- [x] **Step 5: Run focused tests**
 
 Run:
 
@@ -486,7 +486,7 @@ Run:
 
 Expected: protocol and payload tests pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add aegis/_internal/external_signing.py tests/test_external_signing.py
