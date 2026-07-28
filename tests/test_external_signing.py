@@ -11,6 +11,7 @@ from aegis._internal.errors import (
     ArtifactSigningError,
     SignatureMetadataError,
     SigningContractError,
+    VerificationContractError,
 )
 from aegis._internal.external_signing import (
     ExternalArtifactSigner,
@@ -18,7 +19,9 @@ from aegis._internal.external_signing import (
     _metadata_from_identity,
     _metadata_signing_payload,
     sign_artifact_with_metadata,
+    verify_artifact_detailed,
 )
+from aegis._internal.signing import ArtifactSigner, HMACSigner, sign_artifact
 from aegis._internal.signature_models import (
     AnchorStatus,
     EvidenceType,
@@ -248,6 +251,149 @@ class DigestSigner(RecordingSigner):
 class DigestVerifier:
     def accepts(self, payload: bytes, signature: str) -> bool:
         return sha256(payload).hexdigest() == signature
+
+
+class LegacyDigestSigner(ArtifactSigner):
+    def sign(self, payload: bytes) -> str:
+        return sha256(payload).hexdigest()
+
+    def verify(self, payload: bytes, signature: str) -> bool:
+        return signature == self.sign(payload)
+
+
+class ExplodingLegacySigner(ArtifactSigner):
+    def sign(self, payload: bytes) -> str:
+        return "unused"
+
+    def verify(self, payload: bytes, signature: str) -> bool:
+        raise RuntimeError("legacy verifier secret")
+
+
+class ExplodingExternalVerifier:
+    def verify(
+        self, payload: bytes, signature: str, metadata: SignatureMetadata
+    ) -> ExternalVerificationOutcome:
+        raise AssertionError("external verifier should not be called")
+
+
+def _legacy_artifact() -> dict[str, object]:
+    return {
+        "audit_schema_version": "1.4",
+        "nested": {"items": ["one", "two"]},
+        "signature": None,
+    }
+
+
+@pytest.mark.parametrize("has_signature_field", [True, False])
+def test_detailed_verification_of_unsigned_artifact_skips_verifiers_and_preserves_input(
+    has_signature_field,
+):
+    artifact = _legacy_artifact()
+    if not has_signature_field:
+        artifact.pop("signature")
+    snapshot = deepcopy(artifact)
+
+    result = verify_artifact_detailed(
+        artifact,
+        legacy_signer=ExplodingLegacySigner(),
+        verifier=ExplodingExternalVerifier(),
+    )
+
+    assert result.signature_status is SignatureStatus.UNSIGNED
+    assert result.anchor_status is AnchorStatus.NOT_EVALUATED
+    assert result.reason_code is VerificationReasonCode.UNSIGNED
+    assert result.signature_metadata is None
+    assert artifact == snapshot
+
+
+def test_detailed_verification_of_valid_hmac_legacy_signature_is_unanchored():
+    signer = HMACSigner(key=b"legacy-key")
+    artifact = _legacy_artifact()
+    sign_artifact(artifact, signer)  # type: ignore[arg-type]
+    snapshot = deepcopy(artifact)
+
+    result = verify_artifact_detailed(artifact, legacy_signer=signer)
+
+    assert result.signature_status is SignatureStatus.VALID
+    assert result.anchor_status is AnchorStatus.UNANCHORED
+    assert result.reason_code is VerificationReasonCode.LEGACY_SIGNATURE_VALID
+    assert result.signature_metadata is None
+    assert artifact == snapshot
+
+
+def test_detailed_verification_of_invalid_hmac_legacy_signature_is_not_evaluated():
+    signer = HMACSigner(key=b"legacy-key")
+    artifact = _legacy_artifact()
+    sign_artifact(artifact, signer)  # type: ignore[arg-type]
+    artifact["nested"] = {"items": ["tampered"]}
+    snapshot = deepcopy(artifact)
+
+    result = verify_artifact_detailed(artifact, legacy_signer=signer)
+
+    assert result.signature_status is SignatureStatus.INVALID
+    assert result.anchor_status is AnchorStatus.NOT_EVALUATED
+    assert result.reason_code is VerificationReasonCode.LEGACY_SIGNATURE_INVALID
+    assert result.signature_metadata is None
+    assert artifact == snapshot
+
+
+def test_detailed_verification_of_valid_custom_legacy_signature_does_not_infer_anchor():
+    signer = LegacyDigestSigner()
+    artifact = _legacy_artifact()
+    sign_artifact(artifact, signer)  # type: ignore[arg-type]
+    snapshot = deepcopy(artifact)
+
+    result = verify_artifact_detailed(artifact, legacy_signer=signer)
+
+    assert result.signature_status is SignatureStatus.VALID
+    assert result.anchor_status is AnchorStatus.NOT_EVALUATED
+    assert result.reason_code is VerificationReasonCode.LEGACY_SIGNATURE_VALID
+    assert result.signature_metadata is None
+    assert artifact == snapshot
+
+
+def test_detailed_verification_of_invalid_custom_legacy_signature_is_not_evaluated():
+    signer = LegacyDigestSigner()
+    artifact = _legacy_artifact()
+    sign_artifact(artifact, signer)  # type: ignore[arg-type]
+    artifact["nested"] = {"items": ["tampered"]}
+    snapshot = deepcopy(artifact)
+
+    result = verify_artifact_detailed(artifact, legacy_signer=signer)
+
+    assert result.signature_status is SignatureStatus.INVALID
+    assert result.anchor_status is AnchorStatus.NOT_EVALUATED
+    assert result.reason_code is VerificationReasonCode.LEGACY_SIGNATURE_INVALID
+    assert result.signature_metadata is None
+    assert artifact == snapshot
+
+
+def test_detailed_verification_requires_legacy_signer_when_metadata_is_missing():
+    artifact = _legacy_artifact()
+    artifact["signature"] = "present-but-unverified"
+    snapshot = deepcopy(artifact)
+
+    result = verify_artifact_detailed(artifact)
+
+    assert result.signature_status is SignatureStatus.INDETERMINATE
+    assert result.anchor_status is AnchorStatus.NOT_EVALUATED
+    assert result.reason_code is VerificationReasonCode.SIGNATURE_METADATA_MISSING
+    assert result.signature_metadata is None
+    assert artifact == snapshot
+
+
+def test_detailed_legacy_verification_sanitizes_unexpected_verifier_errors():
+    artifact = _legacy_artifact()
+    artifact["signature"] = "present-but-unverified"
+    snapshot = deepcopy(artifact)
+
+    with pytest.raises(VerificationContractError) as error:
+        verify_artifact_detailed(artifact, legacy_signer=ExplodingLegacySigner())
+
+    assert str(error.value) == "Legacy signature verification failed"
+    assert error.value.details == {}
+    assert "secret" not in str(error.value)
+    assert artifact == snapshot
 
 
 def _unsigned_artifact() -> dict[str, object]:

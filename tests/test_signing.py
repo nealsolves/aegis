@@ -69,6 +69,16 @@ def test_hmac_deterministic():
     assert signer.sign(payload) == signer.sign(payload)
 
 
+def test_legacy_hmac_signature_golden_value_is_unchanged():
+    artifact = _sample_artifact()
+
+    signature = HMACSigner(key=b"golden-key").sign(
+        _canonical_signing_payload(artifact)
+    )
+
+    assert signature == "ce02bf635e950b0e7782f933ba2c4f595dfb9d1204dc05d3b1cd02587c459bd1"
+
+
 # ── sign_artifact / verify_artifact ─────────────────────────────
 
 
@@ -140,3 +150,18 @@ def test_signing_deterministic():
 def test_abstract_signer_cannot_instantiate():
     with pytest.raises(TypeError):
         ArtifactSigner()
+
+
+def test_two_method_custom_legacy_signer_still_signs_and_verifies():
+    class CustomSigner(ArtifactSigner):
+        def sign(self, payload: bytes) -> str:
+            return f"custom:{payload.hex()}"
+
+        def verify(self, payload: bytes, signature: str) -> bool:
+            return signature == self.sign(payload)
+
+    signer = CustomSigner()
+    payload = b"legacy payload"
+    signature = signer.sign(payload)
+
+    assert signer.verify(payload, signature)

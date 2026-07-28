@@ -2,20 +2,29 @@
 
 from __future__ import annotations
 
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Mapping, Protocol, runtime_checkable
 
-from aegis._internal.errors import ArtifactSigningError, SigningContractError
+from aegis._internal.errors import (
+    ArtifactSigningError,
+    SigningContractError,
+    VerificationContractError,
+)
 from aegis._internal.signature_models import (
+    AnchorStatus,
+    ArtifactVerificationResult,
     CANONICALIZATION_VERSION,
     SIGNATURE_METADATA_SCHEMA_VERSION,
     SIGNING_PROFILE,
     EvidenceType,
     ExternalVerificationOutcome,
+    SignatureStatus,
     SignatureMetadata,
     SignerIdentity,
     SigningReceipt,
+    VerificationReasonCode,
     validate_encoded_signature,
 )
+from aegis._internal.signing import ArtifactSigner, HMACSigner, _canonical_signing_payload
 from aegis._internal.utils import canonical_json_bytes
 
 
@@ -166,3 +175,71 @@ def sign_artifact_with_metadata(
         signature=signature,
     )
     return artifact
+
+
+def _verify_legacy_artifact(
+    artifact: Mapping[str, Any], signer: ArtifactSigner
+) -> ArtifactVerificationResult:
+    """Verify a pre-metadata artifact without inferring custom-signer anchors."""
+    try:
+        valid = signer.verify(
+            _canonical_signing_payload(dict(artifact)), artifact["signature"]
+        )
+    except Exception:
+        raise VerificationContractError(
+            "Legacy signature verification failed", details={}
+        ) from None
+
+    if valid:
+        anchor_status = (
+            AnchorStatus.UNANCHORED
+            if isinstance(signer, HMACSigner)
+            else AnchorStatus.NOT_EVALUATED
+        )
+        return ArtifactVerificationResult(
+            SignatureStatus.VALID,
+            anchor_status,
+            VerificationReasonCode.LEGACY_SIGNATURE_VALID,
+            "Legacy signature is valid",
+            None,
+        )
+
+    return ArtifactVerificationResult(
+        SignatureStatus.INVALID,
+        AnchorStatus.NOT_EVALUATED,
+        VerificationReasonCode.LEGACY_SIGNATURE_INVALID,
+        "Legacy signature is invalid",
+        None,
+    )
+
+
+def verify_artifact_detailed(
+    artifact: Mapping[str, Any],
+    *,
+    legacy_signer: ArtifactSigner | None = None,
+    verifier: ExternalArtifactVerifier | None = None,
+) -> ArtifactVerificationResult:
+    """Return a non-mutating detailed result for unsigned and legacy artifacts."""
+    if artifact.get("signature") is None:
+        return ArtifactVerificationResult(
+            SignatureStatus.UNSIGNED,
+            AnchorStatus.NOT_EVALUATED,
+            VerificationReasonCode.UNSIGNED,
+            "Artifact is unsigned",
+            None,
+        )
+
+    if "signature_metadata" not in artifact:
+        if legacy_signer is None:
+            return ArtifactVerificationResult(
+                SignatureStatus.INDETERMINATE,
+                AnchorStatus.NOT_EVALUATED,
+                VerificationReasonCode.SIGNATURE_METADATA_MISSING,
+                "Signature metadata and legacy verifier are unavailable",
+                None,
+            )
+        return _verify_legacy_artifact(artifact, legacy_signer)
+
+    raise VerificationContractError(
+        "Metadata-aware verification is unavailable", details={}
+    )
