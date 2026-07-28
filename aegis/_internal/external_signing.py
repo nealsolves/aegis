@@ -135,21 +135,27 @@ def _normalized_string(value: object) -> str:
 
 def _normalize_identity(identity: object) -> SignerIdentity:
     """Return a validated, provider-independent signer identity."""
+    identity_invalid = False
     try:
         if not isinstance(identity, SignerIdentity):
             raise TypeError
-        return SignerIdentity(
+        normalized_identity = SignerIdentity(
             algorithm=_normalized_string(identity.algorithm),
             signature_encoding=identity.signature_encoding,
             key_reference=_normalized_string(identity.key_reference),
             key_version=_normalized_string(identity.key_version),
         )
     except Exception:
-        raise SigningContractError("Signer returned an invalid identity", details={}) from None
+        identity_invalid = True
+
+    if identity_invalid:
+        raise SigningContractError("Signer returned an invalid identity", details={})
+    return normalized_identity
 
 
 def _validate_receipt(receipt: object, identity: SignerIdentity) -> None:
     """Ensure a signing receipt echoes the identity prepared for this request."""
+    receipt_invalid = False
     try:
         if not isinstance(receipt, SigningReceipt):
             raise TypeError
@@ -162,16 +168,24 @@ def _validate_receipt(receipt: object, identity: SignerIdentity) -> None:
         if receipt_identity != identity:
             raise ValueError
     except Exception:
+        receipt_invalid = True
+
+    if receipt_invalid:
         raise SigningContractError(
             "Signing receipt does not match prepared identity", details={}
-        ) from None
+        )
 
 
 def _normalized_signature(receipt: SigningReceipt) -> str:
+    signature_invalid = False
     try:
-        return _normalized_string(receipt.signature)
+        signature = _normalized_string(receipt.signature)
     except Exception:
-        raise ArtifactSigningError("Signer returned an invalid encoded signature") from None
+        signature_invalid = True
+
+    if signature_invalid:
+        raise ArtifactSigningError("Signer returned an invalid encoded signature")
+    return signature
 
 
 def sign_artifact_with_metadata(
@@ -186,27 +200,39 @@ def sign_artifact_with_metadata(
     if "signature_metadata" in artifact:
         raise ArtifactSigningError("Artifact contains stale signature metadata")
 
+    identity_call_failed = False
     try:
         identity = signer.signer_identity()
     except Exception:
-        raise ArtifactSigningError("External signer could not prepare identity") from None
+        identity_call_failed = True
+
+    if identity_call_failed:
+        raise ArtifactSigningError("External signer could not prepare identity")
 
     identity = _normalize_identity(identity)
 
     metadata = _metadata_from_identity(identity, signed_at)
     payload = _metadata_signing_payload(artifact, metadata)
 
+    sign_call_failed = False
     try:
         receipt = signer.sign(payload, identity)
     except Exception:
-        raise ArtifactSigningError("External signer did not produce a signature") from None
+        sign_call_failed = True
+
+    if sign_call_failed:
+        raise ArtifactSigningError("External signer did not produce a signature")
 
     _validate_receipt(receipt, identity)
     signature = _normalized_signature(receipt)
+    signature_invalid = False
     try:
         validate_encoded_signature(signature, identity.signature_encoding)
     except Exception:
-        raise ArtifactSigningError("Signer returned an invalid encoded signature") from None
+        signature_invalid = True
+
+    if signature_invalid:
+        raise ArtifactSigningError("Signer returned an invalid encoded signature")
 
     artifact.update(
         signature_metadata=metadata.to_dict(),
@@ -219,14 +245,18 @@ def _verify_legacy_artifact(
     artifact: Mapping[str, Any], signer: ArtifactSigner
 ) -> ArtifactVerificationResult:
     """Verify a pre-metadata artifact without inferring custom-signer anchors."""
+    verifier_failed = False
     try:
         valid = signer.verify(
             _canonical_signing_payload(dict(artifact)), artifact["signature"]
         )
     except Exception:
+        verifier_failed = True
+
+    if verifier_failed:
         raise VerificationContractError(
             "Legacy signature verification failed", details={}
-        ) from None
+        )
 
     if valid:
         anchor_status = (
@@ -261,22 +291,25 @@ def _normalize_external_outcome(
             "External verifier returned an invalid outcome", details={}
         )
 
+    outcome_invalid = False
     try:
         signature_status = outcome.signature_status
         anchor_status = outcome.anchor_status
         reason_code = outcome.reason_code
-        validate_verification_outcome(signature_status, anchor_status, reason_code)
-        if reason_code in _CONTEXTUALLY_IMPOSSIBLE_EXTERNAL_REASONS:
-            raise VerificationContractError(
-                "External verifier returned an invalid outcome", details={}
-            )
-        message = _SAFE_REASON_MESSAGES[reason_code]
-    except VerificationContractError:
-        raise
     except Exception:
+        outcome_invalid = True
+
+    if outcome_invalid:
         raise VerificationContractError(
             "External verifier returned an invalid outcome", details={}
-        ) from None
+        )
+
+    validate_verification_outcome(signature_status, anchor_status, reason_code)
+    if reason_code in _CONTEXTUALLY_IMPOSSIBLE_EXTERNAL_REASONS:
+        raise VerificationContractError(
+            "External verifier returned an invalid outcome", details={}
+        )
+    message = _SAFE_REASON_MESSAGES[reason_code]
 
     return ArtifactVerificationResult(
         signature_status,
@@ -320,21 +353,37 @@ def verify_artifact_detailed(
             "signature is invalid", details={"field": "signature"}
         )
 
+    metadata_error_message: str | None = None
+    metadata_error_details: dict[str, Any] | None = None
+    metadata_invalid = False
     try:
         metadata = SignatureMetadata.from_dict(artifact["signature_metadata"])
-    except SignatureMetadataError:
-        raise
+    except SignatureMetadataError as error:
+        metadata_error_message = str(error)
+        metadata_error_details = error.details.copy()
     except Exception:
+        metadata_invalid = True
+
+    if metadata_error_message is not None:
+        raise SignatureMetadataError(
+            metadata_error_message,
+            details=metadata_error_details,
+        )
+    if metadata_invalid:
         raise SignatureMetadataError(
             "signature metadata is invalid", details={}
-        ) from None
+        )
 
+    signature_invalid = False
     try:
         validate_encoded_signature(signature, metadata.signature_encoding)
     except Exception:
+        signature_invalid = True
+
+    if signature_invalid:
         raise SignatureMetadataError(
             "signature is invalid", details={"field": "signature"}
-        ) from None
+        )
 
     payload = _metadata_signing_payload(dict(artifact), metadata)
     if verifier is None:

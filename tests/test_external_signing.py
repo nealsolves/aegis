@@ -314,6 +314,25 @@ def _unchecked_outcome(
     return outcome
 
 
+def _hostile_outcome() -> ExternalVerificationOutcome:
+    class HostileOutcome(ExternalVerificationOutcome):
+        def __getattribute__(self, name: str) -> object:
+            if name == "signature_status":
+                raise ArtifactSigningError("provider secret from outcome")
+            return super().__getattribute__(name)
+
+    outcome = object.__new__(HostileOutcome)
+    object.__setattr__(outcome, "signature_status", SignatureStatus.VALID)
+    object.__setattr__(outcome, "anchor_status", AnchorStatus.UNANCHORED)
+    object.__setattr__(
+        outcome,
+        "reason_code",
+        VerificationReasonCode.SIGNATURE_VALID_UNANCHORED,
+    )
+    object.__setattr__(outcome, "message", "provider secret from outcome")
+    return outcome
+
+
 def _legacy_artifact() -> dict[str, object]:
     return {
         "audit_schema_version": "1.4",
@@ -430,6 +449,8 @@ def test_detailed_legacy_verification_sanitizes_unexpected_verifier_errors():
 
     assert str(error.value) == "Legacy signature verification failed"
     assert error.value.details == {}
+    assert error.value.__cause__ is None
+    assert error.value.__context__ is None
     assert "secret" not in str(error.value)
     assert artifact == snapshot
 
@@ -583,28 +604,41 @@ def test_detailed_metadata_validation_rejects_versions_and_bounds_before_verifie
     snapshot = deepcopy(artifact)
     verifier = RecordingExternalVerifier(object())
 
-    with pytest.raises(SignatureMetadataError):
+    with pytest.raises(SignatureMetadataError) as error:
         verify_artifact_detailed(artifact, verifier=verifier)
 
+    assert error.value.__cause__ is None
+    assert error.value.__context__ is None
     assert verifier.calls == []
     assert artifact == snapshot
 
 
-@pytest.mark.parametrize("shape", ["not_mapping", "missing", "extra"])
+@pytest.mark.parametrize("shape", ["not_mapping", "missing", "extra", "hostile"])
 def test_detailed_metadata_validation_rejects_invalid_shape_before_verifier(shape):
     artifact = _metadata_artifact()
     if shape == "not_mapping":
         artifact["signature_metadata"] = None
     elif shape == "missing":
         artifact["signature_metadata"].pop("algorithm")
-    else:
+    elif shape == "extra":
         artifact["signature_metadata"]["provider_hint"] = "attacker-resolver"
+    else:
+        class HostileMetadata(dict):
+            def keys(self):
+                raise ArtifactSigningError("provider secret from metadata")
+
+        artifact["signature_metadata"] = HostileMetadata(
+            artifact["signature_metadata"]
+        )
     snapshot = deepcopy(artifact)
     verifier = RecordingExternalVerifier(object())
 
-    with pytest.raises(SignatureMetadataError):
+    with pytest.raises(SignatureMetadataError) as error:
         verify_artifact_detailed(artifact, verifier=verifier)
 
+    assert error.value.__cause__ is None
+    assert error.value.__context__ is None
+    assert "provider secret" not in str(error.value)
     assert verifier.calls == []
     assert artifact == snapshot
 
@@ -629,9 +663,11 @@ def test_detailed_metadata_validation_rejects_bad_signature_before_verifier(
     snapshot = deepcopy(artifact)
     verifier = RecordingExternalVerifier(object())
 
-    with pytest.raises(SignatureMetadataError):
+    with pytest.raises(SignatureMetadataError) as error:
         verify_artifact_detailed(artifact, verifier=verifier)
 
+    assert error.value.__cause__ is None
+    assert error.value.__context__ is None
     assert verifier.calls == []
     assert artifact == snapshot
 
@@ -719,15 +755,18 @@ def test_detailed_metadata_verifier_rejects_every_impossible_external_outcome(
     assert artifact == snapshot
 
 
-@pytest.mark.parametrize("response", [None, {}, object()])
+@pytest.mark.parametrize("response", [None, {}, object(), _hostile_outcome()])
 def test_detailed_metadata_verifier_rejects_non_outcome_response(response):
     artifact = _metadata_artifact()
     snapshot = deepcopy(artifact)
     verifier = RecordingExternalVerifier(response)
 
-    with pytest.raises(VerificationContractError):
+    with pytest.raises(VerificationContractError) as error:
         verify_artifact_detailed(artifact, verifier=verifier)
 
+    assert error.value.__cause__ is None
+    assert error.value.__context__ is None
+    assert "provider secret" not in str(error.value)
     assert len(verifier.calls) == 1
     assert artifact == snapshot
 
@@ -945,6 +984,8 @@ def test_sign_artifact_with_metadata_redacts_identity_errors_without_mutation():
     ) as error:
         sign_artifact_with_metadata(artifact, FailingIdentitySigner(), signed_at=1)
 
+    assert error.value.__cause__ is None
+    assert error.value.__context__ is None
     assert "top-secret" not in str(error.value)
     assert artifact == original
 
@@ -983,6 +1024,8 @@ def test_sign_artifact_with_metadata_redacts_signer_errors_without_mutation(exce
     ) as error:
         sign_artifact_with_metadata(artifact, FailingSigner(), signed_at=1)
 
+    assert error.value.__cause__ is None
+    assert error.value.__context__ is None
     assert "top-secret" not in str(error.value)
     assert "do-not-disclose" not in str(error.value)
     assert artifact == original
@@ -1069,6 +1112,8 @@ def test_sign_artifact_with_metadata_redacts_invalid_encoded_signature_without_m
         )
 
     assert error.value.details == {}
+    assert error.value.__cause__ is None
+    assert error.value.__context__ is None
     assert artifact == original
 
 
@@ -1107,6 +1152,8 @@ def test_sign_artifact_with_metadata_redacts_hostile_identity_fields_without_mut
     ) as error:
         sign_artifact_with_metadata(artifact, signer, signed_at=1)
 
+    assert error.value.__cause__ is None
+    assert error.value.__context__ is None
     assert "provider secret" not in str(error.value)
     assert artifact == original
 
@@ -1127,6 +1174,8 @@ def test_sign_artifact_with_metadata_redacts_hostile_receipt_fields_without_muta
     ) as error:
         sign_artifact_with_metadata(artifact, signer, signed_at=1)
 
+    assert error.value.__cause__ is None
+    assert error.value.__context__ is None
     assert "provider secret" not in str(error.value)
     assert artifact == original
 
@@ -1157,6 +1206,8 @@ def test_sign_artifact_with_metadata_redacts_hostile_signature_without_mutation(
             artifact, RecordingSigner(identity=identity, receipt=receipt), signed_at=1
         )
 
+    assert error.value.__cause__ is None
+    assert error.value.__context__ is None
     assert "provider secret" not in str(error.value)
     assert artifact == original
 
