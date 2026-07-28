@@ -657,7 +657,7 @@ git commit -m "feat(signing): add atomic metadata-aware signing"
 - `verify_artifact_detailed(artifact, *, legacy_signer=None, verifier=None) -> ArtifactVerificationResult`.
 - Legacy branch helper `_verify_legacy_artifact(artifact, signer)`.
 
-- [ ] **Step 1: Freeze the existing legacy contract with failing regression additions**
+- [x] **Step 1: Freeze the existing legacy contract with failing regression additions**
 
 Add a fixed HMAC golden assertion using the current implementation:
 
@@ -678,7 +678,7 @@ instantiates, signs, and verifies. In `tests/test_golden_replay_signing.py`,
 assert `AEGIS(signer=HMACSigner(key=b"golden-test-key"))` output has
 `signature` but does not have `signature_metadata`.
 
-- [ ] **Step 2: Write failing detailed legacy-verification tests**
+- [x] **Step 2: Write failing detailed legacy-verification tests**
 
 Cover:
 
@@ -691,7 +691,7 @@ Cover:
 - every branch leaves the artifact deeply equal to a snapshot;
 - an unexpected legacy verifier exception becomes `VerificationContractError` with a generic message and empty safe details.
 
-- [ ] **Step 3: Run the tests and verify the missing detailed helper failure**
+- [x] **Step 3: Run the tests and verify the missing detailed helper failure**
 
 Run:
 
@@ -701,7 +701,7 @@ Run:
 
 Expected: detailed-verification tests fail because the helper is missing; all pre-existing legacy tests still pass.
 
-- [ ] **Step 4: Implement the unsigned and legacy branches**
+- [x] **Step 4: Implement the unsigned and legacy branches**
 
 Use this public signature:
 
@@ -725,7 +725,7 @@ Branch order:
 
 Use fixed, non-sensitive messages such as `"Artifact is unsigned"`, `"Legacy signature is valid"`, `"Legacy signature is invalid"`, and `"Signature metadata and legacy verifier are unavailable"`.
 
-- [ ] **Step 5: Re-run legacy and detailed tests**
+- [x] **Step 5: Re-run legacy and detailed tests**
 
 Run:
 
@@ -735,7 +735,7 @@ Run:
 
 Expected: all tests pass, including the unchanged golden HMAC and engine-shape regressions.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add aegis/_internal/external_signing.py tests/test_external_signing.py tests/test_signing.py tests/test_golden_replay_signing.py
