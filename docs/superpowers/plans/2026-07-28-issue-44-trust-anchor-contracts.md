@@ -1038,7 +1038,7 @@ git commit -m "feat(signing): publish trust-anchor contracts"
 - `assert_external_signer_conformance(signer_factory)`.
 - `assert_external_verifier_conformance(signed_artifact_factory, verifier_factory)`.
 
-- [ ] **Step 1: Write the failing conformance runner**
+- [x] **Step 1: Write the failing conformance runner**
 
 `tests/test_external_signing_conformance.py` calls the two shared assertion functions with deterministic factories. The shared assertions must cover:
 
@@ -1061,21 +1061,21 @@ Run:
 
 Expected: collection fails because the support and conformance modules do not exist.
 
-- [ ] **Step 2: Implement deterministic test-only signer behavior**
+- [x] **Step 2: Implement deterministic test-only signer behavior**
 
 Use standard-library HMAC-SHA256 only. The signer accepts immutable key records keyed by version, returns a fixed `SignerIdentity`, signs the exact supplied bytes, and returns lowercase hex. Test-controlled modes may raise `ArtifactSigningError`, raise an unexpected exception, return malformed data, or rotate the receipt version after signing. It must never be imported by `aegis`.
 
-- [ ] **Step 3: Implement deterministic test-only verifier behavior**
+- [x] **Step 3: Implement deterministic test-only verifier behavior**
 
 The verifier resolves only `(key_reference, key_version)` from its constructor-supplied mapping, checks the configured allowed algorithm, verifies the exact supplied bytes, and derives anchor status from constructor-supplied trusted state. It returns only `ExternalVerificationOutcome`.
 
 Its modes must deterministically produce all valid outcome rows and selected malformed combinations. Unknown or revoked versions must not fall back to the current key. No mode performs I/O.
 
-- [ ] **Step 4: Implement reusable assertions without provider assumptions**
+- [x] **Step 4: Implement reusable assertions without provider assumptions**
 
 Factories are callables so issue #45 can supply a provider recipe without inheriting the deterministic classes. Keep shared assertions restricted to the public contracts; test-double-specific rotation controls remain in `tests/test_external_signing_conformance.py`.
 
-- [ ] **Step 5: Add an adversarial redaction corpus**
+- [x] **Step 5: Add an adversarial redaction corpus**
 
 Inject all of these into raised exception strings and external outcome messages:
 
@@ -1097,7 +1097,7 @@ For every call, inspect:
 
 Assert none contains any corpus value or recorded canonical payload/signature. The core may use only its fixed safe messages and field/reason identifiers.
 
-- [ ] **Step 6: Run conformance and all signing tests**
+- [x] **Step 6: Run conformance and all signing tests**
 
 Run:
 
@@ -1107,7 +1107,7 @@ Run:
 
 Expected: all conformance, redaction, atomicity, model, and compatibility tests pass.
 
-- [ ] **Step 7: Prove the base package has no provider dependency**
+- [x] **Step 7: Prove the base package has no provider dependency**
 
 Run:
 
@@ -1119,7 +1119,7 @@ rg -n "boto|azure|google.cloud|vault|pkcs11|requests|httpx" aegis pyproject.toml
 
 Expected: import prints `aegis-signature-v1`; `pyproject.toml` has no dependency change; the search finds no new provider/network import in the signing implementation.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add tests/__init__.py tests/support/__init__.py tests/support/external_signing.py tests/signing_conformance.py tests/test_external_signing_conformance.py tests/test_external_signing.py
