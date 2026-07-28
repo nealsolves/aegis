@@ -84,7 +84,7 @@
 - Properties: `ArtifactVerificationResult.is_signature_valid` and `ArtifactVerificationResult.is_anchored`.
 - Errors: `SignatureMetadataError`, `ArtifactSigningError`, `SigningContractError`, `VerificationContractError`.
 
-- [ ] **Step 1: Write failing tests for stable errors, constants, enums, and frozen values**
+- [x] **Step 1: Write failing tests for stable errors, constants, enums, and frozen values**
 
 Add tests that assert the exact error codes and enum values:
 
@@ -132,7 +132,7 @@ assert {item.value for item in AnchorStatus} == {
 }
 ```
 
-- [ ] **Step 2: Run the tests and verify import failures**
+- [x] **Step 2: Run the tests and verify import failures**
 
 Run:
 
@@ -142,7 +142,7 @@ Run:
 
 Expected: collection fails because `aegis._internal.signature_models` and the four new errors do not exist.
 
-- [ ] **Step 3: Add the four typed errors**
+- [x] **Step 3: Add the four typed errors**
 
 Append four direct `AIGCError` subclasses to `aegis/_internal/errors.py`. Each constructor accepts `message: str` and optional `details: dict | None`, and passes only its fixed code to `AIGCError`.
 
@@ -171,7 +171,7 @@ class VerificationContractError(AIGCError):
         )
 ```
 
-- [ ] **Step 4: Implement exact model fields and validation**
+- [x] **Step 4: Implement exact model fields and validation**
 
 Use `class Name(str, Enum)` for every enum. Give `VerificationReasonCode` these exact values:
 
@@ -312,7 +312,7 @@ def is_anchored(self) -> bool:
     return self.anchor_status is AnchorStatus.ANCHORED
 ```
 
-- [ ] **Step 5: Add exhaustive negative and round-trip model tests**
+- [x] **Step 5: Add exhaustive negative and round-trip model tests**
 
 Parameterize invalid algorithms, key references, key versions, timestamps, signatures, enum strings, missing metadata fields, extra metadata fields, and unsupported versions. Include boundary values at 1/128, 1/512, and 16,384 characters. Assert:
 
@@ -324,7 +324,7 @@ Parameterize invalid algorithms, key references, key versions, timestamps, signa
 - every other status-axis pair and every contradictory reason raises `VerificationContractError`.
 - oversized messages raise `VerificationContractError`.
 
-- [ ] **Step 6: Run focused tests**
+- [x] **Step 6: Run focused tests**
 
 Run:
 
@@ -334,7 +334,7 @@ Run:
 
 Expected: all model and error tests pass.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add aegis/_internal/errors.py aegis/_internal/signature_models.py tests/test_signature_models.py
