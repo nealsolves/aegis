@@ -896,7 +896,7 @@ git commit -m "feat(signing): verify external trust outcomes"
 - Public error exports include all four new errors.
 - Optional top-level schema property `signature_metadata`.
 
-- [ ] **Step 1: Write failing schema and public-import tests**
+- [x] **Step 1: Write failing schema and public-import tests**
 
 Schema tests must validate:
 
@@ -914,7 +914,7 @@ Schema tests must validate:
 
 Public tests import every symbol from both `aegis.signing` and top-level `aegis`, every error from `aegis.errors` and top-level `aegis`, and assert top-level objects are identical to their module exports.
 
-- [ ] **Step 2: Run tests and verify schema/public failures**
+- [x] **Step 2: Run tests and verify schema/public failures**
 
 Run:
 
@@ -924,7 +924,7 @@ Run:
 
 Expected: metadata-aware artifacts fail strict validation and public imports fail.
 
-- [ ] **Step 3: Add the exact optional schema object to the source copy**
+- [x] **Step 3: Add the exact optional schema object to the source copy**
 
 Insert beside `signature`:
 
@@ -974,7 +974,7 @@ Insert beside `signature`:
 
 Copy the completed source schema to the package schema and verify with `cmp`; do not hand-edit the second copy independently.
 
-- [ ] **Step 4: Add explicit public re-exports**
+- [x] **Step 4: Add explicit public re-exports**
 
 Update each import block and `__all__` rather than using wildcard imports. Include:
 
@@ -1000,7 +1000,7 @@ verify_artifact_detailed
 
 Add the four error names to both public error surfaces and top-level `aegis`.
 
-- [ ] **Step 5: Run schema, API, and full legacy signing tests**
+- [x] **Step 5: Run schema, API, and full legacy signing tests**
 
 Run:
 
@@ -1011,7 +1011,7 @@ cmp schemas/audit_artifact.schema.json aegis/schemas/audit_artifact.schema.json
 
 Expected: `cmp` exits 0 and all selected tests pass without changing audit schema version `1.4`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add schemas/audit_artifact.schema.json aegis/schemas/audit_artifact.schema.json aegis/signing.py aegis/errors.py aegis/__init__.py tests/test_external_signing_schema.py tests/test_public_api.py tests/test_audit_artifact_contract.py tests/test_chain_schema_compliance.py
