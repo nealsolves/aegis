@@ -1,5 +1,5 @@
 """Golden replay tests for artifact signing (M2)."""
-from aegis._internal.enforcement import AIGC
+from aegis._internal.enforcement import AEGIS, AIGC
 from aegis._internal.signing import HMACSigner, verify_artifact
 
 
@@ -22,6 +22,13 @@ def test_signed_pass_artifact():
     assert audit["enforcement_result"] == "PASS"
     assert audit["signature"] is not None
     assert verify_artifact(audit, signer)
+
+
+def test_aegis_legacy_signer_emits_signature_without_metadata():
+    audit = AEGIS(signer=HMACSigner(key=b"golden-test-key")).enforce(INVOCATION)
+
+    assert audit["signature"] is not None
+    assert "signature_metadata" not in audit
 
 
 def test_signed_fail_artifact():

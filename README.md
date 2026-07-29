@@ -22,7 +22,7 @@ Governance in AEGIS is runtime enforcement, not documentation and not prompting.
 - Release matrix: [docs/reference/RELEASE_MATRIX.md](docs/reference/RELEASE_MATRIX.md)
 - Current release scope: invocation governance plus workflow-aware provenance
   and lineage groundwork, audit schema `v1.4`, `AuditLineage`,
-  `ProvenanceGate`, `RiskHistory`, `@governed` defaults to split enforcement
+  `ProvenanceGate`, `RiskHistory`, and `@governed` defaults to split enforcement
 - Current beta line: `v0.9.0`, packaged as
   `aegis-ai-governance==0.9.0b1`
 - Verification baseline: `1923 tests` pass in the public-beta environment,
@@ -37,11 +37,16 @@ AEGIS `0.9.0`-and-later development home.
 
 AEGIS protects against accidental bypass, misconfiguration, missing policy
 inputs, invalid roles, invalid schemas, unsupported workflow transitions,
-ordinary split-token replay, and host integration mistakes.
+process-local reuse of split-enforcement handoff tokens, and host integration
+mistakes.
 
 AEGIS does not sandbox hostile in-process Python code, contain malicious
 dependencies, isolate tenants, protect secrets placed into audit context by the
-host, or replace provider, runtime, and network security controls.
+host, or replace provider, runtime, network, credential, trusted-checkpoint, or
+storage controls. A valid signature is not necessarily externally anchored.
+HMAC signatures and hash chains provide tamper-evidence, not immutable storage,
+trusted time, replay prevention, sequence completeness, certification, or a
+compliance determination.
 
 ## Why This Repo Exists
 
@@ -90,6 +95,15 @@ OpenAI Agents adapter requires
 [release matrix](docs/reference/RELEASE_MATRIX.md) for exact channel and ref
 status. The target-state architecture is captured in
 `docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md`.
+
+The current source tree after `0.9.0b1` includes the source-only
+`sign_artifact_with_metadata()` and `verify_artifact_detailed()` contracts.
+They are not in the published `0.9.0b1` wheel or tag, and no later published
+version is assigned yet. The host owns key resolution, credentials, provider
+transport, availability behavior, and artifact storage. See the
+[public integration contract](docs/PUBLIC_INTEGRATION_CONTRACT.md#38-artifact-signing-and-external-trust-results)
+and [ADR-0012](docs/decisions/ADR-0012-external-trust-anchor-signing.md) for the
+two-axis signature/anchor contract and its limits.
 
 ## Workflow Governance (v0.9.0 Beta)
 

@@ -115,6 +115,50 @@
       "type": ["string", "null"],
       "description": "Cryptographic signature of the artifact"
     },
+    "signature_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "signing_profile",
+        "canonicalization_version",
+        "payload_type",
+        "algorithm",
+        "signature_encoding",
+        "key_reference",
+        "key_version",
+        "signed_at"
+      ],
+      "properties": {
+        "schema_version": {"type": "string", "const": "1"},
+        "signing_profile": {"type": "string", "const": "aegis-signature-v1"},
+        "canonicalization_version": {"type": "string", "const": "aegis-canonical-json-v1"},
+        "payload_type": {"type": "string", "const": "audit_artifact"},
+        "algorithm": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._-]+$",
+          "not": {"pattern": "[^A-Za-z0-9._-]"}
+        },
+        "signature_encoding": {"type": "string", "enum": ["hex", "base64"]},
+        "key_reference": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[\\u0020-\\u007E]+$",
+          "not": {"pattern": "[^\\u0020-\\u007E]"}
+        },
+        "key_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._:/-]+$",
+          "not": {"pattern": "[^A-Za-z0-9._:/-]"}
+        },
+        "signed_at": {"type": "integer", "minimum": 0}
+      }
+    },
     "provenance": {
       "type": ["object", "null"],
       "description": "Workflow provenance metadata supplied by the caller",

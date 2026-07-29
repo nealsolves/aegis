@@ -5,6 +5,20 @@ All notable changes to AEGIS are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Source-only changes after `0.9.0b1` (unreleased)
+
+These changes exist in the current source tree but are not in the published
+`0.9.0b1` wheel or tag. No later published version is assigned yet.
+
+### Added
+
+- Add provider-neutral `ExternalArtifactSigner` and
+  `ExternalArtifactVerifier` protocols, strict signed metadata,
+  `sign_artifact_with_metadata()`, and two-axis
+  `verify_artifact_detailed()` results. Legacy HMAC and boolean verification
+  remain unchanged; external keys, credentials, transport, availability
+  behavior, trusted checkpoints, and storage remain host-owned.
+
 ## [0.9.0b1] — 2026-07-25
 
 This public beta is released as the `aegis-ai-governance` distribution from

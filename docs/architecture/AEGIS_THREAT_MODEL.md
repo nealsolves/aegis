@@ -12,8 +12,13 @@ Current public beta boundary: `aegis-ai-governance==0.9.0b1` adds
 `GovernanceSession`, workflow lifecycle and budget checks, the workflow
 trace/export operator surface, and optional adapter submodules. The public beta
 is released from `main`. The host still owns model calls, tools,
-transport, credentials, retries, and orchestration; adapter input is
-host-supplied evidence and remains untrusted until normalized and enforced.
+transport, credentials, retries, orchestration, external-signing key
+resolution, and artifact storage; adapter input is host-supplied evidence and
+remains untrusted until normalized and enforced.
+
+The external trust-anchor contracts described below are implemented in the
+current source tree after `0.9.0b1`; they are not in that published wheel or
+tag, and no later published version is assigned yet.
 
 ---
 
@@ -229,6 +234,61 @@ Model output is treated as untrusted input.
 
 ---
 
+### Signed Audit Artifacts
+
+**Attack vectors:**
+
+* artifact-declared algorithms or key locations attempting to select trust
+* mutable key aliases changing between identity preparation and signing
+* signer or verifier adapters mutating the frozen values they receive
+* modified signature metadata
+* impossible, hostile, or unavailable external-verifier responses
+* replay or replacement of otherwise valid evidence
+
+**Risks:**
+
+* algorithm or key-version confusion
+* false external-anchor claims
+* partial mutation that leaves misleading evidence
+* disclosure of payloads, signatures, credentials, or provider errors
+* treating tamper-evidence as immutable storage or complete-chain proof
+
+**Mitigations and boundary:**
+
+* all strict `signature_metadata` fields are included in the signed bytes
+* signer identity and receipt must pin the same opaque key reference and exact
+  immutable key version
+* AEGIS retains untouched core identity and metadata snapshots and gives
+  adapters disposable equal copies
+* the host-configured verifier resolves key reference and version; AEGIS never
+  performs artifact-driven or network key lookup
+* the resolved key policy, not the metadata-declared algorithm, authorizes the
+  algorithm
+* signature status and anchor status are validated as independent axes; a valid
+  signature is not necessarily anchored
+* signing failure leaves the artifact unchanged and detailed verification is
+  non-mutating
+* core-generated result messages, exceptions, details, and logs use bounded,
+  sanitized data rather than raw provider responses or artifact-declared
+  metadata values
+* exact valid parsed `signature_metadata` remains available as explicitly
+  untrusted artifact data; hosts keep it non-secret and apply their own
+  redaction before logging it
+
+The host owns the trust store or key resolver, credentials, secret keys,
+provider transport, retries, timeouts, availability behavior, and storage.
+`signed_at` is a host-observed Unix second, not trusted timestamp evidence.
+External signer or verifier availability cannot change the governance result
+already recorded in an artifact.
+
+Residual limits are deliberate: HMAC and hash chaining are tamper-evidence, not
+immutable storage. A valid or anchored result does not prevent replay, prove
+sequence completeness, detect replacement of a complete valid chain without a
+trusted checkpoint, provide WORM retention, or establish certification or
+regulatory compliance.
+
+---
+
 ## Governance Bypass Attempts
 
 This section describes common bypass attempts and their mitigations.
@@ -321,7 +381,7 @@ This proves governance occurred before action.
 
 ## Audit Integrity
 
-Artifacts include checksums.
+Artifacts include checksums for tamper-evidence.
 
 * `input_checksum`
 * `output_checksum`
@@ -335,7 +395,17 @@ Cryptographic chaining fields (v0.3.0):
 
 * `chain_id`, `chain_index`, `previous_audit_checksum` — populated by `AuditChain` for tamper-evident sequential integrity (v0.3.0)
 
-If any artifact is modified, checksum verification fails.
+Source-only trust-anchor field added after the `0.9.0b1` release:
+
+* optional strict `signature_metadata` — populated only by the opt-in
+  metadata-aware external signing helper and covered by its signature; it is
+  untrusted artifact-declared data and must be host-redacted before logging
+
+Modification of covered content causes the corresponding checksum or signature
+verification to fail. These checks do not make the underlying storage
+immutable. Chain verification reasons about the chain presented to it and,
+without an external trusted checkpoint, does not detect replacement of the
+complete chain.
 
 ---
 
@@ -358,6 +428,12 @@ AEGIS does not attempt to solve:
 * model hallucinations
 * model bias
 * provider safety systems
+* replay prevention or proof that a supplied sequence is complete
+* trusted timestamping or timestamp-authority evidence
+* trusted complete-chain checkpoints or whole-chain replacement detection
+* WORM storage, retention, object locking, or disaster recovery
+* provider signing transport, credentials, retries, or key-rotation operations
+* certification or a regulatory-compliance determination
 
 AEGIS governs invocation boundaries, not model reasoning.
 
@@ -370,6 +446,9 @@ Remaining risks include:
 * integrator misuse of enforcement APIs
 * compromised runtime environments
 * malicious policy authors
+* compromised host key-resolution or anchor configuration
+* unavailable external signers, verifiers, or artifact storage
+* replay or complete replacement of valid evidence
 
 These risks must be addressed through operational controls.
 
@@ -385,9 +464,7 @@ AEGIS provides the following guarantees:
 * tamper-evident audit artifacts
 * plugin-safe extension architecture
 
-These guarantees make AEGIS suitable for environments requiring:
-
-* regulatory compliance
-* auditability
-* AI governance enforcement
-* controlled agent workflows
+These guarantees can supply inputs to host-owned audit and assurance programs.
+They do not certify a deployment, establish compliance, or replace operational
+controls for credentials, transport, availability, trusted checkpoints, and
+storage.

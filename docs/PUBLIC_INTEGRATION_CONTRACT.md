@@ -11,6 +11,10 @@ target-state `1.0.0` architecture contract is captured separately in
 [docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md](architecture/AEGIS_HIGH_LEVEL_DESIGN.md).
 The release source is `main`.
 
+Section 3.8 additionally documents #44 contracts implemented in the current
+source tree after `0.9.0b1`. Those APIs are not in the published `0.9.0b1`
+wheel or tag, and no later published version is assigned yet.
+
 Source, tags, and release artifacts for versions before `0.9.0` remain in
 [`nealsolves/aigc`](https://github.com/nealsolves/aigc). This repository is the
 AEGIS `0.9.0`-and-later development home.
@@ -678,39 +682,292 @@ Modes:
 The `AEGIS` class accepts `risk_config` as a constructor override; otherwise the policy's
 `risk` field is used.
 
-### 3.8 Artifact signing
+### 3.8 Artifact signing and external trust results
 
-HMAC-SHA256 signing provides tamper evidence for audit artifacts:
+**Release boundary:** the legacy API in this section is published in
+`0.9.0b1`. The metadata-aware external signer/verifier contracts are
+source-only changes after that release and are not available from the
+`aegis-ai-governance==0.9.0b1` installation shown in Section 1.1.
 
-```python
-from aegis import HMACSigner, sign_artifact, verify_artifact
-
-signer = HMACSigner(key=b"your-secret-key")
-
-# Manual signing (standalone enforcement)
-artifact = enforce_invocation(invocation)
-sign_artifact(artifact, signer)           # signs in place
-assert verify_artifact(artifact, signer)  # True
-
-# Automatic signing (AEGIS instance)
-aegis = AEGIS(signer=signer)
-artifact = aegis.enforce(invocation)       # signed automatically
-assert verify_artifact(artifact, signer)  # True
-```
-
-The signature covers the canonical JSON of the artifact (sorted keys, compact separators,
-UTF-8) excluding the `signature` field itself. Both PASS and FAIL artifacts are signed.
-
-Implement `ArtifactSigner` for alternative signing schemes (e.g., asymmetric keys):
+The original `ArtifactSigner` path remains supported. `HMACSigner`,
+`sign_artifact()`, automatic `AEGIS(signer=...)` signing, and
+`verify_artifact()` retain their existing artifact shape and behavior.
+`verify_artifact()` answers only whether the supplied legacy signer verifies
+the reconstructed payload:
 
 ```python
-from aegis import ArtifactSigner
+>>> from aegis import HMACSigner, sign_artifact, verify_artifact
+>>> legacy_artifact = {"event": "approved", "signature": None}
+>>> legacy_signer = HMACSigner(key=b"demo-only-legacy-key")
+>>> _ = sign_artifact(legacy_artifact, legacy_signer)
+>>> verify_artifact(legacy_artifact, legacy_signer)
+True
 
-
-class AsymmetricSigner(ArtifactSigner):
-    def sign(self, payload: bytes) -> str: ...
-    def verify(self, payload: bytes, signature: str) -> bool: ...
 ```
+
+That `True` is a cryptographic-validity result, not an external-anchor result.
+HMAC-SHA256 provides tamper-evidence; it does not provide immutable storage.
+Detailed verification reports a valid legacy HMAC artifact as
+`VALID / UNANCHORED / LEGACY_SIGNATURE_VALID`. For a valid unknown custom
+legacy signer, anchor status is `NOT_EVALUATED`.
+When detailed verification calls a legacy signer's `verify()` method, the
+adapter must return an exact built-in `bool`. Strings, integers, and objects
+with custom truthiness are malformed responses; AEGIS does not evaluate their
+truthiness and raises a fixed sanitized `VerificationContractError`.
+
+Use `sign_artifact_with_metadata()` and `verify_artifact_detailed()` when the
+host needs a versioned identity and separate signature/anchor results. The
+following executable example defines both public protocols. It uses a local
+shared key only to keep the example deterministic; a production adapter keeps
+credentials and provider transport outside AEGIS.
+
+The public call signatures are:
+
+```python
+class ExternalArtifactSigner(Protocol):
+    def signer_identity(self) -> SignerIdentity: ...
+    def sign(
+        self, payload: bytes, identity: SignerIdentity
+    ) -> SigningReceipt: ...
+
+
+class ExternalArtifactVerifier(Protocol):
+    def verify(
+        self,
+        payload: bytes,
+        signature: str,
+        metadata: SignatureMetadata,
+    ) -> ExternalVerificationOutcome: ...
+
+
+def sign_artifact_with_metadata(
+    artifact: dict[str, Any],
+    signer: ExternalArtifactSigner,
+    *,
+    signed_at: int,
+) -> dict[str, Any]: ...
+
+
+def verify_artifact_detailed(
+    artifact: Mapping[str, Any],
+    *,
+    legacy_signer: ArtifactSigner | None = None,
+    verifier: ExternalArtifactVerifier | None = None,
+) -> ArtifactVerificationResult: ...
+```
+
+```python
+>>> import hashlib
+>>> import hmac
+>>> from aegis import (
+...     AnchorStatus,
+...     ExternalArtifactSigner,
+...     ExternalArtifactVerifier,
+...     ExternalVerificationOutcome,
+...     SignatureEncoding,
+...     SignatureStatus,
+...     SignerIdentity,
+...     SigningReceipt,
+...     VerificationReasonCode,
+...     sign_artifact_with_metadata,
+...     verify_artifact_detailed,
+... )
+>>> class DemoExternalSigner(ExternalArtifactSigner):
+...     def __init__(self, key):
+...         self._key = key
+...     def signer_identity(self):
+...         return SignerIdentity(
+...             algorithm="DEMO-SHA256",
+...             signature_encoding=SignatureEncoding.HEX,
+...             key_reference="demo/audit-key",
+...             key_version="version/7",
+...         )
+...     def sign(self, payload, identity):
+...         signature = hmac.new(self._key, payload, hashlib.sha256).hexdigest()
+...         return SigningReceipt(
+...             signature=signature,
+...             algorithm=identity.algorithm,
+...             signature_encoding=identity.signature_encoding,
+...             key_reference=identity.key_reference,
+...             key_version=identity.key_version,
+...         )
+>>> class DemoExternalVerifier(ExternalArtifactVerifier):
+...     def __init__(self, keys, allowed_algorithms, anchored_versions):
+...         self._keys = dict(keys)
+...         self._allowed_algorithms = set(allowed_algorithms)
+...         self._anchored_versions = set(anchored_versions)
+...     def verify(self, payload, signature, metadata):
+...         identity = (metadata.key_reference, metadata.key_version)
+...         key = self._keys.get(identity)
+...         if key is None:
+...             return ExternalVerificationOutcome(
+...                 SignatureStatus.UNKNOWN_KEY,
+...                 AnchorStatus.NOT_EVALUATED,
+...                 VerificationReasonCode.KEY_UNKNOWN,
+...                 "unknown key",
+...             )
+...         if metadata.algorithm not in self._allowed_algorithms:
+...             return ExternalVerificationOutcome(
+...                 SignatureStatus.INVALID,
+...                 AnchorStatus.NOT_EVALUATED,
+...                 VerificationReasonCode.ALGORITHM_NOT_ALLOWED,
+...                 "algorithm denied",
+...             )
+...         expected = hmac.new(key, payload, hashlib.sha256).hexdigest()
+...         if not hmac.compare_digest(expected, signature):
+...             return ExternalVerificationOutcome(
+...                 SignatureStatus.INVALID,
+...                 AnchorStatus.NOT_EVALUATED,
+...                 VerificationReasonCode.SIGNATURE_INVALID,
+...                 "invalid signature",
+...             )
+...         anchored = identity in self._anchored_versions
+...         return ExternalVerificationOutcome(
+...             SignatureStatus.VALID,
+...             AnchorStatus.ANCHORED if anchored else AnchorStatus.UNANCHORED,
+...             (
+...                 VerificationReasonCode.SIGNATURE_VALID_ANCHORED
+...                 if anchored
+...                 else VerificationReasonCode.SIGNATURE_VALID_UNANCHORED
+...             ),
+...             "verified",
+...         )
+>>> demo_key = b"demo-only-external-key"
+>>> external_signer = DemoExternalSigner(demo_key)
+>>> artifact = {
+...     "audit_schema_version": "1.4",
+...     "event": "approved",
+...     "signature": None,
+... }
+>>> _ = sign_artifact_with_metadata(
+...     artifact,
+...     external_signer,
+...     signed_at=1_721_600_000,
+... )
+>>> artifact["signature_metadata"]["signed_at"]
+1721600000
+>>> external_verifier = DemoExternalVerifier(
+...     keys={("demo/audit-key", "version/7"): demo_key},
+...     allowed_algorithms={"DEMO-SHA256"},
+...     anchored_versions={("demo/audit-key", "version/7")},
+... )
+>>> result = verify_artifact_detailed(artifact, verifier=external_verifier)
+>>> result.is_signature_valid
+True
+>>> result.is_anchored
+True
+
+```
+
+The host-configured verifier resolves the exact
+`(key_reference, key_version)` pair. AEGIS does not dereference artifact data,
+discover provider keys, or treat the metadata-declared algorithm as
+authorization. The verifier's trusted configuration decides which keys,
+versions, algorithms, and anchors are accepted. `key_reference` is a
+non-secret opaque identifier; do not place credentials, secret material,
+tokens, unrestricted provider responses, or a locator that AEGIS should
+dereference in it.
+
+`sign_artifact_with_metadata(artifact, signer, *, signed_at)` requires an
+explicit non-negative integer Unix second; `bool` is rejected. `signed_at`
+records the host's observation of when signing began. It is not trusted time,
+timestamp-authority evidence, or replay protection. The signer identity and
+receipt pin the same algorithm, encoding, key reference, and immutable key
+version. AEGIS attaches `signature_metadata` and `signature` together only
+after every value is validated; failure leaves the input unchanged. This
+atomic update does not make concurrent signing of the same mutable dictionary
+thread-safe. Re-signing and asynchronous signer/verifier contracts are not
+supported.
+
+AEGIS keeps an untouched identity snapshot for stored metadata and receipt
+comparison, while the signer receives a disposable equal copy. Detailed
+verification likewise keeps an untouched parsed metadata snapshot, gives the
+verifier a disposable equal copy, and returns the untouched snapshot. Adapter
+mutation therefore cannot renegotiate the signing identity or rewrite returned
+metadata.
+
+Metadata-aware profile `aegis-signature-v1` signs exactly:
+
+```text
+b"AEGIS-SIGNATURE\x00aegis-signature-v1\x00audit_artifact\x00"
++ canonical_json_bytes(artifact_without_signature)
+```
+
+The artifact in those canonical bytes includes all nine strict metadata fields:
+`schema_version`, `signing_profile`, `canonicalization_version`,
+`payload_type`, `algorithm`, `signature_encoding`, `key_reference`,
+`key_version`, and `signed_at`. Missing or extra metadata fields are rejected.
+The top-level audit schema remains `1.4`; `signature_metadata` is optional and
+versioned independently, and `signature` remains `string | null`.
+
+The fixed public values are
+`SIGNATURE_METADATA_SCHEMA_VERSION = "1"`,
+`SIGNING_PROFILE = "aegis-signature-v1"`, and
+`CANONICALIZATION_VERSION = "aegis-canonical-json-v1"`. The closed payload type
+is `EvidenceType.AUDIT_ARTIFACT` (`"audit_artifact"`); supported encodings are
+`SignatureEncoding.HEX` (`"hex"`) and `SignatureEncoding.BASE64`
+(`"base64"`).
+
+The exact metadata-aware lexical and length rules are:
+
+- `algorithm`: 1-128 characters, each from `[A-Za-z0-9._-]`;
+- `key_reference`: 1-512 ASCII-printable characters, U+0020 through U+007E
+  inclusive;
+- `key_version`: 1-128 characters, each from `[A-Za-z0-9._:/-]`;
+- encoded signature: 1-16,384 characters;
+- hex: lowercase, even-length, prefix-free hexadecimal;
+- base64: canonical whitespace-free RFC 4648 base64.
+
+Detailed verification has two independent axes. The complete allowed matrix is:
+
+| Signature status | Anchor status | Allowed reason codes |
+| --- | --- | --- |
+| `UNSIGNED` | `NOT_EVALUATED` | `UNSIGNED` |
+| `VALID` | `NOT_EVALUATED` | `LEGACY_SIGNATURE_VALID` |
+| `VALID` | `UNANCHORED` | `LEGACY_SIGNATURE_VALID`, `SIGNATURE_VALID_UNANCHORED` |
+| `VALID` | `ANCHORED` | `SIGNATURE_VALID_ANCHORED` |
+| `VALID` | `INVALID` | `ANCHOR_INVALID` |
+| `INVALID` | `NOT_EVALUATED` | `LEGACY_SIGNATURE_INVALID`, `SIGNATURE_INVALID`, `ALGORITHM_NOT_ALLOWED` |
+| `UNKNOWN_KEY` | `NOT_EVALUATED` | `KEY_UNKNOWN` |
+| `REVOKED` | `NOT_EVALUATED` | `KEY_REVOKED` |
+| `INDETERMINATE` | `NOT_EVALUATED` | `SIGNATURE_METADATA_MISSING`, `VERIFIER_UNAVAILABLE` |
+
+No other combination is valid. A missing verifier returns
+`INDETERMINATE / NOT_EVALUATED / VERIFIER_UNAVAILABLE` while preserving the
+exact valid parsed metadata in `result.signature_metadata`; a verifier may
+return the same result for declared unavailability. An unexpected verifier
+exception or impossible response raises sanitized `VerificationContractError`.
+Malformed metadata raises `SignatureMetadataError`. Extra field names are
+attacker-controlled and are never copied into error details; only bounded
+core-owned field identifiers and integer counts are reported. Signing failures
+use `ArtifactSigningError` or `SigningContractError`.
+
+| Exception | Stable code |
+| --- | --- |
+| `SignatureMetadataError` | `SIGNATURE_METADATA_INVALID` |
+| `ArtifactSigningError` | `ARTIFACT_SIGNING_ERROR` |
+| `SigningContractError` | `SIGNING_CONTRACT_ERROR` |
+| `VerificationContractError` | `VERIFICATION_CONTRACT_ERROR` |
+
+Core-generated result messages, exceptions, details, and logs omit canonical
+payload bytes, raw signatures, credentials, tokens, secrets,
+artifact-declared metadata values, unrestricted provider error text, and raw
+provider responses.
+
+`result.signature_metadata` deliberately preserves exact parsed metadata for
+forensics and key resolution. That value is untrusted, artifact-declared data.
+The contract requires it to be non-secret, but syntactically valid token-like
+text is not omitted, hashed, or rewritten. Hosts must apply their own redaction
+before logging returned artifact metadata. The host also owns key resolution,
+algorithm policy, credentials, provider transport, retry and timeout behavior,
+availability policy, and artifact storage.
+
+A valid and anchored result describes this artifact under the configured
+verifier. It does not provide trusted time, replay prevention,
+sequence-completeness or whole-chain replacement detection, WORM storage,
+certification, or a compliance determination. Signer and verifier availability
+never weakens or changes the governance decision already recorded by the
+artifact.
 
 ### 3.9 Tamper-evident audit chain
 
@@ -729,8 +986,11 @@ valid, errors = chain.verify()
 valid, errors = verify_chain([artifact_1, artifact_2])
 ```
 
-Each artifact gains `chain_id`, `chain_index`, and `previous_audit_checksum`. Verification
-detects insertion, deletion, reordering, and modification.
+Each artifact gains `chain_id`, `chain_index`, and `previous_audit_checksum`.
+Verification detects insertion, deletion, reordering, and modification
+relative to the chain supplied for verification. Hash chaining does not make
+storage immutable and cannot detect replacement of the complete chain without
+an external trusted checkpoint.
 
 ### 3.10 Policy date validation
 
@@ -1224,6 +1484,12 @@ Fields added by v0.3.0 extension points (present when the feature is active):
 | `chain_index` | Audit chain | 0-based position in chain |
 | `previous_audit_checksum` | Audit chain | SHA-256 of prior artifact (null for first) |
 | `metadata.custom_gate_metadata` | Custom gates | Dict of gate-specific metadata merged from `GateResult.metadata` |
+
+Source-only field added after the `0.9.0b1` release:
+
+| Field | Source | Description |
+| ----- | ------ | ----------- |
+| `signature_metadata` | Metadata-aware signing | Optional strict versioned metadata covered by the external signature; untrusted artifact-declared data that hosts must redact before logging; verification and anchor statuses are never persisted |
 
 Fields added by v0.3.2 enforcement-mode metadata:
 

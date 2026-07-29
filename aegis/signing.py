@@ -1,3 +1,24 @@
+from aegis._internal.external_signing import (
+    ExternalArtifactSigner,
+    ExternalArtifactVerifier,
+    sign_artifact_with_metadata,
+    verify_artifact_detailed,
+)
+from aegis._internal.signature_models import (
+    AnchorStatus,
+    ArtifactVerificationResult,
+    CANONICALIZATION_VERSION,
+    SIGNATURE_METADATA_SCHEMA_VERSION,
+    SIGNING_PROFILE,
+    EvidenceType,
+    ExternalVerificationOutcome,
+    SignatureEncoding,
+    SignatureMetadata,
+    SignatureStatus,
+    SignerIdentity,
+    SigningReceipt,
+    VerificationReasonCode,
+)
 from aegis._internal.signing import (
     ArtifactSigner,
     HMACSigner,
@@ -6,8 +27,25 @@ from aegis._internal.signing import (
 )
 
 __all__ = [
+    "AnchorStatus",
     "ArtifactSigner",
+    "ArtifactVerificationResult",
+    "CANONICALIZATION_VERSION",
+    "EvidenceType",
+    "ExternalArtifactSigner",
+    "ExternalArtifactVerifier",
+    "ExternalVerificationOutcome",
     "HMACSigner",
+    "SIGNATURE_METADATA_SCHEMA_VERSION",
+    "SIGNING_PROFILE",
+    "SignatureEncoding",
+    "SignatureMetadata",
+    "SignatureStatus",
+    "SignerIdentity",
+    "SigningReceipt",
+    "VerificationReasonCode",
     "sign_artifact",
+    "sign_artifact_with_metadata",
     "verify_artifact",
+    "verify_artifact_detailed",
 ]

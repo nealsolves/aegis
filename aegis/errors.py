@@ -1,5 +1,6 @@
 from aegis._internal.errors import (
     AIGCError,
+    ArtifactSigningError,
     AuditSinkError,
     ConditionResolutionError,
     CustomGateViolationError,
@@ -13,7 +14,10 @@ from aegis._internal.errors import (
     RiskThresholdError,
     SchemaValidationError,
     SessionStateError,
+    SignatureMetadataError,
+    SigningContractError,
     ToolConstraintViolationError,
+    VerificationContractError,
     WorkflowApprovalRequiredError,
     WorkflowHandoffDeniedError,
     WorkflowHookDeniedError,
@@ -32,6 +36,7 @@ from aegis._internal.errors import (
 
 __all__ = [
     "AIGCError",
+    "ArtifactSigningError",
     "AuditSinkError",
     "ConditionResolutionError",
     "CustomGateViolationError",
@@ -45,7 +50,10 @@ __all__ = [
     "RiskThresholdError",
     "SchemaValidationError",
     "SessionStateError",
+    "SignatureMetadataError",
+    "SigningContractError",
     "ToolConstraintViolationError",
+    "VerificationContractError",
     "WorkflowApprovalRequiredError",
     "WorkflowHandoffDeniedError",
     "WorkflowHookDeniedError",
