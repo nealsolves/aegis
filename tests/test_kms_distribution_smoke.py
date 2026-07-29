@@ -12,6 +12,12 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = REPO_ROOT / "scripts" / "validate_kms_optional_extras.py"
+APPROVED_KMS_REQUIREMENTS = [
+    "boto3>=1.43.0; extra == 'aws-kms'",
+    "google-cloud-kms>=3.15.0; extra == 'gcp-kms'",
+    "google-crc32c>=1.7.1; extra == 'gcp-kms'",
+    "cryptography>=45.0.1; extra == 'gcp-kms'",
+]
 
 
 def _load_smoke_validator():
@@ -68,12 +74,39 @@ def test_smoke_metadata_accepts_semantically_equivalent_extra_markers():
 
     validator._validate_kms_requirement_metadata(
         [
+            "PyYAML>=6.0",
+            "jsonschema>=4.0",
+            "build>=1.2; extra == 'dev'",
             "boto3 >= 1.43.0 ; 'aws-kms' == extra",
             "google-cloud-kms>=3.15.0;extra=='gcp-kms'",
             "google-crc32c >= 1.7.1 ; 'gcp-kms' == extra",
             "cryptography>=45.0.1; extra == 'gcp-kms'",
         ]
     )
+
+
+@pytest.mark.parametrize(
+    "unexpected",
+    [
+        "boto3>=1.43.0",
+        "boto3>=1.43.0; extra == 'dev'",
+        "google-cloud-kms>=3.15.0",
+        "google-crc32c>=1.7.1; extra == 'aws-kms'",
+        "cryptography>=46.0.0; extra == 'gcp-kms'",
+    ],
+)
+def test_smoke_metadata_rejects_additional_provider_direct_requirements(
+    unexpected: str,
+):
+    validator = _load_smoke_validator()
+
+    with pytest.raises(
+        validator.OptionalExtrasValidationError,
+        match="installed KMS provider requirements are not exact",
+    ):
+        validator._validate_kms_requirement_metadata(
+            [*APPROVED_KMS_REQUIREMENTS, unexpected]
+        )
 
 
 @pytest.mark.parametrize(

@@ -75,6 +75,14 @@ EXPECTED_KMS_REQUIREMENTS = {
     'google-crc32c>=1.7.1; extra == "gcp-kms"',
     'cryptography>=45.0.1; extra == "gcp-kms"',
 }
+KMS_PROVIDER_DISTRIBUTIONS = frozenset(
+    {
+        "boto3",
+        "cryptography",
+        "google-cloud-kms",
+        "google-crc32c",
+    }
+)
 
 
 class OptionalExtrasValidationError(RuntimeError):
@@ -159,11 +167,14 @@ def _validate_kms_requirement_metadata(requirements: object) -> None:
     expected = {
         _requirement_key(value) for value in EXPECTED_KMS_REQUIREMENTS
     }
-    missing = expected.difference(actual)
-    if missing:
+    actual_provider_requirements = {
+        requirement for requirement in actual
+        if requirement[0] in KMS_PROVIDER_DISTRIBUTIONS
+    }
+    if actual_provider_requirements != expected:
         raise OptionalExtrasValidationError(
-            "installed metadata omitted KMS conditional requirements: "
-            f"{sorted(missing)}"
+            "installed KMS provider requirements are not exact: "
+            f"{sorted(repr(item) for item in actual_provider_requirements)}"
         )
 
 
