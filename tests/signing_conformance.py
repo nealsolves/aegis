@@ -266,6 +266,7 @@ def assert_external_signer_conformance(signer_factory: SignerFactory) -> None:
     assert fixture.verify_signature(payload, receipt) is True
     assert fixture.verify_signature(payload, repeated_receipt) is True
     assert fixture.verify_signature(payload + b"!", receipt) is False
+    assert fixture.verify_signature(payload + b"!", repeated_receipt) is False
     assert fixture.verify_signature(payload, changed_receipt) is False
     assert fixture.verify_signature(payload + b"!", changed_receipt) is True
     assert receipt.algorithm == identity.algorithm
