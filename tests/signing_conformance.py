@@ -298,10 +298,10 @@ def assert_external_verifier_conformance(
     """Assert exact-version verification and safe public verification outcomes."""
     unsigned = _artifact()
     snapshot = deepcopy(unsigned)
-    recording_verifier = _RecordingVerifier(
-        verifier_factory(VerifierScenario.NORMAL)
-    )
     with _capture_logs() as logs:
+        recording_verifier = _RecordingVerifier(
+            verifier_factory(VerifierScenario.NORMAL)
+        )
         result = verify_artifact_detailed(
             unsigned,
             verifier=recording_verifier,
@@ -351,10 +351,10 @@ def assert_external_verifier_conformance(
         fixture = _make_signed_artifact(signed_artifact_factory, version)
         artifact = fixture.artifact
         snapshot = deepcopy(artifact)
-        recording_verifier = _RecordingVerifier(
-            verifier_factory(VerifierScenario.NORMAL)
-        )
         with _capture_logs() as logs:
+            recording_verifier = _RecordingVerifier(
+                verifier_factory(VerifierScenario.NORMAL)
+            )
             result = verify_artifact_detailed(
                 artifact,
                 verifier=recording_verifier,
@@ -378,10 +378,10 @@ def assert_external_verifier_conformance(
     unknown = fixture.artifact
     unknown["signature_metadata"]["key_version"] = "version/unknown"
     snapshot = deepcopy(unknown)
-    recording_verifier = _RecordingVerifier(
-        verifier_factory(VerifierScenario.NORMAL)
-    )
     with _capture_logs() as logs:
+        recording_verifier = _RecordingVerifier(
+            verifier_factory(VerifierScenario.NORMAL)
+        )
         result = verify_artifact_detailed(
             unknown,
             verifier=recording_verifier,
@@ -405,10 +405,10 @@ def assert_external_verifier_conformance(
     invalid_signature = fixture.artifact
     invalid_signature["signature"] = "00" * 32
     snapshot = deepcopy(invalid_signature)
-    recording_verifier = _RecordingVerifier(
-        verifier_factory(VerifierScenario.NORMAL)
-    )
     with _capture_logs() as logs:
+        recording_verifier = _RecordingVerifier(
+            verifier_factory(VerifierScenario.NORMAL)
+        )
         result = verify_artifact_detailed(
             invalid_signature,
             verifier=recording_verifier,
@@ -432,10 +432,10 @@ def assert_external_verifier_conformance(
     algorithm_denied = fixture.artifact
     algorithm_denied["signature_metadata"]["algorithm"] = "RSA-SHA256"
     snapshot = deepcopy(algorithm_denied)
-    recording_verifier = _RecordingVerifier(
-        verifier_factory(VerifierScenario.NORMAL)
-    )
     with _capture_logs() as logs:
+        recording_verifier = _RecordingVerifier(
+            verifier_factory(VerifierScenario.NORMAL)
+        )
         result = verify_artifact_detailed(
             algorithm_denied,
             verifier=recording_verifier,
@@ -478,10 +478,10 @@ def assert_external_verifier_conformance(
     )
     unavailable = fixture.artifact
     snapshot = deepcopy(unavailable)
-    recording_verifier = _RecordingVerifier(
-        verifier_factory(VerifierScenario.UNAVAILABLE)
-    )
     with _capture_logs() as logs:
+        recording_verifier = _RecordingVerifier(
+            verifier_factory(VerifierScenario.UNAVAILABLE)
+        )
         result = verify_artifact_detailed(
             unavailable,
             verifier=recording_verifier,
@@ -505,8 +505,8 @@ def assert_external_verifier_conformance(
         )
         artifact = fixture.artifact
         snapshot = deepcopy(artifact)
-        recording_verifier = _RecordingVerifier(verifier_factory(scenario))
         with _capture_logs() as logs:
+            recording_verifier = _RecordingVerifier(verifier_factory(scenario))
             with pytest.raises(VerificationContractError) as caught:
                 verify_artifact_detailed(
                     artifact,

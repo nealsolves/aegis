@@ -111,6 +111,18 @@ def test_signed_fixture_setup_rejects_an_original_signature_log_leak() -> None:
         _make_signed_artifact(leaky_signed_artifact, "version/current")
 
 
+def test_verifier_conformance_rejects_factory_time_credential_log_leak() -> None:
+    def credential_logging_factory(scenario: VerifierScenario) -> object:
+        logging.getLogger(__name__).warning("Bearer provider-token-123")
+        return _verifier_scenario(scenario)
+
+    with pytest.raises(AssertionError):
+        assert_external_verifier_conformance(
+            _signed_artifact,
+            credential_logging_factory,
+        )
+
+
 def test_verifier_conformance_rejects_actual_mutated_metadata_payload_log_leak() -> None:
     class MutatedPayloadLeakingVerifier:
         def __init__(self, verifier: object) -> None:
