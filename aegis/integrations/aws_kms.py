@@ -50,8 +50,21 @@ _AWS_SIGNING_ALGORITHMS = frozenset(
     }
 )
 
+_AWS_KMS_PARTITIONS = frozenset(
+    {
+        "aws",
+        "aws-cn",
+        "aws-us-gov",
+        "aws-iso",
+        "aws-iso-b",
+        "aws-iso-e",
+        "aws-iso-f",
+        "aws-eusc",
+    }
+)
+
 _AWS_KEY_ARN_PATTERN = re.compile(
-    r"\Aarn:aws(?:-[a-z0-9]+)*:kms:"
+    r"\Aarn:(?P<partition>[a-z0-9-]+):kms:"
     r"[a-z0-9]+(?:-[a-z0-9]+)*:[0-9]{12}:key/"
     r"(?:"
     r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
@@ -211,10 +224,12 @@ def _is_key_reference(value: object) -> bool:
 
 
 def _is_concrete_key_arn(value: object) -> bool:
+    if type(value) is not str or not 1 <= len(value) <= 128:
+        return False
+    match = _AWS_KEY_ARN_PATTERN.fullmatch(value)
     return (
-        type(value) is str
-        and 1 <= len(value) <= 128
-        and _AWS_KEY_ARN_PATTERN.fullmatch(value) is not None
+        match is not None
+        and match.group("partition") in _AWS_KMS_PARTITIONS
     )
 
 

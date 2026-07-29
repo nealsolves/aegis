@@ -60,8 +60,24 @@ _VALID_AWS_KEY_ARNS = (
         "abcdefab-cdef-abcd-efab-cdefabcdefab"
     ),
     (
+        "arn:aws-iso:kms:us-iso-east-1:111122223333:key/"
+        "01234567-89ab-cdef-0123-456789abcdef"
+    ),
+    (
         "arn:aws-iso-b:kms:us-isob-east-1:111122223333:key/"
         "mrk-fedcba9876543210fedcba9876543210"
+    ),
+    (
+        "arn:aws-iso-e:kms:eu-isoe-west-1:111122223333:key/"
+        "89abcdef-0123-4567-89ab-cdef01234567"
+    ),
+    (
+        "arn:aws-iso-f:kms:us-isof-south-1:111122223333:key/"
+        "mrk-abcdef0123456789abcdef0123456789"
+    ),
+    (
+        "arn:aws-eusc:kms:eusc-de-east-1:111122223333:key/"
+        "fedcba98-7654-3210-fedc-ba9876543210"
     ),
 )
 
@@ -81,6 +97,16 @@ _MALFORMED_AWS_KEY_ARNS = (
     "arn:aws:kms:us-east-1:111122223333:key/1234567-1234-4abc-8def-1234567890ab",
     "arn:aws:kms:us-east-1:111122223333:key/mrk-0123456789abcdef0123456789abcde",
     "arn:aws:kms:us-east-1:111122223333:key/mrk-0123456789abcdef0123456789abcdeg",
+    (
+        "arn:aws-not-a-real-partition:kms:us-east-1:111122223333:key/"
+        "12345678-1234-4abc-8def-1234567890ab"
+    ),
+    "arn:aws-CN:kms:cn-north-1:111122223333:key/12345678-1234-4abc-8def-1234567890ab",
+    "arn::kms:us-east-1:111122223333:key/12345678-1234-4abc-8def-1234567890ab",
+    "arn:aws-cn-extra:kms:cn-north-1:111122223333:key/12345678-1234-4abc-8def-1234567890ab",
+    "arn:aws-euscx:kms:eusc-de-east-1:111122223333:key/12345678-1234-4abc-8def-1234567890ab",
+    "arn:aws-us-gov-2:kms:us-gov-west-1:111122223333:key/12345678-1234-4abc-8def-1234567890ab",
+    "arn:aws-iso-g:kms:us-iso-east-1:111122223333:key/12345678-1234-4abc-8def-1234567890ab",
     (
         "arn:aws:kms:us-east-1:111122223333:key/"
         "12345678-1234-4abc-8def-1234567890ab/extra"
@@ -171,7 +197,7 @@ def test_aws_verification_target_reconstructs_only_exact_trusted_builtins():
 
 
 @pytest.mark.parametrize("key_arn", _VALID_AWS_KEY_ARNS)
-def test_aws_verification_target_accepts_canonical_standard_and_mrk_arns(key_arn):
+def test_aws_verification_target_accepts_all_supported_aws_partitions(key_arn):
     target = AwsKmsVerificationTarget(
         key_arn,
         frozenset({"RSASSA_PSS_SHA_256"}),
@@ -336,6 +362,18 @@ def test_aws_signer_rejects_multi_region_replica_arn_substitution_before_sign(
         "arn:aws:kms:-:111122223333:key/12345678-1234-4abc-8def-1234567890ab",
         "arn:aws:kms:us-east-1:111122223333:key/not-a-canonical-key-id",
         "arn:aws:kms:us-east-1:111122223333:key/mrk-ABCDEF0123456789ABCDEF0123456789",
+        (
+            "arn:aws-not-a-real-partition:kms:us-east-1:111122223333:key/"
+            "12345678-1234-4abc-8def-1234567890ab"
+        ),
+        (
+            "arn:aws-cn-extra:kms:cn-north-1:111122223333:key/"
+            "12345678-1234-4abc-8def-1234567890ab"
+        ),
+        (
+            "arn:aws-euscx:kms:eusc-de-east-1:111122223333:key/"
+            "12345678-1234-4abc-8def-1234567890ab"
+        ),
     ),
 )
 def test_aws_signer_identity_rejects_noncanonical_provider_arns(
