@@ -822,6 +822,99 @@ def test_aws_signer_rejects_subclass_or_forged_identity_before_provider_calls(
     assert client.sign_calls == []
 
 
+def test_aws_signer_isolates_concurrent_payload_state(aws_private_keys):
+    class BarrierClient(RecordingAwsKmsClient):
+        def __init__(self, private_keys):
+            super().__init__(private_keys)
+            self.concurrent_calls = False
+            self.describe_barrier = Barrier(2)
+            self.sign_barrier = Barrier(2)
+
+        def describe_key(self, **kwargs):
+            if self.concurrent_calls:
+                self.describe_barrier.wait(timeout=10)
+            return super().describe_key(**kwargs)
+
+        def sign(self, **kwargs):
+            self.sign_barrier.wait(timeout=10)
+            return super().sign(**kwargs)
+
+    client = BarrierClient(aws_private_keys)
+    signer = AwsKmsArtifactSigner(
+        client,
+        key_id="alias/audit",
+        signing_algorithm="RSASSA_PSS_SHA_256",
+    )
+    identity = signer.signer_identity()
+    original_state = (
+        signer._client,
+        signer._key_id,
+        signer._signing_algorithm,
+    )
+    payloads = (
+        b"first concurrent AWS signer payload",
+        b"second concurrent AWS signer payload",
+    )
+    receipts = {}
+    failures = []
+    lock = Lock()
+    client.concurrent_calls = True
+
+    def worker(payload):
+        try:
+            receipt = signer.sign(payload, identity)
+            with lock:
+                receipts[payload] = receipt
+        except BaseException as error:
+            with lock:
+                failures.append(error)
+
+    threads = [
+        Thread(target=worker, args=(payload,))
+        for payload in payloads
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10)
+
+    assert all(not thread.is_alive() for thread in threads)
+    assert failures == []
+    assert set(receipts) == set(payloads)
+    assert {
+        (
+            call["KeyId"],
+            call["Message"],
+            call["MessageType"],
+            call["SigningAlgorithm"],
+        )
+        for call in client.sign_calls
+    } == {
+        (
+            identity.key_version,
+            sha256(payload).digest(),
+            "DIGEST",
+            identity.algorithm,
+        )
+        for payload in payloads
+    }
+    for payload, receipt in receipts.items():
+        assert receipt.key_reference == identity.key_reference
+        assert receipt.key_version == identity.key_version
+        assert verify_aws_signature(
+            aws_private_keys["RSA_2048"].public_key(),
+            signing_algorithm=receipt.algorithm,
+            payload=payload,
+            signature=b64decode(receipt.signature, validate=True),
+        )
+    assert (
+        signer._client,
+        signer._key_id,
+        signer._signing_algorithm,
+    ) == original_state
+    assert not hasattr(signer, "__dict__")
+
+
 def test_aws_signer_runs_shared_external_signing_conformance(aws_private_keys):
     class MalformedScenarioSigner:
         def __init__(self, signer, scenario):
