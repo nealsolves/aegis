@@ -1039,13 +1039,18 @@ def _load_google_api_availability_types_unchecked(
         or not source_hash.value
     ):
         return None
-    source_bytes = distribution_path.read_bytes()
+    source_bytes = _read_bounded_google_exception_source(
+        distribution_path,
+        source_size,
+    )
+    if source_bytes is None:
+        return None
     source_digest = (
         urlsafe_b64encode(sha256(source_bytes).digest())
         .rstrip(b"=")
         .decode("ascii")
     )
-    if len(source_bytes) != source_size or source_digest != source_hash.value:
+    if source_digest != source_hash.value:
         return None
     trusted_code_anchors = _trusted_google_exception_code_anchors(
         source_bytes,
@@ -1116,6 +1121,21 @@ def _load_google_api_availability_types_unchecked(
         )
     ):
         return None
+    implementation_globals = _trusted_google_exception_implementation_globals(
+        api_call_metaclass,
+        google_api_call_error,
+        retry_error_type,
+    )
+    if implementation_globals is None:
+        return None
+    import sys
+
+    canonical_exceptions = dict.get(sys.modules, module_name)
+    if (
+        type(canonical_exceptions) is not ModuleType
+        or vars(canonical_exceptions) is not implementation_globals
+    ):
+        return None
 
     direct_names = (
         "DeadlineExceeded",
@@ -1153,6 +1173,19 @@ def _load_google_api_availability_types_unchecked(
         for candidate in direct_types
         if candidate is not None
     )
+    canonical_types = (
+        ("GoogleAPIError", google_api_error),
+        ("_GoogleAPICallErrorMeta", api_call_metaclass),
+        ("GoogleAPICallError", google_api_call_error),
+        ("RetryError", retry_error_type),
+    ) + tuple(zip(direct_names, typed_direct_types)) + (
+        ("BadRequest", bad_request_type),
+    )
+    if not all(
+        dict.get(implementation_globals, name) is candidate
+        for name, candidate in canonical_types
+    ):
+        return None
     direct_by_name = dict(zip(direct_names, typed_direct_types))
     if (
         not issubclass(
@@ -1178,6 +1211,24 @@ def _load_google_api_availability_types_unchecked(
         bad_request_type=bad_request_type,
         retry_error_type=retry_error_type,
     )
+
+
+def _read_bounded_google_exception_source(
+    source_path: object,
+    expected_size: int,
+) -> bytes | None:
+    from pathlib import Path
+
+    if not isinstance(source_path, Path):
+        return None
+    actual_size = source_path.stat().st_size
+    if type(actual_size) is not int or actual_size != expected_size:
+        return None
+    with source_path.open(mode="rb") as source_file:
+        source_bytes = source_file.read(expected_size + 1)
+    if type(source_bytes) is not bytes or len(source_bytes) != expected_size:
+        return None
+    return source_bytes
 
 
 def _canonical_google_exception_class(
@@ -1343,6 +1394,37 @@ def _has_trusted_google_retry_cause_code(
             module_path,
         )
     )
+
+
+def _trusted_google_exception_implementation_globals(
+    api_call_metaclass: type,
+    google_api_call_error: type,
+    retry_error_type: type,
+) -> dict[str, object] | None:
+    from types import FunctionType
+
+    metaclass_new = vars(api_call_metaclass).get("__new__")
+    api_call_init = vars(google_api_call_error).get("__init__")
+    retry_init = vars(retry_error_type).get("__init__")
+    retry_cause = vars(retry_error_type).get("cause")
+    if (
+        type(metaclass_new) is not staticmethod
+        or type(metaclass_new.__func__) is not FunctionType
+        or type(api_call_init) is not FunctionType
+        or type(retry_init) is not FunctionType
+        or type(retry_cause) is not property
+        or type(retry_cause.fget) is not FunctionType
+    ):
+        return None
+    implementation_globals = metaclass_new.__func__.__globals__
+    if (
+        type(implementation_globals) is not dict
+        or api_call_init.__globals__ is not implementation_globals
+        or retry_init.__globals__ is not implementation_globals
+        or retry_cause.fget.__globals__ is not implementation_globals
+    ):
+        return None
+    return implementation_globals
 
 
 def _google_exception_codes_match(

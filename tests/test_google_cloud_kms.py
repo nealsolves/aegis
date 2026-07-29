@@ -53,6 +53,7 @@ from tests.support.kms_fixtures import (
     google_crc32c_value,
     install_copied_provenance_google_api_core,
     install_controlled_google_kms_modules,
+    synthetic_google_api_core_with_reused_implementations,
     verify_google_signature,
 )
 
@@ -2116,6 +2117,117 @@ def test_google_api_exception_loader_returns_empty_result_on_ordinary_failure(
     assert google_cloud_kms._load_google_api_availability_types() is None
 
 
+def test_google_api_exception_loader_rejects_oversized_source_before_opening(
+    monkeypatch,
+    tmp_path,
+):
+    import importlib.metadata
+    import importlib.util
+    from pathlib import Path
+
+    import aegis.integrations.google_cloud_kms as google_cloud_kms
+
+    spoof = install_copied_provenance_google_api_core(
+        monkeypatch,
+        tmp_path,
+    )
+    source_path = Path(spoof.exceptions.__file__)
+    source_path.write_bytes(b"x" * 1_048_577)
+    monkeypatch.setattr(importlib.util, "find_spec", lambda _name: spoof.spec)
+    monkeypatch.setattr(
+        importlib.metadata,
+        "distribution",
+        lambda _name: spoof.distribution,
+    )
+    forbidden_reads = []
+
+    def forbidden_read_bytes(path):
+        forbidden_reads.append(("read_bytes", path))
+        raise AssertionError("unbounded read_bytes must not run")
+
+    def forbidden_open(path, *args, **kwargs):
+        forbidden_reads.append(("open", path, args, kwargs))
+        raise AssertionError("oversized source must be rejected before opening")
+
+    monkeypatch.setattr(Path, "read_bytes", forbidden_read_bytes)
+    monkeypatch.setattr(Path, "open", forbidden_open)
+
+    assert google_cloud_kms._load_google_api_availability_types() is None
+    assert forbidden_reads == []
+
+
+def test_google_api_exception_loader_bounds_source_read_if_file_grows_after_stat(
+    monkeypatch,
+    tmp_path,
+):
+    import importlib.metadata
+    import importlib.util
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    import aegis.integrations.google_cloud_kms as google_cloud_kms
+
+    spoof = install_copied_provenance_google_api_core(
+        monkeypatch,
+        tmp_path,
+    )
+    source_entry = spoof.distribution.files[0]
+    source_size = source_entry.size
+    source_path = Path(spoof.exceptions.__file__).resolve()
+    grown_source = b"x" * (source_size + 1)
+    source_path.write_bytes(grown_source)
+    monkeypatch.setattr(importlib.util, "find_spec", lambda _name: spoof.spec)
+    monkeypatch.setattr(
+        importlib.metadata,
+        "distribution",
+        lambda _name: spoof.distribution,
+    )
+    original_stat = Path.stat
+    read_sizes = []
+    requested_bytes = 0
+
+    class GuardedSource:
+        def __init__(self):
+            self.offset = 0
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self, size=-1):
+            nonlocal requested_bytes
+            read_sizes.append(size)
+            if size < 0 or size > 1_048_577:
+                raise AssertionError("source read must be explicitly bounded")
+            requested_bytes += size
+            if requested_bytes > 1_048_577:
+                raise AssertionError("aggregate source reads must be bounded")
+            start = self.offset
+            self.offset += size
+            return grown_source[start:self.offset]
+
+    def controlled_stat(path, *args, **kwargs):
+        if path == source_path:
+            return SimpleNamespace(st_size=source_size)
+        return original_stat(path, *args, **kwargs)
+
+    def guarded_open(path, *args, **kwargs):
+        assert path == source_path
+        assert args == ()
+        assert kwargs == {"mode": "rb"}
+        return GuardedSource()
+
+    monkeypatch.setattr(Path, "stat", controlled_stat)
+    monkeypatch.setattr(Path, "open", guarded_open)
+
+    assert google_cloud_kms._load_google_api_availability_types() is None
+    assert read_sizes
+    assert all(0 <= size <= 1_048_577 for size in read_sizes)
+    assert requested_bytes <= 1_048_577
+
+
 def test_google_api_exception_loader_rejects_malformed_canonical_classes(
     monkeypatch,
 ):
@@ -2297,6 +2409,103 @@ def test_actual_google_api_copied_provenance_spoof_is_rejected_when_installed(
     assert google_cloud_kms._is_google_availability_error(
         spoof.exceptions.DeadlineExceeded(SENSITIVE_CORPUS[0])
     ) is False
+
+
+@pytest.mark.parametrize("reuse_mode", ["descriptors", "code_objects"])
+def test_actual_google_api_reused_implementations_spoof_is_rejected_when_installed(
+    monkeypatch,
+    reuse_mode,
+):
+    import importlib.metadata
+    import importlib.util
+
+    import aegis.integrations.google_cloud_kms as google_cloud_kms
+
+    exceptions = pytest.importorskip("google.api_core.exceptions")
+    real_classes = {
+        name: getattr(exceptions, name)
+        for name in (
+            "GoogleAPIError",
+            "_GoogleAPICallErrorMeta",
+            "GoogleAPICallError",
+            "RetryError",
+            "DeadlineExceeded",
+            "GatewayTimeout",
+            "ResourceExhausted",
+            "TooManyRequests",
+            "PermissionDenied",
+            "Forbidden",
+            "ServiceUnavailable",
+            "FailedPrecondition",
+            "NotFound",
+            "BadRequest",
+        )
+    }
+    synthetic = synthetic_google_api_core_with_reused_implementations(
+        exceptions,
+        clone_functions=reuse_mode == "code_objects",
+    )
+    assert synthetic.DeadlineExceeded is not exceptions.DeadlineExceeded
+    implementation_pairs = (
+        (
+            vars(type(synthetic.GoogleAPICallError))["__new__"].__func__,
+            vars(type(exceptions.GoogleAPICallError))["__new__"].__func__,
+        ),
+        (
+            vars(synthetic.GoogleAPICallError)["__init__"],
+            vars(exceptions.GoogleAPICallError)["__init__"],
+        ),
+        (
+            vars(synthetic.RetryError)["__init__"],
+            vars(exceptions.RetryError)["__init__"],
+        ),
+        (
+            vars(synthetic.RetryError)["cause"].fget,
+            vars(exceptions.RetryError)["cause"].fget,
+        ),
+    )
+    if reuse_mode == "descriptors":
+        assert all(
+            synthetic_implementation is real_implementation
+            for synthetic_implementation, real_implementation
+            in implementation_pairs
+        )
+    else:
+        assert all(
+            synthetic_implementation is not real_implementation
+            and synthetic_implementation.__code__
+            is real_implementation.__code__
+            for synthetic_implementation, real_implementation
+            in implementation_pairs
+        )
+    synthetic_deadline = BaseException.__new__(synthetic.DeadlineExceeded)
+    BaseException.__init__(
+        synthetic_deadline,
+        "reused implementation " + SENSITIVE_CORPUS[0],
+    )
+    real_spec = exceptions.__spec__
+    assert real_spec is not None
+    real_distribution = importlib.metadata.distribution("google-api-core")
+    monkeypatch.setattr(
+        google_cloud_kms,
+        "_import_google_api_exceptions",
+        lambda: synthetic,
+    )
+    monkeypatch.setattr(importlib.util, "find_spec", lambda _name: real_spec)
+    monkeypatch.setattr(
+        importlib.metadata,
+        "distribution",
+        lambda _name: real_distribution,
+    )
+
+    assert google_cloud_kms._load_google_api_availability_types() is None
+    assert google_cloud_kms._is_google_availability_error(
+        synthetic_deadline
+    ) is False
+    assert all(
+        getattr(exceptions, name) is candidate
+        for name, candidate in real_classes.items()
+    )
 
 
 def test_actual_google_api_provenance_accepts_symlinked_module_path_when_installed(

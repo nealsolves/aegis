@@ -974,6 +974,145 @@ class NotFound(GoogleAPICallError):
     )
 
 
+def synthetic_google_api_core_with_reused_implementations(
+    real_exceptions,
+    *,
+    clone_functions: bool = False,
+) -> ModuleType:
+    """Build distinct exception classes from the real implementation descriptors."""
+    from types import FunctionType
+
+    module = ModuleType("google.api_core.exceptions")
+    module.__package__ = "google.api_core"
+    module.__file__ = real_exceptions.__file__
+    module.__spec__ = real_exceptions.__spec__
+    module.__loader__ = real_exceptions.__loader__
+    module._HTTP_CODE_TO_EXCEPTION = {}
+    module._GRPC_CODE_TO_EXCEPTION = {}
+
+    def implementation(function):
+        if not clone_functions:
+            return function
+        clone = FunctionType(
+            function.__code__,
+            vars(module),
+            function.__name__,
+            function.__defaults__,
+            function.__closure__,
+        )
+        clone.__kwdefaults__ = function.__kwdefaults__
+        return clone
+
+    google_api_error = type(
+        "GoogleAPIError",
+        (Exception,),
+        {
+            "__module__": "google.api_core.exceptions",
+            "__qualname__": "GoogleAPIError",
+        },
+    )
+    real_api_call_error = real_exceptions.GoogleAPICallError
+    real_api_call_metaclass = type(real_api_call_error)
+    real_metaclass_new = vars(real_api_call_metaclass)["__new__"]
+    metaclass_new = real_metaclass_new
+    if clone_functions:
+        metaclass_new = staticmethod(
+            implementation(real_metaclass_new.__func__)
+        )
+    api_call_metaclass = type(
+        "_GoogleAPICallErrorMeta",
+        (type,),
+        {
+            "__module__": "google.api_core.exceptions",
+            "__qualname__": "_GoogleAPICallErrorMeta",
+            "__new__": metaclass_new,
+        },
+    )
+    google_api_call_error = api_call_metaclass(
+        "GoogleAPICallError",
+        (google_api_error,),
+        {
+            "__module__": "google.api_core.exceptions",
+            "__qualname__": "GoogleAPICallError",
+            "code": None,
+            "grpc_status_code": None,
+            "__init__": implementation(
+                vars(real_api_call_error)["__init__"]
+            ),
+        },
+    )
+    real_retry_error = real_exceptions.RetryError
+    real_retry_cause = vars(real_retry_error)["cause"]
+    retry_cause = real_retry_cause
+    if clone_functions:
+        retry_cause = property(
+            implementation(real_retry_cause.fget),
+            doc=real_retry_cause.__doc__,
+        )
+    retry_error = type(
+        "RetryError",
+        (google_api_error,),
+        {
+            "__module__": "google.api_core.exceptions",
+            "__qualname__": "RetryError",
+            "__init__": implementation(vars(real_retry_error)["__init__"]),
+            "cause": retry_cause,
+        },
+    )
+
+    def api_call_error(name, base):
+        return api_call_metaclass(
+            name,
+            (base,),
+            {
+                "__module__": "google.api_core.exceptions",
+                "__qualname__": name,
+            },
+        )
+
+    gateway_timeout = api_call_error("GatewayTimeout", google_api_call_error)
+    too_many_requests = api_call_error(
+        "TooManyRequests",
+        google_api_call_error,
+    )
+    forbidden = api_call_error("Forbidden", google_api_call_error)
+    bad_request = api_call_error("BadRequest", google_api_call_error)
+    classes = {
+        "GoogleAPIError": google_api_error,
+        "_GoogleAPICallErrorMeta": api_call_metaclass,
+        "GoogleAPICallError": google_api_call_error,
+        "RetryError": retry_error,
+        "GatewayTimeout": gateway_timeout,
+        "DeadlineExceeded": api_call_error(
+            "DeadlineExceeded",
+            gateway_timeout,
+        ),
+        "TooManyRequests": too_many_requests,
+        "ResourceExhausted": api_call_error(
+            "ResourceExhausted",
+            too_many_requests,
+        ),
+        "Forbidden": forbidden,
+        "PermissionDenied": api_call_error(
+            "PermissionDenied",
+            forbidden,
+        ),
+        "ServiceUnavailable": api_call_error(
+            "ServiceUnavailable",
+            google_api_call_error,
+        ),
+        "BadRequest": bad_request,
+        "FailedPrecondition": api_call_error(
+            "FailedPrecondition",
+            bad_request,
+        ),
+        "NotFound": api_call_error("NotFound", google_api_call_error),
+    }
+    for name, candidate in classes.items():
+        setattr(module, name, candidate)
+    return module
+
+
 def google_crc32c_value(value: bytes) -> int:
     """Compute CRC32C independently with the reflected Castagnoli polynomial."""
     crc = 0xFFFFFFFF
