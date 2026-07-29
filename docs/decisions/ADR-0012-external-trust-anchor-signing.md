@@ -35,7 +35,7 @@ responses through errors or logs.
   artifacts, and fixed HMAC signatures remain unchanged.
 - Metadata-aware signing and detailed verification are explicit, additive
   opt-ins.
-- The base package remains provider-neutral and dependency-free.
+- Issue #44 adds no provider SDK and no new runtime dependency.
 - Signer identity is known before bytes are constructed and is confirmed by the
   signing receipt.
 - Verification distinguishes cryptographic validity from external anchoring.
@@ -85,6 +85,11 @@ signing, `SigningReceipt` must echo all four values exactly. A mismatch,
 including alias rotation to another key version, is a contract error and
 neither metadata nor signature is attached.
 
+AEGIS retains an untouched core identity snapshot, constructs stored metadata
+from that snapshot, and passes the signer a disposable equal copy. Receipt
+validation uses only the untouched snapshot, so an adapter cannot mutate its
+argument to renegotiate the prepared identity.
+
 `key_reference` is a non-secret opaque identifier. Hosts must not place
 credentials, secret key material, access tokens, unrestricted provider
 responses, or a locator that they expect AEGIS to dereference in it.
@@ -108,6 +113,16 @@ Unknown or missing fields are rejected. Values are bounded and encoded
 signatures are strictly validated. `signed_at` is a host-supplied, non-negative
 integer Unix second. It is observational metadata, not trusted time, a
 timestamp-authority statement, or replay protection.
+
+The exact lexical and length contract is:
+
+- `algorithm`: 1-128 characters from `[A-Za-z0-9._-]`;
+- `key_reference`: 1-512 ASCII-printable characters from U+0020 through
+  U+007E inclusive;
+- `key_version`: 1-128 characters from `[A-Za-z0-9._:/-]`;
+- encoded signature: 1-16,384 characters;
+- hexadecimal signatures: lowercase, even-length, prefix-free hexadecimal;
+- base64 signatures: canonical whitespace-free RFC 4648 base64.
 
 The top-level `signature` remains `string | null`. Verification and anchor
 statuses are computed at verification time and are never stored in
@@ -161,9 +176,20 @@ Verification does not mutate the artifact. Availability affects only whether a
 signature can be evaluated; it never converts an unavailable check to valid or
 changes the artifact's recorded governance result.
 
-Errors and results use bounded, AEGIS-controlled messages. They do not expose
-canonical payload bytes, signature contents, credentials, tokens, secret key
-material, unrestricted provider errors, or raw provider responses.
+AEGIS retains an untouched parsed metadata snapshot, passes the verifier a
+disposable equal copy, and returns the untouched snapshot even when no verifier
+is configured. Core-generated messages, exceptions, details, and logs do not
+expose canonical payload bytes, signature contents, credentials, tokens,
+secret key material, artifact-declared metadata values, unrestricted provider
+errors, or raw provider responses. Metadata shape errors expose only
+core-owned field identifiers and integer counts, never attacker-chosen extra
+field names.
+
+`ArtifactVerificationResult.signature_metadata` is the explicit exception to
+core redaction: it preserves exact parsed, untrusted artifact-declared data for
+forensics and key resolution. It is contractually non-secret, but AEGIS does
+not semantically redact valid values. Hosts must apply their own redaction
+before logging returned metadata.
 
 ### Legacy compatibility
 
@@ -176,6 +202,11 @@ Detailed verification maps a valid legacy HMAC signature to
 `VALID / UNANCHORED / LEGACY_SIGNATURE_VALID`. A valid unknown custom legacy
 signer maps to `VALID / NOT_EVALUATED / LEGACY_SIGNATURE_VALID`, because AEGIS
 cannot infer that signer's trust boundary.
+
+The legacy branch of detailed verification accepts only
+`type(signer.verify(...)) is bool`. Strings, integers, and objects with custom
+truthiness are malformed adapter responses and raise a fixed sanitized
+`VerificationContractError` without evaluating their truthiness.
 
 ---
 
@@ -233,6 +264,9 @@ Cons:
   metadata-aware signing, and at most one verifier call for detailed
   verification. It performs no credential lookup, retry, storage operation,
   provider discovery, or network call.
+- Returned parsed signature metadata is untrusted artifact data. Hosts keep it
+  non-secret and redact it before logging; core-generated diagnostics never
+  echo it.
 - HMAC signatures and checksum/hash chains provide tamper-evidence only. They
   do not make storage immutable.
 - A verifier can establish a valid signature and configured anchor for one

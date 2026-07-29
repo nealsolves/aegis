@@ -240,6 +240,7 @@ Model output is treated as untrusted input.
 
 * artifact-declared algorithms or key locations attempting to select trust
 * mutable key aliases changing between identity preparation and signing
+* signer or verifier adapters mutating the frozen values they receive
 * modified signature metadata
 * impossible, hostile, or unavailable external-verifier responses
 * replay or replacement of otherwise valid evidence
@@ -257,6 +258,8 @@ Model output is treated as untrusted input.
 * all strict `signature_metadata` fields are included in the signed bytes
 * signer identity and receipt must pin the same opaque key reference and exact
   immutable key version
+* AEGIS retains untouched core identity and metadata snapshots and gives
+  adapters disposable equal copies
 * the host-configured verifier resolves key reference and version; AEGIS never
   performs artifact-driven or network key lookup
 * the resolved key policy, not the metadata-declared algorithm, authorizes the
@@ -265,8 +268,12 @@ Model output is treated as untrusted input.
   signature is not necessarily anchored
 * signing failure leaves the artifact unchanged and detailed verification is
   non-mutating
-* errors and results use bounded, sanitized data rather than raw provider
-  responses
+* core-generated result messages, exceptions, details, and logs use bounded,
+  sanitized data rather than raw provider responses or artifact-declared
+  metadata values
+* exact valid parsed `signature_metadata` remains available as explicitly
+  untrusted artifact data; hosts keep it non-secret and apply their own
+  redaction before logging it
 
 The host owns the trust store or key resolver, credentials, secret keys,
 provider transport, retries, timeouts, availability behavior, and storage.
@@ -383,12 +390,16 @@ Governance-enrichment fields (v0.3.0):
 
 * `risk_score` — populated by the risk scoring engine when the governing policy declares risk configuration (v0.3.0)
 * `signature` — populated by `ArtifactSigner` (HMAC-SHA256) when signing is enabled on the AEGIS instance (v0.3.0)
-* optional strict `signature_metadata` — populated only by the opt-in
-  metadata-aware external signing helper; metadata is covered by the signature
 
 Cryptographic chaining fields (v0.3.0):
 
 * `chain_id`, `chain_index`, `previous_audit_checksum` — populated by `AuditChain` for tamper-evident sequential integrity (v0.3.0)
+
+Source-only trust-anchor field added after the `0.9.0b1` release:
+
+* optional strict `signature_metadata` — populated only by the opt-in
+  metadata-aware external signing helper and covered by its signature; it is
+  untrusted artifact-declared data and must be host-redacted before logging
 
 Modification of covered content causes the corresponding checksum or signature
 verification to fail. These checks do not make the underlying storage

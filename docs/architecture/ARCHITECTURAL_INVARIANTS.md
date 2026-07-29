@@ -161,9 +161,11 @@ Artifacts include governance-enrichment fields introduced in v0.3.0 (M2):
 
 * `risk_score` — populated by the risk scoring engine when the policy declares risk configuration
 * `signature` — populated by `ArtifactSigner` (HMAC-SHA256 via `HMACSigner`) when signing is enabled
-* optional strict `signature_metadata` — populated only by
-  `sign_artifact_with_metadata()` and covered by that signature
 * `chain_id`, `chain_index`, `previous_audit_checksum` — populated by `AuditChain` for sequential integrity verification
+
+The optional strict `signature_metadata` field is a source-only addition after
+the `0.9.0b1` release. It is populated only by
+`sign_artifact_with_metadata()` and covered by that signature.
 
 Hash-chain verification applies to the sequence supplied for verification. It
 does not detect replacement of a complete otherwise-valid chain without an
@@ -341,6 +343,8 @@ The following rules are invariant:
   metadata-aware signature.
 * signer identity and receipt must agree on algorithm, encoding, opaque key
   reference, and exact immutable key version before the artifact is mutated
+* AEGIS keeps untouched core identity and metadata snapshots and gives signer
+  and verifier adapters disposable equal copies
 * signing failure leaves the artifact unchanged; detailed verification never
   mutates the artifact
 * the host-configured verifier resolves the exact key reference and version;
@@ -352,6 +356,11 @@ The following rules are invariant:
 * unavailable signing or verification never weakens or changes the governance
   decision already recorded by the artifact
 * `signed_at` is host-observed time, not trusted timestamp evidence
+* exact valid parsed `signature_metadata` is returned as untrusted,
+  artifact-declared, contractually non-secret data, including when no verifier
+  is configured; hosts apply their own redaction before logging it
+* core-generated result messages, exceptions, details, and logs never echo
+  artifact metadata, payloads, raw signatures, secrets, or provider responses
 
 The host owns key resolution, trusted-anchor configuration, credentials,
 provider transport, retry and timeout behavior, availability policy, and

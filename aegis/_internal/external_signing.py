@@ -237,10 +237,16 @@ def sign_artifact_with_metadata(
 
     metadata = _metadata_from_identity(identity, signed_at)
     payload = _metadata_signing_payload(artifact, metadata)
+    disposable_identity = SignerIdentity(
+        identity.algorithm,
+        identity.signature_encoding,
+        identity.key_reference,
+        identity.key_version,
+    )
 
     sign_call_failed = False
     try:
-        receipt = signer.sign(payload, identity)
+        receipt = signer.sign(payload, disposable_identity)
     except Exception:
         sign_call_failed = True
 
@@ -282,7 +288,13 @@ def _verify_legacy_artifact(
             "Legacy signature verification failed", details={}
         )
 
-    if valid:
+    if type(valid) is not bool:
+        raise VerificationContractError(
+            "Legacy signer returned an invalid verification result",
+            details={},
+        )
+
+    if valid is True:
         anchor_status = (
             AnchorStatus.UNANCHORED
             if isinstance(signer, HMACSigner)
@@ -422,8 +434,9 @@ def verify_artifact_detailed(
 
     outcome: object = None
     verifier_failed = False
+    disposable_metadata = SignatureMetadata.from_dict(metadata.to_dict())
     try:
-        outcome = verifier.verify(payload, signature, metadata)
+        outcome = verifier.verify(payload, signature, disposable_metadata)
     except Exception:
         verifier_failed = True
 

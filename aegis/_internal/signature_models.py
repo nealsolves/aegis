@@ -22,8 +22,9 @@ CANONICALIZATION_VERSION = "aegis-canonical-json-v1"
 MAX_SIGNATURE_LENGTH = 16_384
 MAX_VERIFICATION_MESSAGE_LENGTH = 1_024
 
-_ALGORITHM_PATTERN = re.compile(r"[A-Za-z0-9._-]+")
-_KEY_VERSION_PATTERN = re.compile(r"[A-Za-z0-9._:/-]+")
+_ALGORITHM_PATTERN = re.compile(r"[A-Za-z0-9._-]+\Z")
+_KEY_REFERENCE_PATTERN = re.compile(r"[\x20-\x7e]+\Z")
+_KEY_VERSION_PATTERN = re.compile(r"[A-Za-z0-9._:/-]+\Z")
 _HEX_PATTERN = re.compile(r"[0-9a-f]+")
 
 
@@ -133,12 +134,7 @@ def _validate_identity_fields(
     if (
         not isinstance(key_reference, str)
         or not 1 <= len(key_reference) <= 512
-        or not all(
-            character.isprintable()
-            and ord(character) >= 32
-            and ord(character) != 127
-            for character in key_reference
-        )
+        or not _KEY_REFERENCE_PATTERN.fullmatch(key_reference)
     ):
         raise error_type("key_reference is invalid", details={"field": "key_reference"})
     if (
@@ -284,12 +280,14 @@ class SignatureMetadata:
         missing = expected_keys - value.keys()
         extra = value.keys() - expected_keys
         if missing or extra:
-            details: dict[str, list[str]] = {}
-            if missing:
-                details["missing"] = sorted(missing)
-            if extra:
-                details["extra"] = sorted(extra)
-            raise SignatureMetadataError("metadata keys are invalid", details=details)
+            raise SignatureMetadataError(
+                "metadata keys are invalid",
+                details={
+                    "field": "signature_metadata",
+                    "missing_count": len(missing),
+                    "extra_count": len(extra),
+                },
+            )
         try:
             payload_type = (
                 EvidenceType(value["payload_type"])

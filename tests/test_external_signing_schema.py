@@ -65,6 +65,11 @@ def _validate(artifact: dict) -> None:
     Draft7Validator(_schema()).validate(artifact)
 
 
+def _validate_with_schema(schema_path: Path, artifact: dict) -> None:
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    Draft7Validator(schema).validate(artifact)
+
+
 def test_historical_signed_artifact_without_metadata_remains_valid():
     artifact = _artifact()
     artifact["signature"] = "legacy-signature"
@@ -150,6 +155,54 @@ def test_signature_metadata_rejects_invalid_identity_fields(
 
     with pytest.raises(ValidationError):
         _validate(artifact)
+
+
+@pytest.mark.parametrize(
+    "schema_path",
+    [SOURCE_SCHEMA_PATH, PACKAGE_SCHEMA_PATH],
+    ids=["source-schema", "package-schema"],
+)
+@pytest.mark.parametrize(
+    ("field", "invalid_value"),
+    [
+        ("algorithm", "HSM-SHA256\n"),
+        ("key_version", "version/7\n"),
+        ("key_reference", "key\u2028reference"),
+        ("key_reference", "cl\u00e9"),
+    ],
+    ids=[
+        "algorithm-terminal-newline",
+        "key-version-terminal-newline",
+        "key-reference-u2028",
+        "key-reference-non-ascii-printable",
+    ],
+)
+def test_both_schemas_reject_values_outside_exact_ascii_lexical_contract(
+    schema_path: Path,
+    field: str,
+    invalid_value: str,
+):
+    artifact = _metadata_aware_artifact()
+    artifact["signature_metadata"][field] = invalid_value
+
+    with pytest.raises(ValidationError):
+        _validate_with_schema(schema_path, artifact)
+
+
+@pytest.mark.parametrize(
+    "schema_path",
+    [SOURCE_SCHEMA_PATH, PACKAGE_SCHEMA_PATH],
+    ids=["source-schema", "package-schema"],
+)
+def test_both_schemas_accept_exact_allowed_boundary_characters(schema_path: Path):
+    artifact = _metadata_aware_artifact()
+    artifact["signature_metadata"].update(
+        algorithm="A0._-",
+        key_reference=" ~",
+        key_version="A0._:/-",
+    )
+
+    _validate_with_schema(schema_path, artifact)
 
 
 @pytest.mark.parametrize("invalid_signed_at", [-1, 1.5, "1", True, None])

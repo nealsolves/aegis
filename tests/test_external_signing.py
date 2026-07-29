@@ -461,6 +461,70 @@ def test_detailed_legacy_verification_sanitizes_unexpected_verifier_errors():
     assert artifact == snapshot
 
 
+@pytest.mark.parametrize("adapter_result", ["true", 1, 0], ids=["string", "one", "zero"])
+def test_detailed_legacy_verification_rejects_non_boolean_adapter_results(
+    adapter_result,
+):
+    class MalformedLegacySigner(ArtifactSigner):
+        def sign(self, payload: bytes) -> str:
+            return "unused"
+
+        def verify(self, payload: bytes, signature: str) -> object:
+            return adapter_result
+
+    artifact = _legacy_artifact()
+    artifact["signature"] = "present-but-unverified"
+    snapshot = deepcopy(artifact)
+
+    with pytest.raises(VerificationContractError) as error:
+        verify_artifact_detailed(artifact, legacy_signer=MalformedLegacySigner())
+
+    assert str(error.value) == "Legacy signer returned an invalid verification result"
+    assert error.value.details == {}
+    assert error.value.__cause__ is None
+    assert error.value.__context__ is None
+    assert artifact == snapshot
+
+
+def test_detailed_legacy_verification_never_evaluates_adapter_truthiness():
+    class HostileTruthiness:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def __bool__(self) -> bool:
+            self.calls += 1
+            raise RuntimeError("credential=top-secret")
+
+    class MalformedLegacySigner(ArtifactSigner):
+        def __init__(self, result: HostileTruthiness) -> None:
+            self.result = result
+
+        def sign(self, payload: bytes) -> str:
+            return "unused"
+
+        def verify(self, payload: bytes, signature: str) -> object:
+            return self.result
+
+    hostile_result = HostileTruthiness()
+    artifact = _legacy_artifact()
+    artifact["signature"] = "present-but-unverified"
+    snapshot = deepcopy(artifact)
+
+    with pytest.raises(VerificationContractError) as error:
+        verify_artifact_detailed(
+            artifact,
+            legacy_signer=MalformedLegacySigner(hostile_result),
+        )
+
+    assert str(error.value) == "Legacy signer returned an invalid verification result"
+    assert error.value.details == {}
+    assert error.value.__cause__ is None
+    assert error.value.__context__ is None
+    assert "top-secret" not in str(error.value)
+    assert hostile_result.calls == 0
+    assert artifact == snapshot
+
+
 @pytest.mark.parametrize(
     "signature_status, anchor_status, reason_code, safe_message",
     [
@@ -585,6 +649,24 @@ def test_detailed_metadata_without_verifier_returns_fixed_unavailable_outcome():
     assert artifact == snapshot
 
 
+def test_detailed_metadata_preserves_token_like_key_reference_only_as_untrusted_metadata(
+    caplog,
+):
+    token_like_reference = "Bearer provider-token-123"
+    artifact = _metadata_artifact()
+    artifact["signature_metadata"]["key_reference"] = token_like_reference
+    snapshot = deepcopy(artifact)
+    caplog.set_level("DEBUG")
+
+    result = verify_artifact_detailed(artifact)
+
+    assert result.signature_metadata is not None
+    assert result.signature_metadata.key_reference == token_like_reference
+    assert token_like_reference not in result.message
+    assert token_like_reference not in caplog.text
+    assert artifact == snapshot
+
+
 @pytest.mark.parametrize(
     "field, value",
     [
@@ -623,8 +705,24 @@ def test_detailed_metadata_validation_rejects_versions_and_bounds_before_verifie
     "shape, expected_message, expected_details",
     [
         ("not_mapping", "metadata must be a dictionary", {}),
-        ("missing", "metadata keys are invalid", {"missing": ["algorithm"]}),
-        ("extra", "metadata keys are invalid", {"extra": ["provider_hint"]}),
+        (
+            "missing",
+            "metadata keys are invalid",
+            {
+                "field": "signature_metadata",
+                "missing_count": 1,
+                "extra_count": 0,
+            },
+        ),
+        (
+            "extra",
+            "metadata keys are invalid",
+            {
+                "field": "signature_metadata",
+                "missing_count": 0,
+                "extra_count": 1,
+            },
+        ),
         ("hostile", "signature metadata is invalid", {}),
         ("hostile_same_type", "signature metadata is invalid", {}),
     ],
@@ -674,6 +772,67 @@ def test_detailed_metadata_validation_rejects_invalid_shape_before_verifier(
     assert error.value.__cause__ is None
     assert error.value.__context__ is None
     assert "provider secret" not in str(error.value)
+    assert verifier.calls == []
+    assert artifact == snapshot
+
+
+@pytest.mark.parametrize(
+    ("extra_key", "leak_probe"),
+    [
+        ("credential=top-secret", "top-secret"),
+        ("Bearer provider-token-123", "provider-token-123"),
+        ("raw-signature-deadbeef", "raw-signature-deadbeef"),
+        (
+            '{"audit_schema_version":"1.4","private":"payload-fragment"}',
+            "payload-fragment",
+        ),
+        ("\nCONTROL-FIELD-CREDENTIAL\r", "CONTROL-FIELD-CREDENTIAL"),
+        (
+            "VERY-LONG-SECRET-FIELD-" + ("x" * 4096),
+            "VERY-LONG-SECRET-FIELD",
+        ),
+    ],
+    ids=[
+        "credential",
+        "token",
+        "raw-signature",
+        "payload-fragment",
+        "control-text",
+        "very-long",
+    ],
+)
+def test_detailed_metadata_extra_keys_never_escape_core_errors_or_logs(
+    caplog,
+    extra_key,
+    leak_probe,
+):
+    artifact = _metadata_artifact()
+    artifact["signature_metadata"][extra_key] = "attacker-controlled"
+    snapshot = deepcopy(artifact)
+    verifier = RecordingExternalVerifier(object())
+    caplog.set_level("DEBUG")
+
+    with pytest.raises(SignatureMetadataError) as error:
+        verify_artifact_detailed(artifact, verifier=verifier)
+
+    assert str(error.value) == "metadata keys are invalid"
+    assert error.value.details == {
+        "field": "signature_metadata",
+        "missing_count": 0,
+        "extra_count": 1,
+    }
+    assert error.value.__cause__ is None
+    assert error.value.__context__ is None
+    rendered = "\n".join(
+        (
+            str(error.value),
+            repr(error.value.details),
+            repr(error.value.__cause__),
+            repr(error.value.__context__),
+            caplog.text,
+        )
+    )
+    assert leak_probe not in rendered
     assert verifier.calls == []
     assert artifact == snapshot
 
@@ -919,6 +1078,39 @@ def test_detailed_metadata_verifier_receives_parsed_value_not_caller_dictionary(
     assert isinstance(parsed_metadata, SignatureMetadata)
     assert parsed_metadata.to_dict() == caller_metadata
     assert parsed_metadata is not caller_metadata
+    assert artifact == snapshot
+
+
+def test_detailed_metadata_verifier_cannot_mutate_returned_core_metadata_snapshot():
+    class MutatingVerifier:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.received_metadata: SignatureMetadata | None = None
+
+        def verify(
+            self, payload: bytes, signature: str, metadata: SignatureMetadata
+        ) -> ExternalVerificationOutcome:
+            self.calls += 1
+            self.received_metadata = metadata
+            object.__setattr__(metadata, "key_reference", "mutated-key-reference")
+            return ExternalVerificationOutcome(
+                SignatureStatus.VALID,
+                AnchorStatus.UNANCHORED,
+                VerificationReasonCode.SIGNATURE_VALID_UNANCHORED,
+                "provider-controlled",
+            )
+
+    artifact = _metadata_artifact()
+    snapshot = deepcopy(artifact)
+    verifier = MutatingVerifier()
+
+    result = verify_artifact_detailed(artifact, verifier=verifier)
+
+    assert verifier.calls == 1
+    assert verifier.received_metadata is not None
+    assert verifier.received_metadata.key_reference == "mutated-key-reference"
+    assert result.signature_metadata == _metadata()
+    assert result.signature_metadata is not verifier.received_metadata
     assert artifact == snapshot
 
 
@@ -1172,6 +1364,59 @@ def test_sign_artifact_with_metadata_rejects_alias_rotation_without_mutation():
     assert artifact == original
 
 
+def test_sign_artifact_with_metadata_rejects_mutated_disposable_identity_snapshot():
+    class MutatingIdentitySigner:
+        def __init__(self) -> None:
+            self.identity = SignerIdentity(
+                "HSM-SHA256",
+                SignatureEncoding.HEX,
+                "audit-key",
+                "version/7",
+            )
+            self.calls = 0
+            self.received_identity: SignerIdentity | None = None
+
+        def signer_identity(self) -> SignerIdentity:
+            return self.identity
+
+        def sign(
+            self, payload: bytes, identity: SignerIdentity
+        ) -> SigningReceipt:
+            self.calls += 1
+            self.received_identity = identity
+            object.__setattr__(identity, "key_version", "version/8")
+            return SigningReceipt(
+                "aa",
+                identity.algorithm,
+                identity.signature_encoding,
+                identity.key_reference,
+                identity.key_version,
+            )
+
+    artifact: dict[str, object] = {
+        "audit_schema_version": "1.4",
+        "nested": {"items": ["one", "two"]},
+        "signature": None,
+    }
+    snapshot = deepcopy(artifact)
+    signer = MutatingIdentitySigner()
+
+    with pytest.raises(
+        SigningContractError,
+        match="Signing receipt does not match prepared identity",
+    ) as error:
+        sign_artifact_with_metadata(artifact, signer, signed_at=1)
+
+    assert str(error.value) == "Signing receipt does not match prepared identity"
+    assert error.value.details == {}
+    assert error.value.__cause__ is None
+    assert error.value.__context__ is None
+    assert signer.calls == 1
+    assert signer.received_identity is not signer.identity
+    assert signer.identity.key_version == "version/7"
+    assert artifact == snapshot
+
+
 def test_sign_artifact_with_metadata_redacts_hostile_identity_fields_without_mutation():
     class HostileAlgorithm(str):
         def __len__(self) -> int:
@@ -1281,7 +1526,7 @@ def test_metadata_aware_signature_payload_detects_signed_artifact_tampering(muta
 
 
 def test_external_signing_boundary_redacts_adversarial_provider_data_and_logs(caplog):
-    """Provider details never escape exceptions, results, or log capture."""
+    """Provider details never escape core diagnostics or log capture."""
     artifact = _unsigned_artifact()
     snapshot = deepcopy(artifact)
     caplog.set_level("DEBUG")
@@ -1315,7 +1560,7 @@ def test_external_signing_boundary_redacts_adversarial_provider_data_and_logs(ca
         (
             str(caught.value),
             repr(caught.value.details),
-            repr(result),
+            result.message,
             caplog.text,
         )
     )

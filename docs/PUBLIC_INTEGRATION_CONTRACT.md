@@ -710,6 +710,10 @@ HMAC-SHA256 provides tamper-evidence; it does not provide immutable storage.
 Detailed verification reports a valid legacy HMAC artifact as
 `VALID / UNANCHORED / LEGACY_SIGNATURE_VALID`. For a valid unknown custom
 legacy signer, anchor status is `NOT_EVALUATED`.
+When detailed verification calls a legacy signer's `verify()` method, the
+adapter must return an exact built-in `bool`. Strings, integers, and objects
+with custom truthiness are malformed responses; AEGIS does not evaluate their
+truthiness and raises a fixed sanitized `VerificationContractError`.
 
 Use `sign_artifact_with_metadata()` and `verify_artifact_detailed()` when the
 host needs a versioned identity and separate signature/anchor results. The
@@ -875,6 +879,13 @@ atomic update does not make concurrent signing of the same mutable dictionary
 thread-safe. Re-signing and asynchronous signer/verifier contracts are not
 supported.
 
+AEGIS keeps an untouched identity snapshot for stored metadata and receipt
+comparison, while the signer receives a disposable equal copy. Detailed
+verification likewise keeps an untouched parsed metadata snapshot, gives the
+verifier a disposable equal copy, and returns the untouched snapshot. Adapter
+mutation therefore cannot renegotiate the signing identity or rewrite returned
+metadata.
+
 Metadata-aware profile `aegis-signature-v1` signs exactly:
 
 ```text
@@ -897,6 +908,16 @@ is `EvidenceType.AUDIT_ARTIFACT` (`"audit_artifact"`); supported encodings are
 `SignatureEncoding.HEX` (`"hex"`) and `SignatureEncoding.BASE64`
 (`"base64"`).
 
+The exact metadata-aware lexical and length rules are:
+
+- `algorithm`: 1-128 characters, each from `[A-Za-z0-9._-]`;
+- `key_reference`: 1-512 ASCII-printable characters, U+0020 through U+007E
+  inclusive;
+- `key_version`: 1-128 characters, each from `[A-Za-z0-9._:/-]`;
+- encoded signature: 1-16,384 characters;
+- hex: lowercase, even-length, prefix-free hexadecimal;
+- base64: canonical whitespace-free RFC 4648 base64.
+
 Detailed verification has two independent axes. The complete allowed matrix is:
 
 | Signature status | Anchor status | Allowed reason codes |
@@ -912,11 +933,14 @@ Detailed verification has two independent axes. The complete allowed matrix is:
 | `INDETERMINATE` | `NOT_EVALUATED` | `SIGNATURE_METADATA_MISSING`, `VERIFIER_UNAVAILABLE` |
 
 No other combination is valid. A missing verifier returns
-`INDETERMINATE / NOT_EVALUATED / VERIFIER_UNAVAILABLE`; a verifier may return
-the same result for declared unavailability. An unexpected verifier exception
-or impossible response raises sanitized `VerificationContractError`.
-Malformed metadata raises `SignatureMetadataError`. Signing failures use
-`ArtifactSigningError` or `SigningContractError`.
+`INDETERMINATE / NOT_EVALUATED / VERIFIER_UNAVAILABLE` while preserving the
+exact valid parsed metadata in `result.signature_metadata`; a verifier may
+return the same result for declared unavailability. An unexpected verifier
+exception or impossible response raises sanitized `VerificationContractError`.
+Malformed metadata raises `SignatureMetadataError`. Extra field names are
+attacker-controlled and are never copied into error details; only bounded
+core-owned field identifiers and integer counts are reported. Signing failures
+use `ArtifactSigningError` or `SigningContractError`.
 
 | Exception | Stable code |
 | --- | --- |
@@ -925,11 +949,18 @@ Malformed metadata raises `SignatureMetadataError`. Signing failures use
 | `SigningContractError` | `SIGNING_CONTRACT_ERROR` |
 | `VerificationContractError` | `VERIFICATION_CONTRACT_ERROR` |
 
-Results, exceptions, details, and logs omit canonical payload bytes, raw
-signatures, credentials, tokens, secrets, unrestricted provider error text, and
-raw provider responses. The host owns key resolution, algorithm policy,
-credentials, provider transport, retry and timeout behavior, availability
-policy, and artifact storage.
+Core-generated result messages, exceptions, details, and logs omit canonical
+payload bytes, raw signatures, credentials, tokens, secrets,
+artifact-declared metadata values, unrestricted provider error text, and raw
+provider responses.
+
+`result.signature_metadata` deliberately preserves exact parsed metadata for
+forensics and key resolution. That value is untrusted, artifact-declared data.
+The contract requires it to be non-secret, but syntactically valid token-like
+text is not omitted, hashed, or rewritten. Hosts must apply their own redaction
+before logging returned artifact metadata. The host also owns key resolution,
+algorithm policy, credentials, provider transport, retry and timeout behavior,
+availability policy, and artifact storage.
 
 A valid and anchored result describes this artifact under the configured
 verifier. It does not provide trusted time, replay prevention,
@@ -1449,11 +1480,16 @@ Fields added by v0.3.0 extension points (present when the feature is active):
 | ----- | ------ | ----------- |
 | `metadata.risk_scoring` | Risk scoring | Dict with `score`, `threshold`, `mode`, `basis`, `exceeded` |
 | `signature` | Artifact signing | HMAC-SHA256 hex string (or custom signer output) |
-| `signature_metadata` | Metadata-aware signing | Optional strict versioned metadata covered by the external signature; verification and anchor statuses are never persisted |
 | `chain_id` | Audit chain | Chain identifier |
 | `chain_index` | Audit chain | 0-based position in chain |
 | `previous_audit_checksum` | Audit chain | SHA-256 of prior artifact (null for first) |
 | `metadata.custom_gate_metadata` | Custom gates | Dict of gate-specific metadata merged from `GateResult.metadata` |
+
+Source-only field added after the `0.9.0b1` release:
+
+| Field | Source | Description |
+| ----- | ------ | ----------- |
+| `signature_metadata` | Metadata-aware signing | Optional strict versioned metadata covered by the external signature; untrusted artifact-declared data that hosts must redact before logging; verification and anchor statuses are never persisted |
 
 Fields added by v0.3.2 enforcement-mode metadata:
 

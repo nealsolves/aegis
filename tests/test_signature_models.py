@@ -148,6 +148,43 @@ def test_metadata_accepts_minimum_identity_boundaries():
     assert (metadata.algorithm, metadata.key_reference, metadata.key_version) == ("a", "r", "v")
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("algorithm", "HSM-SHA256\n"),
+        ("key_version", "version/17\n"),
+        ("key_reference", "key\u2028reference"),
+        ("key_reference", "cl\u00e9"),
+    ],
+    ids=[
+        "algorithm-terminal-newline",
+        "key-version-terminal-newline",
+        "key-reference-u2028",
+        "key-reference-non-ascii-printable",
+    ],
+)
+def test_metadata_rejects_values_outside_exact_ascii_lexical_contract(field, value):
+    with pytest.raises(SignatureMetadataError):
+        _metadata(**{field: value})
+
+
+def test_identity_models_accept_exact_allowed_boundary_characters():
+    identity = SignerIdentity(
+        algorithm="A0._-",
+        signature_encoding=SignatureEncoding.HEX,
+        key_reference=" ~",
+        key_version="A0._:/-",
+    )
+    metadata = _metadata(
+        algorithm=identity.algorithm,
+        signature_encoding=identity.signature_encoding,
+        key_reference=identity.key_reference,
+        key_version=identity.key_version,
+    )
+
+    assert metadata.key_reference == " ~"
+
+
 @pytest.mark.parametrize("field, value", [
     ("schema_version", "2"),
     ("signing_profile", "other-profile"),
@@ -196,7 +233,9 @@ def test_metadata_from_dict_rejects_wrong_shape_or_enum(mutate):
     mutate(value)
     with pytest.raises(SignatureMetadataError) as exc_info:
         SignatureMetadata.from_dict(value)
-    assert set(exc_info.value.details).issubset({"field", "missing", "extra"})
+    assert set(exc_info.value.details).issubset(
+        {"field", "missing_count", "extra_count"}
+    )
 
 
 @pytest.mark.parametrize("signature, encoding", [

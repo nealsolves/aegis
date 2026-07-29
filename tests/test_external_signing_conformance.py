@@ -111,6 +111,36 @@ def test_signed_fixture_setup_rejects_an_original_signature_log_leak() -> None:
         _make_signed_artifact(leaky_signed_artifact, "version/current")
 
 
+def test_verifier_conformance_rejects_actual_mutated_metadata_payload_log_leak() -> None:
+    class MutatedPayloadLeakingVerifier:
+        def __init__(self, verifier: object) -> None:
+            self.verifier = verifier
+
+        def verify(self, payload: bytes, signature: str, metadata: object) -> object:
+            if getattr(metadata, "algorithm") == "RSA-SHA256":
+                logging.getLogger(__name__).warning(
+                    "actual verifier payload=%s",
+                    payload.decode("utf-8", "replace"),
+                )
+            return self.verifier.verify(  # type: ignore[attr-defined]
+                payload,
+                signature,
+                metadata,
+            )
+
+    def verifier_factory(scenario: VerifierScenario) -> object:
+        verifier = _verifier_scenario(scenario)
+        if scenario is VerifierScenario.NORMAL:
+            return MutatedPayloadLeakingVerifier(verifier)
+        return verifier
+
+    with pytest.raises(AssertionError):
+        assert_external_verifier_conformance(
+            _signed_artifact,
+            verifier_factory,
+        )
+
+
 def test_receipt_alias_rotation_is_rejected_atomically() -> None:
     artifact: dict[str, object] = {
         "audit_schema_version": "1.4",

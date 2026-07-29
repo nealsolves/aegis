@@ -13,11 +13,11 @@ string without a versioned description of the algorithm, encoding, key
 identity, key version, signing profile, payload type, canonicalization
 contract, or signing time. Verification returns only a boolean.
 
-Issue #44 introduces dependency-free contracts for metadata-aware external
-signing and structured verification. The design is additive: existing HMAC and
-custom signer behavior remains unchanged, while callers that need external
-trust information opt into a new signing helper and a detailed verification
-result.
+Issue #44 introduces provider-neutral contracts for metadata-aware external
+signing and structured verification without adding a provider SDK or a new
+runtime dependency. The design is additive: existing HMAC and custom signer
+behavior remains unchanged, while callers that need external trust information
+opt into a new signing helper and a detailed verification result.
 
 Cryptographic signature validity and external anchoring are modeled as
 independent dimensions. A valid signature does not imply an external trust
@@ -38,8 +38,8 @@ integrity.
   partial artifact mutation on signing failure.
 - Provide a deterministic test double and reusable conformance assertions for
   later provider integrations.
-- Keep the base package free of cloud, HSM, networking, credential, and storage
-  dependencies.
+- Add no provider SDK and no new runtime dependency for #44; cloud, HSM,
+  networking, credential, and storage integration remains host-owned.
 
 ## Non-Goals
 
@@ -219,9 +219,10 @@ will dereference.
 
 Initial bounds:
 
-- `algorithm`: 1-128 printable ASCII characters from `[A-Za-z0-9._-]`
-- `key_reference`: 1-512 printable non-control characters
-- `key_version`: 1-128 printable ASCII characters from `[A-Za-z0-9._:/-]`
+- `algorithm`: 1-128 characters, each from `[A-Za-z0-9._-]`
+- `key_reference`: 1-512 ASCII-printable characters, U+0020 through U+007E
+  inclusive
+- `key_version`: 1-128 characters, each from `[A-Za-z0-9._:/-]`
 - `signed_at`: integer greater than or equal to zero
 - encoded signature: 1-16,384 characters
 
@@ -258,12 +259,17 @@ A frozen result object containing:
 - `anchor_status`
 - `reason_code`
 - a bounded, sanitized message
-- normalized non-secret signature metadata when validly parsed
+- the exact validly parsed `SignatureMetadata`, including when no verifier is
+  configured
 
 The result exposes convenience properties for cryptographic validity and
 external anchoring without collapsing those properties into one status.
 
-The result never contains:
+Returned `signature_metadata` is untrusted, artifact-declared data. The
+contract requires hosts to keep it non-secret, but AEGIS does not inspect,
+hash, omit, or rewrite syntactically valid values. Hosts must apply their own
+redaction before logging that metadata. Outside this explicitly returned
+metadata, core-generated result messages never contain:
 
 - canonical payload bytes
 - signature contents
@@ -311,8 +317,9 @@ It must:
 
 The receipt prevents an alias rotation or provider-side key change between
 identity preparation and signing from creating false metadata. AEGIS compares
-the receipt with the prepared identity before attaching either metadata or the
-signature.
+the receipt with an untouched core identity snapshot before attaching either
+metadata or the signature. The signer receives a disposable equal copy, so
+mutating its argument cannot rewrite the snapshot used for receipt validation.
 
 ### Metadata-aware verifier
 
@@ -445,9 +452,11 @@ state.
 3. Metadata-aware evidence is parsed, bounded, and version-checked before the
    external verifier is called.
 4. The identical domain-separated payload is reconstructed.
-5. The verifier resolves only the configured key/version and checks the
+5. AEGIS keeps an untouched parsed metadata snapshot and passes the verifier a
+   disposable equal copy.
+6. The verifier resolves only the configured key/version and checks the
    permitted algorithm, signature, and external anchor.
-6. AEGIS validates the verifier response and normalizes it into
+7. AEGIS validates the verifier response and normalizes it into
    `ArtifactVerificationResult`.
 
 Declared verifier timeouts or unavailability map to
@@ -522,8 +531,13 @@ typed contract errors.
 
 Expected provider unavailability is not treated as a programming defect.
 Unexpected provider exceptions are sanitized before wrapping. Messages,
-details, results, and logs exclude payloads, signatures, secrets, credentials,
-and raw provider responses.
+exceptions, details, and logs exclude payloads, signatures, secrets,
+credentials, artifact-declared metadata values, and raw provider responses.
+Metadata shape errors report only core-owned field identifiers and integer
+counts; attacker-chosen extra field names are never echoed. Exact valid parsed
+metadata remains available only through
+`ArtifactVerificationResult.signature_metadata`, and hosts must redact it
+before logging.
 
 ## Security Invariants
 
@@ -534,9 +548,14 @@ and raw provider responses.
 - The algorithm in artifact metadata is not sufficient authorization; the
   resolved key policy must permit it.
 - The signer must confirm the exact immutable key version used.
+- Signers and verifiers receive disposable value copies; untouched core
+  snapshots drive receipt validation and returned metadata.
 - All signature metadata is signed.
 - Signing failure cannot leave partially signed evidence.
 - Verification cannot mutate evidence.
+- Valid parsed signature metadata is returned exactly as untrusted,
+  artifact-declared, contractually non-secret data; hosts redact it before
+  logging.
 - External signer or verifier availability cannot alter the governance result
   already recorded by the artifact.
 - `signed_at` is observational, not trusted time.
@@ -551,7 +570,9 @@ failing test that fails for the intended reason.
 ### Legacy compatibility
 
 - Fixed HMAC golden signatures remain unchanged.
-- Legacy boolean verification results remain unchanged.
+- Legacy boolean verification results remain unchanged; detailed verification
+  accepts only an exact built-in `bool` response and never evaluates
+  attacker-controlled truthiness.
 - Existing custom `ArtifactSigner` subclasses instantiate and work unchanged.
 - `AEGIS(signer=...)` produces the existing artifact shape.
 
@@ -595,7 +616,10 @@ failing test that fails for the intended reason.
 ### Redaction and packaging
 
 - Injected credentials, provider secrets, raw signatures, and payload fragments
-  do not appear in results, exceptions, details, or captured logs.
+  do not appear in core-generated result messages, exceptions, details, or
+  captured logs.
+- Exact valid parsed signature metadata remains accessible as explicitly
+  untrusted result data, including for verifier-unavailable results.
 - New public types import from supported modules and top-level `aegis`.
 - Importing the base package does not import or require cloud SDKs.
 
@@ -610,7 +634,8 @@ A deterministic test double and shared assertion module exercise:
 - historical, unknown, and revoked keys
 - declared unavailability
 - malformed contract responses
-- redaction requirements
+- redaction requirements checked against the exact payload supplied to the
+  verifier, including metadata-mutation scenarios
 
 Issue #45 reuses the same assertions for its provider recipe or optional
 integration.
@@ -664,8 +689,11 @@ The documentation must state:
 
 - The new path is opt-in through `sign_artifact_with_metadata()`.
 - Existing engine construction and automatic HMAC signing remain unchanged.
-- Legacy paths incur no metadata, provider call, import, or runtime overhead.
-- Metadata-aware signing makes one signer contract call.
+- Legacy signing and verification calls add no metadata and perform no
+  external-provider operation. Public imports are eager, so #44 does not claim
+  zero import overhead.
+- Metadata-aware signing makes one identity-preparation call and one signing
+  call.
 - Metadata-aware verification makes at most one verifier contract call.
 - AEGIS performs no retry, provider discovery, credential lookup, storage
   operation, or network call.
@@ -707,9 +735,11 @@ Issue #44 is complete when:
   documentation.
 - Legacy artifact output and fixed-input HMAC signatures remain unchanged.
 - Both audit schema copies are identical.
-- No cloud or HSM dependency is added.
-- No raw secret, payload, signature, or provider response appears in a result,
-  exception, or log.
+- No provider SDK or new runtime dependency is added by #44.
+- No raw secret, payload, signature, artifact-declared metadata value, or
+  provider response appears in a core-generated message, exception, details,
+  or log. Exact valid parsed metadata remains explicitly accessible as
+  untrusted result data and is host-redacted before logging.
 - Targeted, full-suite, coverage, lint, parity, and distribution validation
   gates pass.
 - #45, #46, and #47 can consume the frozen contracts without changing their

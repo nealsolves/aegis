@@ -18,6 +18,8 @@ from aegis.errors import (
 )
 from aegis.signing import (
     AnchorStatus,
+    ArtifactVerificationResult,
+    SignatureMetadata,
     SignatureStatus,
     VerificationReasonCode,
     sign_artifact_with_metadata,
@@ -75,6 +77,36 @@ _REDACTION_CORPUS = (
     '{"audit_schema_version":"1.4","private":"payload-fragment"}',
     "https://provider.invalid/raw/response?id=credential",
 )
+
+
+class _RecordingVerifier:
+    """Record exact core-supplied payloads while preserving an opaque verifier."""
+
+    def __init__(self, verifier: object) -> None:
+        self._verifier = verifier
+        self.payloads: list[bytes] = []
+
+    def verify(
+        self,
+        payload: bytes,
+        signature: str,
+        metadata: SignatureMetadata,
+    ) -> object:
+        self.payloads.append(payload)
+        return self._verifier.verify(  # type: ignore[attr-defined]
+            payload,
+            signature,
+            metadata,
+        )
+
+
+def _exact_verifier_payloads(
+    verifier: _RecordingVerifier,
+    *,
+    expected_calls: int = 1,
+) -> tuple[bytes, ...]:
+    assert len(verifier.payloads) == expected_calls
+    return tuple(verifier.payloads)
 
 
 class _LogCapture(logging.Handler):
@@ -159,14 +191,23 @@ def _assert_safe_result(
     result: object,
     logs: _LogCapture | str,
     *,
-    canonical_payload: bytes | None = None,
+    payloads: Sequence[bytes] = (),
     raw_signature: object = None,
 ) -> None:
+    assert isinstance(result, ArtifactVerificationResult)
     log_text = logs if isinstance(logs, str) else logs.text
-    rendered = "\n".join((repr(result), log_text))
+    rendered = "\n".join(
+        (
+            str(result.signature_status),
+            str(result.anchor_status),
+            str(result.reason_code),
+            result.message,
+            log_text,
+        )
+    )
     _assert_not_redacted(
         rendered,
-        payloads=() if canonical_payload is None else (canonical_payload,),
+        payloads=payloads,
         raw_signature=raw_signature,
     )
 
@@ -257,16 +298,27 @@ def assert_external_verifier_conformance(
     """Assert exact-version verification and safe public verification outcomes."""
     unsigned = _artifact()
     snapshot = deepcopy(unsigned)
+    recording_verifier = _RecordingVerifier(
+        verifier_factory(VerifierScenario.NORMAL)
+    )
     with _capture_logs() as logs:
         result = verify_artifact_detailed(
-            unsigned, verifier=verifier_factory(VerifierScenario.NORMAL)
+            unsigned,
+            verifier=recording_verifier,
         )
     assert (result.signature_status, result.anchor_status, result.reason_code) == (
         SignatureStatus.UNSIGNED,
         AnchorStatus.NOT_EVALUATED,
         VerificationReasonCode.UNSIGNED,
     )
-    _assert_safe_result(result, logs)
+    _assert_safe_result(
+        result,
+        logs,
+        payloads=_exact_verifier_payloads(
+            recording_verifier,
+            expected_calls=0,
+        ),
+    )
     _assert_unchanged(unsigned, snapshot)
 
     cases = (
@@ -299,9 +351,13 @@ def assert_external_verifier_conformance(
         fixture = _make_signed_artifact(signed_artifact_factory, version)
         artifact = fixture.artifact
         snapshot = deepcopy(artifact)
+        recording_verifier = _RecordingVerifier(
+            verifier_factory(VerifierScenario.NORMAL)
+        )
         with _capture_logs() as logs:
             result = verify_artifact_detailed(
-                artifact, verifier=verifier_factory(VerifierScenario.NORMAL)
+                artifact,
+                verifier=recording_verifier,
             )
         assert (result.signature_status, result.anchor_status, result.reason_code) == (
             status,
@@ -311,7 +367,7 @@ def assert_external_verifier_conformance(
         _assert_safe_result(
             result,
             logs,
-            canonical_payload=fixture.canonical_payload,
+            payloads=_exact_verifier_payloads(recording_verifier),
             raw_signature=artifact["signature"],
         )
         _assert_unchanged(artifact, snapshot)
@@ -322,9 +378,13 @@ def assert_external_verifier_conformance(
     unknown = fixture.artifact
     unknown["signature_metadata"]["key_version"] = "version/unknown"
     snapshot = deepcopy(unknown)
+    recording_verifier = _RecordingVerifier(
+        verifier_factory(VerifierScenario.NORMAL)
+    )
     with _capture_logs() as logs:
         result = verify_artifact_detailed(
-            unknown, verifier=verifier_factory(VerifierScenario.NORMAL)
+            unknown,
+            verifier=recording_verifier,
         )
     assert (result.signature_status, result.anchor_status, result.reason_code) == (
         SignatureStatus.UNKNOWN_KEY,
@@ -334,7 +394,7 @@ def assert_external_verifier_conformance(
     _assert_safe_result(
         result,
         logs,
-        canonical_payload=fixture.canonical_payload,
+        payloads=_exact_verifier_payloads(recording_verifier),
         raw_signature=unknown["signature"],
     )
     _assert_unchanged(unknown, snapshot)
@@ -345,9 +405,13 @@ def assert_external_verifier_conformance(
     invalid_signature = fixture.artifact
     invalid_signature["signature"] = "00" * 32
     snapshot = deepcopy(invalid_signature)
+    recording_verifier = _RecordingVerifier(
+        verifier_factory(VerifierScenario.NORMAL)
+    )
     with _capture_logs() as logs:
         result = verify_artifact_detailed(
-            invalid_signature, verifier=verifier_factory(VerifierScenario.NORMAL)
+            invalid_signature,
+            verifier=recording_verifier,
         )
     assert (result.signature_status, result.anchor_status, result.reason_code) == (
         SignatureStatus.INVALID,
@@ -357,7 +421,7 @@ def assert_external_verifier_conformance(
     _assert_safe_result(
         result,
         logs,
-        canonical_payload=fixture.canonical_payload,
+        payloads=_exact_verifier_payloads(recording_verifier),
         raw_signature=invalid_signature["signature"],
     )
     _assert_unchanged(invalid_signature, snapshot)
@@ -368,9 +432,13 @@ def assert_external_verifier_conformance(
     algorithm_denied = fixture.artifact
     algorithm_denied["signature_metadata"]["algorithm"] = "RSA-SHA256"
     snapshot = deepcopy(algorithm_denied)
+    recording_verifier = _RecordingVerifier(
+        verifier_factory(VerifierScenario.NORMAL)
+    )
     with _capture_logs() as logs:
         result = verify_artifact_detailed(
-            algorithm_denied, verifier=verifier_factory(VerifierScenario.NORMAL)
+            algorithm_denied,
+            verifier=recording_verifier,
         )
     assert (result.signature_status, result.anchor_status, result.reason_code) == (
         SignatureStatus.INVALID,
@@ -380,7 +448,7 @@ def assert_external_verifier_conformance(
     _assert_safe_result(
         result,
         logs,
-        canonical_payload=fixture.canonical_payload,
+        payloads=_exact_verifier_payloads(recording_verifier),
         raw_signature=algorithm_denied["signature"],
     )
     _assert_unchanged(algorithm_denied, snapshot)
@@ -400,7 +468,7 @@ def assert_external_verifier_conformance(
     _assert_safe_result(
         result,
         logs,
-        canonical_payload=fixture.canonical_payload,
+        payloads=(fixture.canonical_payload,),
         raw_signature=unavailable["signature"],
     )
     _assert_unchanged(unavailable, snapshot)
@@ -410,15 +478,19 @@ def assert_external_verifier_conformance(
     )
     unavailable = fixture.artifact
     snapshot = deepcopy(unavailable)
+    recording_verifier = _RecordingVerifier(
+        verifier_factory(VerifierScenario.UNAVAILABLE)
+    )
     with _capture_logs() as logs:
         result = verify_artifact_detailed(
-            unavailable, verifier=verifier_factory(VerifierScenario.UNAVAILABLE)
+            unavailable,
+            verifier=recording_verifier,
         )
     assert result.reason_code is VerificationReasonCode.VERIFIER_UNAVAILABLE
     _assert_safe_result(
         result,
         logs,
-        canonical_payload=fixture.canonical_payload,
+        payloads=_exact_verifier_payloads(recording_verifier),
         raw_signature=unavailable["signature"],
     )
     _assert_unchanged(unavailable, snapshot)
@@ -433,15 +505,17 @@ def assert_external_verifier_conformance(
         )
         artifact = fixture.artifact
         snapshot = deepcopy(artifact)
+        recording_verifier = _RecordingVerifier(verifier_factory(scenario))
         with _capture_logs() as logs:
             with pytest.raises(VerificationContractError) as caught:
                 verify_artifact_detailed(
-                    artifact, verifier=verifier_factory(scenario)
+                    artifact,
+                    verifier=recording_verifier,
                 )
         _assert_safe_error(
             caught.value,
             logs,
-            payloads=(fixture.canonical_payload,),
+            payloads=_exact_verifier_payloads(recording_verifier),
             raw_signature=artifact["signature"],
         )
         _assert_unchanged(artifact, snapshot)
