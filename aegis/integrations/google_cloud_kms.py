@@ -16,6 +16,7 @@ from aegis.integrations._kms_common import (
     _USE_PROVIDER_DEFAULT,
     _canonical_b64decode,
     _canonical_b64encode,
+    _is_canonical_key_disposition,
     _normalize_crc32c,
     _normalize_timeout,
     _outcome,
@@ -69,7 +70,9 @@ class GoogleCloudKmsVerificationTarget:
                 ) is None
                 or type(self.algorithm) is not str
                 or self.algorithm not in _GOOGLE_ALGORITHMS
-                or type(self.disposition) is not KmsKeyDisposition
+                or not _is_canonical_key_disposition(
+                    self.disposition
+                )
                 or (
                     self.public_key_pem is not None
                     and (
@@ -354,7 +357,9 @@ class GoogleCloudKmsArtifactVerifier:
             if (
                 type(resolved_name) is not str
                 or type(resolved_algorithm) is not str
-                or type(resolved_disposition) is not KmsKeyDisposition
+                or not _is_canonical_key_disposition(
+                    resolved_disposition
+                )
                 or (
                     resolved_pem is not None
                     and (
@@ -503,10 +508,14 @@ class GoogleCloudKmsArtifactVerifier:
         response_failed = False
         pem = None
         try:
+            if type(response) is not kms_v1.PublicKey:  # type: ignore[attr-defined]
+                raise ValueError
             response_name = response.name  # type: ignore[attr-defined]
             response_algorithm = response.algorithm  # type: ignore[attr-defined]
             response_format = response.public_key_format  # type: ignore[attr-defined]
             checksummed_key = response.public_key  # type: ignore[attr-defined]
+            if type(checksummed_key) is not kms_v1.ChecksummedData:  # type: ignore[attr-defined]
+                raise ValueError
             key_data = checksummed_key.data  # type: ignore[attr-defined]
             key_crc32c = checksummed_key.crc32c_checksum  # type: ignore[attr-defined]
             expected_format = kms_v1.PublicKey.PublicKeyFormat.PEM  # type: ignore[attr-defined]
@@ -519,8 +528,7 @@ class GoogleCloudKmsArtifactVerifier:
                 type(response_name) is not str
                 or response_name != target.crypto_key_version_name
                 or normalized_algorithm != target.algorithm
-                or type(response_format) is not type(expected_format)
-                or response_format != expected_format
+                or response_format is not expected_format
                 or type(key_data) is not bytes
                 or not key_data
                 or len(key_data) > MAX_PUBLIC_KEY_PEM_BYTES
@@ -628,7 +636,7 @@ def _normalize_crypto_key_version(
 def _google_algorithm_name(algorithm_type: object, value: object) -> str:
     for name in _GOOGLE_ALGORITHMS:
         constant = getattr(algorithm_type, name)
-        if type(value) is type(constant) and value == constant:
+        if value is constant:
             return name
     raise ValueError
 
@@ -881,34 +889,119 @@ def _is_google_availability_error(error: BaseException) -> bool:
         from google.api_core import exceptions
     except (ImportError, ModuleNotFoundError):
         return False
-    names = (
+    return _classify_google_availability_error(
+        exceptions,
+        error,
+    )
+
+
+def _classify_google_availability_error(
+    exceptions: object,
+    error: BaseException,
+) -> bool:
+    direct_names = (
         "DeadlineExceeded",
+        "GatewayTimeout",
+        "ResourceExhausted",
+        "TooManyRequests",
+        "PermissionDenied",
+        "Forbidden",
+        "ServiceUnavailable",
         "FailedPrecondition",
         "NotFound",
-        "PermissionDenied",
-        "ResourceExhausted",
-        "ServiceUnavailable",
     )
     allowed_types = []
     try:
-        for name in names:
-            candidate = getattr(exceptions, name)
-            if (
-                type(candidate) is not type
-                or candidate.__name__ != name
-                or not issubclass(candidate, BaseException)
-                or candidate in (BaseException, Exception)
-            ):
+        for name in direct_names:
+            candidate = _google_exception_type(exceptions, name)
+            if candidate is None:
                 return False
             allowed_types.append(candidate)
     except Exception:
         return False
-    return type(error) in tuple(allowed_types)
+    if type(error) in tuple(allowed_types):
+        return True
+
+    bad_request_type = _google_exception_type(
+        exceptions,
+        "BadRequest",
+    )
+    if (
+        bad_request_type is not None
+        and type(error) is bad_request_type
+        and _is_failed_precondition_bad_request(error)
+    ):
+        return True
+
+    retry_error_type = _google_exception_type(
+        exceptions,
+        "RetryError",
+    )
+    if retry_error_type is None or type(error) is not retry_error_type:
+        return False
+    try:
+        cause = error.cause  # type: ignore[attr-defined]
+    except Exception:
+        return False
+    if not isinstance(cause, BaseException):
+        return False
+    if type(cause) in tuple(allowed_types):
+        return True
+    return (
+        bad_request_type is not None
+        and type(cause) is bad_request_type
+        and _is_failed_precondition_bad_request(cause)
+    )
+
+
+def _google_exception_type(
+    exceptions: object,
+    name: str,
+) -> type[BaseException] | None:
+    try:
+        candidate = getattr(exceptions, name)
+        if (
+            not isinstance(candidate, type)
+            or candidate.__module__ != "google.api_core.exceptions"
+            or candidate.__name__ != name
+            or not issubclass(candidate, BaseException)
+            or candidate is BaseException
+            or candidate is Exception
+        ):
+            return None
+    except Exception:
+        return None
+    return candidate
+
+
+def _is_failed_precondition_bad_request(
+    error: BaseException,
+) -> bool:
+    try:
+        response = error.response  # type: ignore[attr-defined]
+        payload = response.json()  # type: ignore[attr-defined]
+        if type(payload) is not dict:
+            return False
+        error_fields = dict.get(payload, "error")
+        if type(error_fields) is not dict:
+            return False
+        status = dict.get(error_fields, "status")
+        return (
+            type(status) is str
+            and status == "FAILED_PRECONDITION"
+        )
+    except Exception:
+        return False
 
 
 def _successful_verification_outcome(
     disposition: KmsKeyDisposition,
 ) -> ExternalVerificationOutcome:
+    if not _is_canonical_key_disposition(disposition):
+        raise VerificationContractError(
+            "Google Cloud KMS resolver returned an invalid target",
+            details={},
+        ) from None
     reason_by_disposition = {
         KmsKeyDisposition.ANCHORED: (
             VerificationReasonCode.SIGNATURE_VALID_ANCHORED

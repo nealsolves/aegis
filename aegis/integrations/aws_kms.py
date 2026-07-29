@@ -15,6 +15,7 @@ from aegis.integrations._kms_common import (
     MAX_AWS_RAW_SIGNATURE_BYTES,
     _canonical_b64decode,
     _canonical_b64encode,
+    _is_canonical_key_disposition,
     _outcome,
     _sha256_digest,
 )
@@ -131,7 +132,7 @@ class AwsKmsVerificationTarget:
                 type(algorithm) is str and algorithm in _AWS_ALGORITHMS
                 for algorithm in self.allowed_algorithms
             )
-            and type(self.disposition) is KmsKeyDisposition
+            and _is_canonical_key_disposition(self.disposition)
         )
         if not valid:
             raise VerificationContractError(
@@ -356,7 +357,9 @@ class AwsKmsArtifactVerifier:
                 or type(resolved_algorithms) is not frozenset
                 or not resolved_algorithms
                 or any(type(item) is not str for item in resolved_algorithms)
-                or type(resolved_disposition) is not KmsKeyDisposition
+                or not _is_canonical_key_disposition(
+                    resolved_disposition
+                )
             ):
                 raise ValueError
             target = AwsKmsVerificationTarget(
@@ -704,6 +707,11 @@ def _is_botocore_transport_error(error: BaseException) -> bool:
 def _successful_verification_outcome(
     disposition: KmsKeyDisposition,
 ) -> ExternalVerificationOutcome:
+    if not _is_canonical_key_disposition(disposition):
+        raise VerificationContractError(
+            "AWS KMS resolver returned an invalid target",
+            details={},
+        ) from None
     reason_by_disposition = {
         KmsKeyDisposition.ANCHORED: (
             VerificationReasonCode.SIGNATURE_VALID_ANCHORED

@@ -238,6 +238,23 @@ def test_aws_verification_target_reconstructs_only_exact_trusted_builtins():
     assert target.disposition is KmsKeyDisposition.ANCHORED
 
 
+def test_aws_target_rejects_forged_exact_disposition_instances():
+    for value in ("anchored", "revoked", "unknown"):
+        forged = str.__new__(KmsKeyDisposition, value)
+
+        with pytest.raises(
+            VerificationContractError,
+            match=r"^AWS KMS verification target is invalid$",
+        ) as caught:
+            AwsKmsVerificationTarget(
+                AWS_KEY_ARNS["RSA_2048"],
+                frozenset({"RSASSA_PSS_SHA_256"}),
+                forged,
+            )
+
+        _assert_safe_error(caught.value)
+
+
 def test_aws_verification_target_is_frozen_and_honors_metadata_arn_bound():
     maximum_arn = (
         "arn:aws:kms:"
@@ -1223,6 +1240,41 @@ def test_aws_verifier_rejects_forged_exact_target_fields(
     with pytest.raises(VerificationContractError) as caught:
         verifier.verify(
             b"payload",
+            b64encode(b"signature").decode("ascii"),
+            _aws_metadata(),
+        )
+
+    _assert_safe_error(caught.value)
+    assert client.verify_calls == []
+
+
+def test_aws_verifier_rejects_forged_disposition_before_provider_work(
+    aws_private_keys,
+):
+    resolved = object.__new__(AwsKmsVerificationTarget)
+    object.__setattr__(resolved, "key_arn", AWS_KEY_ARNS["RSA_2048"])
+    object.__setattr__(
+        resolved,
+        "allowed_algorithms",
+        frozenset({"RSASSA_PSS_SHA_256"}),
+    )
+    object.__setattr__(
+        resolved,
+        "disposition",
+        str.__new__(KmsKeyDisposition, "revoked"),
+    )
+    client = RecordingAwsKmsClient(aws_private_keys)
+    verifier = AwsKmsArtifactVerifier(
+        client,
+        resolver=lambda _reference, _version: resolved,
+    )
+
+    with pytest.raises(
+        VerificationContractError,
+        match=r"^AWS KMS resolver returned an invalid target$",
+    ) as caught:
+        verifier.verify(
+            b"forged disposition",
             b64encode(b"signature").decode("ascii"),
             _aws_metadata(),
         )

@@ -8,6 +8,7 @@ import hashlib
 import math
 from types import MappingProxyType
 
+from aegis.integrations.kms import KmsKeyDisposition
 from aegis.signing import (
     AnchorStatus,
     ExternalVerificationOutcome,
@@ -123,6 +124,11 @@ def _normalize_crc32c(value: object) -> int:
     if type(value) is not int or not 0 <= value <= MAX_CRC32C:
         raise ValueError("crc32c is invalid")
     return value
+
+
+def _is_canonical_key_disposition(value: object) -> bool:
+    """Accept only one of the four declared host-policy enum singletons."""
+    return any(value is member for member in KmsKeyDisposition)
 
 
 def _outcome(reason_code: VerificationReasonCode) -> ExternalVerificationOutcome:

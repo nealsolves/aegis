@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import Enum, IntEnum
 from hashlib import sha256
 from types import ModuleType
 from types import SimpleNamespace
@@ -467,7 +467,14 @@ GOOGLE_KEY_VERSION_NAMES = {
 }
 
 
-class GoogleKmsFixtureError(Exception):
+class _GoogleApiCallErrorMeta(type):
+    """Mirror google.api_core's non-plain exception-class metaclass."""
+
+
+class GoogleKmsFixtureError(
+    Exception,
+    metaclass=_GoogleApiCallErrorMeta,
+):
     """Base class for documented fake Google Cloud KMS failures."""
 
 
@@ -475,8 +482,23 @@ class DeadlineExceeded(GoogleKmsFixtureError):
     pass
 
 
+class GatewayTimeout(GoogleKmsFixtureError):
+    pass
+
+
 class FailedPrecondition(GoogleKmsFixtureError):
     pass
+
+
+class BadRequest(GoogleKmsFixtureError):
+    def __init__(
+        self,
+        message: str,
+        *,
+        response: object | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.response = response
 
 
 class NotFound(GoogleKmsFixtureError):
@@ -487,7 +509,15 @@ class PermissionDenied(GoogleKmsFixtureError):
     pass
 
 
+class Forbidden(GoogleKmsFixtureError):
+    pass
+
+
 class ResourceExhausted(GoogleKmsFixtureError):
+    pass
+
+
+class TooManyRequests(GoogleKmsFixtureError):
     pass
 
 
@@ -495,7 +525,37 @@ class ServiceUnavailable(GoogleKmsFixtureError):
     pass
 
 
-class _GoogleAlgorithm(Enum):
+class RetryError(GoogleKmsFixtureError):
+    def __init__(self, message: str, cause: BaseException) -> None:
+        super().__init__(message)
+        self.cause = cause
+
+
+class _GoogleRestResponse:
+    def __init__(self, payload: object) -> None:
+        self._payload = payload
+
+    def json(self) -> object:
+        return self._payload
+
+
+for _google_exception_type in (
+    BadRequest,
+    DeadlineExceeded,
+    FailedPrecondition,
+    Forbidden,
+    GatewayTimeout,
+    NotFound,
+    PermissionDenied,
+    ResourceExhausted,
+    RetryError,
+    ServiceUnavailable,
+    TooManyRequests,
+):
+    _google_exception_type.__module__ = "google.api_core.exceptions"
+
+
+class _GoogleAlgorithm(IntEnum):
     RSA_SIGN_PSS_2048_SHA256 = 2
     RSA_SIGN_PSS_3072_SHA256 = 3
     RSA_SIGN_PSS_4096_SHA256 = 4
@@ -517,7 +577,7 @@ class _GoogleVersionState(Enum):
     EXTERNAL_DESTRUCTION_FAILED = 10
 
 
-class _GooglePublicKeyFormat(Enum):
+class _GooglePublicKeyFormat(IntEnum):
     PUBLIC_KEY_FORMAT_UNSPECIFIED = 0
     PEM = 1
 
@@ -529,6 +589,38 @@ class _GoogleCryptoKeyVersion:
 
 class _GooglePublicKey:
     PublicKeyFormat = _GooglePublicKeyFormat
+
+    def __init__(
+        self,
+        *,
+        name: object,
+        algorithm: object,
+        public_key_format: object,
+        public_key: object,
+    ) -> None:
+        self.name = name
+        self.algorithm = algorithm
+        self.public_key_format = public_key_format
+        self.public_key = public_key
+
+
+class _GoogleChecksummedData:
+    def __init__(
+        self,
+        *,
+        data: object,
+        crc32c_checksum: object,
+    ) -> None:
+        self.data = data
+        self.crc32c_checksum = crc32c_checksum
+
+
+class _GooglePublicKeySubclass(_GooglePublicKey):
+    pass
+
+
+class _GoogleChecksummedDataSubclass(_GoogleChecksummedData):
+    pass
 
 
 class _GoogleGetCryptoKeyVersionRequest:
@@ -587,6 +679,7 @@ def install_controlled_google_kms_modules(monkeypatch) -> SimpleNamespace:
 
     kms_module.CryptoKeyVersion = _GoogleCryptoKeyVersion
     kms_module.PublicKey = _GooglePublicKey
+    kms_module.ChecksummedData = _GoogleChecksummedData
     kms_module.GetCryptoKeyVersionRequest = _GoogleGetCryptoKeyVersionRequest
     kms_module.GetPublicKeyRequest = _GoogleGetPublicKeyRequest
     kms_module.Digest = _GoogleDigest
@@ -605,10 +698,15 @@ def install_controlled_google_kms_modules(monkeypatch) -> SimpleNamespace:
     api_core_module = ModuleType("google.api_core")
     api_exceptions_module = ModuleType("google.api_core.exceptions")
     api_exceptions_module.DeadlineExceeded = DeadlineExceeded
+    api_exceptions_module.GatewayTimeout = GatewayTimeout
     api_exceptions_module.FailedPrecondition = FailedPrecondition
+    api_exceptions_module.BadRequest = BadRequest
     api_exceptions_module.NotFound = NotFound
     api_exceptions_module.PermissionDenied = PermissionDenied
+    api_exceptions_module.Forbidden = Forbidden
     api_exceptions_module.ResourceExhausted = ResourceExhausted
+    api_exceptions_module.TooManyRequests = TooManyRequests
+    api_exceptions_module.RetryError = RetryError
     api_exceptions_module.ServiceUnavailable = ServiceUnavailable
     api_core_module.exceptions = api_exceptions_module
     google_module.api_core = api_core_module
@@ -772,10 +870,13 @@ class RecordingGoogleCloudKmsClient:
         self.get_public_key_calls.append(dict(kwargs))
         failures = {
             "deadline_public_key": DeadlineExceeded,
+            "gateway_timeout_public_key": GatewayTimeout,
             "failed_precondition_public_key": FailedPrecondition,
             "not_found_public_key": NotFound,
             "permission_public_key": PermissionDenied,
+            "forbidden_public_key": Forbidden,
             "resource_exhausted_public_key": ResourceExhausted,
+            "too_many_requests_public_key": TooManyRequests,
             "unavailable_public_key": ServiceUnavailable,
             "unexpected_public_key": RuntimeError,
         }
@@ -783,6 +884,43 @@ class RecordingGoogleCloudKmsClient:
         if failure_type is not None:
             raise failure_type(
                 "public key failure " + " | ".join(SENSITIVE_CORPUS)
+            )
+        if self.mode == "retry_deadline_public_key":
+            raise RetryError(
+                "retry exhausted " + SENSITIVE_CORPUS[0],
+                DeadlineExceeded("deadline " + SENSITIVE_CORPUS[1]),
+            )
+        if self.mode == "retry_unexpected_public_key":
+            raise RetryError(
+                "retry exhausted " + SENSITIVE_CORPUS[0],
+                RuntimeError("unexpected " + SENSITIVE_CORPUS[1]),
+            )
+        if self.mode.startswith("bad_request_"):
+            payload_by_mode = {
+                "bad_request_failed_precondition": {
+                    "error": {
+                        "status": "FAILED_PRECONDITION",
+                        "message": SENSITIVE_CORPUS[2],
+                    },
+                },
+                "bad_request_invalid_argument": {
+                    "error": {
+                        "status": "INVALID_ARGUMENT",
+                        "message": SENSITIVE_CORPUS[2],
+                    },
+                },
+                "bad_request_missing_status": {
+                    "error": {
+                        "message": SENSITIVE_CORPUS[2],
+                    },
+                },
+                "bad_request_malformed_payload": [SENSITIVE_CORPUS[2]],
+            }
+            raise BadRequest(
+                "bad request " + SENSITIVE_CORPUS[3],
+                response=_GoogleRestResponse(
+                    payload_by_mode[self.mode]
+                ),
             )
         if self.mode == "malformed_public_key_response":
             return object()
@@ -806,12 +944,34 @@ class RecordingGoogleCloudKmsClient:
             algorithm = self.algorithm
         elif self.mode == "public_key_algorithm_lookalike":
             algorithm = _GoogleEnumLookalike(self.algorithm)
+        elif self.mode == "forged_public_key_algorithm":
+            algorithm = int.__new__(
+                _GoogleAlgorithm,
+                int(_GoogleAlgorithm[self.algorithm]),
+            )
+            object.__setattr__(algorithm, "_value_", int(algorithm))
+            object.__setattr__(algorithm, "_name_", "FORGED_ALGORITHM")
         elif self.mode == "wrong_public_key_format":
             public_key_format = _GooglePublicKeyFormat.PUBLIC_KEY_FORMAT_UNSPECIFIED
         elif self.mode == "public_key_format_string":
             public_key_format = "PEM"
         elif self.mode == "public_key_format_lookalike":
             public_key_format = _GoogleEnumLookalike("PEM")
+        elif self.mode == "forged_public_key_format":
+            public_key_format = int.__new__(
+                _GooglePublicKeyFormat,
+                int(_GooglePublicKeyFormat.PEM),
+            )
+            object.__setattr__(
+                public_key_format,
+                "_value_",
+                int(public_key_format),
+            )
+            object.__setattr__(
+                public_key_format,
+                "_name_",
+                "FORGED_PEM",
+            )
         elif self.mode == "empty_public_key":
             pem = b""
         elif self.mode == "oversized_public_key":
@@ -840,16 +1000,38 @@ class RecordingGoogleCloudKmsClient:
             )
             checksum = google_crc32c_value(pem)
 
-        public_key = SimpleNamespace(
+        public_key = _GoogleChecksummedData(
             data=pem,
             crc32c_checksum=checksum,
         )
-        response = SimpleNamespace(
+        if self.mode == "checksummed_data_duck":
+            public_key = SimpleNamespace(
+                data=pem,
+                crc32c_checksum=checksum,
+            )
+        elif self.mode == "checksummed_data_subclass":
+            public_key = _GoogleChecksummedDataSubclass(
+                data=pem,
+                crc32c_checksum=checksum,
+            )
+        response_type = (
+            _GooglePublicKeySubclass
+            if self.mode == "public_key_response_subclass"
+            else _GooglePublicKey
+        )
+        response = response_type(
             name=name,
             algorithm=algorithm,
             public_key_format=public_key_format,
             public_key=public_key,
         )
+        if self.mode == "public_key_response_duck":
+            response = SimpleNamespace(
+                name=name,
+                algorithm=algorithm,
+                public_key_format=public_key_format,
+                public_key=public_key,
+            )
         if self.mode == "legacy_public_key_only":
             del response.public_key
             response.pem = pem

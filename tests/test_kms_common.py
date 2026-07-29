@@ -12,6 +12,7 @@ from aegis.integrations._kms_common import (
     _USE_PROVIDER_DEFAULT,
     _canonical_b64decode,
     _canonical_b64encode,
+    _is_canonical_key_disposition,
     _normalize_crc32c,
     _normalize_timeout,
     _outcome,
@@ -33,6 +34,17 @@ def test_kms_dispositions_are_the_frozen_host_trust_policy_values():
         "INVALID_ANCHOR": "invalid_anchor",
         "REVOKED": "revoked",
     }
+
+
+def test_kms_disposition_helper_rejects_forged_exact_enum_instances():
+    for value in ("anchored", "unanchored", "invalid_anchor", "revoked", "unknown"):
+        forged = str.__new__(KmsKeyDisposition, value)
+
+        assert type(forged) is KmsKeyDisposition
+        assert _is_canonical_key_disposition(forged) is False
+
+    for disposition in KmsKeyDisposition:
+        assert _is_canonical_key_disposition(disposition) is True
 
 
 def test_integrations_namespace_has_no_provider_classes_or_reexports():

@@ -1088,6 +1088,26 @@ def test_google_target_repr_does_not_expose_resource_or_retained_pem(
     assert pem.decode("ascii") not in rendered
 
 
+def test_google_target_rejects_forged_exact_disposition_instances():
+    algorithm = "RSA_SIGN_PSS_2048_SHA256"
+    name = GOOGLE_KEY_VERSION_NAMES[algorithm]
+
+    for value in ("anchored", "revoked", "unknown"):
+        forged = str.__new__(KmsKeyDisposition, value)
+
+        with pytest.raises(
+            VerificationContractError,
+            match=r"^Google Cloud KMS verification target is invalid$",
+        ) as caught:
+            GoogleCloudKmsVerificationTarget(
+                name,
+                algorithm,
+                forged,
+            )
+
+        _assert_safe_error(caught.value)
+
+
 @pytest.mark.parametrize(
     "field,value",
     [
@@ -1428,6 +1448,57 @@ def test_google_verifier_rejects_lookalike_or_subclass_targets(
     _assert_safe_error(caught.value)
 
 
+def test_google_verifier_rejects_forged_disposition_before_pem_or_provider(
+    google_private_keys,
+    monkeypatch,
+):
+    from cryptography.hazmat.primitives import serialization
+
+    algorithm = "RSA_SIGN_PSS_2048_SHA256"
+    name = GOOGLE_KEY_VERSION_NAMES[algorithm]
+    resolved = object.__new__(GoogleCloudKmsVerificationTarget)
+    object.__setattr__(resolved, "crypto_key_version_name", name)
+    object.__setattr__(resolved, "algorithm", algorithm)
+    object.__setattr__(
+        resolved,
+        "disposition",
+        str.__new__(KmsKeyDisposition, "anchored"),
+    )
+    object.__setattr__(
+        resolved,
+        "public_key_pem",
+        _google_public_pem(google_private_keys[algorithm]),
+    )
+    client = RecordingGoogleCloudKmsClient(google_private_keys)
+    real_load = serialization.load_pem_public_key
+    parse_calls = []
+
+    def record_parse(*args, **kwargs):
+        parse_calls.append(args[0])
+        return real_load(*args, **kwargs)
+
+    monkeypatch.setattr(
+        serialization,
+        "load_pem_public_key",
+        record_parse,
+    )
+    verifier = _google_verifier(client, target=resolved)
+
+    with pytest.raises(
+        VerificationContractError,
+        match=r"^Google Cloud KMS resolver returned an invalid target$",
+    ) as caught:
+        verifier.verify(
+            b"forged disposition",
+            b64encode(b"signature").decode("ascii"),
+            _google_metadata(algorithm, name),
+        )
+
+    _assert_safe_error(caught.value)
+    assert parse_calls == []
+    assert client.get_public_key_calls == []
+
+
 @pytest.mark.parametrize("mismatch", ["parent", "version"])
 def test_google_verifier_rejects_target_identity_mismatch(mismatch):
     algorithm = "RSA_SIGN_PSS_2048_SHA256"
@@ -1505,6 +1576,31 @@ def test_google_verifier_fetches_checksummed_public_key_and_verifies(
     )
 
 
+def test_controlled_google_public_key_response_uses_exact_sdk_shapes(
+    google_private_keys,
+    controlled_google_modules,
+):
+    client = RecordingGoogleCloudKmsClient(google_private_keys)
+
+    response = client.get_public_key(request=object())
+    version_type = controlled_google_modules.kms_v1.CryptoKeyVersion
+    algorithm_type = version_type.CryptoKeyVersionAlgorithm
+
+    assert type(response) is controlled_google_modules.kms_v1.PublicKey
+    assert (
+        type(response.public_key)
+        is controlled_google_modules.kms_v1.ChecksummedData
+    )
+    assert (
+        response.algorithm
+        is algorithm_type.RSA_SIGN_PSS_2048_SHA256
+    )
+    assert (
+        response.public_key_format
+        is controlled_google_modules.kms_v1.PublicKey.PublicKeyFormat.PEM
+    )
+
+
 @pytest.mark.parametrize("timeout", [None, 1, 2.5])
 def test_google_verifier_forwards_explicit_retry_and_timeout(
     google_private_keys,
@@ -1547,9 +1643,15 @@ def test_google_verifier_forwards_explicit_retry_and_timeout(
         "wrong_public_key_algorithm",
         "public_key_algorithm_string",
         "public_key_algorithm_lookalike",
+        "forged_public_key_algorithm",
         "wrong_public_key_format",
         "public_key_format_string",
         "public_key_format_lookalike",
+        "forged_public_key_format",
+        "public_key_response_duck",
+        "public_key_response_subclass",
+        "checksummed_data_duck",
+        "checksummed_data_subclass",
         "empty_public_key",
         "oversized_public_key",
         "public_key_subclass",
@@ -1600,11 +1702,16 @@ def test_google_verifier_rejects_malformed_or_unexpected_public_keys(
     "mode",
     [
         "deadline_public_key",
+        "gateway_timeout_public_key",
         "failed_precondition_public_key",
         "not_found_public_key",
         "permission_public_key",
+        "forbidden_public_key",
         "resource_exhausted_public_key",
+        "too_many_requests_public_key",
         "unavailable_public_key",
+        "retry_deadline_public_key",
+        "bad_request_failed_precondition",
     ],
 )
 def test_google_verifier_maps_closed_provider_availability_errors(
@@ -1630,6 +1737,159 @@ def test_google_verifier_maps_closed_provider_availability_errors(
     )
 
     assert outcome.reason_code is VerificationReasonCode.VERIFIER_UNAVAILABLE
+
+
+def test_controlled_google_api_errors_use_realistic_metaclass_and_identity(
+    controlled_google_modules,
+):
+    exceptions = controlled_google_modules.api_exceptions
+    names = (
+        "DeadlineExceeded",
+        "GatewayTimeout",
+        "ResourceExhausted",
+        "TooManyRequests",
+        "PermissionDenied",
+        "Forbidden",
+        "ServiceUnavailable",
+        "FailedPrecondition",
+        "NotFound",
+        "BadRequest",
+        "RetryError",
+    )
+
+    for name in names:
+        candidate = getattr(exceptions, name)
+        assert isinstance(candidate, type)
+        assert candidate.__module__ == "google.api_core.exceptions"
+        assert candidate.__name__ == name
+    assert type(exceptions.DeadlineExceeded) is not type
+
+
+@pytest.mark.parametrize(
+    "mode",
+    [
+        "retry_unexpected_public_key",
+        "bad_request_invalid_argument",
+        "bad_request_missing_status",
+        "bad_request_malformed_payload",
+    ],
+)
+def test_google_verifier_rejects_unlisted_retry_and_bad_request_failures(
+    google_private_keys,
+    controlled_google_modules,
+    mode,
+):
+    algorithm = "RSA_SIGN_PSS_2048_SHA256"
+    name = GOOGLE_KEY_VERSION_NAMES[algorithm]
+    client = RecordingGoogleCloudKmsClient(
+        google_private_keys,
+        mode=mode,
+    )
+    verifier = _google_verifier(
+        client,
+        target=GoogleCloudKmsVerificationTarget(name, algorithm),
+    )
+
+    with pytest.raises(
+        VerificationContractError,
+        match=r"^Google Cloud KMS verifier returned an invalid response$",
+    ) as caught:
+        verifier.verify(
+            b"narrow Google API failure " + SENSITIVE_CORPUS[4].encode(),
+            b64encode(b"signature-" + SENSITIVE_CORPUS[3].encode()).decode(
+                "ascii"
+            ),
+            _google_metadata(algorithm, name),
+        )
+
+    _assert_safe_error(caught.value)
+
+
+def test_actual_google_api_exception_classes_have_audited_identity_when_installed():
+    exceptions = pytest.importorskip("google.api_core.exceptions")
+
+    for name in (
+        "DeadlineExceeded",
+        "GatewayTimeout",
+        "ResourceExhausted",
+        "TooManyRequests",
+        "PermissionDenied",
+        "Forbidden",
+        "ServiceUnavailable",
+        "FailedPrecondition",
+        "NotFound",
+        "BadRequest",
+        "RetryError",
+    ):
+        candidate = getattr(exceptions, name)
+        assert isinstance(candidate, type)
+        assert candidate.__module__ == "google.api_core.exceptions"
+        assert candidate.__name__ == name
+    assert type(exceptions.FailedPrecondition) is not type
+
+
+def test_actual_google_api_availability_classification_when_installed():
+    import aegis.integrations.google_cloud_kms as google_cloud_kms
+
+    exceptions = pytest.importorskip("google.api_core.exceptions")
+    direct_names = (
+        "DeadlineExceeded",
+        "GatewayTimeout",
+        "ResourceExhausted",
+        "TooManyRequests",
+        "PermissionDenied",
+        "Forbidden",
+        "ServiceUnavailable",
+        "FailedPrecondition",
+        "NotFound",
+    )
+    for name in direct_names:
+        error = getattr(exceptions, name)(
+            "actual Google API " + SENSITIVE_CORPUS[0]
+        )
+        assert google_cloud_kms._is_google_availability_error(error) is True
+
+    class Response:
+        def __init__(self, status):
+            self.status = status
+
+        def json(self):
+            return {
+                "error": {
+                    "status": self.status,
+                    "message": SENSITIVE_CORPUS[1],
+                },
+            }
+
+    failed_precondition = exceptions.BadRequest(
+        "REST failed precondition " + SENSITIVE_CORPUS[2],
+        response=Response("FAILED_PRECONDITION"),
+    )
+    invalid_argument = exceptions.BadRequest(
+        "REST invalid argument " + SENSITIVE_CORPUS[2],
+        response=Response("INVALID_ARGUMENT"),
+    )
+    retry_available = exceptions.RetryError(
+        "retry " + SENSITIVE_CORPUS[3],
+        exceptions.DeadlineExceeded(SENSITIVE_CORPUS[4]),
+    )
+    retry_unexpected = exceptions.RetryError(
+        "retry " + SENSITIVE_CORPUS[3],
+        RuntimeError(SENSITIVE_CORPUS[4]),
+    )
+
+    assert google_cloud_kms._is_google_availability_error(
+        failed_precondition
+    ) is True
+    assert google_cloud_kms._is_google_availability_error(
+        invalid_argument
+    ) is False
+    assert google_cloud_kms._is_google_availability_error(
+        retry_available
+    ) is True
+    assert google_cloud_kms._is_google_availability_error(
+        retry_unexpected
+    ) is False
 
 
 @pytest.mark.parametrize("algorithm", GOOGLE_ALGORITHMS)
@@ -1761,6 +2021,83 @@ def test_google_verifier_does_not_classify_availability_error_subclasses(
     ) as caught:
         verifier.verify(
             b"provider exception subclass",
+            b64encode(b"signature").decode("ascii"),
+            _google_metadata(algorithm, name),
+        )
+
+    _assert_safe_error(caught.value)
+
+
+def test_google_verifier_rejects_availability_exception_class_lookalike(
+    google_private_keys,
+    controlled_google_modules,
+    monkeypatch,
+):
+    class DeadlineExceeded(Exception):
+        pass
+
+    algorithm = "RSA_SIGN_PSS_2048_SHA256"
+    name = GOOGLE_KEY_VERSION_NAMES[algorithm]
+    monkeypatch.setattr(
+        controlled_google_modules.api_exceptions,
+        "DeadlineExceeded",
+        DeadlineExceeded,
+    )
+
+    class Client:
+        def get_public_key(self, **_kwargs):
+            raise DeadlineExceeded("lookalike " + SENSITIVE_CORPUS[0])
+
+    verifier = _google_verifier(
+        Client(),
+        target=GoogleCloudKmsVerificationTarget(name, algorithm),
+    )
+
+    with pytest.raises(
+        VerificationContractError,
+        match=r"^Google Cloud KMS verifier returned an invalid response$",
+    ) as caught:
+        verifier.verify(
+            b"exception lookalike",
+            b64encode(b"signature").decode("ascii"),
+            _google_metadata(algorithm, name),
+        )
+
+    _assert_safe_error(caught.value)
+
+
+def test_google_verifier_handles_missing_google_api_core_safely(
+    google_private_keys,
+    controlled_google_modules,
+    monkeypatch,
+):
+    algorithm = "RSA_SIGN_PSS_2048_SHA256"
+    name = GOOGLE_KEY_VERSION_NAMES[algorithm]
+    client = RecordingGoogleCloudKmsClient(
+        google_private_keys,
+        mode="deadline_public_key",
+    )
+    real_import = builtins.__import__
+
+    def blocked_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "google.api_core":
+            raise ModuleNotFoundError(
+                "missing API core " + SENSITIVE_CORPUS[1]
+            )
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", blocked_import)
+    verifier = _google_verifier(
+        client,
+        target=GoogleCloudKmsVerificationTarget(name, algorithm),
+    )
+
+    with pytest.raises(
+        VerificationContractError,
+        match=r"^Google Cloud KMS verifier returned an invalid response$",
+    ) as caught:
+        verifier.verify(
+            b"missing Google API core",
             b64encode(b"signature").decode("ascii"),
             _google_metadata(algorithm, name),
         )
@@ -2069,3 +2406,63 @@ def test_google_verifier_runs_shared_verifier_conformance(
         signed_artifact_factory,
         verifier_factory,
     )
+
+
+def test_google_verifier_uses_actual_checksumming_response_types_when_installed(
+    google_private_keys,
+):
+    kms_v1 = pytest.importorskip("google.cloud.kms_v1")
+    google_crc32c = pytest.importorskip("google_crc32c")
+    algorithm = "RSA_SIGN_PSS_2048_SHA256"
+    name = GOOGLE_KEY_VERSION_NAMES[algorithm]
+    payload = b"actual Google KMS checksummed response"
+    pem = _google_public_pem(google_private_keys[algorithm])
+    checksum = google_crc32c.Checksum(pem)
+    crc32c = int.from_bytes(checksum.digest(), "big")
+    algorithm_member = getattr(
+        kms_v1.CryptoKeyVersion.CryptoKeyVersionAlgorithm,
+        algorithm,
+    )
+    pem_format = kms_v1.PublicKey.PublicKeyFormat.PEM
+    response = kms_v1.PublicKey(
+        name=name,
+        algorithm=algorithm_member,
+        public_key_format=pem_format,
+        public_key=kms_v1.ChecksummedData(
+            data=pem,
+            crc32c_checksum=crc32c,
+        ),
+    )
+
+    assert type(response) is kms_v1.PublicKey
+    assert type(response.public_key) is kms_v1.ChecksummedData
+    assert response.algorithm is algorithm_member
+    assert response.public_key_format is pem_format
+
+    class Client:
+        def __init__(self):
+            self.calls = []
+
+        def get_public_key(self, **kwargs):
+            self.calls.append(dict(kwargs))
+            return response
+
+    client = Client()
+    verifier = _google_verifier(
+        client,
+        target=GoogleCloudKmsVerificationTarget(name, algorithm),
+    )
+    signature = _google_signature(
+        google_private_keys[algorithm],
+        algorithm,
+        payload,
+    )
+
+    outcome = verifier.verify(
+        payload,
+        b64encode(signature).decode("ascii"),
+        _google_metadata(algorithm, name),
+    )
+
+    assert outcome.reason_code is VerificationReasonCode.SIGNATURE_VALID_ANCHORED
+    assert type(client.calls[0]["request"]) is kms_v1.GetPublicKeyRequest
