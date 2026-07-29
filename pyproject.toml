@@ -60,6 +60,14 @@ dev = [
 openai-agents = [
   "openai-agents>=0.0.7",
 ]
+aws-kms = [
+  "boto3>=1.43.0",
+]
+gcp-kms = [
+  "google-cloud-kms>=3.15.0",
+  "google-crc32c>=1.7.1",
+  "cryptography>=45.0.1",
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

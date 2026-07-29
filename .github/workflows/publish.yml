@@ -16,6 +16,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
+          ref: ${{ github.event.release.tag_name }}
 
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
@@ -24,7 +25,9 @@ jobs:
           cache: pip
 
       - name: Install validation and build dependencies
-        run: python -m pip install "build==1.5.0" "setuptools" -e ".[dev]"
+        run: >-
+          python -m pip install "build==1.5.0" "setuptools"
+          -e ".[dev,aws-kms,gcp-kms]"
 
       - name: Run release validation
         run: |
@@ -49,9 +52,75 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  validate-optional-extras:
+    name: Validate optional extras (${{ matrix.name }})
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: base-wheel
+            artifact: dist/aegis_ai_governance-0.9.0b1-py3-none-any.whl
+            lane: base
+            expected-versions: '{}'
+          - name: aws-min-wheel
+            artifact: dist/aegis_ai_governance-0.9.0b1-py3-none-any.whl
+            lane: aws
+            expected-versions: '{"boto3":"1.43.0"}'
+          - name: aws-current-wheel
+            artifact: dist/aegis_ai_governance-0.9.0b1-py3-none-any.whl
+            lane: aws
+            expected-versions: '{}'
+          - name: gcp-min-wheel
+            artifact: dist/aegis_ai_governance-0.9.0b1-py3-none-any.whl
+            lane: gcp
+            expected-versions: >-
+              {"google-cloud-kms":"3.15.0","google-crc32c":"1.7.1","cryptography":"45.0.1"}
+          - name: gcp-current-wheel
+            artifact: dist/aegis_ai_governance-0.9.0b1-py3-none-any.whl
+            lane: gcp
+            expected-versions: '{}'
+          - name: combined-current-wheel
+            artifact: dist/aegis_ai_governance-0.9.0b1-py3-none-any.whl
+            lane: combined
+            expected-versions: '{}'
+          - name: combined-current-sdist
+            artifact: dist/aegis_ai_governance-0.9.0b1.tar.gz
+            lane: combined
+            expected-versions: '{}'
+
+    steps:
+      - name: Check out the release tag
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Download the single distribution artifact set
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Validate installed artifact and optional extras
+        run: >-
+          python scripts/validate_kms_optional_extras.py
+          --artifact "${{ matrix.artifact }}"
+          --lane "${{ matrix.lane }}"
+          --expected-versions '${{ matrix.expected-versions }}'
+
   publish:
     name: Publish distributions with PyPI Trusted Publishing
-    needs: build
+    needs: [build, validate-optional-extras]
     runs-on: ubuntu-latest
     environment:
       name: pypi

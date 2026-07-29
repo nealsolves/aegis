@@ -24,6 +24,19 @@ EXPECTED_DISTRIBUTION = "aegis-ai-governance"
 EXPECTED_STEM = "aegis_ai_governance"
 EXPECTED_VERSION = "0.9.0b1"
 EXPECTED_RUNTIME_DEPENDENCIES = {"PyYAML>=6.0", "jsonschema>=4.0"}
+EXPECTED_EXTRA_DEPENDENCIES = {
+    'build>=1.2; extra == "dev"',
+    'pytest>=8.0; extra == "dev"',
+    'pytest-cov>=6.0; extra == "dev"',
+    'pytest-asyncio>=1.0; extra == "dev"',
+    'flake8>=7.0; extra == "dev"',
+    'openai-agents>=0.0.7; extra == "openai-agents"',
+    'boto3>=1.43.0; extra == "aws-kms"',
+    'google-cloud-kms>=3.15.0; extra == "gcp-kms"',
+    'google-crc32c>=1.7.1; extra == "gcp-kms"',
+    'cryptography>=45.0.1; extra == "gcp-kms"',
+}
+EXPECTED_EXTRAS = {"dev", "openai-agents", "aws-kms", "gcp-kms"}
 EXPECTED_WHEEL = f"{EXPECTED_STEM}-{EXPECTED_VERSION}-py3-none-any.whl"
 EXPECTED_SDIST = f"{EXPECTED_STEM}-{EXPECTED_VERSION}.tar.gz"
 PROVIDER_ENV_PREFIXES = (
@@ -151,16 +164,36 @@ def _inspect_artifacts(dist_dir: Path) -> dict[str, object]:
                 f"{EXPECTED_VERSION!r}"
             )
         requirements = set(metadata.get_all("Requires-Dist", []))
-        if not EXPECTED_RUNTIME_DEPENDENCIES.issubset(requirements):
+        runtime_requirements = {
+            requirement for requirement in requirements
+            if 'extra == "' not in requirement
+        }
+        extra_requirements = requirements.difference(runtime_requirements)
+        if runtime_requirements != EXPECTED_RUNTIME_DEPENDENCIES:
             raise CandidateValidationError(
                 "wheel runtime dependencies changed: "
-                f"{sorted(requirements)}"
+                f"{sorted(runtime_requirements)}"
+            )
+        if extra_requirements != EXPECTED_EXTRA_DEPENDENCIES:
+            raise CandidateValidationError(
+                "wheel optional dependencies changed: "
+                f"{sorted(extra_requirements)}"
+            )
+        extras = set(metadata.get_all("Provides-Extra", []))
+        if extras != EXPECTED_EXTRAS:
+            raise CandidateValidationError(
+                f"wheel extras changed: {sorted(extras)}"
             )
         required_members = {
             "aegis/__init__.py",
             "aegis/__main__.py",
             "aegis/cli.py",
             "aegis/py.typed",
+            "aegis/integrations/__init__.py",
+            "aegis/integrations/kms.py",
+            "aegis/integrations/_kms_common.py",
+            "aegis/integrations/aws_kms.py",
+            "aegis/integrations/google_cloud_kms.py",
         }
         missing = sorted(required_members.difference(names))
         if missing:
