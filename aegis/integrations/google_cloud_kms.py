@@ -910,7 +910,10 @@ def _classify_google_availability_error(
     availability_types: _GoogleApiAvailabilityTypes,
     error: BaseException,
 ) -> bool:
-    if type(error) in availability_types.direct_types:
+    if _contains_type_identity(
+        availability_types.direct_types,
+        type(error),
+    ):
         return True
 
     bad_request_type = availability_types.bad_request_type
@@ -925,7 +928,10 @@ def _classify_google_availability_error(
     cause = error.cause  # type: ignore[attr-defined]
     if not isinstance(cause, BaseException):
         return False
-    if type(cause) in availability_types.direct_types:
+    if _contains_type_identity(
+        availability_types.direct_types,
+        type(cause),
+    ):
         return True
     return (
         type(cause) is bad_request_type
@@ -941,6 +947,16 @@ def _import_google_api_exceptions() -> object:
 
 def _load_google_api_availability_types(
 ) -> _GoogleApiAvailabilityTypes | None:
+    try:
+        return _load_google_api_availability_types_unchecked()
+    except Exception:
+        return None
+
+
+def _load_google_api_availability_types_unchecked(
+) -> _GoogleApiAvailabilityTypes | None:
+    from base64 import urlsafe_b64encode
+    from hashlib import sha256
     import importlib.machinery
     import importlib.metadata
     import importlib.util
@@ -1009,6 +1025,34 @@ def _load_google_api_availability_types(
     ).resolve(strict=True)
     if distribution_path != module_path:
         return None
+    source_entry = source_entries[0]
+    source_size = source_entry.size
+    source_hash = source_entry.hash
+    if (
+        type(source_size) is not int
+        or source_size <= 0
+        or source_size > 1_048_576
+        or source_hash is None
+        or type(source_hash.mode) is not str
+        or source_hash.mode != "sha256"
+        or type(source_hash.value) is not str
+        or not source_hash.value
+    ):
+        return None
+    source_bytes = distribution_path.read_bytes()
+    source_digest = (
+        urlsafe_b64encode(sha256(source_bytes).digest())
+        .rstrip(b"=")
+        .decode("ascii")
+    )
+    if len(source_bytes) != source_size or source_digest != source_hash.value:
+        return None
+    trusted_code_anchors = _trusted_google_exception_code_anchors(
+        source_bytes,
+        module_path,
+    )
+    if trusted_code_anchors is None:
+        return None
 
     google_api_error = _canonical_google_exception_class(
         exceptions,
@@ -1039,8 +1083,37 @@ def _load_google_api_availability_types(
     if (
         google_api_call_error is None
         or retry_error_type is None
-        or google_api_call_error.__bases__ != (google_api_error,)
-        or retry_error_type.__bases__ != (google_api_error,)
+        or not _has_exact_base_identity(
+            google_api_call_error,
+            google_api_error,
+        )
+        or not _has_exact_base_identity(
+            retry_error_type,
+            google_api_error,
+        )
+        or not _has_trusted_google_exception_code(
+            api_call_metaclass,
+            "__new__",
+            trusted_code_anchors[0],
+            module_path,
+        )
+        or not _has_trusted_google_exception_code(
+            google_api_call_error,
+            "__init__",
+            trusted_code_anchors[1],
+            module_path,
+        )
+        or not _has_trusted_google_exception_code(
+            retry_error_type,
+            "__init__",
+            trusted_code_anchors[2],
+            module_path,
+        )
+        or not _has_trusted_google_retry_cause_code(
+            retry_error_type,
+            trusted_code_anchors[3],
+            module_path,
+        )
     ):
         return None
 
@@ -1128,6 +1201,15 @@ def _canonical_google_exception_class(
     return candidate
 
 
+def _has_exact_base_identity(candidate: type, base_type: type) -> bool:
+    bases = candidate.__bases__
+    return (
+        type(bases) is tuple
+        and len(bases) == 1
+        and bases[0] is base_type
+    )
+
+
 def _is_valid_google_api_availability_types(
     value: object,
 ) -> bool:
@@ -1142,13 +1224,165 @@ def _is_valid_google_api_availability_types(
         value.retry_error_type,
     )
     return (
-        len(set(all_types)) == len(all_types)
+        _all_type_identities_are_unique(all_types)
         and all(
             isinstance(candidate, type)
             and issubclass(candidate, BaseException)
-            and candidate not in (BaseException, Exception)
+            and candidate is not BaseException
+            and candidate is not Exception
             for candidate in all_types
         )
+    )
+
+
+def _contains_type_identity(
+    candidates: tuple[type[BaseException], ...],
+    value: type[BaseException],
+) -> bool:
+    return any(candidate is value for candidate in candidates)
+
+
+def _all_type_identities_are_unique(
+    candidates: tuple[type[BaseException], ...],
+) -> bool:
+    return all(
+        not any(
+            candidate is other
+            for other in candidates[index + 1:]
+        )
+        for index, candidate in enumerate(candidates)
+    )
+
+
+def _trusted_google_exception_code_anchors(
+    source_bytes: bytes,
+    module_path: object,
+) -> tuple[object, object, object, object] | None:
+    from types import CodeType
+
+    module_code = compile(
+        source_bytes,
+        str(module_path),
+        "exec",
+        dont_inherit=True,
+    )
+    if type(module_code) is not CodeType:
+        return None
+    anchors = []
+    for class_name, method_name in (
+        ("_GoogleAPICallErrorMeta", "__new__"),
+        ("GoogleAPICallError", "__init__"),
+        ("RetryError", "__init__"),
+        ("RetryError", "cause"),
+    ):
+        class_code = _unique_nested_code(module_code, class_name)
+        if class_code is None:
+            return None
+        method_code = _unique_nested_code(class_code, method_name)
+        if method_code is None:
+            return None
+        anchors.append(method_code)
+    return tuple(anchors)  # type: ignore[return-value]
+
+
+def _unique_nested_code(
+    parent: object,
+    name: str,
+) -> object | None:
+    from types import CodeType
+
+    if type(parent) is not CodeType:
+        return None
+    matches = tuple(
+        constant
+        for constant in parent.co_consts
+        if type(constant) is CodeType and constant.co_name == name
+    )
+    if len(matches) != 1:
+        return None
+    return matches[0]
+
+
+def _has_trusted_google_exception_code(
+    owner: type,
+    attribute: str,
+    trusted_code: object,
+    module_path: object,
+) -> bool:
+    from types import FunctionType
+
+    descriptor = vars(owner).get(attribute)
+    if attribute == "__new__":
+        if type(descriptor) is not staticmethod:
+            return False
+        descriptor = descriptor.__func__
+    return (
+        type(descriptor) is FunctionType
+        and _google_exception_codes_match(
+            descriptor.__code__,
+            trusted_code,
+            module_path,
+        )
+    )
+
+
+def _has_trusted_google_retry_cause_code(
+    retry_error_type: type,
+    trusted_code: object,
+    module_path: object,
+) -> bool:
+    from types import FunctionType
+
+    descriptor = vars(retry_error_type).get("cause")
+    return (
+        type(descriptor) is property
+        and type(descriptor.fget) is FunctionType
+        and _google_exception_codes_match(
+            descriptor.fget.__code__,
+            trusted_code,
+            module_path,
+        )
+    )
+
+
+def _google_exception_codes_match(
+    candidate_code: object,
+    trusted_code: object,
+    module_path: object,
+) -> bool:
+    from pathlib import Path
+    from types import CodeType
+
+    if (
+        type(candidate_code) is not CodeType
+        or type(trusted_code) is not CodeType
+        or type(candidate_code.co_filename) is not str
+        or Path(candidate_code.co_filename).resolve(strict=True)
+        != module_path
+    ):
+        return False
+    code_fields = (
+        "co_argcount",
+        "co_posonlyargcount",
+        "co_kwonlyargcount",
+        "co_nlocals",
+        "co_stacksize",
+        "co_flags",
+        "co_code",
+        "co_consts",
+        "co_names",
+        "co_varnames",
+        "co_name",
+        "co_qualname",
+        "co_firstlineno",
+        "co_linetable",
+        "co_exceptiontable",
+        "co_freevars",
+        "co_cellvars",
+    )
+    return all(
+        getattr(candidate_code, field) == getattr(trusted_code, field)
+        for field in code_fields
     )
 
 

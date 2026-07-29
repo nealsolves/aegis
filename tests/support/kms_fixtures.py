@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from base64 import urlsafe_b64encode
 from enum import IntEnum
 from hashlib import sha256
+import importlib.machinery
+import importlib.util
 from types import ModuleType
 from types import SimpleNamespace
 
@@ -740,6 +743,234 @@ def install_controlled_google_kms_modules(
         kms_v1=kms_module,
         google_crc32c=crc_module,
         api_exceptions=api_exceptions_module,
+    )
+
+
+def install_copied_provenance_google_api_core(
+    monkeypatch,
+    tmp_path,
+) -> SimpleNamespace:
+    """Install synthetic classes carrying valid-looking source provenance."""
+    source = b"""
+class _GoogleAPICallErrorMeta(type):
+    def __new__(mcs, name, bases, class_dict):
+        return type.__new__(mcs, name, bases, class_dict)
+
+class GoogleAPIError(Exception):
+    pass
+
+class RetryError(GoogleAPIError):
+    def __init__(self, message, cause):
+        super().__init__(message)
+        self._cause = cause
+
+    @property
+    def cause(self):
+        return self._cause
+
+class GoogleAPICallError(GoogleAPIError, metaclass=_GoogleAPICallErrorMeta):
+    def __init__(self, message, errors=(), details=(), response=None):
+        super().__init__(message)
+        self.response = response
+
+class GatewayTimeout(GoogleAPICallError):
+    pass
+class DeadlineExceeded(GatewayTimeout):
+    pass
+class TooManyRequests(GoogleAPICallError):
+    pass
+class ResourceExhausted(TooManyRequests):
+    pass
+class Forbidden(GoogleAPICallError):
+    pass
+class PermissionDenied(Forbidden):
+    pass
+class ServiceUnavailable(GoogleAPICallError):
+    pass
+class BadRequest(GoogleAPICallError):
+    pass
+class FailedPrecondition(BadRequest):
+    pass
+class NotFound(GoogleAPICallError):
+    pass
+"""
+    source_path = tmp_path / "google" / "api_core" / "exceptions.py"
+    source_path.parent.mkdir(parents=True)
+    source_path.write_bytes(source)
+    loader = importlib.machinery.SourceFileLoader(
+        "google.api_core.exceptions",
+        str(source_path),
+    )
+    spec = importlib.util.spec_from_file_location(
+        "google.api_core.exceptions",
+        source_path,
+        loader=loader,
+    )
+    assert spec is not None
+
+    module = ModuleType("google.api_core.exceptions")
+    module.__package__ = "google.api_core"
+    module.__file__ = str(source_path)
+    module.__spec__ = spec
+    module.__loader__ = loader
+
+    google_api_error = type(
+        "GoogleAPIError",
+        (Exception,),
+        {
+            "__module__": "google.api_core.exceptions",
+            "__qualname__": "GoogleAPIError",
+        },
+    )
+    api_call_metaclass = type(
+        "_GoogleAPICallErrorMeta",
+        (type,),
+        {
+            "__module__": "google.api_core.exceptions",
+            "__qualname__": "_GoogleAPICallErrorMeta",
+        },
+    )
+    google_api_call_error = api_call_metaclass(
+        "GoogleAPICallError",
+        (google_api_error,),
+        {
+            "__module__": "google.api_core.exceptions",
+            "__qualname__": "GoogleAPICallError",
+        },
+    )
+    retry_error = type(
+        "RetryError",
+        (google_api_error,),
+        {
+            "__module__": "google.api_core.exceptions",
+            "__qualname__": "RetryError",
+        },
+    )
+    gateway_timeout = api_call_metaclass(
+        "GatewayTimeout",
+        (google_api_call_error,),
+        {
+            "__module__": "google.api_core.exceptions",
+            "__qualname__": "GatewayTimeout",
+        },
+    )
+    too_many_requests = api_call_metaclass(
+        "TooManyRequests",
+        (google_api_call_error,),
+        {
+            "__module__": "google.api_core.exceptions",
+            "__qualname__": "TooManyRequests",
+        },
+    )
+    forbidden = api_call_metaclass(
+        "Forbidden",
+        (google_api_call_error,),
+        {
+            "__module__": "google.api_core.exceptions",
+            "__qualname__": "Forbidden",
+        },
+    )
+    bad_request = api_call_metaclass(
+        "BadRequest",
+        (google_api_call_error,),
+        {
+            "__module__": "google.api_core.exceptions",
+            "__qualname__": "BadRequest",
+        },
+    )
+    classes = {
+        "GoogleAPIError": google_api_error,
+        "_GoogleAPICallErrorMeta": api_call_metaclass,
+        "GoogleAPICallError": google_api_call_error,
+        "RetryError": retry_error,
+        "GatewayTimeout": gateway_timeout,
+        "DeadlineExceeded": api_call_metaclass(
+            "DeadlineExceeded",
+            (gateway_timeout,),
+            {
+                "__module__": "google.api_core.exceptions",
+                "__qualname__": "DeadlineExceeded",
+            },
+        ),
+        "TooManyRequests": too_many_requests,
+        "ResourceExhausted": api_call_metaclass(
+            "ResourceExhausted",
+            (too_many_requests,),
+            {
+                "__module__": "google.api_core.exceptions",
+                "__qualname__": "ResourceExhausted",
+            },
+        ),
+        "Forbidden": forbidden,
+        "PermissionDenied": api_call_metaclass(
+            "PermissionDenied",
+            (forbidden,),
+            {
+                "__module__": "google.api_core.exceptions",
+                "__qualname__": "PermissionDenied",
+            },
+        ),
+        "ServiceUnavailable": api_call_metaclass(
+            "ServiceUnavailable",
+            (google_api_call_error,),
+            {
+                "__module__": "google.api_core.exceptions",
+                "__qualname__": "ServiceUnavailable",
+            },
+        ),
+        "BadRequest": bad_request,
+        "FailedPrecondition": api_call_metaclass(
+            "FailedPrecondition",
+            (bad_request,),
+            {
+                "__module__": "google.api_core.exceptions",
+                "__qualname__": "FailedPrecondition",
+            },
+        ),
+        "NotFound": api_call_metaclass(
+            "NotFound",
+            (google_api_call_error,),
+            {
+                "__module__": "google.api_core.exceptions",
+                "__qualname__": "NotFound",
+            },
+        ),
+    }
+    for name, candidate in classes.items():
+        setattr(module, name, candidate)
+
+    digest = urlsafe_b64encode(sha256(source).digest()).rstrip(b"=").decode()
+
+    class RecordPath(str):
+        hash = SimpleNamespace(mode="sha256", value=digest)
+        size = len(source)
+
+    class Distribution:
+        metadata = {"Name": "google-api-core"}
+        files = (RecordPath("google/api_core/exceptions.py"),)
+
+        def locate_file(self, _entry):
+            return source_path
+
+    google_module = ModuleType("google")
+    api_core_module = ModuleType("google.api_core")
+    google_module.api_core = api_core_module
+    api_core_module.exceptions = module
+    monkeypatch.setitem(__import__("sys").modules, "google", google_module)
+    monkeypatch.setitem(
+        __import__("sys").modules,
+        "google.api_core",
+        api_core_module,
+    )
+    monkeypatch.setitem(
+        __import__("sys").modules,
+        "google.api_core.exceptions",
+        module,
+    )
+    return SimpleNamespace(
+        exceptions=module,
+        distribution=Distribution(),
+        spec=spec,
     )
 
 
