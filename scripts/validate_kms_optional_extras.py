@@ -12,6 +12,13 @@ import sys
 import tempfile
 import venv
 
+try:
+    from packaging.requirements import Requirement
+    from packaging.utils import canonicalize_name
+except ImportError:  # pragma: no cover - setup-python always supplies pip
+    from pip._vendor.packaging.requirements import Requirement
+    from pip._vendor.packaging.utils import canonicalize_name
+
 
 EXPECTED_DISTRIBUTION = "aegis-ai-governance"
 SUPPORTED_VERSION_KEYS = {
@@ -32,10 +39,155 @@ PROVIDER_DISTRIBUTIONS = {
     "aws": {"boto3"},
     "gcp": {"google-cloud-kms", "google-crc32c", "cryptography"},
 }
+AWS_PROVIDER_FAMILY = frozenset(
+    {
+        "awscrt",
+        "boto3",
+        "botocore",
+        "jmespath",
+        "s3transfer",
+    }
+)
+GCP_PROVIDER_FAMILY = frozenset(
+    {
+        "cryptography",
+        "google-api-core",
+        "google-auth",
+        "google-cloud-core",
+        "google-cloud-kms",
+        "google-crc32c",
+        "googleapis-common-protos",
+        "grpc-google-iam-v1",
+        "grpcio",
+        "grpcio-status",
+        "proto-plus",
+    }
+)
+FORBIDDEN_PROVIDER_FAMILIES = {
+    "base": AWS_PROVIDER_FAMILY | GCP_PROVIDER_FAMILY,
+    "aws": GCP_PROVIDER_FAMILY,
+    "gcp": AWS_PROVIDER_FAMILY,
+    "combined": frozenset(),
+}
+EXPECTED_KMS_REQUIREMENTS = {
+    'boto3>=1.43.0; extra == "aws-kms"',
+    'google-cloud-kms>=3.15.0; extra == "gcp-kms"',
+    'google-crc32c>=1.7.1; extra == "gcp-kms"',
+    'cryptography>=45.0.1; extra == "gcp-kms"',
+}
 
 
 class OptionalExtrasValidationError(RuntimeError):
     """Raised when an installed-artifact lane fails its contract."""
+
+
+def _marker_operand_key(operand: object) -> tuple[str, str]:
+    kind = type(operand).__name__.lower()
+    value = getattr(operand, "value", None)
+    if kind not in {"variable", "value"} or type(value) is not str:
+        raise OptionalExtrasValidationError(
+            "requirement marker operand is invalid"
+        )
+    return kind, value
+
+
+def _canonical_marker(node: object) -> object:
+    if type(node) is tuple and len(node) == 3:
+        left, operator, right = node
+        left_key = _marker_operand_key(left)
+        right_key = _marker_operand_key(right)
+        operator_value = getattr(operator, "value", None)
+        if type(operator_value) is not str:
+            raise OptionalExtrasValidationError(
+                "requirement marker operator is invalid"
+            )
+        if (
+            operator_value in {"==", "!="}
+            and left_key[0] == "value"
+            and right_key[0] == "variable"
+        ):
+            left_key, right_key = right_key, left_key
+        return left_key, operator_value, right_key
+    if type(node) is list:
+        canonical = tuple(_canonical_marker(item) for item in node)
+        return canonical[0] if len(canonical) == 1 else canonical
+    if type(node) is str and node in {"and", "or"}:
+        return node
+    raise OptionalExtrasValidationError(
+        "requirement marker structure is invalid"
+    )
+
+
+def _requirement_key(value: str) -> tuple[object, ...]:
+    try:
+        requirement = Requirement(value)
+        marker = (
+            None
+            if requirement.marker is None
+            else _canonical_marker(requirement.marker._markers)
+        )
+        return (
+            canonicalize_name(requirement.name),
+            tuple(
+                sorted(canonicalize_name(extra) for extra in requirement.extras)
+            ),
+            str(requirement.specifier),
+            requirement.url,
+            marker,
+        )
+    except OptionalExtrasValidationError:
+        raise
+    except Exception as error:
+        raise OptionalExtrasValidationError(
+            f"invalid requirement metadata: {value!r}"
+        ) from error
+
+
+def _validate_kms_requirement_metadata(requirements: object) -> None:
+    if not isinstance(requirements, (list, set, tuple)):
+        raise OptionalExtrasValidationError(
+            "installed distribution requirement metadata is invalid"
+        )
+    if any(not isinstance(value, str) for value in requirements):
+        raise OptionalExtrasValidationError(
+            "installed distribution requirement metadata is invalid"
+        )
+    actual = {
+        _requirement_key(str(value))
+        for value in requirements
+    }
+    expected = {
+        _requirement_key(value) for value in EXPECTED_KMS_REQUIREMENTS
+    }
+    missing = expected.difference(actual)
+    if missing:
+        raise OptionalExtrasValidationError(
+            "installed metadata omitted KMS conditional requirements: "
+            f"{sorted(missing)}"
+        )
+
+
+def _validate_provider_family_isolation(
+    lane: str,
+    installed_versions: object,
+) -> None:
+    if type(installed_versions) is not dict:
+        raise OptionalExtrasValidationError(
+            "installed distribution report is invalid"
+        )
+    installed = {
+        canonicalize_name(name)
+        for name in installed_versions
+        if type(name) is str
+    }
+    forbidden = sorted(
+        installed.intersection(FORBIDDEN_PROVIDER_FAMILIES[lane])
+    )
+    if forbidden:
+        raise OptionalExtrasValidationError(
+            f"{lane} lane contains forbidden provider distributions: "
+            f"{forbidden}"
+        )
 
 
 def _sha256(path: Path) -> str:
@@ -179,17 +331,6 @@ if any(
 requires_dist = metadata.requires("aegis-ai-governance")
 if requires_dist is None:
     raise AssertionError("installed distribution has no dependency metadata")
-required_markers = {
-    'boto3>=1.43.0; extra == "aws-kms"',
-    'google-cloud-kms>=3.15.0; extra == "gcp-kms"',
-    'google-crc32c>=1.7.1; extra == "gcp-kms"',
-    'cryptography>=45.0.1; extra == "gcp-kms"',
-}
-if not required_markers.issubset(requires_dist):
-    raise AssertionError(
-        "installed metadata omitted KMS conditional requirements: "
-        + repr(sorted(set(requires_dist)))
-    )
 
 installed_versions = {
     distribution.metadata["Name"]: distribution.version
@@ -545,6 +686,7 @@ print(json.dumps({
     "import_path": str(import_path),
     "installed_versions": dict(sorted(installed_versions.items())),
     "provider_checks": provider_checks,
+    "requires_dist": requires_dist,
 }, sort_keys=True))
 '''
 
@@ -612,6 +754,11 @@ def _validate_artifact(
             env=env,
         )
         child_report = json.loads(smoke.stdout)
+        _validate_kms_requirement_metadata(child_report["requires_dist"])
+        _validate_provider_family_isolation(
+            lane,
+            child_report["installed_versions"],
+        )
 
     return {
         "artifact": str(artifact),

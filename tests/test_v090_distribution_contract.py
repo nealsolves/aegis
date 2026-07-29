@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from email.parser import BytesParser
 from email.policy import default
+import importlib.util
 import re
 from pathlib import Path
 import subprocess
@@ -35,6 +36,20 @@ EXPECTED_INTEGRATION_MEMBERS = {
     "aegis/integrations/aws_kms.py",
     "aegis/integrations/google_cloud_kms.py",
 }
+CANDIDATE_VALIDATOR = (
+    REPO_ROOT / "scripts" / "validate_v090_distribution_candidate.py"
+)
+
+
+def _load_candidate_validator():
+    spec = importlib.util.spec_from_file_location(
+        "task7_candidate_validator",
+        CANDIDATE_VALIDATOR,
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _project_scalar(name: str) -> str:
@@ -123,22 +138,86 @@ def test_kms_optional_extras_have_exact_unbounded_lower_bounds():
 def test_wheel_metadata_exposes_one_distribution_with_conditional_kms_extras(
     built_wheel: Path,
 ):
+    validator = _load_candidate_validator()
     metadata = _wheel_metadata(built_wheel)
     assert metadata["Name"] == "aegis-ai-governance"
     assert metadata["Version"] == "0.9.0b1"
     assert {"aws-kms", "gcp-kms"}.issubset(
         set(metadata.get_all("Provides-Extra", []))
     )
+    _, extra_requirements = validator._partition_requirements(
+        metadata.get_all("Requires-Dist", [])
+    )
     assert {
-        requirement
-        for requirement in metadata.get_all("Requires-Dist", [])
-        if 'extra == "aws-kms"' in requirement
-        or 'extra == "gcp-kms"' in requirement
+        requirement for requirement in extra_requirements
+        if requirement[0] in {
+            "boto3",
+            "google-cloud-kms",
+            "google-crc32c",
+            "cryptography",
+        }
     } == {
-        'boto3>=1.43.0; extra == "aws-kms"',
-        'google-cloud-kms>=3.15.0; extra == "gcp-kms"',
-        'google-crc32c>=1.7.1; extra == "gcp-kms"',
-        'cryptography>=45.0.1; extra == "gcp-kms"',
+        (
+            "boto3",
+            (),
+            ">=1.43.0",
+            None,
+            (("variable", "extra"), "==", ("value", "aws-kms")),
+        ),
+        (
+            "google-cloud-kms",
+            (),
+            ">=3.15.0",
+            None,
+            (("variable", "extra"), "==", ("value", "gcp-kms")),
+        ),
+        (
+            "google-crc32c",
+            (),
+            ">=1.7.1",
+            None,
+            (("variable", "extra"), "==", ("value", "gcp-kms")),
+        ),
+        (
+            "cryptography",
+            (),
+            ">=45.0.1",
+            None,
+            (("variable", "extra"), "==", ("value", "gcp-kms")),
+        ),
+    }
+
+
+def test_candidate_requirement_partition_accepts_equivalent_extra_markers():
+    validator = _load_candidate_validator()
+    runtime, extras = validator._partition_requirements(
+        [
+            "PyYAML >= 6.0",
+            "jsonschema>=4.0",
+            "boto3 >= 1.43.0 ; 'aws-kms' == extra",
+            "google-cloud-kms>=3.15.0;extra=='gcp-kms'",
+        ]
+    )
+
+    assert runtime == {
+        ("pyyaml", (), ">=6.0", None, None),
+        ("jsonschema", (), ">=4.0", None, None),
+    }
+    assert extras == {
+        (
+            "boto3",
+            (),
+            ">=1.43.0",
+            None,
+            (("variable", "extra"), "==", ("value", "aws-kms")),
+        ),
+        (
+            "google-cloud-kms",
+            (),
+            ">=3.15.0",
+            None,
+            (("variable", "extra"), "==", ("value", "gcp-kms")),
+        ),
     }
 
 

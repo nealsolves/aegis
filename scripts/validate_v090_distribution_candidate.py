@@ -18,6 +18,13 @@ from email.policy import default
 from pathlib import Path
 from typing import Callable
 
+try:
+    from packaging.requirements import Requirement
+    from packaging.utils import canonicalize_name
+except ImportError:  # pragma: no cover - setup-python always supplies pip
+    from pip._vendor.packaging.requirements import Requirement
+    from pip._vendor.packaging.utils import canonicalize_name
+
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 EXPECTED_DISTRIBUTION = "aegis-ai-governance"
@@ -131,6 +138,95 @@ def _canonical_sha256(value: object) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def _marker_operand_key(operand: object) -> tuple[str, str]:
+    kind = type(operand).__name__.lower()
+    value = getattr(operand, "value", None)
+    if kind not in {"variable", "value"} or type(value) is not str:
+        raise CandidateValidationError("requirement marker operand is invalid")
+    return kind, value
+
+
+def _canonical_marker(node: object) -> object:
+    if type(node) is tuple and len(node) == 3:
+        left, operator, right = node
+        left_key = _marker_operand_key(left)
+        right_key = _marker_operand_key(right)
+        operator_value = getattr(operator, "value", None)
+        if type(operator_value) is not str:
+            raise CandidateValidationError(
+                "requirement marker operator is invalid"
+            )
+        if (
+            operator_value in {"==", "!="}
+            and left_key[0] == "value"
+            and right_key[0] == "variable"
+        ):
+            left_key, right_key = right_key, left_key
+        return left_key, operator_value, right_key
+    if type(node) is list:
+        canonical = tuple(_canonical_marker(item) for item in node)
+        return canonical[0] if len(canonical) == 1 else canonical
+    if type(node) is str and node in {"and", "or"}:
+        return node
+    raise CandidateValidationError("requirement marker structure is invalid")
+
+
+def _marker_mentions_extra(marker: object) -> bool:
+    if marker == ("variable", "extra"):
+        return True
+    if type(marker) is tuple:
+        return any(_marker_mentions_extra(item) for item in marker)
+    return False
+
+
+def _requirement_key(value: str) -> tuple[object, ...]:
+    try:
+        requirement = Requirement(value)
+        marker = (
+            None
+            if requirement.marker is None
+            else _canonical_marker(requirement.marker._markers)
+        )
+        return (
+            canonicalize_name(requirement.name),
+            tuple(
+                sorted(canonicalize_name(extra) for extra in requirement.extras)
+            ),
+            str(requirement.specifier),
+            requirement.url,
+            marker,
+        )
+    except CandidateValidationError:
+        raise
+    except Exception as error:
+        raise CandidateValidationError(
+            f"invalid requirement metadata: {value!r}"
+        ) from error
+
+
+def _partition_requirements(
+    requirements: object,
+) -> tuple[set[tuple[object, ...]], set[tuple[object, ...]]]:
+    if not isinstance(requirements, (list, set, tuple)):
+        raise CandidateValidationError("requirement metadata is invalid")
+    runtime: set[tuple[object, ...]] = set()
+    extras: set[tuple[object, ...]] = set()
+    for value in requirements:
+        if not isinstance(value, str):
+            raise CandidateValidationError("requirement metadata is invalid")
+        key = _requirement_key(str(value))
+        marker = key[-1]
+        if marker is None:
+            runtime.add(key)
+        elif _marker_mentions_extra(marker):
+            extras.add(key)
+        else:
+            raise CandidateValidationError(
+                f"requirement marker is not extra-scoped: {value!r}"
+            )
+    return runtime, extras
+
+
 def _inspect_artifacts(dist_dir: Path) -> dict[str, object]:
     wheels = sorted(dist_dir.glob("*.whl"))
     sdists = sorted(dist_dir.glob("*.tar.gz"))
@@ -163,18 +259,21 @@ def _inspect_artifacts(dist_dir: Path) -> dict[str, object]:
                 f"wheel Version is {metadata['Version']!r}, expected "
                 f"{EXPECTED_VERSION!r}"
             )
-        requirements = set(metadata.get_all("Requires-Dist", []))
-        runtime_requirements = {
-            requirement for requirement in requirements
-            if 'extra == "' not in requirement
-        }
-        extra_requirements = requirements.difference(runtime_requirements)
-        if runtime_requirements != EXPECTED_RUNTIME_DEPENDENCIES:
+        runtime_requirements, extra_requirements = _partition_requirements(
+            metadata.get_all("Requires-Dist", [])
+        )
+        expected_runtime, _ = _partition_requirements(
+            EXPECTED_RUNTIME_DEPENDENCIES
+        )
+        _, expected_extras = _partition_requirements(
+            EXPECTED_EXTRA_DEPENDENCIES
+        )
+        if runtime_requirements != expected_runtime:
             raise CandidateValidationError(
                 "wheel runtime dependencies changed: "
                 f"{sorted(runtime_requirements)}"
             )
-        if extra_requirements != EXPECTED_EXTRA_DEPENDENCIES:
+        if extra_requirements != expected_extras:
             raise CandidateValidationError(
                 "wheel optional dependencies changed: "
                 f"{sorted(extra_requirements)}"
