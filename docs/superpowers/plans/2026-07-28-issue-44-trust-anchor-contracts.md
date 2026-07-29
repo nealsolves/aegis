@@ -1143,7 +1143,7 @@ git commit -m "test(signing): add external signer conformance kit"
 
 - Accepted ADR and maintained public documentation matching the implemented names and behavior.
 
-- [ ] **Step 1: Record the approved documentation-only TDD exception and baseline**
+- [x] **Step 1: Record the approved documentation-only TDD exception and baseline**
 
 Human prose does not receive source-text change-detector tests. The user
 approved validating this task with executable public examples, repository
@@ -1158,7 +1158,7 @@ Run:
 
 Expected: the existing documentation baseline passes before edits.
 
-- [ ] **Step 2: Write ADR-0012**
+- [x] **Step 2: Write ADR-0012**
 
 Use the repository ADR template and set status `Accepted`. Include:
 
@@ -1178,7 +1178,7 @@ Use the repository ADR template and set status `Accepted`. Include:
   re-signing and asynchronous contracts remain out of scope;
 - #45, #46, and #47 ownership.
 
-- [ ] **Step 3: Update maintained architecture and integration documents**
+- [x] **Step 3: Update maintained architecture and integration documents**
 
 `docs/PUBLIC_INTEGRATION_CONTRACT.md` must contain doctest-executable public
 examples for:
@@ -1202,7 +1202,7 @@ The threat model and invariants must state:
 
 README and CHANGELOG get concise language only; do not duplicate the full contract.
 
-- [ ] **Step 4: Check every documented snippet against the public API**
+- [x] **Step 4: Check every documented snippet against the public API**
 
 Run:
 
@@ -1216,7 +1216,7 @@ Expected: doctest and public-import checks pass. Documentation parity introduces
 no #44 regression; record the four unrelated baseline inventory failures
 separately if they remain.
 
-- [ ] **Step 5: Perform two documentation review passes**
+- [x] **Step 5: Perform two documentation review passes**
 
 Pass 1 checks that all public names, signatures, constants, status semantics,
 error codes, and examples match the implemented API.
@@ -1226,7 +1226,7 @@ including valid-versus-anchored, HMAC/hash-chain limitations, observational
 time, host ownership, availability, replay, complete-chain replacement, WORM,
 and #45/#46/#47 boundaries.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add docs/decisions/ADR-0012-external-trust-anchor-signing.md docs/architecture/AEGIS_THREAT_MODEL.md docs/architecture/ARCHITECTURAL_INVARIANTS.md docs/PUBLIC_INTEGRATION_CONTRACT.md README.md CHANGELOG.md
