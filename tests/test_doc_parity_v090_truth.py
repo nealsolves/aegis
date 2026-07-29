@@ -294,7 +294,8 @@ def _markdown_section(text: str, heading: str) -> str:
 
 def _documented_algorithm_identifiers(text: str) -> set[str]:
     section = _markdown_section(text, "## Supported algorithms and identity")
-    inline_code = re.findall(r"(?<!`)`([^`\n]+)`(?!`)", section)
+    declaration = section.split("\n\n", 1)[0]
+    inline_code = re.findall(r"(?<!`)`([^`\n]+)`(?!`)", declaration)
     return {
         identifier
         for identifier in inline_code
@@ -481,6 +482,10 @@ def _walk_kms_example(
     if isinstance(node, _KMS_EXAMPLE_COMPREHENSIONS):
         body_scope = nested_scope("comprehension")
         first_generator, *later_generators = node.generators
+        assert not any(
+            isinstance(candidate, ast.NamedExpr)
+            for candidate in ast.walk(first_generator.iter)
+        ), "assignment expressions are unsupported in KMS guide comprehensions"
         walk(first_generator.iter)
         for generator in [first_generator, *later_generators]:
             if generator is not first_generator:
@@ -625,6 +630,22 @@ def test_kms_algorithm_parser_rejects_an_extra_backticked_identifier():
     assert _documented_algorithm_identifiers(mutated) == (
         AWS_KMS_ALGORITHMS | {"UNSUPPORTED_SHA_999"}
     )
+
+
+def test_kms_algorithm_parser_ignores_identity_constants():
+    root = SCRIPT_PATH.parents[1]
+    aws = (
+        root / "docs/reference/external/AWS_KMS_SIGNING.md"
+    ).read_text(encoding="utf-8")
+    mutated = aws.replace(
+        "`key_reference` is the host's configured selector",
+        "`KEY_ID` is AWS terminology for a selector.\n\n"
+        "`key_reference` is the host's configured selector",
+        1,
+    )
+    assert mutated != aws
+
+    assert _documented_algorithm_identifiers(mutated) == AWS_KMS_ALGORITHMS
 
 
 def test_kms_lane_parser_rejects_an_eighth_release_lane():
@@ -822,6 +843,30 @@ def test_kms_example_validator_rejects_a_comprehension_assignment_expression():
     assert mutated != aws
 
     with pytest.raises(AssertionError):
+        _assert_public_aegis_examples(
+            mutated,
+            AWS_GUIDE_IMPORTS,
+            AWS_GUIDE_CALLS,
+        )
+
+
+def test_kms_example_validator_rejects_a_first_iterable_assignment_expression():
+    root = SCRIPT_PATH.parents[1]
+    aws = (
+        root / "docs/reference/external/AWS_KMS_SIGNING.md"
+    ).read_text(encoding="utf-8")
+    mutated = aws.replace(
+        "from aegis import sign_artifact_with_metadata\n",
+        "from aegis import sign_artifact_with_metadata\n"
+        "[None for _ in (host_values := [1])]\n",
+        1,
+    )
+    assert mutated != aws
+
+    with pytest.raises(
+        AssertionError,
+        match="assignment expressions are unsupported",
+    ):
         _assert_public_aegis_examples(
             mutated,
             AWS_GUIDE_IMPORTS,
