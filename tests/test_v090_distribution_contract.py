@@ -221,6 +221,34 @@ def test_candidate_requirement_partition_accepts_equivalent_extra_markers():
     }
 
 
+def test_candidate_installed_import_provenance_is_stable_across_temp_roots(
+    tmp_path: Path,
+):
+    validator = _load_candidate_validator()
+    reports = []
+    for root_name in ("first-run", "second-run"):
+        venv_dir = (tmp_path / root_name / "venv").resolve()
+        imported_path = (
+            venv_dir
+            / "lib"
+            / "python3.12"
+            / "site-packages"
+            / "aegis"
+            / "__init__.py"
+        )
+        reports.append(
+            validator._installed_import_provenance(
+                imported_path,
+                venv_dir,
+            )
+        )
+
+    assert reports == [
+        {"import_location": "isolated-virtualenv"},
+        {"import_location": "isolated-virtualenv"},
+    ]
+
+
 def test_wheel_contains_every_kms_integration_module(built_wheel: Path):
     with zipfile.ZipFile(built_wheel) as archive:
         assert EXPECTED_INTEGRATION_MEMBERS.issubset(archive.namelist())

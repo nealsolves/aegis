@@ -640,6 +640,23 @@ def _prove_trace_and_exports(
             )
 
 
+def _installed_import_provenance(
+    imported_path: Path,
+    venv_dir: Path,
+) -> dict[str, str]:
+    resolved_import = imported_path.resolve()
+    resolved_venv = venv_dir.resolve()
+    if not resolved_import.is_relative_to(resolved_venv):
+        raise CandidateValidationError(
+            "aegis imported outside fresh virtual environment"
+        )
+    if resolved_import.is_relative_to(REPO_ROOT):
+        raise CandidateValidationError(
+            "aegis leaked from source checkout"
+        )
+    return {"import_location": "isolated-virtualenv"}
+
+
 def _prove_fresh_install(
     wheel: Path,
     work_dir: Path,
@@ -681,14 +698,10 @@ def _prove_fresh_install(
             f"installed metadata/runtime versions mismatch: {lines[:2]}"
         )
     imported_path = Path(lines[2])
-    if not imported_path.is_relative_to(venv_dir):
-        raise CandidateValidationError(
-            f"aegis imported outside fresh venv: {imported_path}"
-        )
-    if imported_path.is_relative_to(REPO_ROOT):
-        raise CandidateValidationError(
-            f"aegis leaked from source checkout: {imported_path}"
-        )
+    import_provenance = _installed_import_provenance(
+        imported_path,
+        venv_dir,
+    )
 
     help_result = _run([str(cli), "--help"], cwd=work_dir, env=env)
     if "workflow" not in help_result.stdout:
@@ -713,7 +726,7 @@ def _prove_fresh_install(
     )
     return {
         "python_version": f"{sys.version_info.major}.{sys.version_info.minor}",
-        "import_path": str(imported_path),
+        **import_provenance,
         "provider_credentials_removed": removed_provider_variables,
         "dependency_check": "PASS",
         "profiles": {
