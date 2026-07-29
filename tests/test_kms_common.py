@@ -144,6 +144,14 @@ def test_sha256_digest_rejects_non_exact_bytes(value):
     assert repr(value) not in str(error.value)
 
 
+def test_sha256_digest_rejects_a_bytes_subclass():
+    """A bytes subclass could override boundary-sensitive behavior after entry."""
+    value = _BytesSubclass(b"payload")
+
+    with pytest.raises(ValueError, match="payload is invalid"):
+        _sha256_digest(value)
+
+
 def test_canonical_base64_round_trips_exact_bytes():
     """A noncanonical encoder would create a signature the verifier rejects."""
     raw = b"\x00A\xff\n"
@@ -159,6 +167,14 @@ class _BytesSubclass(bytes):
 
 
 class _StringSubclass(str):
+    pass
+
+
+class _IntSubclass(int):
+    pass
+
+
+class _FloatSubclass(float):
     pass
 
 
@@ -200,6 +216,22 @@ def test_canonical_base64_decode_accepts_the_raw_signature_limit():
     assert _canonical_b64decode(encoded, max_raw_bytes=MAX_RAW_SIGNATURE_BYTES) == raw
 
 
+def test_canonical_base64_decode_accepts_one_byte_below_the_raw_signature_limit():
+    """The byte bound must not accidentally exclude a valid near-limit signature."""
+    raw = b"x" * (MAX_RAW_SIGNATURE_BYTES - 1)
+    encoded = _canonical_b64encode(raw)
+
+    assert _canonical_b64decode(encoded, max_raw_bytes=MAX_RAW_SIGNATURE_BYTES) == raw
+
+
+def test_canonical_base64_decode_rejects_nonzero_pad_bit_alias():
+    """A strict decoder still accepts aliases unless canonical round-tripping runs."""
+    assert _canonical_b64decode("YQ==", max_raw_bytes=MAX_RAW_SIGNATURE_BYTES) == b"a"
+
+    with pytest.raises(ValueError, match="base64 value is invalid"):
+        _canonical_b64decode("YR==", max_raw_bytes=MAX_RAW_SIGNATURE_BYTES)
+
+
 def test_canonical_base64_decode_rejects_a_decoded_value_past_the_limit():
     """An off-by-one limit could exceed the signed metadata size contract."""
     encoded = _canonical_b64encode(b"x" * (MAX_RAW_SIGNATURE_BYTES + 1))
@@ -223,6 +255,12 @@ def test_normalize_crc32c_accepts_the_inclusive_uint32_range():
     assert _normalize_crc32c(MAX_CRC32C) == MAX_CRC32C
 
 
+def test_normalize_crc32c_rejects_an_int_subclass():
+    """An int subclass could supply trusted-looking checksum behavior."""
+    with pytest.raises(ValueError, match="crc32c is invalid"):
+        _normalize_crc32c(_IntSubclass(1))
+
+
 def test_normalize_timeout_distinguishes_omission_from_explicit_none():
     """Omitted SDK parameters and explicit None have intentionally different calls."""
     assert _normalize_timeout(
@@ -239,6 +277,13 @@ def test_normalize_timeout_rejects_nonpositive_or_nonfinite_values(value):
         _normalize_timeout(value, error_type=VerificationContractError)
 
     assert repr(value) not in str(error.value)
+
+
+@pytest.mark.parametrize("value", [_IntSubclass(1), _FloatSubclass(0.5)])
+def test_normalize_timeout_rejects_positive_numeric_subclasses(value):
+    """Positive numeric subclasses must not cross the SDK timeout boundary."""
+    with pytest.raises(VerificationContractError, match="timeout is invalid"):
+        _normalize_timeout(value, error_type=VerificationContractError)
 
 
 @pytest.mark.parametrize("value", [1, 0.5])
