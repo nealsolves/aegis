@@ -339,73 +339,224 @@ def _assert_public_aegis_module(module_name: str) -> None:
     )
 
 
-def _assert_public_aegis_examples(
-    text: str,
-    expected_imports: set[tuple[str, str]],
-    expected_calls: dict[str, int],
-) -> None:
-    actual_imports: set[tuple[str, str]] = set()
-    bindings: dict[str, object] = {}
-    binding_names: dict[str, str] = {}
-    actual_calls: Counter[str] = Counter()
-    allowed_direct_calls = set(dir(builtins))
+_LOCAL_DIRECT_CALL = object()
+_MISSING_DIRECT_CALL = object()
+_BUILTIN_DIRECT_CALLS = frozenset(dir(builtins))
 
-    for index, sample in enumerate(_python_fences(text), start=1):
-        tree = ast.parse(sample, filename=f"KMS guide Python fence {index}")
-        for node in ast.walk(tree):
-            if isinstance(
-                node,
-                (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef),
-            ):
-                allowed_direct_calls.add(node.name)
-                continue
-            if isinstance(node, ast.Import):
-                for alias in node.names:
-                    local_name = alias.asname or alias.name.split(".", 1)[0]
-                    if not _is_aegis_module(alias.name):
-                        allowed_direct_calls.add(local_name)
-                        continue
-                    _assert_public_aegis_module(alias.name)
-                    actual_imports.add((alias.name, ""))
-                continue
-            if not isinstance(node, ast.ImportFrom):
-                continue
-            assert node.level == 0
-            module_name = node.module
-            assert module_name is not None
-            if not _is_aegis_module(module_name):
-                for alias in node.names:
-                    assert alias.name != "*"
-                    allowed_direct_calls.add(alias.asname or alias.name)
-                continue
+
+class _KmsExampleScope:
+    def __init__(
+        self,
+        kind: str,
+        parent: _KmsExampleScope | None,
+    ) -> None:
+        self.kind = kind
+        self.parent = parent
+        self.bindings: dict[str, object] = {}
+
+
+def _bind_kms_example_name(
+    scope: _KmsExampleScope,
+    name: str,
+    binding: object = _LOCAL_DIRECT_CALL,
+) -> None:
+    existing = scope.bindings.get(name, _MISSING_DIRECT_CALL)
+    assert existing is _MISSING_DIRECT_CALL or existing == binding, (
+        f"conflicting direct-call binding in KMS guide: {name}"
+    )
+    scope.bindings[name] = binding
+
+
+def _kms_example_enclosing_scope(scope: _KmsExampleScope) -> _KmsExampleScope:
+    candidate = scope
+    while candidate.kind == "class":
+        assert candidate.parent is not None
+        candidate = candidate.parent
+    return candidate
+
+
+def _bind_kms_parameters(
+    scope: _KmsExampleScope,
+    arguments: ast.arguments,
+) -> None:
+    for parameter in [
+        *arguments.posonlyargs,
+        *arguments.args,
+        *arguments.kwonlyargs,
+    ]:
+        _bind_kms_example_name(scope, parameter.arg)
+    for parameter in (arguments.vararg, arguments.kwarg):
+        if parameter is not None:
+            _bind_kms_example_name(scope, parameter.arg)
+
+
+def _walk_kms_example(
+    node: ast.AST,
+    scope: _KmsExampleScope,
+    scopes: dict[ast.AST, _KmsExampleScope],
+    actual_imports: set[tuple[str, str]],
+    actual_calls: Counter[str],
+    *,
+    collect: bool,
+) -> None:
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        headers: list[ast.AST] = [*node.decorator_list, node.args]
+        if node.returns is not None:
+            headers.append(node.returns)
+        headers.extend(getattr(node, "type_params", ()))
+        if collect:
+            _bind_kms_example_name(scope, node.name)
+            body_scope = _KmsExampleScope(
+                "function",
+                _kms_example_enclosing_scope(scope),
+            )
+            scopes[node] = body_scope
+            _bind_kms_parameters(body_scope, node.args)
+        else:
+            body_scope = scopes[node]
+        for child in headers:
+            _walk_kms_example(
+                child,
+                scope,
+                scopes,
+                actual_imports,
+                actual_calls,
+                collect=collect,
+            )
+        for child in node.body:
+            _walk_kms_example(
+                child,
+                body_scope,
+                scopes,
+                actual_imports,
+                actual_calls,
+                collect=collect,
+            )
+        return
+
+    if isinstance(node, ast.Lambda):
+        if collect:
+            body_scope = _KmsExampleScope(
+                "function",
+                _kms_example_enclosing_scope(scope),
+            )
+            scopes[node] = body_scope
+            _bind_kms_parameters(body_scope, node.args)
+        else:
+            body_scope = scopes[node]
+        _walk_kms_example(
+            node.args,
+            scope,
+            scopes,
+            actual_imports,
+            actual_calls,
+            collect=collect,
+        )
+        _walk_kms_example(
+            node.body,
+            body_scope,
+            scopes,
+            actual_imports,
+            actual_calls,
+            collect=collect,
+        )
+        return
+
+    if isinstance(node, ast.ClassDef):
+        headers = [
+            *node.decorator_list,
+            *node.bases,
+            *node.keywords,
+            *getattr(node, "type_params", ()),
+        ]
+        if collect:
+            _bind_kms_example_name(scope, node.name)
+            body_scope = _KmsExampleScope(
+                "class",
+                _kms_example_enclosing_scope(scope),
+            )
+            scopes[node] = body_scope
+        else:
+            body_scope = scopes[node]
+        for child in headers:
+            _walk_kms_example(
+                child,
+                scope,
+                scopes,
+                actual_imports,
+                actual_calls,
+                collect=collect,
+            )
+        for child in node.body:
+            _walk_kms_example(
+                child,
+                body_scope,
+                scopes,
+                actual_imports,
+                actual_calls,
+                collect=collect,
+            )
+        return
+
+    if collect and isinstance(node, ast.Import):
+        for alias in node.names:
+            local_name = alias.asname or alias.name.split(".", 1)[0]
+            if _is_aegis_module(alias.name):
+                _assert_public_aegis_module(alias.name)
+                actual_imports.add((alias.name, ""))
+            _bind_kms_example_name(scope, local_name)
+        return
+
+    if collect and isinstance(node, ast.ImportFrom):
+        assert node.level == 0
+        module_name = node.module
+        assert module_name is not None
+        module = None
+        if _is_aegis_module(module_name):
             _assert_public_aegis_module(module_name)
             module = importlib.import_module(module_name)
-            for alias in node.names:
-                assert alias.name != "*"
+        for alias in node.names:
+            assert alias.name != "*"
+            local_name = alias.asname or alias.name
+            if module is None:
+                binding = _LOCAL_DIRECT_CALL
+            else:
                 assert not alias.name.startswith("_")
-                imported = getattr(module, alias.name)
-                local_name = alias.asname or alias.name
                 actual_imports.add((module_name, alias.name))
-                assert (
-                    local_name not in bindings
-                    or bindings[local_name] is imported
-                )
-                bindings[local_name] = imported
-                binding_names[local_name] = alias.name
+                binding = (getattr(module, alias.name), alias.name)
+            _bind_kms_example_name(scope, local_name, binding)
+        return
 
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call):
-                continue
-            if not isinstance(node.func, ast.Name):
-                continue
-            called = bindings.get(node.func.id)
-            if called is None:
-                assert node.func.id in allowed_direct_calls, (
-                    f"unresolved direct call in KMS guide: {node.func.id}"
-                )
-                continue
-            actual_calls[binding_names[node.func.id]] += 1
-            assert not any(isinstance(argument, ast.Starred) for argument in node.args)
+    if (
+        not collect
+        and isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+    ):
+        candidate: _KmsExampleScope | None = scope
+        binding = _MISSING_DIRECT_CALL
+        while candidate is not None:
+            binding = candidate.bindings.get(
+                node.func.id,
+                _MISSING_DIRECT_CALL,
+            )
+            if binding is not _MISSING_DIRECT_CALL:
+                break
+            candidate = candidate.parent
+        if (
+            binding is _MISSING_DIRECT_CALL
+            and node.func.id in _BUILTIN_DIRECT_CALLS
+        ):
+            binding = _LOCAL_DIRECT_CALL
+        assert binding is not _MISSING_DIRECT_CALL, (
+            f"unresolved direct call in KMS guide: {node.func.id}"
+        )
+        if binding is not _LOCAL_DIRECT_CALL:
+            called, binding_name = binding
+            actual_calls[binding_name] += 1
+            assert not any(
+                isinstance(argument, ast.Starred)
+                for argument in node.args
+            )
             assert all(keyword.arg is not None for keyword in node.keywords)
             positional = [object() for _argument in node.args]
             keywords = {
@@ -414,6 +565,46 @@ def _assert_public_aegis_examples(
                 if keyword.arg is not None
             }
             inspect.signature(called).bind(*positional, **keywords)
+
+    for child in ast.iter_child_nodes(node):
+        _walk_kms_example(
+            child,
+            scope,
+            scopes,
+            actual_imports,
+            actual_calls,
+            collect=collect,
+        )
+
+
+def _assert_public_aegis_examples(
+    text: str,
+    expected_imports: set[tuple[str, str]],
+    expected_calls: dict[str, int],
+) -> None:
+    actual_imports: set[tuple[str, str]] = set()
+    actual_calls: Counter[str] = Counter()
+
+    for index, sample in enumerate(_python_fences(text), start=1):
+        tree = ast.parse(sample, filename=f"KMS guide Python fence {index}")
+        module_scope = _KmsExampleScope("module", None)
+        scopes = {tree: module_scope}
+        _walk_kms_example(
+            tree,
+            module_scope,
+            scopes,
+            actual_imports,
+            actual_calls,
+            collect=True,
+        )
+        _walk_kms_example(
+            tree,
+            module_scope,
+            scopes,
+            actual_imports,
+            actual_calls,
+            collect=False,
+        )
 
     assert actual_imports == expected_imports
     assert dict(actual_calls) == expected_calls
@@ -551,6 +742,197 @@ def test_kms_example_validator_allows_a_defined_host_helper_call():
         "configure_host_client()\n",
         1,
     )
+
+    _assert_public_aegis_examples(
+        extended,
+        AWS_GUIDE_IMPORTS,
+        AWS_GUIDE_CALLS,
+    )
+
+
+@pytest.mark.parametrize(
+    ("anchor", "replacement", "unresolved_name"),
+    [
+        pytest.param(
+            "import boto3\n",
+            textwrap.dedent(
+                """\
+                import boto3
+
+                def sibling_definer():
+                    def sign_artifact_with_metadatum():
+                        return None
+
+                def sibling_caller():
+                    sign_artifact_with_metadatum()
+
+                sibling_caller()
+                """
+            ),
+            "sign_artifact_with_metadatum",
+            id="sibling-nested-helper",
+        ),
+        pytest.param(
+            "import boto3\n",
+            textwrap.dedent(
+                """\
+                import boto3
+
+                def configure_host(enabled):
+                    if enabled:
+                        missing_host_setup()
+
+                configure_host(True)
+                """
+            ),
+            "missing_host_setup",
+            id="unresolved-control-flow",
+        ),
+        pytest.param(
+            "from aegis import sign_artifact_with_metadata\n",
+            "def bind_sign_helper():\n"
+            "    from aegis import sign_artifact_with_metadata\n",
+            "sign_artifact_with_metadata",
+            id="local-aegis-import",
+        ),
+        pytest.param(
+            "import boto3\n",
+            textwrap.dedent(
+                """\
+                import boto3
+
+                def define_host_factory():
+                    class HostFactory:
+                        pass
+
+                def create_host_client():
+                    HostFactory()
+
+                create_host_client()
+                """
+            ),
+            "HostFactory",
+            id="sibling-local-class",
+        ),
+        pytest.param(
+            "import boto3\n",
+            textwrap.dedent(
+                """\
+                import boto3
+
+                def keep_callback(callback):
+                    return callback
+
+                def run_host_callback():
+                    callback()
+
+                run_host_callback()
+                """
+            ),
+            "callback",
+            id="sibling-parameter",
+        ),
+        pytest.param(
+            "import boto3\n",
+            textwrap.dedent(
+                """\
+                import boto3
+
+                class HostConfiguration:
+                    class HostFactory:
+                        pass
+
+                    def create_host_client(self):
+                        HostFactory()
+
+                HostConfiguration()
+                """
+            ),
+            "HostFactory",
+            id="class-binding-from-method",
+        ),
+    ],
+)
+def test_kms_example_validator_rejects_out_of_scope_direct_call(
+    anchor,
+    replacement,
+    unresolved_name,
+):
+    root = SCRIPT_PATH.parents[1]
+    aws = (
+        root / "docs/reference/external/AWS_KMS_SIGNING.md"
+    ).read_text(encoding="utf-8")
+    mutated = aws.replace(anchor, replacement, 1)
+    assert mutated != aws
+
+    with pytest.raises(
+        AssertionError,
+        match=rf"unresolved direct call.*{unresolved_name}",
+    ):
+        _assert_public_aegis_examples(
+            mutated,
+            AWS_GUIDE_IMPORTS,
+            AWS_GUIDE_CALLS,
+        )
+
+
+@pytest.mark.parametrize(
+    "extension",
+    [
+        pytest.param(
+            textwrap.dedent(
+                """\
+                def configure_host():
+                    def configure_host_client():
+                        return None
+
+                    configure_host_client()
+
+                configure_host()
+                """
+            ),
+            id="enclosing-nested-helper",
+        ),
+        pytest.param(
+            textwrap.dedent(
+                """\
+                def configure_host_client():
+                    return None
+
+                def configure_host():
+                    configure_host_client()
+
+                configure_host()
+                """
+            ),
+            id="module-helper-in-function",
+        ),
+        pytest.param(
+            textwrap.dedent(
+                """\
+                def run_host_callback(callback):
+                    callback()
+
+                run_host_callback(lambda: None)
+                """
+            ),
+            id="callable-function-parameter",
+        ),
+    ],
+)
+def test_kms_example_validator_allows_lexically_available_direct_call(
+    extension,
+):
+    root = SCRIPT_PATH.parents[1]
+    aws = (
+        root / "docs/reference/external/AWS_KMS_SIGNING.md"
+    ).read_text(encoding="utf-8")
+    extended = aws.replace(
+        "import boto3\n",
+        f"import boto3\n\n{extension}",
+        1,
+    )
+    assert extended != aws
 
     _assert_public_aegis_examples(
         extended,
