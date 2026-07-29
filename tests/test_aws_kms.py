@@ -117,6 +117,31 @@ _MALFORMED_AWS_KEY_ARNS = (
     ),
 )
 
+_UNSUPPORTED_AWS_PROVIDER_PARTITION_ARNS = (
+    "arn::kms:us-east-1:111122223333:key/12345678-1234-4abc-8def-1234567890ab",
+    "arn:aws-CN:kms:cn-north-1:111122223333:key/12345678-1234-4abc-8def-1234567890ab",
+    (
+        "arn:aws-not-a-real-partition:kms:us-east-1:111122223333:key/"
+        "12345678-1234-4abc-8def-1234567890ab"
+    ),
+    (
+        "arn:aws-cn-extra:kms:cn-north-1:111122223333:key/"
+        "12345678-1234-4abc-8def-1234567890ab"
+    ),
+    (
+        "arn:aws-euscx:kms:eusc-de-east-1:111122223333:key/"
+        "12345678-1234-4abc-8def-1234567890ab"
+    ),
+    (
+        "arn:aws-us-gov-2:kms:us-gov-west-1:111122223333:key/"
+        "12345678-1234-4abc-8def-1234567890ab"
+    ),
+    (
+        "arn:aws-iso-g:kms:us-iso-east-1:111122223333:key/"
+        "12345678-1234-4abc-8def-1234567890ab"
+    ),
+)
+
 _DOCUMENTED_AWS_SIGNING_ALGORITHMS = (
     "RSASSA_PSS_SHA_256",
     "RSASSA_PSS_SHA_384",
@@ -326,6 +351,29 @@ def test_aws_signer_binds_and_signs_with_a_canonical_mrk_arn(aws_private_keys):
     assert client.sign_calls[0]["KeyId"] == key_arn
 
 
+@pytest.mark.parametrize("key_arn", _VALID_AWS_KEY_ARNS)
+def test_aws_signer_identity_accepts_all_supported_provider_partitions(
+    aws_private_keys, key_arn
+):
+    client = RecordingAwsKmsClient(aws_private_keys, key_arn=key_arn)
+    signer = AwsKmsArtifactSigner(
+        client,
+        key_id="alias/audit",
+        signing_algorithm="RSASSA_PSS_SHA_256",
+    )
+
+    identity = signer.signer_identity()
+
+    assert identity == SignerIdentity(
+        "RSASSA_PSS_SHA_256",
+        SignatureEncoding.BASE64,
+        "alias/audit",
+        key_arn,
+    )
+    assert client.describe_calls == [{"KeyId": "alias/audit"}]
+    assert client.sign_calls == []
+
+
 def test_aws_signer_rejects_multi_region_replica_arn_substitution_before_sign(
     aws_private_keys,
 ):
@@ -362,18 +410,6 @@ def test_aws_signer_rejects_multi_region_replica_arn_substitution_before_sign(
         "arn:aws:kms:-:111122223333:key/12345678-1234-4abc-8def-1234567890ab",
         "arn:aws:kms:us-east-1:111122223333:key/not-a-canonical-key-id",
         "arn:aws:kms:us-east-1:111122223333:key/mrk-ABCDEF0123456789ABCDEF0123456789",
-        (
-            "arn:aws-not-a-real-partition:kms:us-east-1:111122223333:key/"
-            "12345678-1234-4abc-8def-1234567890ab"
-        ),
-        (
-            "arn:aws-cn-extra:kms:cn-north-1:111122223333:key/"
-            "12345678-1234-4abc-8def-1234567890ab"
-        ),
-        (
-            "arn:aws-euscx:kms:eusc-de-east-1:111122223333:key/"
-            "12345678-1234-4abc-8def-1234567890ab"
-        ),
     ),
 )
 def test_aws_signer_identity_rejects_noncanonical_provider_arns(
@@ -390,6 +426,28 @@ def test_aws_signer_identity_rejects_noncanonical_provider_arns(
         signer.signer_identity()
 
     _assert_safe_error(caught.value)
+    assert client.sign_calls == []
+
+
+@pytest.mark.parametrize(
+    "key_arn",
+    _UNSUPPORTED_AWS_PROVIDER_PARTITION_ARNS,
+)
+def test_aws_signer_identity_rejects_unsupported_provider_partitions(
+    aws_private_keys, key_arn
+):
+    client = RecordingAwsKmsClient(aws_private_keys, key_arn=key_arn)
+    signer = AwsKmsArtifactSigner(
+        client,
+        key_id="alias/audit",
+        signing_algorithm="RSASSA_PSS_SHA_256",
+    )
+
+    with pytest.raises(SigningContractError) as caught:
+        signer.signer_identity()
+
+    _assert_safe_error(caught.value)
+    assert client.describe_calls == [{"KeyId": "alias/audit"}]
     assert client.sign_calls == []
 
 
