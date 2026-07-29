@@ -1198,7 +1198,7 @@ def test_aws_verifier_rejects_noncanonical_or_oversized_signature_before_resolve
     assert client.verify_calls == []
 
 
-def test_aws_verifier_accepts_the_inclusive_raw_signature_limit(
+def test_aws_verifier_accepts_limit_minus_one_and_limit(
     aws_private_keys,
 ):
     client = RecordingAwsKmsClient(aws_private_keys, mode="verify_false")
@@ -1209,16 +1209,25 @@ def test_aws_verifier_accepts_the_inclusive_raw_signature_limit(
             frozenset({"RSASSA_PSS_SHA_256"}),
         ),
     )
-    raw_signature = b"x" * 6_144
+    for size in (
+        MAX_AWS_RAW_SIGNATURE_BYTES - 1,
+        MAX_AWS_RAW_SIGNATURE_BYTES,
+    ):
+        raw_signature = b"x" * size
+        outcome = verifier.verify(
+            b"payload",
+            b64encode(raw_signature).decode("ascii"),
+            _aws_metadata(),
+        )
+        _assert_outcome(outcome, VerificationReasonCode.SIGNATURE_INVALID)
 
-    outcome = verifier.verify(
-        b"payload",
-        b64encode(raw_signature).decode("ascii"),
-        _aws_metadata(),
-    )
-
-    _assert_outcome(outcome, VerificationReasonCode.SIGNATURE_INVALID)
-    assert client.verify_calls[0]["Signature"] == raw_signature
+    assert [
+        call["Signature"]
+        for call in client.verify_calls
+    ] == [
+        b"x" * (MAX_AWS_RAW_SIGNATURE_BYTES - 1),
+        b"x" * MAX_AWS_RAW_SIGNATURE_BYTES,
+    ]
 
 
 def test_aws_verifier_maps_unknown_revoked_and_denied_without_provider_work(
