@@ -18,6 +18,12 @@ These changes exist in the current source tree but are not in the published
   `verify_artifact_detailed()` results. Legacy HMAC and boolean verification
   remain unchanged; external keys, credentials, transport, availability
   behavior, trusted checkpoints, and storage remain host-owned.
+- Add AWS KMS and Google Cloud KMS asymmetric artifact-signing adapters under
+  this same source-only version boundary and the single
+  `aegis-ai-governance` distribution. Optional `aws-kms` and `gcp-kms` extras
+  leave base dependencies unchanged; exact-pair trust resolution, clients,
+  credentials, provider configuration, IAM, and retained evidence remain
+  host-owned.
 
 ## [0.9.0b1] — 2026-07-25
 

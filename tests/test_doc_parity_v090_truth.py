@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import ast
 import importlib.util
+import re
 import subprocess
 import textwrap
 from pathlib import Path
@@ -207,6 +209,161 @@ def test_instruction_guide_records_candidate_and_optional_adapter_status():
     for adapter in ("Bedrock", "A2A", "OpenAI Agents"):
         assert adapter in guide
     assert "published package version remains `0.3.3`" not in guide
+
+
+KMS_ALGORITHMS = {
+    "RSASSA_PSS_SHA_256",
+    "ECDSA_SHA_256",
+    "RSA_SIGN_PSS_2048_SHA256",
+    "RSA_SIGN_PSS_3072_SHA256",
+    "RSA_SIGN_PSS_4096_SHA256",
+    "EC_SIGN_P256_SHA256",
+}
+
+EXCLUDED_KMS_ALGORITHMS = {
+    "RSASSA_PSS_SHA_384",
+    "RSASSA_PSS_SHA_512",
+    "RSASSA_PKCS1_V1_5_SHA_256",
+    "ECDSA_SHA_384",
+    "ECDSA_SHA_512",
+    "SM2DSA",
+    "ML_DSA_SHAKE_256",
+    "ED25519_SHA_512",
+    "EC_SIGN_P384_SHA384",
+}
+
+KMS_PUBLIC_DOCS = (
+    "README.md",
+    "docs/INTEGRATION_GUIDE.md",
+    "docs/PUBLIC_INTEGRATION_CONTRACT.md",
+    "docs/reference/external/AWS_KMS_SIGNING.md",
+    "docs/reference/external/GOOGLE_CLOUD_KMS_SIGNING.md",
+)
+
+
+def _python_fences(text: str) -> list[str]:
+    return re.findall(r"```python\n(.*?)```", text, re.DOTALL)
+
+
+def test_kms_guides_publish_exact_extras_algorithms_and_compilable_examples():
+    root = SCRIPT_PATH.parents[1]
+    aws = (
+        root / "docs/reference/external/AWS_KMS_SIGNING.md"
+    ).read_text(encoding="utf-8")
+    google = (
+        root / "docs/reference/external/GOOGLE_CLOUD_KMS_SIGNING.md"
+    ).read_text(encoding="utf-8")
+
+    assert 'pip install "aegis-ai-governance[aws-kms]"' in aws
+    assert 'pip install "aegis-ai-governance[gcp-kms]"' in google
+
+    public_text = "\n".join(
+        (root / rel).read_text(encoding="utf-8") for rel in KMS_PUBLIC_DOCS
+    )
+    assert {algorithm for algorithm in KMS_ALGORITHMS if algorithm in public_text} == (
+        KMS_ALGORITHMS
+    )
+    assert not EXCLUDED_KMS_ALGORITHMS.intersection(public_text.split())
+
+    for rel in (
+        "docs/reference/external/AWS_KMS_SIGNING.md",
+        "docs/reference/external/GOOGLE_CLOUD_KMS_SIGNING.md",
+    ):
+        text = (root / rel).read_text(encoding="utf-8")
+        for index, sample in enumerate(_python_fences(text), start=1):
+            ast.parse(sample, filename=f"{rel} python fence {index}")
+        assert "aegis.integrations._" not in text
+
+
+def test_kms_guides_preserve_provider_identity_and_verification_boundaries():
+    root = SCRIPT_PATH.parents[1]
+    aws = (
+        root / "docs/reference/external/AWS_KMS_SIGNING.md"
+    ).read_text(encoding="utf-8")
+    google = (
+        root / "docs/reference/external/GOOGLE_CLOUD_KMS_SIGNING.md"
+    ).read_text(encoding="utf-8")
+    combined = f"{aws}\n{google}".lower()
+
+    assert "logical-key identity" in aws.lower()
+    assert "backing-material version" in aws.lower()
+    for partition in (
+        "aws",
+        "aws-cn",
+        "aws-us-gov",
+        "aws-iso",
+        "aws-iso-b",
+        "aws-iso-e",
+        "aws-iso-f",
+        "aws-eusc",
+    ):
+        assert f"`{partition}`" in aws
+
+    for anchor in (
+        "public_key.data",
+        "crc32c",
+        "retained pem",
+        "exact cryptokeyversion",
+    ):
+        assert anchor in google.lower()
+
+    assert "artifact metadata does not select provider resources" in combined
+    for responsibility in (
+        "clients",
+        "credentials",
+        "retry",
+        "timeout",
+        "endpoints",
+        "regional",
+        "project configuration",
+        "iam",
+        "trust policy",
+        "retained evidence",
+    ):
+        assert responsibility in combined
+
+
+def test_kms_docs_make_only_bounded_operational_and_compliance_claims():
+    root = SCRIPT_PATH.parents[1]
+    adr = (
+        root / "docs/decisions/ADR-0013-aws-google-kms-adapters.md"
+    ).read_text(encoding="utf-8")
+    public_text = "\n".join(
+        (root / rel).read_text(encoding="utf-8") for rel in KMS_PUBLIC_DOCS
+    )
+    combined = " ".join(f"{adr}\n{public_text}".lower().split())
+
+    for non_claim in (
+        "immutable logging",
+        "trusted time",
+        "complete history",
+        "hsm/fips status",
+        "certification",
+    ):
+        assert f"does not claim {non_claim}" in combined
+
+    changelog = (root / "CHANGELOG.md").read_text(encoding="utf-8")
+    source_only = changelog.split("## [0.9.0b1]", 1)[0]
+    assert "AWS KMS" in source_only
+    assert "Google Cloud KMS" in source_only
+
+
+def test_release_gates_publish_the_exact_optional_extra_artifact_lanes():
+    root = SCRIPT_PATH.parents[1]
+    release_gates = (root / "RELEASE_GATES.md").read_text(encoding="utf-8")
+    expected_lanes = {
+        "base-wheel",
+        "aws-min-wheel",
+        "aws-current-wheel",
+        "gcp-min-wheel",
+        "gcp-current-wheel",
+        "combined-current-wheel",
+        "combined-current-sdist",
+    }
+
+    assert {
+        lane for lane in expected_lanes if f"`{lane}`" in release_gates
+    } == expected_lanes
 
 
 REFERENCE_TABLE = """

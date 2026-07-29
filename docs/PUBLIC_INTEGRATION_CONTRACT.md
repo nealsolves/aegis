@@ -868,6 +868,24 @@ non-secret opaque identifier; do not place credentials, secret material,
 tokens, unrestricted provider responses, or a locator that AEGIS should
 dereference in it.
 
+Source-only provider implementations are available from
+`aegis.integrations.aws_kms` and
+`aegis.integrations.google_cloud_kms`; they are not top-level re-exports.
+Install them with `pip install "aegis-ai-governance[aws-kms]"` or
+`pip install "aegis-ai-governance[gcp-kms]"`. Their complete closed algorithm
+set is `RSASSA_PSS_SHA_256`, `ECDSA_SHA_256`,
+`RSA_SIGN_PSS_2048_SHA256`, `RSA_SIGN_PSS_3072_SHA256`,
+`RSA_SIGN_PSS_4096_SHA256`, and `EC_SIGN_P256_SHA256`.
+
+Artifact metadata does not select provider resources. AWS verification binds
+to a host-approved concrete logical-key ARN, which is not a
+backing-material version. Google verification binds to an exact
+CryptoKeyVersion and either validates checksummed `PublicKey.public_key.data`
+or uses a host-retained PEM. The provider guides document client construction,
+least privilege, rotation, revocation, outages, and retained evidence:
+[AWS KMS](reference/external/AWS_KMS_SIGNING.md) and
+[Google Cloud KMS](reference/external/GOOGLE_CLOUD_KMS_SIGNING.md).
+
 `sign_artifact_with_metadata(artifact, signer, *, signed_at)` requires an
 explicit non-negative integer Unix second; `bool` is rejected. `signed_at`
 records the host's observation of when signing began. It is not trusted time,

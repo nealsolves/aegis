@@ -94,6 +94,8 @@ documentation_inventory:
     - docs/superpowers/specs/2026-07-26-labs-navigation-redesign-design.md
     - docs/superpowers/plans/2026-07-26-landing-page-boundary-story.md
     - docs/superpowers/specs/2026-07-26-landing-page-boundary-story-design.md
+    # Issue #45 design history is non-authoritative; maintained provider
+    # guidance lives under docs/reference/** and ADRs match docs/decisions/**.
     - docs/superpowers/plans/2026-07-29-issue-45-aws-google-kms-adapters.md
     - docs/superpowers/specs/2026-07-29-issue-45-aws-google-kms-adapters-design.md
   instruction_system:

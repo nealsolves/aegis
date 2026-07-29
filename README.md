@@ -105,6 +105,21 @@ transport, availability behavior, and artifact storage. See the
 and [ADR-0012](docs/decisions/ADR-0012-external-trust-anchor-signing.md) for the
 two-axis signature/anchor contract and its limits.
 
+That source-only line now includes explicit
+[AWS KMS](docs/reference/external/AWS_KMS_SIGNING.md) and
+[Google Cloud KMS](docs/reference/external/GOOGLE_CLOUD_KMS_SIGNING.md)
+adapters in the same distribution. Install their optional extras with
+`pip install "aegis-ai-governance[aws-kms]"` or
+`pip install "aegis-ai-governance[gcp-kms]"`. The supported algorithms are
+`RSASSA_PSS_SHA_256`, `ECDSA_SHA_256`, `RSA_SIGN_PSS_2048_SHA256`,
+`RSA_SIGN_PSS_3072_SHA256`, `RSA_SIGN_PSS_4096_SHA256`, and
+`EC_SIGN_P256_SHA256`. Artifact metadata does not select provider resources;
+the host owns exact-pair trust resolution, clients, credentials, retry and
+timeout behavior, endpoints, regional/project configuration, IAM, trust
+policy, and retained evidence. See
+[ADR-0013](docs/decisions/ADR-0013-aws-google-kms-adapters.md) for identity,
+rotation, release, and assurance boundaries.
+
 ## Workflow Governance (v0.9.0 Beta)
 
 Workflow governance is available in the `v0.9.0b1` beta release. No external
