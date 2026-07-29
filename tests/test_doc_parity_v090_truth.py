@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import builtins
 from collections import Counter
 import importlib
 import importlib.util
@@ -347,23 +348,36 @@ def _assert_public_aegis_examples(
     bindings: dict[str, object] = {}
     binding_names: dict[str, str] = {}
     actual_calls: Counter[str] = Counter()
+    allowed_direct_calls = set(dir(builtins))
 
     for index, sample in enumerate(_python_fences(text), start=1):
         tree = ast.parse(sample, filename=f"KMS guide Python fence {index}")
         for node in ast.walk(tree):
+            if isinstance(
+                node,
+                (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef),
+            ):
+                allowed_direct_calls.add(node.name)
+                continue
             if isinstance(node, ast.Import):
                 for alias in node.names:
+                    local_name = alias.asname or alias.name.split(".", 1)[0]
                     if not _is_aegis_module(alias.name):
+                        allowed_direct_calls.add(local_name)
                         continue
                     _assert_public_aegis_module(alias.name)
                     actual_imports.add((alias.name, ""))
                 continue
             if not isinstance(node, ast.ImportFrom):
                 continue
-            module_name = node.module
-            if module_name is None or not _is_aegis_module(module_name):
-                continue
             assert node.level == 0
+            module_name = node.module
+            assert module_name is not None
+            if not _is_aegis_module(module_name):
+                for alias in node.names:
+                    assert alias.name != "*"
+                    allowed_direct_calls.add(alias.asname or alias.name)
+                continue
             _assert_public_aegis_module(module_name)
             module = importlib.import_module(module_name)
             for alias in node.names:
@@ -386,6 +400,9 @@ def _assert_public_aegis_examples(
                 continue
             called = bindings.get(node.func.id)
             if called is None:
+                assert node.func.id in allowed_direct_calls, (
+                    f"unresolved direct call in KMS guide: {node.func.id}"
+                )
                 continue
             actual_calls[binding_names[node.func.id]] += 1
             assert not any(isinstance(argument, ast.Starred) for argument in node.args)
@@ -483,6 +500,65 @@ def test_kms_example_validator_rejects_a_plain_private_aegis_import():
         )
 
 
+def test_kms_example_validator_rejects_a_moduleless_relative_import():
+    root = SCRIPT_PATH.parents[1]
+    aws = (
+        root / "docs/reference/external/AWS_KMS_SIGNING.md"
+    ).read_text(encoding="utf-8")
+    mutated = aws.replace(
+        "import boto3\n",
+        "import boto3\nfrom . import aegis\n",
+        1,
+    )
+
+    with pytest.raises(AssertionError):
+        _assert_public_aegis_examples(
+            mutated,
+            AWS_GUIDE_IMPORTS,
+            AWS_GUIDE_CALLS,
+        )
+
+
+def test_kms_example_validator_rejects_a_named_relative_import():
+    root = SCRIPT_PATH.parents[1]
+    aws = (
+        root / "docs/reference/external/AWS_KMS_SIGNING.md"
+    ).read_text(encoding="utf-8")
+    mutated = aws.replace(
+        "import boto3\n",
+        "import boto3\nfrom .host_helpers import helper\n",
+        1,
+    )
+
+    with pytest.raises(AssertionError):
+        _assert_public_aegis_examples(
+            mutated,
+            AWS_GUIDE_IMPORTS,
+            AWS_GUIDE_CALLS,
+        )
+
+
+def test_kms_example_validator_allows_a_defined_host_helper_call():
+    root = SCRIPT_PATH.parents[1]
+    aws = (
+        root / "docs/reference/external/AWS_KMS_SIGNING.md"
+    ).read_text(encoding="utf-8")
+    extended = aws.replace(
+        "import boto3\n",
+        "import boto3\n\n"
+        "def configure_host_client():\n"
+        "    return None\n\n"
+        "configure_host_client()\n",
+        1,
+    )
+
+    _assert_public_aegis_examples(
+        extended,
+        AWS_GUIDE_IMPORTS,
+        AWS_GUIDE_CALLS,
+    )
+
+
 def test_kms_example_validator_rejects_a_typoed_intended_helper_call():
     root = SCRIPT_PATH.parents[1]
     google = (
@@ -493,6 +569,27 @@ def test_kms_example_validator_rejects_a_typoed_intended_helper_call():
         "sign_artifact_with_metadatum(",
         1,
     )
+
+    with pytest.raises(AssertionError):
+        _assert_public_aegis_examples(
+            mutated,
+            GOOGLE_GUIDE_IMPORTS,
+            GOOGLE_GUIDE_CALLS,
+        )
+
+
+def test_kms_example_validator_rejects_an_extra_unresolved_call():
+    root = SCRIPT_PATH.parents[1]
+    google = (
+        root / "docs/reference/external/GOOGLE_CLOUD_KMS_SIGNING.md"
+    ).read_text(encoding="utf-8")
+    mutated = google.replace(
+        "    signed_at=int(time.time()),\n)\n```",
+        "    signed_at=int(time.time()),\n)\n"
+        "sign_artifact_with_metadatum()\n```",
+        1,
+    )
+    assert mutated != google
 
     with pytest.raises(AssertionError):
         _assert_public_aegis_examples(
