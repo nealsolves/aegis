@@ -188,11 +188,13 @@ class RecordingAwsKmsClient:
         private_keys: dict[str, object],
         *,
         key_spec: str = "RSA_2048",
+        key_arn: str | None = None,
         mode: str = "normal",
         signing_algorithms: list[str] | None = None,
     ) -> None:
         self.private_keys = dict(private_keys)
         self.key_spec = key_spec
+        self._key_arn = key_arn
         self.mode = mode
         self.signing_algorithms = (
             None if signing_algorithms is None else list(signing_algorithms)
@@ -203,7 +205,11 @@ class RecordingAwsKmsClient:
 
     @property
     def key_arn(self) -> str:
-        return AWS_KEY_ARNS[self.key_spec]
+        return (
+            AWS_KEY_ARNS[self.key_spec]
+            if self._key_arn is None
+            else self._key_arn
+        )
 
     @property
     def signing_algorithm(self) -> str:

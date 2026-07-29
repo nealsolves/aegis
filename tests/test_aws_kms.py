@@ -52,6 +52,62 @@ class _BytesSubclass(bytes):
     pass
 
 
+_VALID_AWS_KEY_ARNS = (
+    "arn:aws:kms:us-east-1:111122223333:key/12345678-1234-4abc-8def-1234567890ab",
+    "arn:aws-cn:kms:cn-north-1:111122223333:key/mrk-0123456789abcdef0123456789abcdef",
+    (
+        "arn:aws-us-gov:kms:us-gov-west-1:111122223333:key/"
+        "abcdefab-cdef-abcd-efab-cdefabcdefab"
+    ),
+    (
+        "arn:aws-iso-b:kms:us-isob-east-1:111122223333:key/"
+        "mrk-fedcba9876543210fedcba9876543210"
+    ),
+)
+
+_MALFORMED_AWS_KEY_ARNS = (
+    "arn:notaws:kms:us-east-1:111122223333:key/12345678-1234-4abc-8def-1234567890ab",
+    "arn:AWS:kms:us-east-1:111122223333:key/12345678-1234-4abc-8def-1234567890ab",
+    "arn:aws--gov:kms:us-gov-west-1:111122223333:key/12345678-1234-4abc-8def-1234567890ab",
+    "arn:aws-:kms:us-east-1:111122223333:key/12345678-1234-4abc-8def-1234567890ab",
+    "arn:aws:kms:US-EAST-1:111122223333:key/12345678-1234-4abc-8def-1234567890ab",
+    "arn:aws:kms:-:111122223333:key/12345678-1234-4abc-8def-1234567890ab",
+    "arn:aws:kms:us--east-1:111122223333:key/12345678-1234-4abc-8def-1234567890ab",
+    "arn:aws:kms:us-east-1:11112222333:key/12345678-1234-4abc-8def-1234567890ab",
+    "arn:aws:kms:us-east-1:1111222233333:key/12345678-1234-4abc-8def-1234567890ab",
+    "arn:aws:kms:us-east-1:111122223333:alias/audit",
+    "arn:aws:kms:us-east-1:111122223333:key/not-a-canonical-key-id",
+    "arn:aws:kms:us-east-1:111122223333:key/12345678-1234-4ABC-8def-1234567890ab",
+    "arn:aws:kms:us-east-1:111122223333:key/1234567-1234-4abc-8def-1234567890ab",
+    "arn:aws:kms:us-east-1:111122223333:key/mrk-0123456789abcdef0123456789abcde",
+    "arn:aws:kms:us-east-1:111122223333:key/mrk-0123456789abcdef0123456789abcdeg",
+    (
+        "arn:aws:kms:us-east-1:111122223333:key/"
+        "12345678-1234-4abc-8def-1234567890ab/extra"
+    ),
+    (
+        "arn:aws:kms:us-east-1:111122223333:key/"
+        "12345678-1234-4abc-8def-1234567890ab?version=1"
+    ),
+)
+
+_DOCUMENTED_AWS_SIGNING_ALGORITHMS = (
+    "RSASSA_PSS_SHA_256",
+    "RSASSA_PSS_SHA_384",
+    "RSASSA_PSS_SHA_512",
+    "RSASSA_PKCS1_V1_5_SHA_256",
+    "RSASSA_PKCS1_V1_5_SHA_384",
+    "RSASSA_PKCS1_V1_5_SHA_512",
+    "ECDSA_SHA_256",
+    "ECDSA_SHA_384",
+    "ECDSA_SHA_512",
+    "SM2DSA",
+    "ML_DSA_SHAKE_256",
+    "ED25519_SHA_512",
+    "ED25519_PH_SHA_512",
+)
+
+
 def test_aws_signer_rejects_a_missing_injected_client():
     with pytest.raises(
         SigningContractError,
@@ -114,6 +170,27 @@ def test_aws_verification_target_reconstructs_only_exact_trusted_builtins():
     assert target.disposition is KmsKeyDisposition.ANCHORED
 
 
+@pytest.mark.parametrize("key_arn", _VALID_AWS_KEY_ARNS)
+def test_aws_verification_target_accepts_canonical_standard_and_mrk_arns(key_arn):
+    target = AwsKmsVerificationTarget(
+        key_arn,
+        frozenset({"RSASSA_PSS_SHA_256"}),
+    )
+
+    assert target.key_arn == key_arn
+
+
+@pytest.mark.parametrize("key_arn", _MALFORMED_AWS_KEY_ARNS)
+def test_aws_verification_target_rejects_noncanonical_key_arns(key_arn):
+    with pytest.raises(VerificationContractError) as caught:
+        AwsKmsVerificationTarget(
+            key_arn,
+            frozenset({"RSASSA_PSS_SHA_256"}),
+        )
+
+    _assert_safe_error(caught.value)
+
+
 @pytest.mark.parametrize(
     ("key_arn", "allowed_algorithms", "disposition"),
     [
@@ -125,7 +202,11 @@ def test_aws_verification_target_reconstructs_only_exact_trusted_builtins():
         ),
         (AWS_KEY_ARNS["RSA_2048"], {"RSASSA_PSS_SHA_256"}, KmsKeyDisposition.ANCHORED),
         (AWS_KEY_ARNS["RSA_2048"], frozenset(), KmsKeyDisposition.ANCHORED),
-        (AWS_KEY_ARNS["RSA_2048"], frozenset({"ED25519"}), KmsKeyDisposition.ANCHORED),
+        (
+            AWS_KEY_ARNS["RSA_2048"],
+            frozenset({"ED25519_SHA_512"}),
+            KmsKeyDisposition.ANCHORED,
+        ),
         (
             AWS_KEY_ARNS["RSA_2048"],
             frozenset({"RSASSA_PSS_SHA_256"}),
@@ -198,6 +279,161 @@ def test_aws_signer_identity_and_signing_bind_exact_selector_arn_and_payload(
         payload=payload,
         signature=raw_signature,
     )
+
+
+def test_aws_signer_binds_and_signs_with_a_canonical_mrk_arn(aws_private_keys):
+    key_arn = (
+        "arn:aws-us-gov:kms:us-gov-west-1:111122223333:key/"
+        "mrk-0123456789abcdef0123456789abcdef"
+    )
+    client = RecordingAwsKmsClient(aws_private_keys, key_arn=key_arn)
+    signer = AwsKmsArtifactSigner(
+        client,
+        key_id="alias/audit",
+        signing_algorithm="RSASSA_PSS_SHA_256",
+    )
+
+    identity = signer.signer_identity()
+    signer.sign(b"payload", identity)
+
+    assert identity.key_version == key_arn
+    assert client.sign_calls[0]["KeyId"] == key_arn
+
+
+def test_aws_signer_rejects_multi_region_replica_arn_substitution_before_sign(
+    aws_private_keys,
+):
+    east_arn = (
+        "arn:aws:kms:us-east-1:111122223333:key/"
+        "mrk-0123456789abcdef0123456789abcdef"
+    )
+    west_arn = (
+        "arn:aws:kms:us-west-2:111122223333:key/"
+        "mrk-0123456789abcdef0123456789abcdef"
+    )
+    client = RecordingAwsKmsClient(aws_private_keys, key_arn=east_arn)
+    signer = AwsKmsArtifactSigner(
+        client,
+        key_id="alias/audit",
+        signing_algorithm="RSASSA_PSS_SHA_256",
+    )
+    identity = signer.signer_identity()
+    client._key_arn = west_arn
+
+    with pytest.raises(ArtifactSigningError) as caught:
+        signer.sign(b"payload", identity)
+
+    _assert_safe_error(caught.value)
+    assert len(client.describe_calls) == 2
+    assert client.sign_calls == []
+
+
+@pytest.mark.parametrize(
+    "key_arn",
+    (
+        "arn:notaws:kms:us-east-1:111122223333:key/12345678-1234-4abc-8def-1234567890ab",
+        "arn:aws--gov:kms:us-east-1:111122223333:key/12345678-1234-4abc-8def-1234567890ab",
+        "arn:aws:kms:-:111122223333:key/12345678-1234-4abc-8def-1234567890ab",
+        "arn:aws:kms:us-east-1:111122223333:key/not-a-canonical-key-id",
+        "arn:aws:kms:us-east-1:111122223333:key/mrk-ABCDEF0123456789ABCDEF0123456789",
+    ),
+)
+def test_aws_signer_identity_rejects_noncanonical_provider_arns(
+    aws_private_keys, key_arn
+):
+    client = RecordingAwsKmsClient(aws_private_keys, key_arn=key_arn)
+    signer = AwsKmsArtifactSigner(
+        client,
+        key_id="alias/audit",
+        signing_algorithm="RSASSA_PSS_SHA_256",
+    )
+
+    with pytest.raises(SigningContractError) as caught:
+        signer.signer_identity()
+
+    _assert_safe_error(caught.value)
+    assert client.sign_calls == []
+
+
+@pytest.mark.parametrize(
+    "signing_algorithms",
+    [
+        ["RSASSA_PSS_SHA_256", "RSASSA_PSS_SHA_256"],
+        ["RSASSA_PSS_SHA_256", "FUTURE_PROVIDER_ALGORITHM"],
+        ["RSASSA_PSS_SHA_256", _StringSubclass("ECDSA_SHA_256")],
+    ],
+)
+def test_aws_signer_identity_rejects_noncanonical_complete_algorithm_arrays(
+    aws_private_keys, signing_algorithms
+):
+    client = RecordingAwsKmsClient(
+        aws_private_keys,
+        signing_algorithms=signing_algorithms,
+    )
+    signer = AwsKmsArtifactSigner(
+        client,
+        key_id="alias/audit",
+        signing_algorithm="RSASSA_PSS_SHA_256",
+    )
+
+    with pytest.raises(SigningContractError) as caught:
+        signer.signer_identity()
+
+    _assert_safe_error(caught.value)
+    assert client.sign_calls == []
+
+
+@pytest.mark.parametrize(
+    "additional_algorithm",
+    _DOCUMENTED_AWS_SIGNING_ALGORITHMS[1:],
+)
+def test_aws_signer_accepts_each_additional_documented_metadata_algorithm(
+    aws_private_keys, additional_algorithm
+):
+    client = RecordingAwsKmsClient(
+        aws_private_keys,
+        signing_algorithms=[
+            "RSASSA_PSS_SHA_256",
+            additional_algorithm,
+        ],
+    )
+    signer = AwsKmsArtifactSigner(
+        client,
+        key_id="alias/audit",
+        signing_algorithm="RSASSA_PSS_SHA_256",
+    )
+
+    identity = signer.signer_identity()
+
+    assert identity.algorithm == "RSASSA_PSS_SHA_256"
+
+
+@pytest.mark.parametrize(
+    "signing_algorithms",
+    [
+        ["RSASSA_PSS_SHA_256", "RSASSA_PSS_SHA_256"],
+        ["RSASSA_PSS_SHA_256", "FUTURE_PROVIDER_ALGORITHM"],
+        ["RSASSA_PSS_SHA_256", _StringSubclass("ECDSA_SHA_256")],
+    ],
+)
+def test_aws_signer_rejects_invalid_second_algorithm_array_before_sign(
+    aws_private_keys, signing_algorithms
+):
+    client = RecordingAwsKmsClient(aws_private_keys)
+    signer = AwsKmsArtifactSigner(
+        client,
+        key_id="alias/audit",
+        signing_algorithm="RSASSA_PSS_SHA_256",
+    )
+    identity = signer.signer_identity()
+    client.signing_algorithms = signing_algorithms
+
+    with pytest.raises(ArtifactSigningError) as caught:
+        signer.sign(b"payload", identity)
+
+    _assert_safe_error(caught.value)
+    assert len(client.describe_calls) == 2
+    assert client.sign_calls == []
 
 
 @pytest.mark.parametrize(

@@ -32,9 +32,32 @@ _AWS_ALGORITHMS = {
     ),
 }
 
+_AWS_SIGNING_ALGORITHMS = frozenset(
+    {
+        "RSASSA_PSS_SHA_256",
+        "RSASSA_PSS_SHA_384",
+        "RSASSA_PSS_SHA_512",
+        "RSASSA_PKCS1_V1_5_SHA_256",
+        "RSASSA_PKCS1_V1_5_SHA_384",
+        "RSASSA_PKCS1_V1_5_SHA_512",
+        "ECDSA_SHA_256",
+        "ECDSA_SHA_384",
+        "ECDSA_SHA_512",
+        "SM2DSA",
+        "ML_DSA_SHAKE_256",
+        "ED25519_SHA_512",
+        "ED25519_PH_SHA_512",
+    }
+)
+
 _AWS_KEY_ARN_PATTERN = re.compile(
-    r"arn:[A-Za-z0-9-]+:kms:[A-Za-z0-9-]+:[0-9]{12}:"
-    r"key/[A-Za-z0-9-]+\Z"
+    r"\Aarn:aws(?:-[a-z0-9]+)*:kms:"
+    r"[a-z0-9]+(?:-[a-z0-9]+)*:[0-9]{12}:key/"
+    r"(?:"
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+    r"|mrk-[0-9a-f]{32}"
+    r")\Z",
+    re.ASCII,
 )
 
 __all__ = [
@@ -225,7 +248,12 @@ def _normalize_key_description(
         or key_spec not in _AWS_ALGORITHMS[signing_algorithm]
         or type(signing_algorithms) is not list
         or not signing_algorithms
-        or any(type(algorithm) is not str for algorithm in signing_algorithms)
+        or any(
+            type(algorithm) is not str
+            or algorithm not in _AWS_SIGNING_ALGORITHMS
+            for algorithm in signing_algorithms
+        )
+        or len(signing_algorithms) != len(set(signing_algorithms))
         or signing_algorithm not in signing_algorithms
     ):
         raise ValueError
