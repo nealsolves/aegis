@@ -505,9 +505,16 @@ class _GoogleAlgorithm(Enum):
 
 class _GoogleVersionState(Enum):
     CRYPTO_KEY_VERSION_STATE_UNSPECIFIED = 0
+    PENDING_GENERATION = 5
     ENABLED = 1
     DISABLED = 2
-    DESTROYED = 5
+    DESTROYED = 3
+    DESTROY_SCHEDULED = 4
+    PENDING_IMPORT = 6
+    IMPORT_FAILED = 7
+    GENERATION_FAILED = 8
+    PENDING_EXTERNAL_DESTRUCTION = 9
+    EXTERNAL_DESTRUCTION_FAILED = 10
 
 
 class _GoogleCryptoKeyVersion:

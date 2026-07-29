@@ -221,7 +221,7 @@ def _parse_crypto_key_version_name(
 
 
 def _is_resource_segment(value: str) -> bool:
-    return bool(value) and all(
+    return value not in ("", ".", "..") and all(
         character.isascii()
         and (
             character.isalnum()

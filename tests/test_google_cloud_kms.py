@@ -12,6 +12,7 @@ from threading import Barrier, Lock, Thread
 
 import pytest
 
+import tests.support.kms_fixtures as kms_fixtures
 from aegis.errors import ArtifactSigningError, SigningContractError
 from aegis.integrations.google_cloud_kms import (
     GoogleCloudKmsArtifactSigner,
@@ -83,6 +84,23 @@ def _bounded_version_name(*, parent_length=512, version_length=128):
     name = parent + "/cryptoKeyVersions/" + "1" * version_length
     assert len(parent) == parent_length
     return name
+
+
+def _version_name_with_segment(segment_index, segment):
+    parts = [
+        "projects",
+        "p",
+        "locations",
+        "l",
+        "keyRings",
+        "r",
+        "cryptoKeys",
+        "k",
+        "cryptoKeyVersions",
+        "1",
+    ]
+    parts[segment_index] = segment
+    return "/".join(parts)
 
 
 def _assert_safe_error(error, *, logs=""):
@@ -205,6 +223,103 @@ def test_google_signer_rejects_noncanonical_or_unbounded_versions_before_calls(
     _assert_safe_error(caught.value)
     assert client.get_version_calls == []
     assert client.asymmetric_sign_calls == []
+
+
+@pytest.mark.parametrize("segment_index", [1, 3, 5, 7, 9])
+@pytest.mark.parametrize("segment", [".", ".."])
+def test_google_signer_direct_constructor_rejects_standalone_dot_resource_segment(
+    segment_index,
+    segment,
+):
+    name = _version_name_with_segment(segment_index, segment)
+
+    with pytest.raises(
+        SigningContractError,
+        match=r"^Google Cloud KMS signer configuration is invalid$",
+    ) as caught:
+        GoogleCloudKmsArtifactSigner(
+            object(),
+            crypto_key_version_name=name,
+        )
+
+    _assert_safe_error(caught.value)
+
+
+@pytest.mark.parametrize("segment_index", [1, 3, 5, 7, 9])
+@pytest.mark.parametrize("segment", [".", ".."])
+def test_google_signer_dot_resource_segment_fails_before_provider_calls(
+    google_private_keys,
+    segment_index,
+    segment,
+):
+    client = RecordingGoogleCloudKmsClient(google_private_keys)
+    name = _version_name_with_segment(segment_index, segment)
+
+    with pytest.raises(SigningContractError) as caught:
+        GoogleCloudKmsArtifactSigner(
+            client,
+            crypto_key_version_name=name,
+        )
+
+    _assert_safe_error(caught.value)
+    assert client.get_version_calls == []
+    assert client.asymmetric_sign_calls == []
+
+
+@pytest.mark.parametrize("segment_index", [1, 3, 5, 7, 9])
+@pytest.mark.parametrize("segment", [".a", "a.", "...", "a..b"])
+def test_google_signer_preserves_permitted_dot_segment_near_misses_exactly(
+    google_private_keys,
+    controlled_google_modules,
+    segment_index,
+    segment,
+):
+    name = _version_name_with_segment(segment_index, segment)
+    client = RecordingGoogleCloudKmsClient(
+        google_private_keys,
+        crypto_key_version_name=name,
+    )
+    signer = GoogleCloudKmsArtifactSigner(
+        client,
+        crypto_key_version_name=name,
+    )
+
+    identity = signer.signer_identity()
+
+    assert client.get_version_calls[0]["request"].name == name
+    assert (
+        identity.key_reference
+        + "/cryptoKeyVersions/"
+        + identity.key_version
+        == name
+    )
+
+
+def test_controlled_google_version_states_match_the_audited_floor():
+    assert {
+        member.name: member.value
+        for member in kms_fixtures._GoogleVersionState
+    } == {
+        "CRYPTO_KEY_VERSION_STATE_UNSPECIFIED": 0,
+        "PENDING_GENERATION": 5,
+        "ENABLED": 1,
+        "DISABLED": 2,
+        "DESTROYED": 3,
+        "DESTROY_SCHEDULED": 4,
+        "PENDING_IMPORT": 6,
+        "IMPORT_FAILED": 7,
+        "GENERATION_FAILED": 8,
+        "PENDING_EXTERNAL_DESTRUCTION": 9,
+        "EXTERNAL_DESTRUCTION_FAILED": 10,
+    }
+
+
+def test_controlled_google_version_states_match_actual_sdk_when_installed():
+    kms_v1 = pytest.importorskip("google.cloud.kms_v1")
+    actual_type = kms_v1.CryptoKeyVersion.CryptoKeyVersionState
+
+    for controlled in kms_fixtures._GoogleVersionState:
+        assert getattr(actual_type, controlled.name).value == controlled.value
 
 
 def test_google_signer_accepts_exact_resource_and_metadata_length_limits(
