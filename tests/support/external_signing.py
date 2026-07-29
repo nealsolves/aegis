@@ -83,6 +83,25 @@ def default_key_records() -> Mapping[str, DeterministicKeyRecord]:
     )
 
 
+def verify_deterministic_hmac_sha256_signature(
+    payload: bytes,
+    receipt: SigningReceipt,
+) -> bool:
+    """Verify a deterministic receipt independently, without invoking a signer."""
+    if not isinstance(receipt, SigningReceipt):
+        return False
+    record = default_key_records().get(receipt.key_version)
+    if (
+        record is None
+        or receipt.algorithm != _DEFAULT_ALGORITHM
+        or receipt.signature_encoding is not SignatureEncoding.HEX
+        or receipt.key_reference != record.key_reference
+    ):
+        return False
+    expected = new(record.key_material, payload, sha256).hexdigest()
+    return compare_digest(expected, receipt.signature)
+
+
 class DeterministicExternalSigner:
     """A no-I/O HMAC signer whose modes model external signer failures."""
 
