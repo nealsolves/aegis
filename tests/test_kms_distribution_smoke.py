@@ -110,6 +110,87 @@ def test_smoke_metadata_rejects_additional_provider_direct_requirements(
 
 
 @pytest.mark.parametrize(
+    "untrusted_requirement",
+    [
+        (
+            "boto3 @ https://provider-token-123@example.invalid/pkg.whl; "
+            "extra == 'aws-kms'"
+        ),
+        "boto3>=1.43.0; extra == 'provider-token-123'",
+        "not a valid requirement provider-token-123",
+    ],
+)
+def test_smoke_metadata_errors_redact_untrusted_requirement_values(
+    untrusted_requirement: str,
+):
+    validator = _load_smoke_validator()
+
+    with pytest.raises(validator.OptionalExtrasValidationError) as captured:
+        validator._validate_kms_requirement_metadata(
+            [*APPROVED_KMS_REQUIREMENTS, untrusted_requirement]
+        )
+
+    assert "provider-token-123" not in str(captured.value)
+
+
+def test_smoke_report_uses_stable_artifact_provenance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    validator = _load_smoke_validator()
+    child_report = {
+        "checks": ["installed-metadata"],
+        "import_path": (
+            "/private/tmp/aegis_kms_extra_random/venv/"
+            "lib/python3.12/site-packages/aegis/__init__.py"
+        ),
+        "installed_versions": {},
+        "provider_checks": {},
+        "requires_dist": APPROVED_KMS_REQUIREMENTS,
+    }
+
+    monkeypatch.setattr(validator.venv, "create", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        validator,
+        "_venv_python",
+        lambda _venv_dir: Path("/isolated/venv/bin/python"),
+    )
+    monkeypatch.setattr(
+        validator,
+        "_clean_env",
+        lambda _venv_dir: ({}, []),
+    )
+    monkeypatch.setattr(
+        validator,
+        "_run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=json.dumps(child_report),
+            stderr="",
+        ),
+    )
+
+    artifacts = []
+    for root_name in ("first-random-root", "second-random-root"):
+        artifact = tmp_path / root_name / "candidate.whl"
+        artifact.parent.mkdir()
+        artifact.write_bytes(b"same candidate bytes")
+        artifacts.append(artifact)
+
+    reports = [
+        validator._validate_artifact(artifact, "base", {})
+        for artifact in artifacts
+    ]
+
+    assert reports[0] == reports[1]
+    assert reports[0]["artifact_filename"] == "candidate.whl"
+    assert reports[0]["import_location"] == "isolated-virtualenv"
+    assert "artifact" not in reports[0]
+    assert "import_path" not in reports[0]
+
+
+@pytest.mark.parametrize(
     ("lane", "installed", "forbidden"),
     [
         (

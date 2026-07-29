@@ -145,10 +145,10 @@ def _requirement_key(value: str) -> tuple[object, ...]:
         )
     except OptionalExtrasValidationError:
         raise
-    except Exception as error:
+    except Exception:
         raise OptionalExtrasValidationError(
-            f"invalid requirement metadata: {value!r}"
-        ) from error
+            "installed requirement metadata is invalid"
+        ) from None
 
 
 def _validate_kms_requirement_metadata(requirements: object) -> None:
@@ -173,8 +173,7 @@ def _validate_kms_requirement_metadata(requirements: object) -> None:
     }
     if actual_provider_requirements != expected:
         raise OptionalExtrasValidationError(
-            "installed KMS provider requirements are not exact: "
-            f"{sorted(repr(item) for item in actual_provider_requirements)}"
+            "installed KMS provider requirements are not exact"
         )
 
 
@@ -772,12 +771,15 @@ def _validate_artifact(
         )
 
     return {
-        "artifact": str(artifact),
+        "artifact_filename": artifact.name,
+        "artifact_format": (
+            "wheel" if artifact.name.endswith(".whl") else "sdist"
+        ),
         "artifact_sha256": _sha256(artifact),
         "checks": child_report["checks"],
         "credential_variables_removed": removed_credentials,
         "expected_versions": expected_versions,
-        "import_path": child_report["import_path"],
+        "import_location": "isolated-virtualenv",
         "installed_versions": child_report["installed_versions"],
         "lane": lane,
         "provider_checks": child_report["provider_checks"],
