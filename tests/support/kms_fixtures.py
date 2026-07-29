@@ -517,14 +517,29 @@ class _GoogleVersionState(Enum):
     EXTERNAL_DESTRUCTION_FAILED = 10
 
 
+class _GooglePublicKeyFormat(Enum):
+    PUBLIC_KEY_FORMAT_UNSPECIFIED = 0
+    PEM = 1
+
+
 class _GoogleCryptoKeyVersion:
     CryptoKeyVersionAlgorithm = _GoogleAlgorithm
     CryptoKeyVersionState = _GoogleVersionState
 
 
+class _GooglePublicKey:
+    PublicKeyFormat = _GooglePublicKeyFormat
+
+
 class _GoogleGetCryptoKeyVersionRequest:
     def __init__(self, *, name: str) -> None:
         self.name = name
+
+
+class _GoogleGetPublicKeyRequest:
+    def __init__(self, *, name: str, public_key_format: object) -> None:
+        self.name = name
+        self.public_key_format = public_key_format
 
 
 class _GoogleDigest:
@@ -571,7 +586,9 @@ def install_controlled_google_kms_modules(monkeypatch) -> SimpleNamespace:
     crc_module = ModuleType("google_crc32c")
 
     kms_module.CryptoKeyVersion = _GoogleCryptoKeyVersion
+    kms_module.PublicKey = _GooglePublicKey
     kms_module.GetCryptoKeyVersionRequest = _GoogleGetCryptoKeyVersionRequest
+    kms_module.GetPublicKeyRequest = _GoogleGetPublicKeyRequest
     kms_module.Digest = _GoogleDigest
     kms_module.AsymmetricSignRequest = _GoogleAsymmetricSignRequest
     crc_module.Checksum = _GoogleChecksum
@@ -585,8 +602,32 @@ def install_controlled_google_kms_modules(monkeypatch) -> SimpleNamespace:
         "google.cloud.kms_v1",
         kms_module,
     )
+    api_core_module = ModuleType("google.api_core")
+    api_exceptions_module = ModuleType("google.api_core.exceptions")
+    api_exceptions_module.DeadlineExceeded = DeadlineExceeded
+    api_exceptions_module.FailedPrecondition = FailedPrecondition
+    api_exceptions_module.NotFound = NotFound
+    api_exceptions_module.PermissionDenied = PermissionDenied
+    api_exceptions_module.ResourceExhausted = ResourceExhausted
+    api_exceptions_module.ServiceUnavailable = ServiceUnavailable
+    api_core_module.exceptions = api_exceptions_module
+    google_module.api_core = api_core_module
+    monkeypatch.setitem(
+        __import__("sys").modules,
+        "google.api_core",
+        api_core_module,
+    )
+    monkeypatch.setitem(
+        __import__("sys").modules,
+        "google.api_core.exceptions",
+        api_exceptions_module,
+    )
     monkeypatch.setitem(__import__("sys").modules, "google_crc32c", crc_module)
-    return SimpleNamespace(kms_v1=kms_module, google_crc32c=crc_module)
+    return SimpleNamespace(
+        kms_v1=kms_module,
+        google_crc32c=crc_module,
+        api_exceptions=api_exceptions_module,
+    )
 
 
 def google_crc32c_value(value: bytes) -> int:
@@ -678,6 +719,7 @@ class RecordingGoogleCloudKmsClient:
         self.mode = mode
         self.get_version_calls: list[dict[str, object]] = []
         self.asymmetric_sign_calls: list[dict[str, object]] = []
+        self.get_public_key_calls: list[dict[str, object]] = []
         self.get_crypto_key_calls: list[dict[str, object]] = []
 
     def get_crypto_key_version(self, **kwargs: object) -> object:
@@ -725,6 +767,96 @@ class RecordingGoogleCloudKmsClient:
     def get_crypto_key(self, **kwargs: object) -> object:
         self.get_crypto_key_calls.append(dict(kwargs))
         raise AssertionError("get_crypto_key must not be called")
+
+    def get_public_key(self, **kwargs: object) -> object:
+        self.get_public_key_calls.append(dict(kwargs))
+        failures = {
+            "deadline_public_key": DeadlineExceeded,
+            "failed_precondition_public_key": FailedPrecondition,
+            "not_found_public_key": NotFound,
+            "permission_public_key": PermissionDenied,
+            "resource_exhausted_public_key": ResourceExhausted,
+            "unavailable_public_key": ServiceUnavailable,
+            "unexpected_public_key": RuntimeError,
+        }
+        failure_type = failures.get(self.mode)
+        if failure_type is not None:
+            raise failure_type(
+                "public key failure " + " | ".join(SENSITIVE_CORPUS)
+            )
+        if self.mode == "malformed_public_key_response":
+            return object()
+
+        from cryptography.hazmat.primitives import serialization
+
+        pem: object = self.private_keys[self.algorithm].public_key().public_bytes(
+            serialization.Encoding.PEM,
+            serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+        name: object = self.crypto_key_version_name
+        algorithm: object = _GoogleAlgorithm[self.algorithm]
+        public_key_format: object = _GooglePublicKeyFormat.PEM
+        checksum: object = google_crc32c_value(pem)
+
+        if self.mode == "wrong_public_key_name":
+            name = self.crypto_key_version_name + "-wrong"
+        elif self.mode == "wrong_public_key_algorithm":
+            algorithm = _GoogleAlgorithm.RSA_SIGN_PKCS1_2048_SHA256
+        elif self.mode == "public_key_algorithm_string":
+            algorithm = self.algorithm
+        elif self.mode == "public_key_algorithm_lookalike":
+            algorithm = _GoogleEnumLookalike(self.algorithm)
+        elif self.mode == "wrong_public_key_format":
+            public_key_format = _GooglePublicKeyFormat.PUBLIC_KEY_FORMAT_UNSPECIFIED
+        elif self.mode == "public_key_format_string":
+            public_key_format = "PEM"
+        elif self.mode == "public_key_format_lookalike":
+            public_key_format = _GoogleEnumLookalike("PEM")
+        elif self.mode == "empty_public_key":
+            pem = b""
+        elif self.mode == "oversized_public_key":
+            pem = b"x" * 65_537
+        elif self.mode == "public_key_subclass":
+            pem = _BytesSubclass(pem)
+        elif self.mode == "bad_public_key_crc":
+            checksum = (checksum + 1) & 0xFFFFFFFF
+        elif self.mode == "boolean_public_key_crc":
+            checksum = True
+        elif self.mode == "negative_public_key_crc":
+            checksum = -1
+        elif self.mode == "oversized_public_key_crc":
+            checksum = 2**32
+        elif self.mode == "public_key_crc_subclass":
+            checksum = _IntSubclass(checksum)
+        elif self.mode == "wrong_public_key_type":
+            other_algorithm = (
+                "EC_SIGN_P256_SHA256"
+                if self.algorithm.startswith("RSA_")
+                else "RSA_SIGN_PSS_2048_SHA256"
+            )
+            pem = self.private_keys[other_algorithm].public_key().public_bytes(
+                serialization.Encoding.PEM,
+                serialization.PublicFormat.SubjectPublicKeyInfo,
+            )
+            checksum = google_crc32c_value(pem)
+
+        public_key = SimpleNamespace(
+            data=pem,
+            crc32c_checksum=checksum,
+        )
+        response = SimpleNamespace(
+            name=name,
+            algorithm=algorithm,
+            public_key_format=public_key_format,
+            public_key=public_key,
+        )
+        if self.mode == "legacy_public_key_only":
+            del response.public_key
+            response.pem = pem
+            response.pem_crc32c = checksum
+        elif self.mode == "missing_public_key_crc":
+            del public_key.crc32c_checksum
+        return response
 
     def asymmetric_sign(self, **kwargs: object) -> object:
         self.asymmetric_sign_calls.append(dict(kwargs))

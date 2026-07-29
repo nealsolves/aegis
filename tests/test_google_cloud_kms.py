@@ -1,4 +1,4 @@
-"""Strict offline coverage for the Google Cloud KMS artifact signer."""
+"""Strict offline coverage for Google Cloud KMS signing and verification."""
 
 from __future__ import annotations
 
@@ -13,22 +13,36 @@ from threading import Barrier, Lock, Thread
 import pytest
 
 import tests.support.kms_fixtures as kms_fixtures
-from aegis.errors import ArtifactSigningError, SigningContractError
+from aegis.errors import (
+    ArtifactSigningError,
+    SigningContractError,
+    VerificationContractError,
+)
 from aegis.integrations.google_cloud_kms import (
     GoogleCloudKmsArtifactSigner,
+    GoogleCloudKmsArtifactVerifier,
     GoogleCloudKmsVerificationTarget,
 )
 from aegis.integrations.kms import KmsKeyDisposition
 from aegis.signing import (
+    CANONICALIZATION_VERSION,
+    SIGNATURE_METADATA_SCHEMA_VERSION,
+    SIGNING_PROFILE,
+    EvidenceType,
     SignatureEncoding,
+    SignatureMetadata,
     SignerIdentity,
     SigningReceipt,
+    VerificationReasonCode,
     sign_artifact_with_metadata,
 )
 from tests.signing_conformance import (
+    SignedArtifactFixture,
     SignerFixture,
     SignerScenario,
+    VerifierScenario,
     assert_external_signer_conformance,
+    assert_external_verifier_conformance,
 )
 from tests.support.external_signing import SENSITIVE_CORPUS
 from tests.support.kms_fixtures import (
@@ -69,6 +83,10 @@ class _FloatSubclass(float):
 
 
 class _SignerIdentitySubclass(SignerIdentity):
+    pass
+
+
+class _VerificationTargetSubclass(GoogleCloudKmsVerificationTarget):
     pass
 
 
@@ -121,11 +139,85 @@ def _assert_safe_error(error, *, logs=""):
         assert sensitive not in rendered
 
 
+def _google_metadata(algorithm, name):
+    key_reference, key_version = _parent_and_version(name)
+    return SignatureMetadata(
+        SIGNATURE_METADATA_SCHEMA_VERSION,
+        SIGNING_PROFILE,
+        CANONICALIZATION_VERSION,
+        EvidenceType.AUDIT_ARTIFACT,
+        algorithm,
+        SignatureEncoding.BASE64,
+        key_reference,
+        key_version,
+        1_721_600_000,
+    )
+
+
+def _google_public_pem(private_key):
+    from cryptography.hazmat.primitives import serialization
+
+    return private_key.public_key().public_bytes(
+        serialization.Encoding.PEM,
+        serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+
+
+def _google_private_pem(private_key):
+    from cryptography.hazmat.primitives import serialization
+
+    return private_key.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    )
+
+
+def _google_signature(private_key, algorithm, payload):
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import ec, padding, utils
+
+    digest = sha256(payload).digest()
+    if algorithm.startswith("RSA_SIGN_PSS_"):
+        return private_key.sign(
+            digest,
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=hashes.SHA256().digest_size,
+            ),
+            utils.Prehashed(hashes.SHA256()),
+        )
+    return private_key.sign(
+        digest,
+        ec.ECDSA(utils.Prehashed(hashes.SHA256())),
+    )
+
+
+def _google_verifier(
+    client,
+    *,
+    target,
+    retry=kms_fixtures._GooglePublicKeyFormat,
+    timeout=kms_fixtures._GooglePublicKeyFormat,
+):
+    kwargs = {}
+    if retry is not kms_fixtures._GooglePublicKeyFormat:
+        kwargs["retry"] = retry
+    if timeout is not kms_fixtures._GooglePublicKeyFormat:
+        kwargs["timeout"] = timeout
+    return GoogleCloudKmsArtifactVerifier(
+        client,
+        resolver=lambda _reference, _version: target,
+        **kwargs,
+    )
+
+
 def test_google_module_exports_only_currently_defined_public_types():
     import aegis.integrations.google_cloud_kms as google_cloud_kms
 
     assert google_cloud_kms.__all__ == [
         "GoogleCloudKmsArtifactSigner",
+        "GoogleCloudKmsArtifactVerifier",
         "GoogleCloudKmsVerificationTarget",
     ]
     assert "_USE_PROVIDER_DEFAULT" not in google_cloud_kms.__all__
@@ -943,3 +1035,1037 @@ def test_google_signer_uses_real_sdk_request_types_when_extra_is_installed(
     request = client.asymmetric_sign_calls[0]["request"]
     assert type(request) is kms_v1.AsymmetricSignRequest
     assert type(request.digest) is kms_v1.Digest
+
+
+def test_google_module_exports_signer_verifier_and_target_only():
+    import aegis.integrations.google_cloud_kms as google_cloud_kms
+
+    assert google_cloud_kms.__all__ == [
+        "GoogleCloudKmsArtifactSigner",
+        "GoogleCloudKmsArtifactVerifier",
+        "GoogleCloudKmsVerificationTarget",
+    ]
+
+
+@pytest.mark.parametrize("algorithm", GOOGLE_ALGORITHMS)
+def test_google_target_accepts_exact_algorithm_correct_public_pem(
+    google_private_keys,
+    algorithm,
+):
+    name = GOOGLE_KEY_VERSION_NAMES[algorithm]
+    pem = _google_public_pem(google_private_keys[algorithm])
+
+    target = GoogleCloudKmsVerificationTarget(
+        name,
+        algorithm,
+        KmsKeyDisposition.UNANCHORED,
+        pem,
+    )
+
+    assert target == GoogleCloudKmsVerificationTarget(
+        crypto_key_version_name=name,
+        algorithm=algorithm,
+        disposition=KmsKeyDisposition.UNANCHORED,
+        public_key_pem=pem,
+    )
+
+
+def test_google_target_repr_does_not_expose_resource_or_retained_pem(
+    google_private_keys,
+):
+    algorithm = "RSA_SIGN_PSS_2048_SHA256"
+    name = GOOGLE_KEY_VERSION_NAMES[algorithm]
+    pem = _google_public_pem(google_private_keys[algorithm])
+    target = GoogleCloudKmsVerificationTarget(
+        name,
+        algorithm,
+        public_key_pem=pem,
+    )
+
+    rendered = repr(target)
+
+    assert name not in rendered
+    assert pem.decode("ascii") not in rendered
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("crypto_key_version_name", _StringSubclass(
+            GOOGLE_KEY_VERSION_NAMES["RSA_SIGN_PSS_2048_SHA256"]
+        )),
+        ("crypto_key_version_name", "not-a-version"),
+        ("algorithm", _StringSubclass("RSA_SIGN_PSS_2048_SHA256")),
+        ("algorithm", "RSA_SIGN_PKCS1_2048_SHA256"),
+        ("disposition", "anchored"),
+        ("public_key_pem", b""),
+        ("public_key_pem", b"x" * 65_537),
+        ("public_key_pem", _BytesSubclass(b"public")),
+        ("public_key_pem", "public"),
+    ],
+)
+def test_google_target_rejects_nonexact_or_invalid_fields(
+    field,
+    value,
+):
+    fields = {
+        "crypto_key_version_name": (
+            GOOGLE_KEY_VERSION_NAMES["RSA_SIGN_PSS_2048_SHA256"]
+        ),
+        "algorithm": "RSA_SIGN_PSS_2048_SHA256",
+        "disposition": KmsKeyDisposition.ANCHORED,
+        "public_key_pem": None,
+    }
+    fields[field] = value
+
+    with pytest.raises(
+        VerificationContractError,
+        match=r"^Google Cloud KMS verification target is invalid$",
+    ) as caught:
+        GoogleCloudKmsVerificationTarget(**fields)
+
+    _assert_safe_error(caught.value)
+
+
+def test_google_target_rejects_private_malformed_and_wrong_key_pem(
+    google_private_keys,
+):
+    rsa_name = GOOGLE_KEY_VERSION_NAMES["RSA_SIGN_PSS_2048_SHA256"]
+    invalid_pems = (
+        _google_private_pem(
+            google_private_keys["RSA_SIGN_PSS_2048_SHA256"]
+        ),
+        b"-----BEGIN PUBLIC KEY-----\nmalformed\n-----END PUBLIC KEY-----\n",
+        _google_public_pem(
+            google_private_keys["EC_SIGN_P256_SHA256"]
+        ),
+    )
+
+    for pem in invalid_pems:
+        with pytest.raises(VerificationContractError) as caught:
+            GoogleCloudKmsVerificationTarget(
+                rsa_name,
+                "RSA_SIGN_PSS_2048_SHA256",
+                public_key_pem=pem,
+            )
+        _assert_safe_error(caught.value)
+
+
+def test_google_target_rejects_wrong_rsa_size_and_non_p256_curves():
+    from cryptography.hazmat.primitives.asymmetric import ec, rsa
+
+    rsa_name = GOOGLE_KEY_VERSION_NAMES["RSA_SIGN_PSS_2048_SHA256"]
+    wrong_rsa = rsa.generate_private_key(
+        public_exponent=65537,
+        key_size=1024,
+    )
+    with pytest.raises(VerificationContractError):
+        GoogleCloudKmsVerificationTarget(
+            rsa_name,
+            "RSA_SIGN_PSS_2048_SHA256",
+            public_key_pem=_google_public_pem(wrong_rsa),
+        )
+
+    ec_name = GOOGLE_KEY_VERSION_NAMES["EC_SIGN_P256_SHA256"]
+    for curve in (ec.SECP384R1(), ec.SECP521R1(), ec.SECP256K1()):
+        wrong_ec = ec.generate_private_key(curve)
+        with pytest.raises(VerificationContractError):
+            GoogleCloudKmsVerificationTarget(
+                ec_name,
+                "EC_SIGN_P256_SHA256",
+                public_key_pem=_google_public_pem(wrong_ec),
+            )
+
+
+def test_google_verifier_constructor_is_lazy_frozen_and_accepts_historical_only():
+    verifier = GoogleCloudKmsArtifactVerifier(
+        None,
+        resolver=lambda _reference, _version: None,
+    )
+
+    assert not hasattr(verifier, "__dict__")
+    with pytest.raises(FrozenInstanceError):
+        verifier._client = object()
+
+
+@pytest.mark.parametrize("resolver", [None, object()])
+def test_google_verifier_rejects_noncallable_resolver(resolver):
+    with pytest.raises(
+        VerificationContractError,
+        match=r"^Google Cloud KMS verifier configuration is invalid$",
+    ) as caught:
+        GoogleCloudKmsArtifactVerifier(None, resolver=resolver)
+
+    _assert_safe_error(caught.value)
+
+
+@pytest.mark.parametrize(
+    "timeout",
+    [
+        True,
+        False,
+        0,
+        -1,
+        0.0,
+        float("nan"),
+        float("inf"),
+        _IntSubclass(1),
+        _FloatSubclass(1.0),
+    ],
+)
+def test_google_verifier_rejects_invalid_timeout(timeout):
+    with pytest.raises(VerificationContractError, match=r"^timeout is invalid$"):
+        GoogleCloudKmsArtifactVerifier(
+            None,
+            resolver=lambda _reference, _version: None,
+            timeout=timeout,
+        )
+
+
+@pytest.mark.parametrize("algorithm", GOOGLE_ALGORITHMS)
+def test_google_verifier_uses_retained_public_key_without_google_sdk(
+    google_private_keys,
+    algorithm,
+):
+    name = GOOGLE_KEY_VERSION_NAMES[algorithm]
+    payload = b"retained Google public key payload\x00exact"
+    signature = _google_signature(
+        google_private_keys[algorithm],
+        algorithm,
+        payload,
+    )
+    target = GoogleCloudKmsVerificationTarget(
+        name,
+        algorithm,
+        public_key_pem=_google_public_pem(google_private_keys[algorithm]),
+    )
+    verifier = _google_verifier(None, target=target)
+
+    outcome = verifier.verify(
+        payload,
+        b64encode(signature).decode("ascii"),
+        _google_metadata(algorithm, name),
+    )
+
+    assert outcome.reason_code is VerificationReasonCode.SIGNATURE_VALID_ANCHORED
+
+
+def test_google_verifier_reports_unavailable_when_no_retained_key_or_client(
+    google_private_keys,
+):
+    algorithm = "RSA_SIGN_PSS_2048_SHA256"
+    name = GOOGLE_KEY_VERSION_NAMES[algorithm]
+    payload = b"historical lookup unavailable"
+    signature = _google_signature(
+        google_private_keys[algorithm],
+        algorithm,
+        payload,
+    )
+    verifier = _google_verifier(
+        None,
+        target=GoogleCloudKmsVerificationTarget(name, algorithm),
+    )
+
+    outcome = verifier.verify(
+        payload,
+        b64encode(signature).decode("ascii"),
+        _google_metadata(algorithm, name),
+    )
+
+    assert outcome.reason_code is VerificationReasonCode.VERIFIER_UNAVAILABLE
+
+
+def test_google_verifier_returns_revoked_before_pem_parsing_or_provider(
+    google_private_keys,
+    monkeypatch,
+):
+    algorithm = "RSA_SIGN_PSS_2048_SHA256"
+    name = GOOGLE_KEY_VERSION_NAMES[algorithm]
+    target = object.__new__(GoogleCloudKmsVerificationTarget)
+    object.__setattr__(target, "crypto_key_version_name", name)
+    object.__setattr__(target, "algorithm", algorithm)
+    object.__setattr__(target, "disposition", KmsKeyDisposition.REVOKED)
+    object.__setattr__(target, "public_key_pem", b"not public pem")
+    client = RecordingGoogleCloudKmsClient(google_private_keys)
+
+    def fail_if_parsed(*_args, **_kwargs):
+        raise AssertionError("revoked PEM must not be parsed")
+
+    from cryptography.hazmat.primitives import serialization
+
+    monkeypatch.setattr(
+        serialization,
+        "load_pem_public_key",
+        fail_if_parsed,
+    )
+    verifier = _google_verifier(client, target=target)
+
+    outcome = verifier.verify(
+        b"revoked payload",
+        b64encode(b"signature").decode("ascii"),
+        _google_metadata(algorithm, name),
+    )
+
+    assert outcome.reason_code is VerificationReasonCode.KEY_REVOKED
+    assert client.get_public_key_calls == []
+
+
+def test_google_verifier_checks_unsupported_algorithm_before_resolver():
+    calls = []
+    algorithm = "RSA_SIGN_PKCS1_2048_SHA256"
+    name = GOOGLE_KEY_VERSION_NAMES["RSA_SIGN_PSS_2048_SHA256"]
+    verifier = GoogleCloudKmsArtifactVerifier(
+        None,
+        resolver=lambda reference, version: calls.append(
+            (reference, version)
+        ),
+    )
+
+    outcome = verifier.verify(
+        b"unsupported algorithm",
+        b64encode(b"signature").decode("ascii"),
+        _google_metadata(algorithm, name),
+    )
+
+    assert outcome.reason_code is VerificationReasonCode.ALGORITHM_NOT_ALLOWED
+    assert calls == []
+
+
+def test_google_verifier_rejects_noncanonical_signature_before_resolver():
+    calls = []
+    algorithm = "RSA_SIGN_PSS_2048_SHA256"
+    name = GOOGLE_KEY_VERSION_NAMES[algorithm]
+    verifier = GoogleCloudKmsArtifactVerifier(
+        None,
+        resolver=lambda reference, version: calls.append(
+            (reference, version)
+        ),
+    )
+
+    with pytest.raises(
+        VerificationContractError,
+        match=r"^Google Cloud KMS verification request is invalid$",
+    ):
+        verifier.verify(
+            b"invalid signature",
+            b64encode(b"x" * 12_289).decode("ascii"),
+            _google_metadata(algorithm, name),
+        )
+
+    assert calls == []
+
+
+def test_google_verifier_maps_none_resolver_to_unknown():
+    algorithm = "RSA_SIGN_PSS_2048_SHA256"
+    name = GOOGLE_KEY_VERSION_NAMES[algorithm]
+    verifier = GoogleCloudKmsArtifactVerifier(
+        None,
+        resolver=lambda _reference, _version: None,
+    )
+
+    outcome = verifier.verify(
+        b"unknown",
+        b64encode(b"signature").decode("ascii"),
+        _google_metadata(algorithm, name),
+    )
+
+    assert outcome.reason_code is VerificationReasonCode.KEY_UNKNOWN
+
+
+def test_google_verifier_sanitizes_resolver_failures():
+    algorithm = "RSA_SIGN_PSS_2048_SHA256"
+    name = GOOGLE_KEY_VERSION_NAMES[algorithm]
+
+    def fail(_reference, _version):
+        raise RuntimeError("resolver " + " | ".join(SENSITIVE_CORPUS))
+
+    verifier = GoogleCloudKmsArtifactVerifier(None, resolver=fail)
+
+    with pytest.raises(
+        VerificationContractError,
+        match=r"^Google Cloud KMS resolver failed$",
+    ) as caught:
+        verifier.verify(
+            b"resolver failure",
+            b64encode(b"signature").decode("ascii"),
+            _google_metadata(algorithm, name),
+        )
+
+    _assert_safe_error(caught.value)
+
+
+@pytest.mark.parametrize(
+    "resolved_factory",
+    [
+        lambda target: object(),
+        lambda target: _VerificationTargetSubclass(
+            target.crypto_key_version_name,
+            target.algorithm,
+        ),
+    ],
+)
+def test_google_verifier_rejects_lookalike_or_subclass_targets(
+    resolved_factory,
+):
+    algorithm = "RSA_SIGN_PSS_2048_SHA256"
+    name = GOOGLE_KEY_VERSION_NAMES[algorithm]
+    target = GoogleCloudKmsVerificationTarget(name, algorithm)
+    verifier = _google_verifier(
+        None,
+        target=resolved_factory(target),
+    )
+
+    with pytest.raises(
+        VerificationContractError,
+        match=r"^Google Cloud KMS resolver returned an invalid target$",
+    ) as caught:
+        verifier.verify(
+            b"hostile target",
+            b64encode(b"signature").decode("ascii"),
+            _google_metadata(algorithm, name),
+        )
+
+    _assert_safe_error(caught.value)
+
+
+@pytest.mark.parametrize("mismatch", ["parent", "version"])
+def test_google_verifier_rejects_target_identity_mismatch(mismatch):
+    algorithm = "RSA_SIGN_PSS_2048_SHA256"
+    metadata_name = GOOGLE_KEY_VERSION_NAMES[algorithm]
+    parts = metadata_name.split("/")
+    if mismatch == "parent":
+        parts[1] = "other-project"
+    else:
+        parts[-1] = "99"
+    target = GoogleCloudKmsVerificationTarget("/".join(parts), algorithm)
+    verifier = _google_verifier(None, target=target)
+
+    with pytest.raises(
+        VerificationContractError,
+        match=r"^Google Cloud KMS resolver returned an invalid target$",
+    ):
+        verifier.verify(
+            b"identity mismatch",
+            b64encode(b"signature").decode("ascii"),
+            _google_metadata(algorithm, metadata_name),
+        )
+
+
+def test_google_verifier_returns_algorithm_denied_for_target_mismatch():
+    metadata_algorithm = "RSA_SIGN_PSS_2048_SHA256"
+    target_algorithm = "RSA_SIGN_PSS_3072_SHA256"
+    name = GOOGLE_KEY_VERSION_NAMES[metadata_algorithm]
+    target = GoogleCloudKmsVerificationTarget(name, target_algorithm)
+    verifier = _google_verifier(None, target=target)
+
+    outcome = verifier.verify(
+        b"algorithm denied",
+        b64encode(b"signature").decode("ascii"),
+        _google_metadata(metadata_algorithm, name),
+    )
+
+    assert outcome.reason_code is VerificationReasonCode.ALGORITHM_NOT_ALLOWED
+
+
+@pytest.mark.parametrize("algorithm", GOOGLE_ALGORITHMS)
+def test_google_verifier_fetches_checksummed_public_key_and_verifies(
+    google_private_keys,
+    controlled_google_modules,
+    algorithm,
+):
+    name = GOOGLE_KEY_VERSION_NAMES[algorithm]
+    payload = b"fetched Google public key payload\x00exact"
+    client = RecordingGoogleCloudKmsClient(
+        google_private_keys,
+        algorithm=algorithm,
+    )
+    target = GoogleCloudKmsVerificationTarget(name, algorithm)
+    verifier = _google_verifier(client, target=target)
+    signature = _google_signature(
+        google_private_keys[algorithm],
+        algorithm,
+        payload,
+    )
+
+    outcome = verifier.verify(
+        payload,
+        b64encode(signature).decode("ascii"),
+        _google_metadata(algorithm, name),
+    )
+
+    assert outcome.reason_code is VerificationReasonCode.SIGNATURE_VALID_ANCHORED
+    call = client.get_public_key_calls[0]
+    assert set(call) == {"request"}
+    request = call["request"]
+    assert type(request) is controlled_google_modules.kms_v1.GetPublicKeyRequest
+    assert request.name == name
+    assert (
+        request.public_key_format
+        is controlled_google_modules.kms_v1.PublicKey.PublicKeyFormat.PEM
+    )
+
+
+@pytest.mark.parametrize("timeout", [None, 1, 2.5])
+def test_google_verifier_forwards_explicit_retry_and_timeout(
+    google_private_keys,
+    controlled_google_modules,
+    timeout,
+):
+    algorithm = "RSA_SIGN_PSS_2048_SHA256"
+    name = GOOGLE_KEY_VERSION_NAMES[algorithm]
+    client = RecordingGoogleCloudKmsClient(google_private_keys)
+    retry = object()
+    verifier = _google_verifier(
+        client,
+        target=GoogleCloudKmsVerificationTarget(name, algorithm),
+        retry=retry,
+        timeout=timeout,
+    )
+    payload = b"retry timeout"
+    signature = _google_signature(
+        google_private_keys[algorithm],
+        algorithm,
+        payload,
+    )
+
+    verifier.verify(
+        payload,
+        b64encode(signature).decode("ascii"),
+        _google_metadata(algorithm, name),
+    )
+
+    call = client.get_public_key_calls[0]
+    assert set(call) == {"request", "retry", "timeout"}
+    assert call["retry"] is retry
+    assert call["timeout"] is timeout
+
+
+@pytest.mark.parametrize(
+    "mode",
+    [
+        "wrong_public_key_name",
+        "wrong_public_key_algorithm",
+        "public_key_algorithm_string",
+        "public_key_algorithm_lookalike",
+        "wrong_public_key_format",
+        "public_key_format_string",
+        "public_key_format_lookalike",
+        "empty_public_key",
+        "oversized_public_key",
+        "public_key_subclass",
+        "bad_public_key_crc",
+        "boolean_public_key_crc",
+        "negative_public_key_crc",
+        "oversized_public_key_crc",
+        "public_key_crc_subclass",
+        "legacy_public_key_only",
+        "missing_public_key_crc",
+        "wrong_public_key_type",
+        "malformed_public_key_response",
+        "unexpected_public_key",
+    ],
+)
+def test_google_verifier_rejects_malformed_or_unexpected_public_keys(
+    google_private_keys,
+    controlled_google_modules,
+    mode,
+):
+    algorithm = "RSA_SIGN_PSS_2048_SHA256"
+    name = GOOGLE_KEY_VERSION_NAMES[algorithm]
+    client = RecordingGoogleCloudKmsClient(
+        google_private_keys,
+        mode=mode,
+    )
+    verifier = _google_verifier(
+        client,
+        target=GoogleCloudKmsVerificationTarget(name, algorithm),
+    )
+
+    with pytest.raises(
+        VerificationContractError,
+        match=r"^Google Cloud KMS verifier returned an invalid response$",
+    ) as caught:
+        verifier.verify(
+            b"malformed provider response " + SENSITIVE_CORPUS[4].encode(),
+            b64encode(b"signature-" + SENSITIVE_CORPUS[3].encode()).decode(
+                "ascii"
+            ),
+            _google_metadata(algorithm, name),
+        )
+
+    _assert_safe_error(caught.value)
+
+
+@pytest.mark.parametrize(
+    "mode",
+    [
+        "deadline_public_key",
+        "failed_precondition_public_key",
+        "not_found_public_key",
+        "permission_public_key",
+        "resource_exhausted_public_key",
+        "unavailable_public_key",
+    ],
+)
+def test_google_verifier_maps_closed_provider_availability_errors(
+    google_private_keys,
+    controlled_google_modules,
+    mode,
+):
+    algorithm = "RSA_SIGN_PSS_2048_SHA256"
+    name = GOOGLE_KEY_VERSION_NAMES[algorithm]
+    client = RecordingGoogleCloudKmsClient(
+        google_private_keys,
+        mode=mode,
+    )
+    verifier = _google_verifier(
+        client,
+        target=GoogleCloudKmsVerificationTarget(name, algorithm),
+    )
+
+    outcome = verifier.verify(
+        b"provider unavailable",
+        b64encode(b"signature").decode("ascii"),
+        _google_metadata(algorithm, name),
+    )
+
+    assert outcome.reason_code is VerificationReasonCode.VERIFIER_UNAVAILABLE
+
+
+@pytest.mark.parametrize("algorithm", GOOGLE_ALGORITHMS)
+def test_google_verifier_rejects_changed_payload_and_signature(
+    google_private_keys,
+    algorithm,
+):
+    name = GOOGLE_KEY_VERSION_NAMES[algorithm]
+    payload = b"exact original Google payload"
+    signature = _google_signature(
+        google_private_keys[algorithm],
+        algorithm,
+        payload,
+    )
+    verifier = _google_verifier(
+        None,
+        target=GoogleCloudKmsVerificationTarget(
+            name,
+            algorithm,
+            public_key_pem=_google_public_pem(
+                google_private_keys[algorithm]
+            ),
+        ),
+    )
+    metadata = _google_metadata(algorithm, name)
+
+    changed_payload = verifier.verify(
+        payload + b"!",
+        b64encode(signature).decode("ascii"),
+        metadata,
+    )
+    changed_signature_bytes = bytearray(signature)
+    changed_signature_bytes[-1] ^= 1
+    changed_signature = verifier.verify(
+        payload,
+        b64encode(changed_signature_bytes).decode("ascii"),
+        metadata,
+    )
+
+    assert changed_payload.reason_code is VerificationReasonCode.SIGNATURE_INVALID
+    assert changed_signature.reason_code is VerificationReasonCode.SIGNATURE_INVALID
+
+
+def test_google_verifier_maps_malformed_ecdsa_der_to_signature_invalid(
+    google_private_keys,
+):
+    algorithm = "EC_SIGN_P256_SHA256"
+    name = GOOGLE_KEY_VERSION_NAMES[algorithm]
+    verifier = _google_verifier(
+        None,
+        target=GoogleCloudKmsVerificationTarget(
+            name,
+            algorithm,
+            public_key_pem=_google_public_pem(
+                google_private_keys[algorithm]
+            ),
+        ),
+    )
+
+    outcome = verifier.verify(
+        b"malformed DER",
+        b64encode(b"not DER").decode("ascii"),
+        _google_metadata(algorithm, name),
+    )
+
+    assert outcome.reason_code is VerificationReasonCode.SIGNATURE_INVALID
+
+
+def test_google_verifier_does_not_swallow_unexpected_der_parser_errors(
+    google_private_keys,
+    monkeypatch,
+):
+    from cryptography.hazmat.primitives.asymmetric import utils
+
+    class UnexpectedDerError(ValueError):
+        pass
+
+    algorithm = "EC_SIGN_P256_SHA256"
+    name = GOOGLE_KEY_VERSION_NAMES[algorithm]
+    target = GoogleCloudKmsVerificationTarget(
+        name,
+        algorithm,
+        public_key_pem=_google_public_pem(google_private_keys[algorithm]),
+    )
+
+    def fail_decode(_signature):
+        raise UnexpectedDerError("unexpected DER " + SENSITIVE_CORPUS[3])
+
+    monkeypatch.setattr(utils, "decode_dss_signature", fail_decode)
+    verifier = _google_verifier(None, target=target)
+
+    with pytest.raises(
+        VerificationContractError,
+        match=r"^Google Cloud KMS verifier could not verify signature$",
+    ) as caught:
+        verifier.verify(
+            b"unexpected DER parser error",
+            b64encode(b"DER signature").decode("ascii"),
+            _google_metadata(algorithm, name),
+        )
+
+    _assert_safe_error(caught.value)
+
+
+def test_google_verifier_does_not_classify_availability_error_subclasses(
+    google_private_keys,
+    controlled_google_modules,
+):
+    algorithm = "RSA_SIGN_PSS_2048_SHA256"
+    name = GOOGLE_KEY_VERSION_NAMES[algorithm]
+
+    class DeadlineExceededSubclass(kms_fixtures.DeadlineExceeded):
+        pass
+
+    class Client:
+        def get_public_key(self, **_kwargs):
+            raise DeadlineExceededSubclass(
+                "subclass timeout " + SENSITIVE_CORPUS[0]
+            )
+
+    verifier = _google_verifier(
+        Client(),
+        target=GoogleCloudKmsVerificationTarget(name, algorithm),
+    )
+
+    with pytest.raises(
+        VerificationContractError,
+        match=r"^Google Cloud KMS verifier returned an invalid response$",
+    ) as caught:
+        verifier.verify(
+            b"provider exception subclass",
+            b64encode(b"signature").decode("ascii"),
+            _google_metadata(algorithm, name),
+        )
+
+    _assert_safe_error(caught.value)
+
+
+def test_google_verifier_reads_each_resolved_field_once(
+    google_private_keys,
+    monkeypatch,
+):
+    algorithm = "RSA_SIGN_PSS_2048_SHA256"
+    name = GOOGLE_KEY_VERSION_NAMES[algorithm]
+    resolved = GoogleCloudKmsVerificationTarget(
+        name,
+        algorithm,
+        public_key_pem=_google_public_pem(google_private_keys[algorithm]),
+    )
+    counts = {}
+    original_getattribute = GoogleCloudKmsVerificationTarget.__getattribute__
+
+    def counting_getattribute(self, field):
+        if self is resolved and field in {
+            "crypto_key_version_name",
+            "algorithm",
+            "disposition",
+            "public_key_pem",
+        }:
+            counts[field] = counts.get(field, 0) + 1
+        return original_getattribute(self, field)
+
+    monkeypatch.setattr(
+        GoogleCloudKmsVerificationTarget,
+        "__getattribute__",
+        counting_getattribute,
+    )
+    payload = b"single target property reads"
+    signature = _google_signature(
+        google_private_keys[algorithm],
+        algorithm,
+        payload,
+    )
+    verifier = _google_verifier(None, target=resolved)
+
+    outcome = verifier.verify(
+        payload,
+        b64encode(signature).decode("ascii"),
+        _google_metadata(algorithm, name),
+    )
+
+    assert outcome.reason_code is VerificationReasonCode.SIGNATURE_VALID_ANCHORED
+    assert counts == {
+        "crypto_key_version_name": 1,
+        "algorithm": 1,
+        "disposition": 1,
+        "public_key_pem": 1,
+    }
+
+
+def test_google_verifier_sanitizes_late_crypto_dependency_failure(
+    google_private_keys,
+    monkeypatch,
+):
+    import aegis.integrations.google_cloud_kms as google_cloud_kms
+
+    algorithm = "RSA_SIGN_PSS_2048_SHA256"
+    name = GOOGLE_KEY_VERSION_NAMES[algorithm]
+    payload = b"late crypto dependency failure " + SENSITIVE_CORPUS[4].encode()
+    target = GoogleCloudKmsVerificationTarget(
+        name,
+        algorithm,
+        public_key_pem=_google_public_pem(google_private_keys[algorithm]),
+    )
+    real_loader = google_cloud_kms._load_cryptography_dependencies
+    calls = 0
+
+    def fail_third_load():
+        nonlocal calls
+        calls += 1
+        if calls == 3:
+            raise ModuleNotFoundError(
+                "crypto dependency " + " | ".join(SENSITIVE_CORPUS)
+            )
+        return real_loader()
+
+    monkeypatch.setattr(
+        google_cloud_kms,
+        "_load_cryptography_dependencies",
+        fail_third_load,
+    )
+    verifier = _google_verifier(None, target=target)
+    signature = _google_signature(
+        google_private_keys[algorithm],
+        algorithm,
+        payload,
+    )
+
+    with pytest.raises(
+        VerificationContractError,
+        match=r"^Google Cloud KMS verifier could not verify signature$",
+    ) as caught:
+        verifier.verify(
+            payload,
+            b64encode(signature).decode("ascii"),
+            _google_metadata(algorithm, name),
+        )
+
+    _assert_safe_error(caught.value)
+
+
+def test_google_verifier_isolates_concurrent_resolver_and_fetched_key_state(
+    google_private_keys,
+    controlled_google_modules,
+):
+    algorithms = (
+        "RSA_SIGN_PSS_2048_SHA256",
+        "EC_SIGN_P256_SHA256",
+    )
+    targets = {
+        _parent_and_version(GOOGLE_KEY_VERSION_NAMES[algorithm]): (
+            GoogleCloudKmsVerificationTarget(
+                GOOGLE_KEY_VERSION_NAMES[algorithm],
+                algorithm,
+                (
+                    KmsKeyDisposition.ANCHORED
+                    if algorithm.startswith("RSA_")
+                    else KmsKeyDisposition.UNANCHORED
+                ),
+            )
+        )
+        for algorithm in algorithms
+    }
+    resolver_barrier = Barrier(2)
+    provider_barrier = Barrier(2)
+    calls = []
+    lock = Lock()
+
+    def resolver(reference, version):
+        target = targets.get((reference, version))
+        resolver_barrier.wait()
+        return target
+
+    class BarrierPublicKeyClient:
+        def get_public_key(self, **kwargs):
+            request = kwargs["request"]
+            algorithm = next(
+                candidate
+                for candidate in algorithms
+                if GOOGLE_KEY_VERSION_NAMES[candidate] == request.name
+            )
+            provider_barrier.wait()
+            child = RecordingGoogleCloudKmsClient(
+                google_private_keys,
+                algorithm=algorithm,
+            )
+            response = child.get_public_key(**kwargs)
+            with lock:
+                calls.append(dict(kwargs))
+            return response
+
+    verifier = GoogleCloudKmsArtifactVerifier(
+        BarrierPublicKeyClient(),
+        resolver=resolver,
+    )
+    payloads = {
+        algorithm: (
+            b"concurrent verifier payload "
+            + algorithm.encode("ascii")
+        )
+        for algorithm in algorithms
+    }
+    outcomes = {}
+    failures = []
+
+    def worker(algorithm):
+        try:
+            payload = payloads[algorithm]
+            signature = _google_signature(
+                google_private_keys[algorithm],
+                algorithm,
+                payload,
+            )
+            outcome = verifier.verify(
+                payload,
+                b64encode(signature).decode("ascii"),
+                _google_metadata(
+                    algorithm,
+                    GOOGLE_KEY_VERSION_NAMES[algorithm],
+                ),
+            )
+            with lock:
+                outcomes[algorithm] = outcome
+        except BaseException as error:
+            with lock:
+                failures.append(error)
+
+    threads = [
+        Thread(target=worker, args=(algorithm,))
+        for algorithm in algorithms
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert failures == []
+    assert {
+        algorithm: outcome.reason_code
+        for algorithm, outcome in outcomes.items()
+    } == {
+        "RSA_SIGN_PSS_2048_SHA256": (
+            VerificationReasonCode.SIGNATURE_VALID_ANCHORED
+        ),
+        "EC_SIGN_P256_SHA256": (
+            VerificationReasonCode.SIGNATURE_VALID_UNANCHORED
+        ),
+    }
+    assert {
+        call["request"].name
+        for call in calls
+    } == {
+        GOOGLE_KEY_VERSION_NAMES[algorithm]
+        for algorithm in algorithms
+    }
+    assert not hasattr(verifier, "__dict__")
+
+
+def test_google_verifier_runs_shared_verifier_conformance(
+    google_private_keys,
+    controlled_google_modules,
+):
+    semantic_algorithms = {
+        "version/current": "RSA_SIGN_PSS_2048_SHA256",
+        "version/historical": "RSA_SIGN_PSS_3072_SHA256",
+        "version/revoked": "RSA_SIGN_PSS_4096_SHA256",
+        "version/invalid-anchor": "EC_SIGN_P256_SHA256",
+    }
+    dispositions = {
+        "version/current": KmsKeyDisposition.ANCHORED,
+        "version/historical": KmsKeyDisposition.UNANCHORED,
+        "version/revoked": KmsKeyDisposition.REVOKED,
+        "version/invalid-anchor": KmsKeyDisposition.INVALID_ANCHOR,
+    }
+    targets = {}
+
+    def signed_artifact_factory(semantic_version):
+        algorithm = semantic_algorithms[semantic_version]
+        client = RecordingGoogleCloudKmsClient(
+            google_private_keys,
+            algorithm=algorithm,
+        )
+        signer = GoogleCloudKmsArtifactSigner(
+            client,
+            crypto_key_version_name=client.crypto_key_version_name,
+        )
+        payloads = []
+
+        class PayloadRecordingSigner:
+            def signer_identity(self):
+                return signer.signer_identity()
+
+            def sign(self, payload, identity):
+                payloads.append(payload)
+                return signer.sign(payload, identity)
+
+        artifact = {
+            "audit_schema_version": "1.4",
+            "event": "Google verifier conformance",
+            "signature": None,
+        }
+        sign_artifact_with_metadata(
+            artifact,
+            PayloadRecordingSigner(),
+            signed_at=1_721_600_000,
+        )
+        targets[
+            _parent_and_version(client.crypto_key_version_name)
+        ] = GoogleCloudKmsVerificationTarget(
+            client.crypto_key_version_name,
+            algorithm,
+            dispositions[semantic_version],
+            _google_public_pem(google_private_keys[algorithm]),
+        )
+        return SignedArtifactFixture(artifact, payloads[0])
+
+    def verifier_factory(scenario):
+        def resolver(reference, version):
+            if scenario in {
+                VerifierScenario.MALFORMED,
+                VerifierScenario.MALFORMED_COMBINATION,
+                VerifierScenario.UNEXPECTED,
+            }:
+                raise RuntimeError("sanitized resolver scenario")
+            target = targets.get((reference, version))
+            if scenario is VerifierScenario.UNAVAILABLE and target is not None:
+                return GoogleCloudKmsVerificationTarget(
+                    target.crypto_key_version_name,
+                    target.algorithm,
+                    target.disposition,
+                )
+            return target
+
+        return GoogleCloudKmsArtifactVerifier(None, resolver=resolver)
+
+    assert_external_verifier_conformance(
+        signed_artifact_factory,
+        verifier_factory,
+    )
