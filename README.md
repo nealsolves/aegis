@@ -22,8 +22,7 @@ Governance in AEGIS is runtime enforcement, not documentation and not prompting.
 - Release matrix: [docs/reference/RELEASE_MATRIX.md](docs/reference/RELEASE_MATRIX.md)
 - Current release scope: invocation governance plus workflow-aware provenance
   and lineage groundwork, audit schema `v1.4`, `AuditLineage`,
-  `ProvenanceGate`, `RiskHistory`, `@governed` defaults to split enforcement,
-  and opt-in provider-neutral external-signing contracts
+  `ProvenanceGate`, `RiskHistory`, and `@governed` defaults to split enforcement
 - Current beta line: `v0.9.0`, packaged as
   `aegis-ai-governance==0.9.0b1`
 - Verification baseline: `1923 tests` pass in the public-beta environment,
@@ -97,10 +96,11 @@ OpenAI Agents adapter requires
 status. The target-state architecture is captured in
 `docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md`.
 
-Opt-in metadata-aware signing is available through
-`sign_artifact_with_metadata()` and `verify_artifact_detailed()`. The host owns
-key resolution, credentials, provider transport, availability behavior, and
-artifact storage. See the
+The current source tree after `0.9.0b1` includes the source-only
+`sign_artifact_with_metadata()` and `verify_artifact_detailed()` contracts.
+They are not in the published `0.9.0b1` wheel or tag, and no later published
+version is assigned yet. The host owns key resolution, credentials, provider
+transport, availability behavior, and artifact storage. See the
 [public integration contract](docs/PUBLIC_INTEGRATION_CONTRACT.md#38-artifact-signing-and-external-trust-results)
 and [ADR-0012](docs/decisions/ADR-0012-external-trust-anchor-signing.md) for the
 two-axis signature/anchor contract and its limits.

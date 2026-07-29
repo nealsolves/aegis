@@ -11,6 +11,10 @@ target-state `1.0.0` architecture contract is captured separately in
 [docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md](architecture/AEGIS_HIGH_LEVEL_DESIGN.md).
 The release source is `main`.
 
+Section 3.8 additionally documents #44 contracts implemented in the current
+source tree after `0.9.0b1`. Those APIs are not in the published `0.9.0b1`
+wheel or tag, and no later published version is assigned yet.
+
 Source, tags, and release artifacts for versions before `0.9.0` remain in
 [`nealsolves/aigc`](https://github.com/nealsolves/aigc). This repository is the
 AEGIS `0.9.0`-and-later development home.
@@ -679,6 +683,11 @@ The `AEGIS` class accepts `risk_config` as a constructor override; otherwise the
 `risk` field is used.
 
 ### 3.8 Artifact signing and external trust results
+
+**Release boundary:** the legacy API in this section is published in
+`0.9.0b1`. The metadata-aware external signer/verifier contracts are
+source-only changes after that release and are not available from the
+`aegis-ai-governance==0.9.0b1` installation shown in Section 1.1.
 
 The original `ArtifactSigner` path remains supported. `HMACSigner`,
 `sign_artifact()`, automatic `AEGIS(signer=...)` signing, and

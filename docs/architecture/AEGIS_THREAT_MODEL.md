@@ -16,6 +16,10 @@ transport, credentials, retries, orchestration, external-signing key
 resolution, and artifact storage; adapter input is host-supplied evidence and
 remains untrusted until normalized and enforced.
 
+The external trust-anchor contracts described below are implemented in the
+current source tree after `0.9.0b1`; they are not in that published wheel or
+tag, and no later published version is assigned yet.
+
 ---
 
 ## Security Objective

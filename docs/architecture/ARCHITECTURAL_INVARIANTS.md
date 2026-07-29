@@ -18,6 +18,10 @@ change its ordered gates.
 OpenAI Agents integrations are optional public submodules, not top-level
 re-exports.
 
+Invariant 18 describes external trust-anchor contracts implemented in the
+current source tree after `0.9.0b1`. They are not in that published wheel or
+tag, and no later published version is assigned yet.
+
 Any change that violates these invariants must not be merged.
 
 If an invariant must change, the change requires:
