@@ -1,8 +1,8 @@
 # Issue #44 External Trust-Anchor Contracts Design
 
-Date: 2026-07-28  
-Status: Approved for implementation planning  
-Parent issue: [#39](https://github.com/nealsolves/aegis/issues/39)  
+Date: 2026-07-28
+Status: Approved for implementation planning
+Parent issue: [#39](https://github.com/nealsolves/aegis/issues/39)
 Delivery issue: [#44](https://github.com/nealsolves/aegis/issues/44)
 
 ## Summary

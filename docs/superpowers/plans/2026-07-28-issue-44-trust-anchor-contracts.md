@@ -1247,7 +1247,7 @@ git commit -m "docs(signing): define external trust-anchor boundary"
 - No new interface; this task verifies the frozen public and artifact
   contracts produced by Tasks 1–8.
 
-- [ ] **Step 1: Run the focused signing and schema suite**
+- [x] **Step 1: Run the focused signing and schema suite**
 
 Run:
 
@@ -1257,7 +1257,7 @@ Run:
 
 Expected: all focused tests pass.
 
-- [ ] **Step 2: Run the complete Python suite**
+- [x] **Step 2: Run the complete Python suite**
 
 Run:
 
@@ -1267,7 +1267,7 @@ Run:
 
 Expected: the full suite passes with no new warnings.
 
-- [ ] **Step 3: Run coverage and lint gates**
+- [x] **Step 3: Run coverage and lint gates**
 
 Run:
 
@@ -1278,7 +1278,7 @@ Run:
 
 Expected: coverage is at least 90% and flake8 exits 0.
 
-- [ ] **Step 4: Run schema, public-doc, and documentation parity gates**
+- [x] **Step 4: Run schema, public-doc, and documentation parity gates**
 
 Run:
 
@@ -1296,7 +1296,7 @@ Expected:
 
 The baseline has four unrelated pre-existing parity inventory failures for the July 25/26 demo design and plan files. Record them separately if they remain; do not attribute them to #44 and do not broaden this branch to repair them.
 
-- [ ] **Step 5: Validate the distribution candidate**
+- [x] **Step 5: Validate the distribution candidate**
 
 Run:
 
@@ -1307,7 +1307,7 @@ Run:
 
 Expected: wheel/sdist construction and candidate validation pass, and the packaged schema/API behave like the source tree.
 
-- [ ] **Step 6: Perform the first final review pass: acceptance completeness**
+- [x] **Step 6: Perform the first final review pass: acceptance completeness**
 
 Build a checklist from the design's seven #44 acceptance rows and link each to:
 
@@ -1317,7 +1317,7 @@ Build a checklist from the design's seven #44 acceptance rows and link each to:
 
 Confirm explicit coverage of HMAC compatibility, custom signer compatibility, engine artifact shape, deterministic domain bytes, every outcome-matrix row, impossible outcomes, current/historical/unknown/revoked keys, atomic failure, no-mutation verification, schema parity, redaction, and no cloud dependency.
 
-- [ ] **Step 7: Perform the second final review pass: adversarial security audit**
+- [x] **Step 7: Perform the second final review pass: adversarial security audit**
 
 Review the final diff and search for accidental leakage or scope expansion:
 
@@ -1337,7 +1337,7 @@ Expected:
 - no persisted verification or anchor status;
 - no engine-constructor or legacy-signing change.
 
-- [ ] **Step 8: Run the complete suite once more after review fixes**
+- [x] **Step 8: Run the complete suite once more after review fixes**
 
 Run:
 
@@ -1349,7 +1349,7 @@ git status --short
 
 Expected: tests and lint pass; status contains only intentional plan-checkbox or review-fix changes.
 
-- [ ] **Step 9: Commit final review updates**
+- [x] **Step 9: Commit final review updates**
 
 ```bash
 git add docs/superpowers/plans/2026-07-28-issue-44-trust-anchor-contracts.md
