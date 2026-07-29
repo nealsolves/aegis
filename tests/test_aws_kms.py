@@ -1782,6 +1782,202 @@ def test_aws_verifier_rejects_a_spoofed_client_error_class(
     _assert_safe_error(caught.value)
 
 
+def test_aws_verifier_maps_only_exact_botocore_transport_types(
+    aws_private_keys,
+    monkeypatch,
+):
+    transport_types = _install_fake_botocore_transport(monkeypatch)
+    endpoint = SENSITIVE_CORPUS[5]
+
+    for exception_type in transport_types:
+        client = RecordingAwsKmsClient(aws_private_keys)
+        client.verify_error = exception_type(endpoint_url=endpoint)
+        verifier = _aws_verifier_for_client(client)
+
+        outcome = verifier.verify(
+            b"payload",
+            b64encode(b"signature").decode("ascii"),
+            _aws_metadata(),
+        )
+
+        _assert_outcome(outcome, VerificationReasonCode.VERIFIER_UNAVAILABLE)
+        assert outcome.message == "External verification is unavailable"
+        assert endpoint not in str(outcome)
+        assert endpoint not in repr(outcome)
+
+
+def test_aws_verifier_rejects_botocore_transport_subclasses_and_lookalikes(
+    aws_private_keys,
+    monkeypatch,
+):
+    transport_types = _install_fake_botocore_transport(monkeypatch)
+    exceptions_module = sys.modules["botocore.exceptions"]
+    endpoint = SENSITIVE_CORPUS[5]
+    failures = [
+        type(
+            exception_type.__name__,
+            (exception_type,),
+            {},
+        )(endpoint_url=endpoint)
+        for exception_type in transport_types
+    ]
+    failures.extend(
+        (
+            type(
+                "ConnectTimeoutError",
+                (Exception,),
+                {},
+            )("lookalike " + endpoint),
+            exceptions_module.ConnectionError(
+                endpoint_url=endpoint,
+            ),
+            exceptions_module.HTTPClientError(
+                endpoint_url=endpoint,
+            ),
+            exceptions_module.ProxyConnectionError(
+                endpoint_url=endpoint,
+            ),
+        )
+    )
+
+    for failure in failures:
+        client = RecordingAwsKmsClient(aws_private_keys)
+        client.verify_error = failure
+        verifier = _aws_verifier_for_client(client)
+
+        with pytest.raises(
+            VerificationContractError,
+            match=r"^AWS KMS verifier returned an invalid response$",
+        ) as caught:
+            verifier.verify(
+                b"payload",
+                b64encode(b"signature").decode("ascii"),
+                _aws_metadata(),
+            )
+
+        _assert_safe_error(caught.value)
+
+
+def test_aws_verifier_uses_real_botocore_transport_types_when_available(
+    aws_private_keys,
+):
+    try:
+        from botocore.exceptions import (
+            ConnectTimeoutError,
+            EndpointConnectionError,
+            ReadTimeoutError,
+        )
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip("botocore is not installed in the base test environment")
+
+    endpoint = SENSITIVE_CORPUS[5]
+    for exception_type in (
+        ConnectTimeoutError,
+        ReadTimeoutError,
+        EndpointConnectionError,
+    ):
+        client = RecordingAwsKmsClient(aws_private_keys)
+        client.verify_error = exception_type(endpoint_url=endpoint)
+        verifier = _aws_verifier_for_client(client)
+
+        outcome = verifier.verify(
+            b"payload",
+            b64encode(b"signature").decode("ascii"),
+            _aws_metadata(),
+        )
+
+        _assert_outcome(outcome, VerificationReasonCode.VERIFIER_UNAVAILABLE)
+
+
+def test_aws_verifier_missing_botocore_keeps_concrete_classification_safe(
+    aws_private_keys,
+    monkeypatch,
+):
+    monkeypatch.setitem(sys.modules, "botocore", None)
+    monkeypatch.setitem(sys.modules, "botocore.exceptions", None)
+
+    unavailable_client = RecordingAwsKmsClient(
+        aws_private_keys,
+        mode="dependency_timeout",
+    )
+    unavailable = _aws_verifier_for_client(unavailable_client).verify(
+        b"payload",
+        b64encode(b"signature").decode("ascii"),
+        _aws_metadata(),
+    )
+
+    _assert_outcome(
+        unavailable,
+        VerificationReasonCode.VERIFIER_UNAVAILABLE,
+    )
+
+    unexpected_client = RecordingAwsKmsClient(
+        aws_private_keys,
+        mode="unexpected_verify_failure",
+    )
+    with pytest.raises(VerificationContractError) as caught:
+        _aws_verifier_for_client(unexpected_client).verify(
+            b"payload",
+            b64encode(b"signature").decode("ascii"),
+            _aws_metadata(),
+        )
+
+    _assert_safe_error(caught.value)
+
+
+def test_aws_verifier_keeps_transport_service_and_crypto_errors_distinct(
+    aws_private_keys,
+    monkeypatch,
+):
+    transport_types = _install_fake_botocore_transport(monkeypatch)
+    exceptions_module = sys.modules["botocore.exceptions"]
+
+    transport_client = RecordingAwsKmsClient(aws_private_keys)
+    transport_client.verify_error = transport_types[0](
+        endpoint_url=SENSITIVE_CORPUS[5]
+    )
+    transport = _aws_verifier_for_client(transport_client).verify(
+        b"payload",
+        b64encode(b"signature").decode("ascii"),
+        _aws_metadata(),
+    )
+    _assert_outcome(transport, VerificationReasonCode.VERIFIER_UNAVAILABLE)
+
+    service_client = RecordingAwsKmsClient(aws_private_keys)
+    service_client.verify_error = exceptions_module.ClientError(
+        "AccessDeniedException"
+    )
+    service = _aws_verifier_for_client(service_client).verify(
+        b"payload",
+        b64encode(b"signature").decode("ascii"),
+        _aws_metadata(),
+    )
+    _assert_outcome(service, VerificationReasonCode.VERIFIER_UNAVAILABLE)
+
+    spoofed_crypto_client = RecordingAwsKmsClient(aws_private_keys)
+    spoofed_crypto_client.verify_error = exceptions_module.ClientError(
+        "KMSInvalidSignatureException"
+    )
+    with pytest.raises(VerificationContractError) as caught:
+        _aws_verifier_for_client(spoofed_crypto_client).verify(
+            b"payload",
+            b64encode(b"signature").decode("ascii"),
+            _aws_metadata(),
+        )
+    _assert_safe_error(caught.value)
+
+    crypto_client = RecordingAwsKmsClient(
+        aws_private_keys,
+        mode="invalid_signature_exception",
+    )
+    crypto = _aws_verifier_for_client(crypto_client).verify(
+        b"payload",
+        b64encode(b"signature").decode("ascii"),
+        _aws_metadata(),
+    )
+    _assert_outcome(crypto, VerificationReasonCode.SIGNATURE_INVALID)
+
+
 def test_aws_verifier_runs_shared_external_verifier_conformance(
     aws_private_keys,
 ):
@@ -1974,6 +2170,71 @@ class _BarrierAwsKmsClient(RecordingAwsKmsClient):
     def verify(self, **kwargs):
         self.verify_barrier.wait()
         return super().verify(**kwargs)
+
+
+def _install_fake_botocore_transport(monkeypatch):
+    class BotocoreError(Exception):
+        def __init__(self, *, endpoint_url):
+            self.endpoint_url = endpoint_url
+            super().__init__(
+                type(self).__name__ + " for " + endpoint_url
+            )
+
+    class ConnectionError(BotocoreError):
+        pass
+
+    class HTTPClientError(BotocoreError):
+        pass
+
+    class ConnectTimeoutError(ConnectionError):
+        pass
+
+    class ReadTimeoutError(HTTPClientError):
+        pass
+
+    class EndpointConnectionError(ConnectionError):
+        pass
+
+    class ProxyConnectionError(ConnectionError):
+        pass
+
+    class ClientError(Exception):
+        def __init__(self, code):
+            super().__init__("client error " + " | ".join(SENSITIVE_CORPUS))
+            self.response = {"Error": {"Code": code}}
+
+    botocore_module = ModuleType("botocore")
+    exceptions_module = ModuleType("botocore.exceptions")
+    exceptions_module.BotocoreError = BotocoreError
+    exceptions_module.ConnectionError = ConnectionError
+    exceptions_module.HTTPClientError = HTTPClientError
+    exceptions_module.ConnectTimeoutError = ConnectTimeoutError
+    exceptions_module.ReadTimeoutError = ReadTimeoutError
+    exceptions_module.EndpointConnectionError = EndpointConnectionError
+    exceptions_module.ProxyConnectionError = ProxyConnectionError
+    exceptions_module.ClientError = ClientError
+    botocore_module.exceptions = exceptions_module
+    monkeypatch.setitem(sys.modules, "botocore", botocore_module)
+    monkeypatch.setitem(
+        sys.modules,
+        "botocore.exceptions",
+        exceptions_module,
+    )
+    return (
+        ConnectTimeoutError,
+        ReadTimeoutError,
+        EndpointConnectionError,
+    )
+
+
+def _aws_verifier_for_client(client):
+    return AwsKmsArtifactVerifier(
+        client,
+        resolver=lambda _reference, _version: AwsKmsVerificationTarget(
+            AWS_KEY_ARNS["RSA_2048"],
+            frozenset({"RSASSA_PSS_SHA_256"}),
+        ),
+    )
 
 
 def _aws_metadata(

@@ -624,6 +624,8 @@ def _classify_verify_error(
     client_error_code = _botocore_client_error_code(error)
     if client_error_code in _AWS_VERIFY_AVAILABILITY_ERROR_CODES:
         return VerificationReasonCode.VERIFIER_UNAVAILABLE
+    if _is_botocore_transport_error(error):
+        return VerificationReasonCode.VERIFIER_UNAVAILABLE
     return None
 
 
@@ -666,6 +668,37 @@ def _botocore_client_error_code(error: BaseException) -> str | None:
         return code
     except Exception:
         return None
+
+
+def _is_botocore_transport_error(error: BaseException) -> bool:
+    try:
+        from botocore.exceptions import (
+            ConnectTimeoutError,
+            EndpointConnectionError,
+            ReadTimeoutError,
+        )
+    except (ImportError, ModuleNotFoundError):
+        return False
+    allowed_types = (
+        ConnectTimeoutError,
+        ReadTimeoutError,
+        EndpointConnectionError,
+    )
+    if (
+        any(type(candidate) is not type for candidate in allowed_types)
+        or tuple(candidate.__name__ for candidate in allowed_types)
+        != (
+            "ConnectTimeoutError",
+            "ReadTimeoutError",
+            "EndpointConnectionError",
+        )
+        or any(
+            not issubclass(candidate, BaseException)
+            for candidate in allowed_types
+        )
+    ):
+        return False
+    return type(error) in allowed_types
 
 
 def _successful_verification_outcome(
