@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from collections import Counter
 import importlib
 import importlib.util
 import inspect
@@ -252,6 +253,22 @@ GOOGLE_GUIDE_IMPORTS = {
     ("aegis.integrations.kms", "KmsKeyDisposition"),
 }
 
+AWS_GUIDE_CALLS = {
+    "AwsKmsArtifactSigner": 1,
+    "sign_artifact_with_metadata": 1,
+    "AwsKmsVerificationTarget": 1,
+    "AwsKmsArtifactVerifier": 1,
+    "verify_artifact_detailed": 1,
+}
+
+GOOGLE_GUIDE_CALLS = {
+    "GoogleCloudKmsArtifactSigner": 1,
+    "sign_artifact_with_metadata": 1,
+    "GoogleCloudKmsVerificationTarget": 1,
+    "GoogleCloudKmsArtifactVerifier": 1,
+    "verify_artifact_detailed": 1,
+}
+
 KMS_PUBLIC_DOCS = (
     "README.md",
     "docs/INTEGRATION_GUIDE.md",
@@ -284,39 +301,70 @@ def _documented_algorithm_identifiers(text: str) -> set[str]:
     }
 
 
-def _release_gate_kms_lanes(text: str) -> set[str]:
+def _release_gate_kms_lanes(text: str) -> tuple[str, ...]:
     section = _markdown_section(
         text,
         "## Source-only KMS Adapter Release Gate",
     )
     bullet_items = re.findall(r"(?m)^- (.+?)[ \t]*$", section)
-    lanes = set()
+    lanes = []
     for item in bullet_items:
         match = re.fullmatch(r"`([a-z0-9]+(?:-[a-z0-9]+)*)`", item)
         assert match is not None, f"invalid KMS release lane item: {item}"
-        lanes.add(match.group(1))
-    return lanes
+        lanes.append(match.group(1))
+    return tuple(lanes)
+
+
+def _assert_exact_kms_release_lanes(
+    text: str,
+    expected_lanes: set[str],
+) -> None:
+    lane_occurrences = _release_gate_kms_lanes(text)
+    assert len(expected_lanes) == 7
+    assert len(lane_occurrences) == 7
+    assert len(set(lane_occurrences)) == len(lane_occurrences)
+    assert set(lane_occurrences) == expected_lanes
+
+
+def _is_aegis_module(module_name: str) -> bool:
+    return module_name == "aegis" or module_name.startswith("aegis.")
+
+
+def _assert_public_aegis_module(module_name: str) -> None:
+    assert _is_aegis_module(module_name)
+    assert all(
+        not segment.startswith("_")
+        for segment in module_name.split(".")[1:]
+    )
 
 
 def _assert_public_aegis_examples(
     text: str,
     expected_imports: set[tuple[str, str]],
+    expected_calls: dict[str, int],
 ) -> None:
     actual_imports: set[tuple[str, str]] = set()
     bindings: dict[str, object] = {}
+    binding_names: dict[str, str] = {}
+    actual_calls: Counter[str] = Counter()
 
     for index, sample in enumerate(_python_fences(text), start=1):
         tree = ast.parse(sample, filename=f"KMS guide Python fence {index}")
         for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if not _is_aegis_module(alias.name):
+                        continue
+                    _assert_public_aegis_module(alias.name)
+                    actual_imports.add((alias.name, ""))
+                continue
             if not isinstance(node, ast.ImportFrom):
                 continue
             module_name = node.module
-            if module_name is None or not (
-                module_name == "aegis"
-                or module_name.startswith("aegis.")
-            ):
+            if module_name is None or not _is_aegis_module(module_name):
                 continue
-            assert "._" not in module_name
+            assert node.level == 0
+            _assert_public_aegis_module(module_name)
             module = importlib.import_module(module_name)
             for alias in node.names:
                 assert alias.name != "*"
@@ -329,6 +377,7 @@ def _assert_public_aegis_examples(
                     or bindings[local_name] is imported
                 )
                 bindings[local_name] = imported
+                binding_names[local_name] = alias.name
 
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
@@ -338,6 +387,7 @@ def _assert_public_aegis_examples(
             called = bindings.get(node.func.id)
             if called is None:
                 continue
+            actual_calls[binding_names[node.func.id]] += 1
             assert not any(isinstance(argument, ast.Starred) for argument in node.args)
             assert all(keyword.arg is not None for keyword in node.keywords)
             positional = [object() for _argument in node.args]
@@ -349,6 +399,7 @@ def _assert_public_aegis_examples(
             inspect.signature(called).bind(*positional, **keywords)
 
     assert actual_imports == expected_imports
+    assert dict(actual_calls) == expected_calls
 
 
 def test_kms_algorithm_parser_rejects_an_extra_backticked_identifier():
@@ -377,7 +428,7 @@ def test_kms_lane_parser_rejects_an_eighth_release_lane():
         1,
     )
 
-    assert _release_gate_kms_lanes(mutated) == {
+    assert _release_gate_kms_lanes(mutated) == (
         "base-wheel",
         "aws-min-wheel",
         "aws-current-wheel",
@@ -386,7 +437,69 @@ def test_kms_lane_parser_rejects_an_eighth_release_lane():
         "combined-current-wheel",
         "combined-current-sdist",
         "eighth-kms-lane",
-    }
+    )
+
+
+def test_kms_lane_validator_rejects_a_duplicate_release_lane():
+    root = SCRIPT_PATH.parents[1]
+    release_gates = (root / "RELEASE_GATES.md").read_text(encoding="utf-8")
+    mutated = release_gates.replace(
+        "- `combined-current-sdist`",
+        "- `combined-current-sdist`\n- `combined-current-sdist`",
+        1,
+    )
+
+    with pytest.raises(AssertionError):
+        _assert_exact_kms_release_lanes(
+            mutated,
+            {
+                "base-wheel",
+                "aws-min-wheel",
+                "aws-current-wheel",
+                "gcp-min-wheel",
+                "gcp-current-wheel",
+                "combined-current-wheel",
+                "combined-current-sdist",
+            },
+        )
+
+
+def test_kms_example_validator_rejects_a_plain_private_aegis_import():
+    root = SCRIPT_PATH.parents[1]
+    aws = (
+        root / "docs/reference/external/AWS_KMS_SIGNING.md"
+    ).read_text(encoding="utf-8")
+    mutated = aws.replace(
+        "import boto3\n",
+        "import boto3\nimport aegis._internal\n",
+        1,
+    )
+
+    with pytest.raises(AssertionError):
+        _assert_public_aegis_examples(
+            mutated,
+            AWS_GUIDE_IMPORTS,
+            AWS_GUIDE_CALLS,
+        )
+
+
+def test_kms_example_validator_rejects_a_typoed_intended_helper_call():
+    root = SCRIPT_PATH.parents[1]
+    google = (
+        root / "docs/reference/external/GOOGLE_CLOUD_KMS_SIGNING.md"
+    ).read_text(encoding="utf-8")
+    mutated = google.replace(
+        "sign_artifact_with_metadata(",
+        "sign_artifact_with_metadatum(",
+        1,
+    )
+
+    with pytest.raises(AssertionError):
+        _assert_public_aegis_examples(
+            mutated,
+            GOOGLE_GUIDE_IMPORTS,
+            GOOGLE_GUIDE_CALLS,
+        )
 
 
 def test_kms_example_validator_rejects_a_wrong_public_keyword():
@@ -401,7 +514,11 @@ def test_kms_example_validator_rejects_a_wrong_public_keyword():
     )
 
     with pytest.raises(TypeError):
-        _assert_public_aegis_examples(mutated, GOOGLE_GUIDE_IMPORTS)
+        _assert_public_aegis_examples(
+            mutated,
+            GOOGLE_GUIDE_IMPORTS,
+            GOOGLE_GUIDE_CALLS,
+        )
 
 
 def test_kms_guides_publish_exact_extras_algorithms_and_compilable_examples():
@@ -421,8 +538,16 @@ def test_kms_guides_publish_exact_extras_algorithms_and_compilable_examples():
         _documented_algorithm_identifiers(google)
         == GOOGLE_KMS_ALGORITHMS
     )
-    _assert_public_aegis_examples(aws, AWS_GUIDE_IMPORTS)
-    _assert_public_aegis_examples(google, GOOGLE_GUIDE_IMPORTS)
+    _assert_public_aegis_examples(
+        aws,
+        AWS_GUIDE_IMPORTS,
+        AWS_GUIDE_CALLS,
+    )
+    _assert_public_aegis_examples(
+        google,
+        GOOGLE_GUIDE_IMPORTS,
+        GOOGLE_GUIDE_CALLS,
+    )
 
 
 def test_kms_guides_preserve_provider_identity_and_verification_boundaries():
@@ -511,7 +636,7 @@ def test_release_gates_publish_the_exact_optional_extra_artifact_lanes():
         "combined-current-sdist",
     }
 
-    assert _release_gate_kms_lanes(release_gates) == expected_lanes
+    _assert_exact_kms_release_lanes(release_gates, expected_lanes)
 
 
 REFERENCE_TABLE = """
