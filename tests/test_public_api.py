@@ -386,6 +386,24 @@ def test_all_list_completeness():
     assert not missing, f"Missing from __all__: {sorted(missing)}"
 
 
+def test_kms_integration_contract_stays_out_of_existing_public_namespaces():
+    """KMS adapters are opt-in modules, not additions to the core signing API."""
+    import aegis.signing as signing_module
+
+    forbidden = {
+        "KmsKeyDisposition",
+        "AwsKmsArtifactSigner",
+        "AwsKmsArtifactVerifier",
+        "AwsKmsVerificationTarget",
+        "GoogleCloudKmsArtifactSigner",
+        "GoogleCloudKmsArtifactVerifier",
+        "GoogleCloudKmsVerificationTarget",
+    }
+
+    assert forbidden.isdisjoint(aegis.__all__)
+    assert forbidden.isdisjoint(signing_module.__all__)
+
+
 def test_trust_anchor_signing_contracts_are_public_and_identical():
     """Trust-anchor contracts have explicit module and package import paths."""
     import aegis.signing as signing_module
