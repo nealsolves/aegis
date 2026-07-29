@@ -23,6 +23,7 @@ from aegis.integrations.aws_kms import (
     AwsKmsArtifactVerifier,
     AwsKmsVerificationTarget,
 )
+from aegis.integrations._kms_common import MAX_AWS_RAW_SIGNATURE_BYTES
 from aegis.integrations.kms import KmsKeyDisposition
 from aegis.signing import (
     AnchorStatus,
@@ -739,6 +740,38 @@ def test_aws_signer_accepts_the_inclusive_raw_signature_limit(aws_private_keys):
     receipt = signer.sign(b"payload", identity)
 
     assert b64decode(receipt.signature, validate=True) == b"x" * 6_144
+
+
+def test_aws_sign_response_covers_limit_minus_one_limit_and_limit_plus_one():
+    import aegis.integrations.aws_kms as aws_kms
+
+    for size in (
+        MAX_AWS_RAW_SIGNATURE_BYTES - 1,
+        MAX_AWS_RAW_SIGNATURE_BYTES,
+    ):
+        signature = b"x" * size
+        assert aws_kms._normalize_sign_response(
+            {
+                "KeyId": AWS_KEY_ARNS["RSA_2048"],
+                "SigningAlgorithm": "RSASSA_PSS_SHA_256",
+                "Signature": signature,
+            },
+            key_arn=AWS_KEY_ARNS["RSA_2048"],
+            signing_algorithm="RSASSA_PSS_SHA_256",
+        ) == signature
+
+    with pytest.raises(ValueError):
+        aws_kms._normalize_sign_response(
+            {
+                "KeyId": AWS_KEY_ARNS["RSA_2048"],
+                "SigningAlgorithm": "RSASSA_PSS_SHA_256",
+                "Signature": (
+                    b"x" * (MAX_AWS_RAW_SIGNATURE_BYTES + 1)
+                ),
+            },
+            key_arn=AWS_KEY_ARNS["RSA_2048"],
+            signing_algorithm="RSASSA_PSS_SHA_256",
+        )
 
 
 @pytest.mark.parametrize(

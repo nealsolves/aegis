@@ -261,10 +261,14 @@ def test_normalize_crc32c_rejects_out_of_range_or_non_exact_integer(value):
     assert repr(value) not in str(error.value)
 
 
-def test_normalize_crc32c_accepts_the_inclusive_uint32_range():
-    """The checksum field is an unsigned 32-bit integer, including both ends."""
+def test_normalize_crc32c_covers_both_edges_and_the_upper_boundary_triplet():
+    """Exercise lower and upper unsigned-32-bit boundaries without a gap."""
     assert _normalize_crc32c(0) == 0
+    assert _normalize_crc32c(1) == 1
+    assert _normalize_crc32c(MAX_CRC32C - 1) == MAX_CRC32C - 1
     assert _normalize_crc32c(MAX_CRC32C) == MAX_CRC32C
+    with pytest.raises(ValueError, match="crc32c is invalid"):
+        _normalize_crc32c(MAX_CRC32C + 1)
 
 
 def test_normalize_crc32c_rejects_an_int_subclass():

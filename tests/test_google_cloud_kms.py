@@ -23,6 +23,10 @@ from aegis.integrations.google_cloud_kms import (
     GoogleCloudKmsArtifactVerifier,
     GoogleCloudKmsVerificationTarget,
 )
+from aegis.integrations._kms_common import (
+    MAX_PUBLIC_KEY_PEM_BYTES,
+    MAX_RAW_SIGNATURE_BYTES,
+)
 from aegis.integrations.kms import KmsKeyDisposition
 from aegis.signing import (
     CANONICALIZATION_VERSION,
@@ -776,6 +780,44 @@ def test_google_signer_accepts_the_inclusive_raw_signature_limit(
     assert b64decode(receipt.signature, validate=True) == b"x" * 12_288
 
 
+def test_google_sign_response_covers_limit_minus_one_limit_and_limit_plus_one(
+    controlled_google_modules,
+):
+    from types import SimpleNamespace
+
+    import aegis.integrations.google_cloud_kms as google_cloud_kms
+
+    name = GOOGLE_KEY_VERSION_NAMES["RSA_SIGN_PSS_2048_SHA256"]
+    for size in (MAX_RAW_SIGNATURE_BYTES - 1, MAX_RAW_SIGNATURE_BYTES):
+        signature = b"x" * size
+        response = SimpleNamespace(
+            name=name,
+            signature=signature,
+            signature_crc32c=google_crc32c_value(signature),
+            verified_digest_crc32c=True,
+        )
+        assert google_cloud_kms._normalize_asymmetric_sign_response(
+            controlled_google_modules.google_crc32c,
+            response,
+            expected_name=name,
+        ) == signature
+
+    oversized_signature = b"x" * (MAX_RAW_SIGNATURE_BYTES + 1)
+    with pytest.raises(ValueError):
+        google_cloud_kms._normalize_asymmetric_sign_response(
+            controlled_google_modules.google_crc32c,
+            SimpleNamespace(
+                name=name,
+                signature=oversized_signature,
+                signature_crc32c=google_crc32c_value(
+                    oversized_signature
+                ),
+                verified_digest_crc32c=True,
+            ),
+            expected_name=name,
+        )
+
+
 @pytest.mark.parametrize(
     "payload",
     [
@@ -1135,6 +1177,39 @@ def test_google_target_accepts_exact_algorithm_correct_public_pem(
         disposition=KmsKeyDisposition.UNANCHORED,
         public_key_pem=pem,
     )
+
+
+def test_google_retained_pem_covers_limit_minus_one_limit_and_limit_plus_one(
+    google_private_keys,
+):
+    algorithm = "RSA_SIGN_PSS_2048_SHA256"
+    name = GOOGLE_KEY_VERSION_NAMES[algorithm]
+    pem = _google_public_pem(google_private_keys[algorithm])
+
+    for size in (MAX_PUBLIC_KEY_PEM_BYTES - 1, MAX_PUBLIC_KEY_PEM_BYTES):
+        padded_pem = pem + b" " * (size - len(pem))
+        target = GoogleCloudKmsVerificationTarget(
+            name,
+            algorithm,
+            public_key_pem=padded_pem,
+        )
+        assert len(target.public_key_pem) == size
+
+    with pytest.raises(
+        VerificationContractError,
+        match=r"^Google Cloud KMS verification target is invalid$",
+    ) as caught:
+        GoogleCloudKmsVerificationTarget(
+            name,
+            algorithm,
+            public_key_pem=(
+                pem
+                + b" "
+                * (MAX_PUBLIC_KEY_PEM_BYTES + 1 - len(pem))
+            ),
+        )
+
+    _assert_safe_error(caught.value)
 
 
 def test_google_target_repr_does_not_expose_resource_or_retained_pem(
