@@ -63,7 +63,31 @@ def google_private_keys():
 
 @pytest.fixture
 def controlled_google_modules(monkeypatch):
-    return install_controlled_google_kms_modules(monkeypatch)
+    import aegis.integrations.google_cloud_kms as google_cloud_kms
+
+    modules = install_controlled_google_kms_modules(monkeypatch)
+    availability_types = google_cloud_kms._GoogleApiAvailabilityTypes(
+        direct_types=(
+            kms_fixtures.DeadlineExceeded,
+            kms_fixtures.GatewayTimeout,
+            kms_fixtures.ResourceExhausted,
+            kms_fixtures.TooManyRequests,
+            kms_fixtures.PermissionDenied,
+            kms_fixtures.Forbidden,
+            kms_fixtures.ServiceUnavailable,
+            kms_fixtures.FailedPrecondition,
+            kms_fixtures.NotFound,
+        ),
+        bad_request_type=kms_fixtures.BadRequest,
+        retry_error_type=kms_fixtures.RetryError,
+    )
+    monkeypatch.setattr(
+        google_cloud_kms,
+        "_load_google_api_availability_types",
+        lambda: availability_types,
+    )
+    modules.availability_types = availability_types
+    return modules
 
 
 class _StringSubclass(str):
@@ -414,6 +438,44 @@ def test_controlled_google_version_states_match_actual_sdk_when_installed():
         assert getattr(actual_type, controlled.name).value == controlled.value
 
 
+def test_actual_google_enabled_state_forge_is_rejected_when_constructible():
+    import aegis.integrations.google_cloud_kms as google_cloud_kms
+
+    kms_v1 = pytest.importorskip("google.cloud.kms_v1")
+    version_type = kms_v1.CryptoKeyVersion
+    enabled = version_type.CryptoKeyVersionState.ENABLED
+    try:
+        forged = int.__new__(type(enabled), int(enabled))
+        forged._name_ = enabled.name
+        forged._value_ = enabled.value
+    except Exception:
+        pytest.skip("installed SDK state enum does not permit forged instances")
+    assert forged == enabled
+    assert forged is not enabled
+
+    with pytest.raises(ValueError):
+        google_cloud_kms._normalize_crypto_key_version(
+            kms_v1,
+            type(
+                "VersionResponse",
+                (),
+                {
+                    "name": GOOGLE_KEY_VERSION_NAMES[
+                        "RSA_SIGN_PSS_2048_SHA256"
+                    ],
+                    "state": forged,
+                    "algorithm": (
+                        version_type.CryptoKeyVersionAlgorithm
+                        .RSA_SIGN_PSS_2048_SHA256
+                    ),
+                },
+            )(),
+            expected_name=GOOGLE_KEY_VERSION_NAMES[
+                "RSA_SIGN_PSS_2048_SHA256"
+            ],
+        )
+
+
 def test_google_signer_accepts_exact_resource_and_metadata_length_limits(
     google_private_keys,
     controlled_google_modules,
@@ -605,6 +667,7 @@ def test_google_signer_uses_exact_version_enum_digest_crc_and_valid_signature(
     [
         "wrong_name",
         "wrong_state",
+        "forged_state",
         "wrong_algorithm",
         "algorithm_string",
         "algorithm_lookalike",
@@ -642,6 +705,7 @@ def test_google_signer_identity_rejects_malformed_or_unavailable_version_safely(
     [
         "wrong_name_second",
         "wrong_state_second",
+        "forged_state_second",
         "wrong_algorithm_second",
         "changed_algorithm_second",
         "provider_sign_failure",
@@ -686,6 +750,7 @@ def test_google_signer_rejects_checkpoint_or_response_failures_safely(
     if mode in {
         "wrong_name_second",
         "wrong_state_second",
+        "forged_state_second",
         "wrong_algorithm_second",
         "changed_algorithm_second",
     }:
@@ -1739,10 +1804,11 @@ def test_google_verifier_maps_closed_provider_availability_errors(
     assert outcome.reason_code is VerificationReasonCode.VERIFIER_UNAVAILABLE
 
 
-def test_controlled_google_api_errors_use_realistic_metaclass_and_identity(
+def test_controlled_google_api_errors_are_injected_as_canonical_loader_result(
     controlled_google_modules,
 ):
     exceptions = controlled_google_modules.api_exceptions
+    availability_types = controlled_google_modules.availability_types
     names = (
         "DeadlineExceeded",
         "GatewayTimeout",
@@ -1759,10 +1825,196 @@ def test_controlled_google_api_errors_use_realistic_metaclass_and_identity(
 
     for name in names:
         candidate = getattr(exceptions, name)
-        assert isinstance(candidate, type)
-        assert candidate.__module__ == "google.api_core.exceptions"
-        assert candidate.__name__ == name
+        assert candidate in (
+            availability_types.direct_types
+            + (
+                availability_types.bad_request_type,
+                availability_types.retry_error_type,
+            )
+        )
     assert type(exceptions.DeadlineExceeded) is not type
+
+
+def test_google_api_exception_spoof_without_distribution_provenance_is_rejected(
+    monkeypatch,
+):
+    import aegis.integrations.google_cloud_kms as google_cloud_kms
+
+    install_controlled_google_kms_modules(
+        monkeypatch,
+        install_api_core_spoof=True,
+    )
+
+    assert google_cloud_kms._is_google_availability_error(
+        kms_fixtures.DeadlineExceeded("spoofed " + SENSITIVE_CORPUS[0])
+    ) is False
+
+
+def test_google_verifier_sanitizes_unprovenanced_spoof_without_chaining(
+    google_private_keys,
+    monkeypatch,
+):
+    install_controlled_google_kms_modules(
+        monkeypatch,
+        install_api_core_spoof=True,
+    )
+    algorithm = "RSA_SIGN_PSS_2048_SHA256"
+    name = GOOGLE_KEY_VERSION_NAMES[algorithm]
+    client = RecordingGoogleCloudKmsClient(
+        google_private_keys,
+        mode="deadline_public_key",
+    )
+    verifier = _google_verifier(
+        client,
+        target=GoogleCloudKmsVerificationTarget(name, algorithm),
+    )
+
+    with pytest.raises(
+        VerificationContractError,
+        match=r"^Google Cloud KMS verifier returned an invalid response$",
+    ) as caught:
+        verifier.verify(
+            b"unprovenanced provider exception",
+            b64encode(b"signature").decode("ascii"),
+            _google_metadata(algorithm, name),
+        )
+
+    _assert_safe_error(caught.value)
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
+
+
+@pytest.mark.parametrize(
+    "attribute",
+    ["__spec__", "__file__", "GoogleAPICallError"],
+)
+def test_google_api_exception_loader_fails_closed_on_exploding_module_state(
+    monkeypatch,
+    attribute,
+):
+    import importlib.machinery
+    import importlib.metadata
+    import importlib.util
+    from pathlib import Path
+    from types import ModuleType
+
+    import aegis.integrations.google_cloud_kms as google_cloud_kms
+
+    module_path = Path(google_cloud_kms.__file__).resolve()
+    loader = importlib.machinery.SourceFileLoader(
+        "google.api_core.exceptions",
+        str(module_path),
+    )
+    spec = importlib.util.spec_from_file_location(
+        "google.api_core.exceptions",
+        module_path,
+        loader=loader,
+    )
+    assert spec is not None
+
+    class ExplodingModule(ModuleType):
+        def __getattribute__(self, name):
+            if name == attribute:
+                raise RuntimeError("exploding " + SENSITIVE_CORPUS[1])
+            return super().__getattribute__(name)
+
+    exceptions = ExplodingModule("google.api_core.exceptions")
+    exceptions.__package__ = "google.api_core"
+    exceptions.__file__ = str(module_path)
+    exceptions.__spec__ = spec
+    exceptions.__loader__ = loader
+
+    class Distribution:
+        metadata = {"Name": "google-api-core"}
+        files = ("google/api_core/exceptions.py",)
+
+        def locate_file(self, _entry):
+            return module_path
+
+    monkeypatch.setattr(
+        google_cloud_kms,
+        "_import_google_api_exceptions",
+        lambda: exceptions,
+    )
+    monkeypatch.setattr(importlib.util, "find_spec", lambda _name: spec)
+    monkeypatch.setattr(
+        importlib.metadata,
+        "distribution",
+        lambda _name: Distribution(),
+    )
+
+    assert google_cloud_kms._is_google_availability_error(
+        RuntimeError(SENSITIVE_CORPUS[2])
+    ) is False
+
+
+@pytest.mark.parametrize("stage", ["find_spec", "distribution"])
+def test_google_api_exception_loader_fails_closed_on_exploding_provenance(
+    monkeypatch,
+    stage,
+):
+    import importlib.machinery
+    import importlib.metadata
+    import importlib.util
+    from pathlib import Path
+    from types import ModuleType
+
+    import aegis.integrations.google_cloud_kms as google_cloud_kms
+
+    module_path = Path(google_cloud_kms.__file__).resolve()
+    loader = importlib.machinery.SourceFileLoader(
+        "google.api_core.exceptions",
+        str(module_path),
+    )
+    spec = importlib.util.spec_from_file_location(
+        "google.api_core.exceptions",
+        module_path,
+        loader=loader,
+    )
+    assert spec is not None
+    exceptions = ModuleType("google.api_core.exceptions")
+    exceptions.__package__ = "google.api_core"
+    exceptions.__file__ = str(module_path)
+    exceptions.__spec__ = spec
+    exceptions.__loader__ = loader
+    monkeypatch.setattr(
+        google_cloud_kms,
+        "_import_google_api_exceptions",
+        lambda: exceptions,
+    )
+
+    def explode(_name):
+        raise RuntimeError("exploding provenance " + SENSITIVE_CORPUS[2])
+
+    if stage == "find_spec":
+        monkeypatch.setattr(importlib.util, "find_spec", explode)
+    else:
+        monkeypatch.setattr(importlib.util, "find_spec", lambda _name: spec)
+        monkeypatch.setattr(importlib.metadata, "distribution", explode)
+
+    assert google_cloud_kms._is_google_availability_error(
+        RuntimeError(SENSITIVE_CORPUS[3])
+    ) is False
+
+
+def test_google_api_exception_loader_rejects_malformed_canonical_classes(
+    monkeypatch,
+):
+    import aegis.integrations.google_cloud_kms as google_cloud_kms
+
+    monkeypatch.setattr(
+        google_cloud_kms,
+        "_load_google_api_availability_types",
+        lambda: google_cloud_kms._GoogleApiAvailabilityTypes(
+            direct_types=(object,),
+            bad_request_type=object,
+            retry_error_type=object,
+        ),
+    )
+
+    assert google_cloud_kms._is_google_availability_error(
+        RuntimeError(SENSITIVE_CORPUS[3])
+    ) is False
 
 
 @pytest.mark.parametrize(
@@ -2031,18 +2283,20 @@ def test_google_verifier_does_not_classify_availability_error_subclasses(
 def test_google_verifier_rejects_availability_exception_class_lookalike(
     google_private_keys,
     controlled_google_modules,
-    monkeypatch,
 ):
-    class DeadlineExceeded(Exception):
-        pass
+    deadline_metaclass = type(kms_fixtures.DeadlineExceeded)
+    DeadlineExceeded = deadline_metaclass(
+        "DeadlineExceeded",
+        (kms_fixtures.GoogleKmsFixtureError,),
+        {"__module__": "google.api_core.exceptions"},
+    )
 
     algorithm = "RSA_SIGN_PSS_2048_SHA256"
     name = GOOGLE_KEY_VERSION_NAMES[algorithm]
-    monkeypatch.setattr(
-        controlled_google_modules.api_exceptions,
-        "DeadlineExceeded",
-        DeadlineExceeded,
-    )
+    assert type(DeadlineExceeded) is deadline_metaclass
+    assert DeadlineExceeded.__module__ == "google.api_core.exceptions"
+    assert DeadlineExceeded.__name__ == "DeadlineExceeded"
+    assert DeadlineExceeded is not kms_fixtures.DeadlineExceeded
 
     class Client:
         def get_public_key(self, **_kwargs):
@@ -2071,22 +2325,25 @@ def test_google_verifier_handles_missing_google_api_core_safely(
     controlled_google_modules,
     monkeypatch,
 ):
+    import aegis.integrations.google_cloud_kms as google_cloud_kms
+
     algorithm = "RSA_SIGN_PSS_2048_SHA256"
     name = GOOGLE_KEY_VERSION_NAMES[algorithm]
     client = RecordingGoogleCloudKmsClient(
         google_private_keys,
         mode="deadline_public_key",
     )
-    real_import = builtins.__import__
 
-    def blocked_import(name, globals=None, locals=None, fromlist=(), level=0):
-        if name == "google.api_core":
-            raise ModuleNotFoundError(
-                "missing API core " + SENSITIVE_CORPUS[1]
-            )
-        return real_import(name, globals, locals, fromlist, level)
+    def missing_api_core():
+        raise ModuleNotFoundError(
+            "missing API core " + SENSITIVE_CORPUS[1]
+        )
 
-    monkeypatch.setattr(builtins, "__import__", blocked_import)
+    monkeypatch.setattr(
+        google_cloud_kms,
+        "_load_google_api_availability_types",
+        missing_api_core,
+    )
     verifier = _google_verifier(
         client,
         target=GoogleCloudKmsVerificationTarget(name, algorithm),

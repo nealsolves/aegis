@@ -45,6 +45,14 @@ _MAX_KEY_REFERENCE_LENGTH = 512
 _MAX_KEY_VERSION_LENGTH = 128
 _MAX_CRYPTO_KEY_VERSION_NAME_LENGTH = 659
 
+
+@dataclass(frozen=True, slots=True, repr=False)
+class _GoogleApiAvailabilityTypes:
+    direct_types: tuple[type[BaseException], ...]
+    bad_request_type: type[BaseException]
+    retry_error_type: type[BaseException]
+
+
 __all__ = [
     "GoogleCloudKmsArtifactSigner",
     "GoogleCloudKmsArtifactVerifier",
@@ -623,8 +631,7 @@ def _normalize_crypto_key_version(
     if (
         type(name) is not str
         or name != expected_name
-        or type(state) is not type(enabled)
-        or state != enabled
+        or state is not enabled
     ):
         raise ValueError
     return _google_algorithm_name(
@@ -886,19 +893,157 @@ def _verify_local_signature(
 
 def _is_google_availability_error(error: BaseException) -> bool:
     try:
-        from google.api_core import exceptions
-    except (ImportError, ModuleNotFoundError):
+        availability_types = _load_google_api_availability_types()
+        if not _is_valid_google_api_availability_types(
+            availability_types
+        ):
+            return False
+        return _classify_google_availability_error(
+            availability_types,
+            error,
+        )
+    except Exception:
         return False
-    return _classify_google_availability_error(
-        exceptions,
-        error,
-    )
 
 
 def _classify_google_availability_error(
-    exceptions: object,
+    availability_types: _GoogleApiAvailabilityTypes,
     error: BaseException,
 ) -> bool:
+    if type(error) in availability_types.direct_types:
+        return True
+
+    bad_request_type = availability_types.bad_request_type
+    if (
+        type(error) is bad_request_type
+        and _is_failed_precondition_bad_request(error)
+    ):
+        return True
+
+    if type(error) is not availability_types.retry_error_type:
+        return False
+    cause = error.cause  # type: ignore[attr-defined]
+    if not isinstance(cause, BaseException):
+        return False
+    if type(cause) in availability_types.direct_types:
+        return True
+    return (
+        type(cause) is bad_request_type
+        and _is_failed_precondition_bad_request(cause)
+    )
+
+
+def _import_google_api_exceptions() -> object:
+    import importlib
+
+    return importlib.import_module("google.api_core.exceptions")
+
+
+def _load_google_api_availability_types(
+) -> _GoogleApiAvailabilityTypes | None:
+    import importlib.machinery
+    import importlib.metadata
+    import importlib.util
+    from pathlib import Path
+    from types import ModuleType
+
+    exceptions = _import_google_api_exceptions()
+    if type(exceptions) is not ModuleType:
+        return None
+
+    module_name = exceptions.__name__
+    package_name = exceptions.__package__
+    module_file = exceptions.__file__
+    module_spec = exceptions.__spec__
+    module_loader = exceptions.__loader__
+    if (
+        module_name != "google.api_core.exceptions"
+        or package_name != "google.api_core"
+        or type(module_file) is not str
+        or not module_file
+        or type(module_spec) is not importlib.machinery.ModuleSpec
+        or module_spec.name != module_name
+        or type(module_spec.origin) is not str
+        or not module_spec.origin
+        or module_spec.has_location is not True
+        or module_spec.submodule_search_locations is not None
+        or module_spec.loader is None
+        or module_loader is not module_spec.loader
+    ):
+        return None
+
+    module_path = Path(module_file).resolve(strict=True)
+    origin_path = Path(module_spec.origin).resolve(strict=True)
+    if module_path != origin_path:
+        return None
+
+    discovered_spec = importlib.util.find_spec(module_name)
+    if (
+        type(discovered_spec) is not importlib.machinery.ModuleSpec
+        or type(discovered_spec.origin) is not str
+        or Path(discovered_spec.origin).resolve(strict=True) != module_path
+    ):
+        return None
+
+    distribution = importlib.metadata.distribution("google-api-core")
+    distribution_name = distribution.metadata["Name"]
+    if (
+        type(distribution_name) is not str
+        or distribution_name.lower().replace("_", "-")
+        != "google-api-core"
+    ):
+        return None
+    distribution_files = distribution.files
+    if distribution_files is None:
+        return None
+    source_entries = tuple(
+        entry
+        for entry in distribution_files
+        if str(entry).replace("\\", "/")
+        == "google/api_core/exceptions.py"
+    )
+    if len(source_entries) != 1:
+        return None
+    distribution_path = Path(
+        distribution.locate_file(source_entries[0])
+    ).resolve(strict=True)
+    if distribution_path != module_path:
+        return None
+
+    google_api_error = _canonical_google_exception_class(
+        exceptions,
+        "GoogleAPIError",
+        metaclass=type,
+        base_type=Exception,
+    )
+    api_call_metaclass = _canonical_google_exception_class(
+        exceptions,
+        "_GoogleAPICallErrorMeta",
+        metaclass=type,
+        base_type=type,
+    )
+    if google_api_error is None or api_call_metaclass is None:
+        return None
+    google_api_call_error = _canonical_google_exception_class(
+        exceptions,
+        "GoogleAPICallError",
+        metaclass=api_call_metaclass,
+        base_type=google_api_error,
+    )
+    retry_error_type = _canonical_google_exception_class(
+        exceptions,
+        "RetryError",
+        metaclass=type,
+        base_type=google_api_error,
+    )
+    if (
+        google_api_call_error is None
+        or retry_error_type is None
+        or google_api_call_error.__bases__ != (google_api_error,)
+        or retry_error_type.__bases__ != (google_api_error,)
+    ):
+        return None
+
     direct_names = (
         "DeadlineExceeded",
         "GatewayTimeout",
@@ -910,68 +1055,101 @@ def _classify_google_availability_error(
         "FailedPrecondition",
         "NotFound",
     )
-    allowed_types = []
-    try:
-        for name in direct_names:
-            candidate = _google_exception_type(exceptions, name)
-            if candidate is None:
-                return False
-            allowed_types.append(candidate)
-    except Exception:
-        return False
-    if type(error) in tuple(allowed_types):
-        return True
-
-    bad_request_type = _google_exception_type(
+    direct_types = tuple(
+        _canonical_google_exception_class(
+            exceptions,
+            name,
+            metaclass=api_call_metaclass,
+            base_type=google_api_call_error,
+        )
+        for name in direct_names
+    )
+    bad_request_type = _canonical_google_exception_class(
         exceptions,
         "BadRequest",
+        metaclass=api_call_metaclass,
+        base_type=google_api_call_error,
     )
     if (
-        bad_request_type is not None
-        and type(error) is bad_request_type
-        and _is_failed_precondition_bad_request(error)
+        bad_request_type is None
+        or any(candidate is None for candidate in direct_types)
     ):
-        return True
-
-    retry_error_type = _google_exception_type(
-        exceptions,
-        "RetryError",
+        return None
+    typed_direct_types = tuple(
+        candidate
+        for candidate in direct_types
+        if candidate is not None
     )
-    if retry_error_type is None or type(error) is not retry_error_type:
-        return False
-    try:
-        cause = error.cause  # type: ignore[attr-defined]
-    except Exception:
-        return False
-    if not isinstance(cause, BaseException):
-        return False
-    if type(cause) in tuple(allowed_types):
-        return True
-    return (
-        bad_request_type is not None
-        and type(cause) is bad_request_type
-        and _is_failed_precondition_bad_request(cause)
+    direct_by_name = dict(zip(direct_names, typed_direct_types))
+    if (
+        not issubclass(
+            direct_by_name["DeadlineExceeded"],
+            direct_by_name["GatewayTimeout"],
+        )
+        or not issubclass(
+            direct_by_name["ResourceExhausted"],
+            direct_by_name["TooManyRequests"],
+        )
+        or not issubclass(
+            direct_by_name["PermissionDenied"],
+            direct_by_name["Forbidden"],
+        )
+        or not issubclass(
+            direct_by_name["FailedPrecondition"],
+            bad_request_type,
+        )
+    ):
+        return None
+    return _GoogleApiAvailabilityTypes(
+        direct_types=typed_direct_types,
+        bad_request_type=bad_request_type,
+        retry_error_type=retry_error_type,
     )
 
 
-def _google_exception_type(
+def _canonical_google_exception_class(
     exceptions: object,
     name: str,
+    *,
+    metaclass: type,
+    base_type: type,
 ) -> type[BaseException] | None:
-    try:
-        candidate = getattr(exceptions, name)
-        if (
-            not isinstance(candidate, type)
-            or candidate.__module__ != "google.api_core.exceptions"
-            or candidate.__name__ != name
-            or not issubclass(candidate, BaseException)
-            or candidate is BaseException
-            or candidate is Exception
-        ):
-            return None
-    except Exception:
+    candidate = getattr(exceptions, name)
+    if (
+        not isinstance(candidate, type)
+        or type(candidate) is not metaclass
+        or candidate.__module__ != "google.api_core.exceptions"
+        or candidate.__name__ != name
+        or candidate.__qualname__ != name
+        or not issubclass(candidate, base_type)
+        or candidate is base_type
+    ):
         return None
     return candidate
+
+
+def _is_valid_google_api_availability_types(
+    value: object,
+) -> bool:
+    if (
+        type(value) is not _GoogleApiAvailabilityTypes
+        or type(value.direct_types) is not tuple
+        or len(value.direct_types) != 9
+    ):
+        return False
+    all_types = value.direct_types + (
+        value.bad_request_type,
+        value.retry_error_type,
+    )
+    return (
+        len(set(all_types)) == len(all_types)
+        and all(
+            isinstance(candidate, type)
+            and issubclass(candidate, BaseException)
+            and candidate not in (BaseException, Exception)
+            for candidate in all_types
+        )
+    )
 
 
 def _is_failed_precondition_bad_request(

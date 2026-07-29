@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from enum import Enum, IntEnum
+from enum import IntEnum
 from hashlib import sha256
 from types import ModuleType
 from types import SimpleNamespace
@@ -563,7 +563,7 @@ class _GoogleAlgorithm(IntEnum):
     EC_SIGN_P256_SHA256 = 12
 
 
-class _GoogleVersionState(Enum):
+class _GoogleVersionState(IntEnum):
     CRYPTO_KEY_VERSION_STATE_UNSPECIFIED = 0
     PENDING_GENERATION = 5
     ENABLED = 1
@@ -575,6 +575,16 @@ class _GoogleVersionState(Enum):
     GENERATION_FAILED = 8
     PENDING_EXTERNAL_DESTRUCTION = 9
     EXTERNAL_DESTRUCTION_FAILED = 10
+
+
+def forged_google_version_state(
+    member: _GoogleVersionState,
+) -> _GoogleVersionState:
+    """Construct an equal, non-canonical IntEnum instance for identity tests."""
+    forged = int.__new__(_GoogleVersionState, int(member))
+    forged._name_ = member.name
+    forged._value_ = member.value
+    return forged
 
 
 class _GooglePublicKeyFormat(IntEnum):
@@ -670,7 +680,11 @@ class _GoogleChecksum:
         return self._value.to_bytes(4, "big")
 
 
-def install_controlled_google_kms_modules(monkeypatch) -> SimpleNamespace:
+def install_controlled_google_kms_modules(
+    monkeypatch,
+    *,
+    install_api_core_spoof: bool = False,
+) -> SimpleNamespace:
     """Install documented-shape Google modules for one isolated test."""
     google_module = ModuleType("google")
     cloud_module = ModuleType("google.cloud")
@@ -708,18 +722,19 @@ def install_controlled_google_kms_modules(monkeypatch) -> SimpleNamespace:
     api_exceptions_module.TooManyRequests = TooManyRequests
     api_exceptions_module.RetryError = RetryError
     api_exceptions_module.ServiceUnavailable = ServiceUnavailable
-    api_core_module.exceptions = api_exceptions_module
-    google_module.api_core = api_core_module
-    monkeypatch.setitem(
-        __import__("sys").modules,
-        "google.api_core",
-        api_core_module,
-    )
-    monkeypatch.setitem(
-        __import__("sys").modules,
-        "google.api_core.exceptions",
-        api_exceptions_module,
-    )
+    if install_api_core_spoof:
+        api_core_module.exceptions = api_exceptions_module
+        google_module.api_core = api_core_module
+        monkeypatch.setitem(
+            __import__("sys").modules,
+            "google.api_core",
+            api_core_module,
+        )
+        monkeypatch.setitem(
+            __import__("sys").modules,
+            "google.api_core.exceptions",
+            api_exceptions_module,
+        )
     monkeypatch.setitem(__import__("sys").modules, "google_crc32c", crc_module)
     return SimpleNamespace(
         kms_v1=kms_module,
@@ -843,6 +858,10 @@ class RecordingGoogleCloudKmsClient:
             state = _GoogleVersionState.DISABLED
         elif self.mode == "wrong_state_second" and call_number > 1:
             state = _GoogleVersionState.DISABLED
+        elif self.mode == "forged_state":
+            state = forged_google_version_state(_GoogleVersionState.ENABLED)
+        elif self.mode == "forged_state_second" and call_number > 1:
+            state = forged_google_version_state(_GoogleVersionState.ENABLED)
         elif self.mode == "wrong_algorithm":
             algorithm = _GoogleAlgorithm.RSA_SIGN_PKCS1_2048_SHA256
         elif self.mode == "wrong_algorithm_second" and call_number > 1:
