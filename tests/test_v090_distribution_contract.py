@@ -8,6 +8,7 @@ import re
 from pathlib import Path
 import subprocess
 import sys
+import tarfile
 import tomllib
 import zipfile
 
@@ -35,6 +36,10 @@ EXPECTED_INTEGRATION_MEMBERS = {
     "aegis/integrations/_kms_common.py",
     "aegis/integrations/aws_kms.py",
     "aegis/integrations/google_cloud_kms.py",
+}
+EXPECTED_SDIST_KMS_GUIDES = {
+    "docs/reference/external/AWS_KMS_SIGNING.md",
+    "docs/reference/external/GOOGLE_CLOUD_KMS_SIGNING.md",
 }
 CANDIDATE_VALIDATOR = (
     REPO_ROOT / "scripts" / "validate_v090_distribution_candidate.py"
@@ -91,6 +96,31 @@ def built_wheel(tmp_path_factory: pytest.TempPathFactory) -> Path:
         "aegis_ai_governance-0.9.0b1-py3-none-any.whl"
     ]
     return wheels[0]
+
+
+@pytest.fixture(scope="module")
+def built_sdist(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    dist_dir = tmp_path_factory.mktemp("kms-sdist-contract")
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "build",
+            "--sdist",
+            "--no-isolation",
+            "--outdir",
+            str(dist_dir),
+        ],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    sdists = list(dist_dir.glob("*.tar.gz"))
+    assert [sdist.name for sdist in sdists] == [
+        "aegis_ai_governance-0.9.0b1.tar.gz"
+    ]
+    return sdists[0]
 
 
 def _wheel_metadata(wheel: Path):
@@ -252,6 +282,19 @@ def test_candidate_installed_import_provenance_is_stable_across_temp_roots(
 def test_wheel_contains_every_kms_integration_module(built_wheel: Path):
     with zipfile.ZipFile(built_wheel) as archive:
         assert EXPECTED_INTEGRATION_MEMBERS.issubset(archive.namelist())
+
+
+def test_sdist_contains_both_maintained_kms_integration_guides(
+    built_sdist: Path,
+):
+    with tarfile.open(built_sdist, "r:gz") as archive:
+        root = "aegis_ai_governance-0.9.0b1/"
+        members = {
+            member.name.removeprefix(root)
+            for member in archive.getmembers()
+        }
+
+    assert EXPECTED_SDIST_KMS_GUIDES.issubset(members)
 
 
 def test_development_extra_installs_the_declared_build_tool():
