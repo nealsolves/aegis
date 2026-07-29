@@ -11,9 +11,9 @@ pip install "aegis-ai-governance[gcp-kms]"
 ```
 
 The extra adds the Google Cloud KMS, CRC32C, and local cryptography
-dependencies. The host owns clients, credentials, retry and timeout behavior,
-endpoints, project configuration, IAM, trust policy, provider debug logging,
-and retained evidence.
+dependencies. The host owns clients, credentials, networking, retry and
+timeout behavior, endpoint selection, project configuration, IAM, trust
+policy, trust stores, provider debug logging, and retained evidence.
 
 ## Supported algorithms and identity
 

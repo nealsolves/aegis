@@ -11,9 +11,9 @@ pip install "aegis-ai-governance[aws-kms]"
 ```
 
 The extra adds the AWS SDK; it does not create clients or load credentials.
-The host owns clients, credentials, retry and timeout behavior, endpoints,
-regional configuration, IAM, trust policy, provider debug logging, and
-retained evidence.
+The host owns clients, credentials, networking, retry and timeout behavior,
+endpoint selection, regional configuration, IAM, trust policy, trust stores,
+provider debug logging, and retained evidence.
 
 ## Supported algorithms and identity
 

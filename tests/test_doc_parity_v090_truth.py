@@ -1216,19 +1216,27 @@ def test_kms_guides_preserve_provider_identity_and_verification_boundaries():
         assert anchor in google.lower()
 
     assert "artifact metadata does not select provider resources" in combined
-    for responsibility in (
-        "clients",
-        "credentials",
-        "retry",
-        "timeout",
-        "endpoints",
-        "regional",
-        "project configuration",
-        "iam",
-        "trust policy",
-        "retained evidence",
-    ):
-        assert responsibility in combined
+    for guide in (aws, google):
+        install = " ".join(
+            _markdown_section(guide, "## Install").lower().split()
+        )
+        assert "host owns" in install
+        for responsibility in (
+            "clients",
+            "credentials",
+            "networking",
+            "retry",
+            "timeout",
+            "endpoint selection",
+            "iam",
+            "trust policy",
+            "trust stores",
+            "provider debug logging",
+            "retained evidence",
+        ):
+            assert responsibility in install
+    assert "regional configuration" in aws.lower()
+    assert "project configuration" in google.lower()
 
 
 def test_kms_docs_make_only_bounded_operational_and_compliance_claims():
