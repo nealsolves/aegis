@@ -48,6 +48,10 @@ class KMSInvalidSignatureException(AwsKmsFixtureError):
     pass
 
 
+class KMSInvalidSignatureSubclass(KMSInvalidSignatureException):
+    pass
+
+
 class KMSInvalidStateException(AwsKmsFixtureError):
     pass
 
@@ -202,6 +206,7 @@ class RecordingAwsKmsClient:
         self.describe_calls: list[dict[str, object]] = []
         self.sign_calls: list[dict[str, object]] = []
         self.verify_calls: list[dict[str, object]] = []
+        self.verify_error: BaseException | None = None
 
     @property
     def key_arn(self) -> str:
@@ -307,18 +312,58 @@ class RecordingAwsKmsClient:
 
     def verify(self, **kwargs: object) -> dict[str, object]:
         self.verify_calls.append(dict(kwargs))
+        if self.verify_error is not None:
+            raise self.verify_error
+        verify_failures = {
+            "dependency_timeout": DependencyTimeoutException,
+            "disabled_verify": DisabledException,
+            "kms_internal": KMSInternalException,
+            "invalid_state": KMSInvalidStateException,
+            "key_unavailable": KeyUnavailableException,
+            "not_found": NotFoundException,
+            "access_denied": AccessDeniedException,
+            "throttled": ThrottlingException,
+            "unexpected_verify_failure": RuntimeError,
+            "validation_verify_failure": ValidationException,
+        }
+        failure_type = verify_failures.get(self.mode)
+        if failure_type is not None:
+            raise failure_type(
+                "provider verify failure " + " | ".join(SENSITIVE_CORPUS)
+            )
+        if self.mode == "malformed_verify":
+            return {"KeyId": object()}
+
         signature = kwargs.get("Signature")
         digest = kwargs.get("Message")
         algorithm = kwargs.get("SigningAlgorithm")
         valid = False
         if type(signature) is bytes and type(digest) is bytes and type(algorithm) is str:
             valid = self._verify_digest(signature, digest, algorithm)
+        if self.mode == "verify_false":
+            valid = False
         if not valid and self.mode == "invalid_signature_exception":
             raise KMSInvalidSignatureException("invalid " + SENSITIVE_CORPUS[2])
+        if not valid and self.mode == "invalid_signature_subclass":
+            raise KMSInvalidSignatureSubclass(
+                "invalid subclass " + SENSITIVE_CORPUS[2]
+            )
+        key_id: object = kwargs.get("KeyId")
+        response_algorithm: object = algorithm
+        response_validity: object = valid
+        if self.mode == "wrong_verify_key_id":
+            key_id = (
+                "arn:aws:kms:us-east-1:111122223333:key/"
+                "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+            )
+        elif self.mode == "wrong_verify_algorithm":
+            response_algorithm = "RSASSA_PKCS1_V1_5_SHA_256"
+        elif self.mode == "malformed_verify_validity":
+            response_validity = 1
         return {
-            "KeyId": kwargs.get("KeyId"),
-            "SignatureValid": valid,
-            "SigningAlgorithm": algorithm,
+            "KeyId": key_id,
+            "SignatureValid": response_validity,
+            "SigningAlgorithm": response_algorithm,
             "ResponseMetadata": {
                 "RequestId": "00000000-0000-4000-8000-000000000002",
                 "HTTPStatusCode": 200,
