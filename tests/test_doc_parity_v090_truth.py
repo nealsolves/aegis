@@ -342,6 +342,12 @@ def _assert_public_aegis_module(module_name: str) -> None:
 _LOCAL_DIRECT_CALL = object()
 _MISSING_DIRECT_CALL = object()
 _BUILTIN_DIRECT_CALLS = frozenset(dir(builtins))
+_KMS_EXAMPLE_COMPREHENSIONS = (
+    ast.DictComp,
+    ast.GeneratorExp,
+    ast.ListComp,
+    ast.SetComp,
+)
 
 
 class _KmsExampleScope:
@@ -361,10 +367,15 @@ def _bind_kms_example_name(
     binding: object = _LOCAL_DIRECT_CALL,
 ) -> None:
     existing = scope.bindings.get(name, _MISSING_DIRECT_CALL)
-    assert existing is _MISSING_DIRECT_CALL or existing == binding, (
-        f"conflicting direct-call binding in KMS guide: {name}"
-    )
-    scope.bindings[name] = binding
+    if existing is _MISSING_DIRECT_CALL or existing == binding:
+        scope.bindings[name] = binding
+        return
+    # Fail closed on source-order ambiguity: any local binding in this
+    # lexical scope prevents the same name from counting as an AEGIS call.
+    assert (
+        existing is _LOCAL_DIRECT_CALL or binding is _LOCAL_DIRECT_CALL
+    ), f"conflicting direct-call binding in KMS guide: {name}"
+    scope.bindings[name] = _LOCAL_DIRECT_CALL
 
 
 def _kms_example_enclosing_scope(scope: _KmsExampleScope) -> _KmsExampleScope:
@@ -399,6 +410,34 @@ def _walk_kms_example(
     *,
     collect: bool,
 ) -> None:
+    def walk(
+        child: ast.AST,
+        child_scope: _KmsExampleScope = scope,
+    ) -> None:
+        _walk_kms_example(
+            child,
+            child_scope,
+            scopes,
+            actual_imports,
+            actual_calls,
+            collect=collect,
+        )
+
+    def nested_scope(kind: str) -> _KmsExampleScope:
+        if not collect:
+            return scopes[node]
+        created = _KmsExampleScope(
+            kind,
+            _kms_example_enclosing_scope(scope),
+        )
+        scopes[node] = created
+        return created
+
+    assert not (
+        isinstance(node, ast.NamedExpr)
+        and scope.kind == "comprehension"
+    ), "assignment expressions are unsupported in KMS guide comprehensions"
+
     if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
         headers: list[ast.AST] = [*node.decorator_list, node.args]
         if node.returns is not None:
@@ -406,60 +445,21 @@ def _walk_kms_example(
         headers.extend(getattr(node, "type_params", ()))
         if collect:
             _bind_kms_example_name(scope, node.name)
-            body_scope = _KmsExampleScope(
-                "function",
-                _kms_example_enclosing_scope(scope),
-            )
-            scopes[node] = body_scope
+        body_scope = nested_scope("function")
+        if collect:
             _bind_kms_parameters(body_scope, node.args)
-        else:
-            body_scope = scopes[node]
         for child in headers:
-            _walk_kms_example(
-                child,
-                scope,
-                scopes,
-                actual_imports,
-                actual_calls,
-                collect=collect,
-            )
+            walk(child)
         for child in node.body:
-            _walk_kms_example(
-                child,
-                body_scope,
-                scopes,
-                actual_imports,
-                actual_calls,
-                collect=collect,
-            )
+            walk(child, body_scope)
         return
 
     if isinstance(node, ast.Lambda):
+        body_scope = nested_scope("function")
         if collect:
-            body_scope = _KmsExampleScope(
-                "function",
-                _kms_example_enclosing_scope(scope),
-            )
-            scopes[node] = body_scope
             _bind_kms_parameters(body_scope, node.args)
-        else:
-            body_scope = scopes[node]
-        _walk_kms_example(
-            node.args,
-            scope,
-            scopes,
-            actual_imports,
-            actual_calls,
-            collect=collect,
-        )
-        _walk_kms_example(
-            node.body,
-            body_scope,
-            scopes,
-            actual_imports,
-            actual_calls,
-            collect=collect,
-        )
+        walk(node.args)
+        walk(node.body, body_scope)
         return
 
     if isinstance(node, ast.ClassDef):
@@ -471,31 +471,30 @@ def _walk_kms_example(
         ]
         if collect:
             _bind_kms_example_name(scope, node.name)
-            body_scope = _KmsExampleScope(
-                "class",
-                _kms_example_enclosing_scope(scope),
-            )
-            scopes[node] = body_scope
-        else:
-            body_scope = scopes[node]
+        body_scope = nested_scope("class")
         for child in headers:
-            _walk_kms_example(
-                child,
-                scope,
-                scopes,
-                actual_imports,
-                actual_calls,
-                collect=collect,
-            )
+            walk(child)
         for child in node.body:
-            _walk_kms_example(
-                child,
-                body_scope,
-                scopes,
-                actual_imports,
-                actual_calls,
-                collect=collect,
-            )
+            walk(child, body_scope)
+        return
+
+    if isinstance(node, _KMS_EXAMPLE_COMPREHENSIONS):
+        body_scope = nested_scope("comprehension")
+        first_generator, *later_generators = node.generators
+        walk(first_generator.iter)
+        for generator in [first_generator, *later_generators]:
+            if generator is not first_generator:
+                walk(generator.iter, body_scope)
+            walk(generator.target, body_scope)
+            for condition in generator.ifs:
+                walk(condition, body_scope)
+        values = (
+            (node.key, node.value)
+            if isinstance(node, ast.DictComp)
+            else (node.elt,)
+        )
+        for value in values:
+            walk(value, body_scope)
         return
 
     if collect and isinstance(node, ast.Import):
@@ -525,6 +524,14 @@ def _walk_kms_example(
                 actual_imports.add((module_name, alias.name))
                 binding = (getattr(module, alias.name), alias.name)
             _bind_kms_example_name(scope, local_name, binding)
+        return
+
+    if (
+        collect
+        and isinstance(node, ast.Name)
+        and isinstance(node.ctx, ast.Store)
+    ):
+        _bind_kms_example_name(scope, node.id)
         return
 
     if (
@@ -567,14 +574,7 @@ def _walk_kms_example(
             inspect.signature(called).bind(*positional, **keywords)
 
     for child in ast.iter_child_nodes(node):
-        _walk_kms_example(
-            child,
-            scope,
-            scopes,
-            actual_imports,
-            actual_calls,
-            collect=collect,
-        )
+        walk(child)
 
 
 def _assert_public_aegis_examples(
@@ -750,6 +750,85 @@ def test_kms_example_validator_allows_a_defined_host_helper_call():
     )
 
 
+def test_kms_example_validator_rejects_a_reassigned_aegis_import():
+    root = SCRIPT_PATH.parents[1]
+    aws = (
+        root / "docs/reference/external/AWS_KMS_SIGNING.md"
+    ).read_text(encoding="utf-8")
+    mutated = aws.replace(
+        "sign_artifact_with_metadata(\n    artifact,",
+        "sign_artifact_with_metadata = lambda *args, **kwargs: None\n"
+        "sign_artifact_with_metadata(\n    artifact,",
+        1,
+    )
+    assert mutated != aws
+
+    with pytest.raises(AssertionError):
+        _assert_public_aegis_examples(
+            mutated,
+            AWS_GUIDE_IMPORTS,
+            AWS_GUIDE_CALLS,
+        )
+
+
+def test_kms_example_validator_rejects_an_aegis_named_comprehension_target():
+    root = SCRIPT_PATH.parents[1]
+    aws = (
+        root / "docs/reference/external/AWS_KMS_SIGNING.md"
+    ).read_text(encoding="utf-8")
+    mutated = aws.replace(
+        "sign_artifact_with_metadata(\n"
+        "    artifact,\n"
+        "    signer,\n"
+        "    signed_at=int(time.time()),\n"
+        ")",
+        "[\n"
+        "    sign_artifact_with_metadata(\n"
+        "        artifact, signer, signed_at=int(time.time())\n"
+        "    )\n"
+        "    for sign_artifact_with_metadata in "
+        "[lambda *args, **kwargs: None]\n"
+        "]",
+        1,
+    )
+    assert mutated != aws
+
+    with pytest.raises(AssertionError):
+        _assert_public_aegis_examples(
+            mutated,
+            AWS_GUIDE_IMPORTS,
+            AWS_GUIDE_CALLS,
+        )
+
+
+def test_kms_example_validator_rejects_a_comprehension_assignment_expression():
+    root = SCRIPT_PATH.parents[1]
+    aws = (
+        root / "docs/reference/external/AWS_KMS_SIGNING.md"
+    ).read_text(encoding="utf-8")
+    mutated = aws.replace(
+        "from aegis import sign_artifact_with_metadata\n",
+        "from aegis import sign_artifact_with_metadata\n"
+        "[\n"
+        "    None\n"
+        "    for _ in (1,)\n"
+        "    if (\n"
+        "        sign_artifact_with_metadata := "
+        "lambda *args, **kwargs: None\n"
+        "    )\n"
+        "]\n",
+        1,
+    )
+    assert mutated != aws
+
+    with pytest.raises(AssertionError):
+        _assert_public_aegis_examples(
+            mutated,
+            AWS_GUIDE_IMPORTS,
+            AWS_GUIDE_CALLS,
+        )
+
+
 @pytest.mark.parametrize(
     ("anchor", "replacement", "unresolved_name"),
     [
@@ -851,6 +930,27 @@ def test_kms_example_validator_allows_a_defined_host_helper_call():
             "HostFactory",
             id="class-binding-from-method",
         ),
+        pytest.param(
+            "import boto3\n",
+            textwrap.dedent(
+                """\
+                import boto3
+
+                class HostConfiguration:
+                    def configure_host_client():
+                        return None
+
+                    clients = [
+                        configure_host_client()
+                        for _ in range(1)
+                    ]
+
+                HostConfiguration()
+                """
+            ),
+            "configure_host_client",
+            id="class-binding-from-comprehension",
+        ),
     ],
 )
 def test_kms_example_validator_rejects_out_of_scope_direct_call(
@@ -917,6 +1017,15 @@ def test_kms_example_validator_rejects_out_of_scope_direct_call(
                 """
             ),
             id="callable-function-parameter",
+        ),
+        pytest.param(
+            textwrap.dedent(
+                """\
+                configure_host_client = lambda: None
+                configure_host_client()
+                """
+            ),
+            id="lambda-assigned-host-helper",
         ),
     ],
 )
