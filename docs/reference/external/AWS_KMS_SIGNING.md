@@ -68,6 +68,10 @@ The host must construct the client with its chosen credential provider,
 botocore retry/timeout configuration, endpoint policy, and region. AEGIS does
 not override those settings.
 
+The injected SDK client may retry a signing request. With randomized
+algorithms, retries can create multiple valid remote signing operations even
+though AEGIS emits at most one atomic receipt into the artifact.
+
 ## Resolve and verify an exact pair
 
 Artifact metadata does not select provider resources. The resolver is a host

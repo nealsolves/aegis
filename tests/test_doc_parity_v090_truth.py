@@ -1239,6 +1239,26 @@ def test_kms_guides_preserve_provider_identity_and_verification_boundaries():
     assert "project configuration" in google.lower()
 
 
+def test_each_kms_guide_warns_about_remote_retry_signatures_and_one_receipt():
+    root = SCRIPT_PATH.parents[1]
+
+    for relative_path in (
+        "docs/reference/external/AWS_KMS_SIGNING.md",
+        "docs/reference/external/GOOGLE_CLOUD_KMS_SIGNING.md",
+    ):
+        guide = (root / relative_path).read_text(encoding="utf-8")
+        signing_section = " ".join(
+            _markdown_section(
+                guide,
+                "## Sign with a host-created client",
+            ).lower().split()
+        )
+
+        assert "injected sdk client" in signing_section
+        assert "multiple valid remote signing operations" in signing_section
+        assert "aegis emits at most one atomic receipt" in signing_section
+
+
 def test_kms_docs_make_only_bounded_operational_and_compliance_claims():
     root = SCRIPT_PATH.parents[1]
     adr = (

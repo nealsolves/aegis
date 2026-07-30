@@ -76,6 +76,10 @@ retry/timeout policy, endpoint, quota project, and regional/project
 configuration. The public constructors also accept host-supplied `retry` and
 `timeout` values; omission leaves provider defaults in force.
 
+The injected SDK client may retry a signing request. With randomized
+algorithms, retries can create multiple valid remote signing operations even
+though AEGIS emits at most one atomic receipt into the artifact.
+
 ## Resolve and verify an exact pair
 
 Artifact metadata does not select provider resources. The resolver is the
