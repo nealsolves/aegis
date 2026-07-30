@@ -63,6 +63,20 @@ def test_security_number_revalidates_normalized_float_subclass(normalized):
 
 @pytest.mark.parametrize(
     "value",
+    [10**10_000, -(10**10_000)],
+    ids=["positive", "negative"],
+)
+def test_security_number_translates_integer_normalization_overflow(value):
+    """Huge Python integers must fail as typed policy errors, not OverflowError."""
+    with pytest.raises(PolicyValidationError) as exc:
+        compile_policy(_policy_with_risk(threshold=value), source="test")
+
+    assert exc.value.code == "RISK_NUMBER_INVALID"
+    assert exc.value.details["path"] == "$.risk.threshold"
+
+
+@pytest.mark.parametrize(
+    "value",
     [float("nan"), float("inf"), -float("inf"), True, "0.4"],
 )
 def test_factor_weight_rejects_non_finite_or_coerced_values(value):

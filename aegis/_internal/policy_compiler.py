@@ -80,7 +80,18 @@ def require_finite_number(
             code="RISK_NUMBER_INVALID",
             details={"path": path},
         )
-    normalized = float(value)
+    try:
+        normalized = float(value)
+    except (OverflowError, TypeError, ValueError) as exc:
+        raise PolicyValidationError(
+            "Security number out of range",
+            code="RISK_NUMBER_INVALID",
+            details={
+                "path": path,
+                "minimum": minimum,
+                "maximum": maximum,
+            },
+        ) from exc
     if (
         not math.isfinite(normalized)
         or not minimum <= normalized <= maximum
