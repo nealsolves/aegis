@@ -437,3 +437,58 @@ Residual considerations:
   their traversal and maximum resource use are bounded.
 - The 13 full-suite warnings are existing precondition and deprecation
   warnings. No known security blocker remains from this review.
+
+## Fix round 5 — allocation-safe negative integer preflight
+
+The remaining Important finding was reproduced with a deterministic
+implementation guard. Python's `abs()` returns a distinct positive bigint for a
+negative bigint, so the integer byte preflight duplicated attacker-controlled
+magnitude before it could enforce the encoded-size limit. With the module's
+`abs` lookup guarded to fail on use, the focused RED run failed exactly at that
+call:
+
+```text
+1 failed, 21 passed
+```
+
+The minimal fix uses `value.bit_length()` directly. `int.bit_length()` is
+sign-independent and inspects the existing bigint without constructing its
+absolute-value copy. The adversarial regression builds an 8,388,608-bit
+negative integer, keeps the `abs` guard armed, and proves it reaches the stable
+encoded-byte `InvocationValidationError` while preserving the caller's output
+object.
+
+Signed boundary characterizations temporarily reduce the encoded-byte limit to
+nine bytes and exercise the real shared helper:
+
+- `{"x":999}` and `{"x":-99}` are accepted at exactly nine bytes;
+- `{"x":1000}` and `{"x":-100}` are rejected at ten bytes.
+
+This preserves sign accounting, boolean handling, and every byte/node/depth and
+JSON-semantics limit from round 4.
+
+Verification:
+
+```text
+# Focused helper GREEN:
+22 passed
+
+# Shared helper and all protocol adapter suites:
+302 passed
+
+# Exact A1 completion gate:
+150 passed
+
+.venv/bin/pytest -q
+3393 passed, 1 skipped, 13 warnings
+```
+
+Changed-scope `flake8`, documentation parity, brand/version parity, the
+public-doc internal-import boundary, and `git diff --check` all pass.
+
+Residual considerations:
+
+- Large positive and negative integers now share the same allocation-safe bit
+  length preflight; the sign contributes one encoded byte only for negatives.
+- The 13 full-suite warnings are existing precondition and deprecation
+  warnings. No known security blocker remains from the five review rounds.

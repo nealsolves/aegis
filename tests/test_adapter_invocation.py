@@ -6,6 +6,7 @@ import math
 
 import pytest
 
+import aegis._internal.adapter_invocation as adapter_invocation
 from aegis._internal.adapter_invocation import (
     project_adapter_pre_call_invocation,
 )
@@ -47,6 +48,74 @@ def test_output_one_byte_past_encoded_limit_is_rejected():
         "reason": "encoded_bytes",
         "max_encoded_bytes": _MAX_ENCODED_BYTES,
     }
+
+
+@pytest.mark.parametrize("integer", [999, -99], ids=["positive", "negative"])
+def test_integer_at_exact_encoded_byte_limit_is_accepted(
+    monkeypatch,
+    integer,
+):
+    # Compact JSON is exactly nine bytes: {"x":999} or {"x":-99}.
+    monkeypatch.setattr(
+        adapter_invocation,
+        "ADAPTER_OUTPUT_MAX_ENCODED_BYTES",
+        9,
+    )
+
+    projected = project_adapter_pre_call_invocation(
+        {"output": {"x": integer}}
+    )
+
+    assert projected == {}
+
+
+@pytest.mark.parametrize("integer", [1000, -100], ids=["positive", "negative"])
+def test_integer_one_byte_past_encoded_limit_is_rejected(
+    monkeypatch,
+    integer,
+):
+    # Compact JSON is ten bytes: {"x":1000} or {"x":-100}.
+    monkeypatch.setattr(
+        adapter_invocation,
+        "ADAPTER_OUTPUT_MAX_ENCODED_BYTES",
+        9,
+    )
+
+    with pytest.raises(InvocationValidationError) as raised:
+        project_adapter_pre_call_invocation({"output": {"x": integer}})
+
+    assert raised.value.details == {
+        "field": "output",
+        "reason": "encoded_bytes",
+        "max_encoded_bytes": 9,
+    }
+
+
+def test_oversized_negative_integer_is_rejected_without_calling_abs(
+    monkeypatch,
+):
+    def fail_if_abs_is_called(value):
+        raise AssertionError("negative bigint was copied through abs()")
+
+    monkeypatch.setattr(
+        adapter_invocation,
+        "abs",
+        fail_if_abs_is_called,
+        raising=False,
+    )
+    integer = -(1 << (_MAX_ENCODED_BYTES * 8))
+    output = {"integer": integer}
+    invocation = {"output": output}
+
+    with pytest.raises(InvocationValidationError) as raised:
+        project_adapter_pre_call_invocation(invocation)
+
+    assert raised.value.details == {
+        "field": "output",
+        "reason": "encoded_bytes",
+        "max_encoded_bytes": _MAX_ENCODED_BYTES,
+    }
+    assert invocation["output"] is output
 
 
 def test_output_at_exact_node_limit_is_accepted():

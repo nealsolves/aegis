@@ -77,7 +77,7 @@ def _integer_bytes(value: int, remaining: int) -> int:
     sign_bytes = 1 if value < 0 else 0
     # A decimal digit carries fewer than four bits. This lower bound lets an
     # enormous integer fail before Python allocates its full decimal form.
-    minimum_digits = max(1, (abs(value).bit_length() + 3) // 4)
+    minimum_digits = max(1, (value.bit_length() + 3) // 4)
     if minimum_digits + sign_bytes > remaining:
         raise _output_error(
             "encoded_bytes",
