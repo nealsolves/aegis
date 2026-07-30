@@ -174,7 +174,7 @@ def _inspect_schema(
     path: str,
     patterns: dict[str, CompiledPattern],
     root: Mapping[str, Any],
-    reference_stack: frozenset[str],
+    active_targets: frozenset[int],
 ) -> None:
     if isinstance(value, Mapping):
         schema_uri = value.get("$schema")
@@ -194,25 +194,20 @@ def _inspect_schema(
                 details={"path": ref_path},
             )
         if isinstance(reference, str) and reference.startswith("#"):
-            ref_path = _child_path(path, "$ref")
-            if reference in reference_stack:
-                raise PolicyValidationError(
-                    f"Cyclic same-document reference at {ref_path}",
-                    code="OUTPUT_SCHEMA_REFERENCE_CYCLE",
-                    details={"path": ref_path, "reference": reference},
-                )
             target, target_path = _resolve_local_pointer(root, reference)
             if (
                 target is not _UNRESOLVED_POINTER
                 and isinstance(target, (bool, Mapping))
             ):
-                _inspect_schema(
-                    target,
-                    path=target_path,
-                    patterns=patterns,
-                    root=root,
-                    reference_stack=reference_stack | {reference},
-                )
+                target_id = id(target)
+                if target_id not in active_targets:
+                    _inspect_schema(
+                        target,
+                        path=target_path,
+                        patterns=patterns,
+                        root=root,
+                        active_targets=active_targets | {target_id},
+                    )
 
         schema_id = value.get("$id")
         if isinstance(schema_id, str) and not schema_id.startswith("#"):
@@ -252,7 +247,7 @@ def _inspect_schema(
                     path=_child_path(path, keyword),
                     patterns=patterns,
                     root=root,
-                    reference_stack=reference_stack,
+                    active_targets=active_targets,
                 )
 
         items = value.get("items")
@@ -262,7 +257,7 @@ def _inspect_schema(
                 path=_child_path(path, "items"),
                 patterns=patterns,
                 root=root,
-                reference_stack=reference_stack,
+                active_targets=active_targets,
             )
         elif isinstance(items, list):
             for index, child in enumerate(items):
@@ -272,7 +267,7 @@ def _inspect_schema(
                         path=_child_path(_child_path(path, "items"), index),
                         patterns=patterns,
                         root=root,
-                        reference_stack=reference_stack,
+                        active_targets=active_targets,
                     )
 
         for keyword in _SCHEMA_ARRAY_KEYWORDS:
@@ -286,7 +281,7 @@ def _inspect_schema(
                         path=_child_path(_child_path(path, keyword), index),
                         patterns=patterns,
                         root=root,
-                        reference_stack=reference_stack,
+                        active_targets=active_targets,
                     )
 
         for keyword in _SCHEMA_MAPPING_KEYWORDS:
@@ -301,7 +296,7 @@ def _inspect_schema(
                     path=_child_path(_child_path(path, keyword), name),
                     patterns=patterns,
                     root=root,
-                    reference_stack=reference_stack,
+                    active_targets=active_targets,
                 )
 
 
@@ -321,7 +316,7 @@ def compile_output_schema(
         path="$",
         patterns=patterns,
         root=detached,
-        reference_stack=frozenset(),
+        active_targets=frozenset(),
     )
     try:
         Draft7Validator.check_schema(detached)

@@ -129,17 +129,27 @@ def test_same_document_ref_into_extension_compiles_target_patterns():
         validator.validate("not-ok")
 
 
-def test_cyclic_same_document_ref_is_bounded_compile_error():
-    with pytest.raises(PolicyValidationError) as exc:
-        compile_output_schema(
-            {
-                "$ref": "#/x-aegis-definitions/value",
-                "x-aegis-definitions": {
-                    "value": {"$ref": "#/x-aegis-definitions/value"},
+def test_recursive_same_document_ref_compiles_reachable_pattern_once():
+    validator = compile_output_schema(
+        {
+            "$ref": "#/x-aegis-definitions/node",
+            "x-aegis-definitions": {
+                "node": {
+                    "type": "object",
+                    "properties": {
+                        "value": {"type": "string", "pattern": "^ok$"},
+                        "child": {"$ref": "#/x-aegis-definitions/node"},
+                    },
+                    "required": ["value"],
                 },
-            }
-        )
-    assert exc.value.code == "OUTPUT_SCHEMA_REFERENCE_CYCLE"
+            },
+        }
+    )
+
+    assert tuple(validator.patterns) == ("^ok$",)
+    validator.validate({"value": "ok", "child": {"value": "ok"}})
+    with pytest.raises(SchemaValidationError):
+        validator.validate({"value": "ok", "child": {"value": "not-ok"}})
 
 
 def test_unresolvable_same_document_ref_is_bounded_schema_error():
