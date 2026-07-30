@@ -7,10 +7,11 @@ top-level `aegis`.
 ## Install
 
 ```bash
-pip install "aegis-ai-governance[aws-kms]"
+python -m pip install -e ".[aws-kms]"
 ```
 
-The extra adds the AWS SDK; it does not create clients or load credentials.
+Run that command from the source checkout. The extra adds the AWS SDK; it does
+not create clients or load credentials.
 The host owns clients, credentials, networking, retry and timeout behavior,
 endpoint selection, regional configuration, IAM, trust policy, trust stores,
 provider debug logging, and retained evidence.
@@ -27,8 +28,15 @@ adapter to claim a particular internal backing-material generation.
 
 Concrete ARNs are accepted only in these partitions: `aws`, `aws-cn`,
 `aws-us-gov`, `aws-iso`, `aws-iso-b`, `aws-iso-e`, `aws-iso-f`, and
-`aws-eusc`. This is a closed allowlist. A future AWS partition requires an
-adapter update.
+`aws-eusc`. This is a closed allowlist.
+
+This is strictly fail-closed and rejects invented aws-* partitions, but a newly introduced AWS partition would require an adapter update.
+
+Each ARN must also use its partition's minimum-supported Region family:
+commercial prefixes for `aws`, `cn-` for `aws-cn`, `us-gov-` for
+`aws-us-gov`, `us-iso-`, `us-isob-`, `eu-isoe-`, `us-isof-`, or
+`eusc-de-` for their corresponding isolated partitions. A partition/Region
+mismatch is rejected before a provider call.
 
 ## Sign with a host-created client
 
@@ -117,6 +125,13 @@ accepted = result.is_signature_valid and result.is_anchored
 
 Check both result axes. Cryptographic validity alone does not establish the
 host's anchor decision.
+
+The verifier maps only the exact botocore HTTP-session failures that the
+non-streaming KMS operations can raise directly: connect timeout, read
+timeout, endpoint connection, SSL, proxy connection, connection closed, and
+the exact base HTTP-client error. Subclasses are not widened into availability.
+In particular, `ResponseStreamingError` remains a contract failure because
+KMS `DescribeKey`, `Sign`, and `Verify` do not have streaming output.
 
 ## Least privilege
 

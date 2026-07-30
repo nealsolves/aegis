@@ -871,9 +871,10 @@ dereference in it.
 Source-only provider implementations are available from
 `aegis.integrations.aws_kms` and
 `aegis.integrations.google_cloud_kms`; they are not top-level re-exports.
-Install them with `pip install "aegis-ai-governance[aws-kms]"` or
-`pip install "aegis-ai-governance[gcp-kms]"`. Their complete closed algorithm
-set is `RSASSA_PSS_SHA_256`, `ECDSA_SHA_256`,
+Install them from this source checkout with
+`python -m pip install -e ".[aws-kms]"` or
+`python -m pip install -e ".[gcp-kms]"`. Their complete closed algorithm set
+is `RSASSA_PSS_SHA_256`, `ECDSA_SHA_256`,
 `RSA_SIGN_PSS_2048_SHA256`, `RSA_SIGN_PSS_3072_SHA256`,
 `RSA_SIGN_PSS_4096_SHA256`, and `EC_SIGN_P256_SHA256`.
 

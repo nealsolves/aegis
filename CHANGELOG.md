@@ -38,7 +38,8 @@ This public beta is released as the `aegis-ai-governance` distribution from
   runtime dependencies.
 - Package the completed `v0.9.0` workflow governance surface as candidate
   version `0.9.0b1`.
-- Validate the candidate against `3101 tests` before release-ready promotion.
+- Validate the released candidate against `1,923 tests` before release-ready
+  promotion.
 
 ### Fixed
 

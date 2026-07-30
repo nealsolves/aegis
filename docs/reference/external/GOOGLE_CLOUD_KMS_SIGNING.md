@@ -7,13 +7,14 @@ re-exported from top-level `aegis`.
 ## Install
 
 ```bash
-pip install "aegis-ai-governance[gcp-kms]"
+python -m pip install -e ".[gcp-kms]"
 ```
 
-The extra adds the Google Cloud KMS, CRC32C, and local cryptography
-dependencies. The host owns clients, credentials, networking, retry and
-timeout behavior, endpoint selection, project configuration, IAM, trust
-policy, trust stores, provider debug logging, and retained evidence.
+Run that command from the source checkout. The extra adds the Google Cloud
+KMS, CRC32C, and local cryptography dependencies. The host owns clients,
+credentials, networking, retry and timeout behavior, endpoint selection,
+project configuration, IAM, trust policy, trust stores, provider debug
+logging, and retained evidence.
 
 ## Supported algorithms and identity
 
@@ -28,8 +29,9 @@ projects/PROJECT/locations/LOCATION/keyRings/RING/cryptoKeys/KEY/cryptoKeyVersio
 ```
 
 Artifact `key_reference` is the parent CryptoKey resource and `key_version` is
-the exact final version segment. No primary-version alias or provider lookup
-is accepted.
+the exact final version segment. That segment must be a positive ASCII decimal
+with no sign, leading zero, or provider alias. No primary-version alias or
+provider lookup is accepted.
 
 ## Sign with a host-created client
 
@@ -93,7 +95,8 @@ no verification call in this adapter.
 
 For historical or offline verification, retain the PEM obtained for that
 exact version and return it as `public_key_pem`. This retained PEM path needs
-no Google client:
+no Google client. The PEM must contain exactly one `PUBLIC KEY` block; only
+surrounding ASCII whitespace is accepted:
 
 ```python
 from pathlib import Path
@@ -136,6 +139,13 @@ accepted = result.is_signature_valid and result.is_anchored
 
 To fetch the key online instead, omit `public_key_pem` from the target and
 pass the host-created client as the first verifier argument.
+
+Availability classification remains exact-type and fail-closed. In addition
+to the closed Google API status exceptions, it covers exact
+`InternalServerError`, `BadGateway`, Requests `ConnectionError` and `Timeout`,
+and google-auth `TransportError`, plus one direct `RetryError.cause` hop for
+those exact types. Subclasses, lookalikes, nested retry causes, and
+unauthenticated module replacements are contract failures.
 
 ## Least privilege
 

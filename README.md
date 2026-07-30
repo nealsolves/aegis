@@ -25,7 +25,7 @@ Governance in AEGIS is runtime enforcement, not documentation and not prompting.
   `ProvenanceGate`, `RiskHistory`, and `@governed` defaults to split enforcement
 - Current beta line: `v0.9.0`, packaged as
   `aegis-ai-governance==0.9.0b1`
-- Verification baseline: `3101 tests` pass in the public-beta environment,
+- Current-source verification baseline: `3101 tests` pass in the public-beta environment,
   including fixture-based optional-adapter coverage;
   coverage remains above the `90%` CI gate
 
@@ -109,8 +109,9 @@ That source-only line now includes explicit
 [AWS KMS](docs/reference/external/AWS_KMS_SIGNING.md) and
 [Google Cloud KMS](docs/reference/external/GOOGLE_CLOUD_KMS_SIGNING.md)
 adapters in the same distribution. Install their optional extras with
-`pip install "aegis-ai-governance[aws-kms]"` or
-`pip install "aegis-ai-governance[gcp-kms]"`. The supported algorithms are
+`python -m pip install -e ".[aws-kms]"` or
+`python -m pip install -e ".[gcp-kms]"` from this source checkout. The
+supported algorithms are
 `RSASSA_PSS_SHA_256`, `ECDSA_SHA_256`, `RSA_SIGN_PSS_2048_SHA256`,
 `RSA_SIGN_PSS_3072_SHA256`, `RSA_SIGN_PSS_4096_SHA256`, and
 `EC_SIGN_P256_SHA256`. Artifact metadata does not select provider resources;

@@ -1163,8 +1163,10 @@ def test_kms_guides_publish_exact_extras_algorithms_and_compilable_examples():
         root / "docs/reference/external/GOOGLE_CLOUD_KMS_SIGNING.md"
     ).read_text(encoding="utf-8")
 
-    assert 'pip install "aegis-ai-governance[aws-kms]"' in aws
-    assert 'pip install "aegis-ai-governance[gcp-kms]"' in google
+    assert 'python -m pip install -e ".[aws-kms]"' in aws
+    assert 'python -m pip install -e ".[gcp-kms]"' in google
+    assert 'pip install "aegis-ai-governance[aws-kms]"' not in aws
+    assert 'pip install "aegis-ai-governance[gcp-kms]"' not in google
 
     assert _documented_algorithm_identifiers(aws) == AWS_KMS_ALGORITHMS
     assert (
@@ -1181,6 +1183,21 @@ def test_kms_guides_publish_exact_extras_algorithms_and_compilable_examples():
         GOOGLE_GUIDE_IMPORTS,
         GOOGLE_GUIDE_CALLS,
     )
+
+
+def test_kms_source_checkout_install_and_release_history_are_distinct():
+    root = SCRIPT_PATH.parents[1]
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    contract = (
+        root / "docs/PUBLIC_INTEGRATION_CONTRACT.md"
+    ).read_text(encoding="utf-8")
+    changelog = (root / "CHANGELOG.md").read_text(encoding="utf-8")
+
+    for document in (readme, contract):
+        assert 'python -m pip install -e ".[aws-kms]"' in document
+        assert 'python -m pip install -e ".[gcp-kms]"' in document
+    assert "1,923 tests" in changelog
+    assert "current source" in readme.lower()
 
 
 def test_kms_guides_preserve_provider_identity_and_verification_boundaries():
