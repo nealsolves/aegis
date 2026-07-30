@@ -16,7 +16,7 @@ distribution_name: "aegis-ai-governance"
 import_package: "aegis"
 console_command: "aegis"
 candidate_status: "released-beta"
-test_count: 3095
+test_count: 3101
 coverage_threshold: 90
 audit_schema_version: "1.4"
 

@@ -59,7 +59,7 @@ must be updated only after their specific evidence exists.
 | Beta functional gate | complete | PR-11 full functional test harness is merged; distribution and publication remain separate gates |
 | Distribution release | released from `main` | `aegis-ai-governance==0.9.0b1` uses GitHub release `v0.9.0b1` and PyPI Trusted Publishing |
 | Truth audit and demo refresh | complete locally | Maintained docs, diagrams, contextual help, adapters, Python coverage, React, build, API, and assembled browser workflows are validated; independent review passed and the policy lifecycle reached `COMPLETE`; the final Python suite is 1919 passed and 2 skipped |
-| Docs, diagrams, and beta deployment | live on `main` | Requested docs were audited with no deletions, SVG overflow was repaired and visually inspected, Pages and Render deploy only from `main`, 3095 Python tests and 105 React tests pass, and live Lab 1/Lab 11 flows pass with a clean in-app-browser console |
+| Docs, diagrams, and beta deployment | live on `main` | Requested docs were audited with no deletions, SVG overflow was repaired and visually inspected, Pages and Render deploy only from `main`, 3101 Python tests and 105 React tests pass, and live Lab 1/Lab 11 flows pass with a clean in-app-browser console |
 
 ---
 
