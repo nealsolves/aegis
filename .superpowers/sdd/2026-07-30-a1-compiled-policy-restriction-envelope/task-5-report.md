@@ -302,3 +302,69 @@ Residual considerations:
   `is None` / `is not None` branches; a reload not proven to be on the unpinned
   branch fails closed.
 - No known production blocker remains from this review.
+
+## Fix round 3 — pre-call producer migration and final full-suite verification
+
+The first full-suite run after fix round 2 reproduced 84 failures:
+
+```text
+.venv/bin/pytest -q --tb=no
+84 failed, 3284 passed, 1 skipped
+```
+
+All failures belonged to four migration categories; no fifth category was
+found:
+
+- Bedrock and OpenAI Agents adapters copied a broad host invocation, including
+  `output`, into strict Phase A. A2A used the same pattern and was migrated
+  proactively.
+- Starter templates and migration examples still embedded placeholder output
+  values in direct pre-call payloads.
+- Direct `enforce_pre_call()` and session fixtures still used the obsolete
+  unified invocation shape.
+- Deep-review forged-token fixtures passed the removed `effective_policy`
+  constructor field.
+
+Four adapter regressions failed before the production change and passed
+afterward. The three protocol adapters now share one compatibility boundary
+that validates an optional host-envelope `output` as a JSON-serializable object,
+preserves the caller's mapping, and builds a detached output-free Phase A
+projection. Actual output still enters only through `complete_step()`. The core
+`_validate_pre_call_invocation` contract remains strict: direct pre-call and
+session boundaries reject `output`; there is no silent stripping in core
+enforcement.
+
+Starter templates, migration examples, and direct-boundary fixtures now use the
+split invocation shape. Provenance tests use an explicit output-free Phase A
+fixture rather than accidentally catching the wrong validation error.
+Deep-review tests continue to forge tokens manually, but only with the current
+map-free DTO fields, preserving the security assertion that Phase B rejects a
+token not issued by `enforce_pre_call()`.
+
+Verification:
+
+```text
+# Every file that failed in the initial full-suite run:
+235 passed, 5 warnings
+
+# Exact A1 completion gate:
+150 passed
+
+.venv/bin/pytest -q
+3369 passed, 1 skipped, 13 warnings
+```
+
+Changed production modules and added adapter regression code pass `flake8`;
+pre-existing unrelated lint findings remain in several legacy test files whose
+only round-3 change is fixture-field removal. Documentation parity,
+brand/version parity, the public-doc internal-import boundary, and
+`git diff --check` all pass.
+
+Residual considerations:
+
+- Protocol adapters intentionally retain compatibility with a broader host
+  envelope. They validate optional `output` before omission, and tests prove
+  both caller immutability and an output-free Phase A token snapshot.
+- Direct enforcement APIs remain fail-closed and do not accept `output`.
+- The 13 full-suite warnings are existing precondition and deprecation warnings;
+  no test failure or known security blocker remains.

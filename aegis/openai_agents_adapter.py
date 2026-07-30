@@ -35,6 +35,9 @@ from aegis._internal.errors import (
     WorkflowSessionTokenInvalidError,
     WorkflowUnsupportedBindingError,
 )
+from aegis._internal.adapter_invocation import (
+    project_adapter_pre_call_invocation,
+)
 
 if TYPE_CHECKING:
     from aegis._internal.session import GovernanceSession, SessionPreCallResult
@@ -593,7 +596,10 @@ class OpenAIAgentsAdapter:
 
         :param session: Owning GovernanceSession.
         :param invocation: AEGIS invocation dict.  Must contain
-            ``context.protocol_evidence.openai_agents.root_agent``.
+            ``context.protocol_evidence.openai_agents.root_agent``. A validated
+            optional ``output`` belongs to the broad host envelope only; the
+            adapter omits it from the detached Phase A projection. Supply
+            actual output only to ``complete_step()``.
         :param binding: Participant binding for the root agent.
         :param run_config: Optional SDK RunConfig to enrich; a new one is
             created when absent.
@@ -679,7 +685,7 @@ class OpenAIAgentsAdapter:
         adapter_step_key = str(uuid.uuid4())
 
         # --- Enrich invocation with serializable evidence ---
-        enriched = dict(invocation)
+        enriched = project_adapter_pre_call_invocation(invocation)
         enriched_ctx = dict(ctx)
         enriched_proto = dict(proto_evidence)
         oa_evidence: dict[str, Any] = {

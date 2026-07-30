@@ -22,7 +22,6 @@ BASE_INVOCATION = {
     "model_identifier": "claude-sonnet-4-6",
     "role": "ai-assistant",
     "input": {"prompt": "governed step"},
-    "output": {},
     "context": {"caller_id": "workflow-smoke"},
 }
 

@@ -74,7 +74,6 @@ def run_minimal_workflow(policy_file: str | None = None) -> dict:
         pre1 = session.enforce_step_pre_call({
             "policy_file": policy_file,
             "input": {"prompt": "Analyze the document."},
-            "output": {},
             "context": {"caller_id": "workflow-starter"},
             "model_provider": "anthropic",
             "model_identifier": "claude-sonnet-4-6",
@@ -87,7 +86,6 @@ def run_minimal_workflow(policy_file: str | None = None) -> dict:
         pre2 = session.enforce_step_pre_call({
             "policy_file": policy_file,
             "input": {"prompt": "Summarize the findings."},
-            "output": {},
             "context": {"caller_id": "workflow-starter"},
             "model_provider": "anthropic",
             "model_identifier": "claude-sonnet-4-6",
@@ -197,7 +195,6 @@ def run_standard_workflow(policy_file: str | None = None) -> dict:
         pre1 = session.enforce_step_pre_call({
             "policy_file": policy_file,
             "input": {"prompt": "Draft a proposal for review."},
-            "output": {},
             "context": {"phase": "pre-approval", "caller_id": "workflow-starter"},
             "model_provider": "anthropic",
             "model_identifier": "claude-sonnet-4-6",
@@ -229,7 +226,6 @@ def run_standard_workflow(policy_file: str | None = None) -> dict:
         pre2 = session.enforce_step_pre_call({
             "policy_file": policy_file,
             "input": {"prompt": "Finalize the approved proposal."},
-            "output": {},
             "context": {"phase": "post-approval", "caller_id": "workflow-starter"},
             "model_provider": "anthropic",
             "model_identifier": "claude-sonnet-4-6",
@@ -254,7 +250,6 @@ def run_standard_workflow(policy_file: str | None = None) -> dict:
         pre3 = session.enforce_step_pre_call({
             "policy_file": policy_file,
             "input": {"prompt": "Generate final summary."},
-            "output": {},
             "context": {"phase": "summary", "caller_id": "workflow-starter"},
             "model_provider": "anthropic",
             "model_identifier": "claude-sonnet-4-6",
@@ -377,7 +372,6 @@ def run_regulated_workflow(policy_file: str | None = None) -> dict:
             pre1 = session.enforce_step_pre_call({
                 "policy_file": policy_file,
                 "input": {"prompt": "Analyze these source documents."},
-                "output": {},
                 "context": {
                     "caller_id": "workflow-starter",
                     "provenance": {
@@ -410,7 +404,6 @@ def run_regulated_workflow(policy_file: str | None = None) -> dict:
             pre2 = session.enforce_step_pre_call({
                 "policy_file": policy_file,
                 "input": {"prompt": "Summarize the analysis."},
-                "output": {},
                 "context": {
                     "caller_id": "workflow-starter",
                     "provenance": {

@@ -112,6 +112,11 @@ with AEGIS().open_session(policy_file="policy.yaml") as session:
 `prepare_step(...)` stamps normalized `protocol_evidence.bedrock`, makes the
 binding role authoritative, calls the owning
 `GovernanceSession.enforce_step_pre_call(...)`, and registers adapter state.
+For compatibility it may receive a broader host invocation containing a
+JSON-serializable `output` object. It validates that field without mutating the
+caller, then omits it from a detached Phase A projection. Actual output is
+accepted only by `complete_step(...)`; direct session pre-call invocations must
+omit `output`.
 
 `complete_step(...)` validates every supplied parsed trace part, correlates the
 emitter's `agentId` and `agentAliasId` to the bound alias, enforces

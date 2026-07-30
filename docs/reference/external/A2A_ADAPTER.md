@@ -116,9 +116,12 @@ with AEGIS().open_session(policy_file="policy.yaml") as session:
 
 `prepare_step(...)` enriches the invocation with
 `context.protocol_evidence.a2a`, then calls
-`GovernanceSession.enforce_step_pre_call(...)`. `complete_step(...)` validates
-the host-supplied task evidence and stores only a redacted summary in workflow
-step metadata.
+`GovernanceSession.enforce_step_pre_call(...)`. A broader host invocation may
+contain a JSON-serializable `output` object; the adapter validates it without
+mutating the caller and omits it from the detached Phase A projection. Actual
+output enters only through `complete_step(...)`, while direct session pre-call
+invocations must omit it. `complete_step(...)` validates the host-supplied task
+evidence and stores only a redacted summary in workflow step metadata.
 
 ## Strict Validation
 
