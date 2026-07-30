@@ -7,6 +7,7 @@ import hashlib
 import json
 import math
 from collections import Counter
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -25,6 +26,13 @@ from aegis._internal.compiled_policy import (
 )
 from aegis._internal.errors import PolicyLoadError, PolicyValidationError
 from aegis._internal.patterns import compile_pattern
+from aegis._internal.restrictions import (
+    REGISTRY,
+    RestrictionComparator,
+    merge_policy_effect,
+    policy_from_restriction_values,
+    validate_registry_coverage,
+)
 from aegis._internal.schema_compiler import compile_output_schema
 
 
@@ -53,17 +61,6 @@ _RISK_MODE_STRICTNESS = {
 }
 _SCHEMA_DRAFT_07 = "http://json-schema.org/draft-07/schema#"
 _POLICY_SCHEMA_PATH = Path(__file__).resolve().parent.parent / "schemas" / "policy_dsl.schema.json"
-_REGISTERED_AUTHORITY_FIELDS = frozenset(
-    {
-        "roles",
-        "tools",
-        "risk",
-        "retry_policy",
-        "guards",
-        "pre_conditions",
-        "output_schema",
-    }
-)
 
 
 def require_finite_number(
@@ -454,20 +451,45 @@ def _path_to_pointer(path: list[Any]) -> str:
     return "$" if not path else "$." + ".".join(str(part) for part in path)
 
 
-def _validate_policy_schema(policy: Mapping[str, Any], *, allow_legacy: bool) -> None:
-    """Validate the detached mapping against the packaged Draft 7 policy schema."""
-    preconditions = policy.get("pre_conditions")
-    required = (
-        preconditions.get("required", {})
-        if isinstance(preconditions, Mapping)
-        else {}
+def _normalize_loader_dates(policy: dict[str, Any]) -> None:
+    """Canonicalize only the two root dates accepted by the policy loader."""
+    for field in ("effective_date", "expiration_date"):
+        value = policy.get(field)
+        if isinstance(value, datetime):
+            policy[field] = value.date().isoformat()
+        elif isinstance(value, date):
+            policy[field] = value.isoformat()
+
+
+def _validate_json_value(value: Any, *, path: str = "$") -> None:
+    """Reject values that cannot enter the compiled JSON policy model."""
+    if value is None or isinstance(value, (bool, int, str)):
+        return
+    if isinstance(value, float):
+        if math.isfinite(value):
+            return
+    elif isinstance(value, Mapping):
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise PolicyValidationError(
+                    "Policy object keys must be strings",
+                    code="POLICY_NON_JSON_VALUE",
+                    details={"path": path, "key": repr(key)},
+                )
+            _validate_json_value(item, path=f"{path}.{key}")
+        return
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            _validate_json_value(item, path=f"{path}.{index}")
+        return
+    raise PolicyValidationError(
+        "Policy contains a non-JSON value",
+        code="POLICY_NON_JSON_VALUE",
+        details={"path": path, "type": type(value).__name__},
     )
-    if isinstance(required, list) and not allow_legacy:
-        raise PolicyValidationError(
-            "Bare-string preconditions require explicit legacy authority",
-            code="LEGACY_PRECONDITION_FORBIDDEN",
-            details={"path": "$.pre_conditions.required"},
-        )
+
+
+def _load_policy_schema() -> Mapping[str, Any]:
     try:
         schema = json.loads(_POLICY_SCHEMA_PATH.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -480,6 +502,25 @@ def _validate_policy_schema(policy: Mapping[str, Any], *, allow_legacy: bool) ->
         raise PolicyLoadError(
             "Policy schema must declare JSON Schema Draft-07",
             details={"schema_path": str(_POLICY_SCHEMA_PATH)},
+        )
+    return schema
+
+
+def _validate_policy_schema(policy: Mapping[str, Any], *, allow_legacy: bool) -> None:
+    """Validate the detached mapping against the packaged Draft 7 policy schema."""
+    schema = _load_policy_schema()
+    validate_registry_coverage(schema, policy)
+    preconditions = policy.get("pre_conditions")
+    required = (
+        preconditions.get("required", {})
+        if isinstance(preconditions, Mapping)
+        else {}
+    )
+    if isinstance(required, list) and not allow_legacy:
+        raise PolicyValidationError(
+            "Bare-string preconditions require explicit legacy authority",
+            code="LEGACY_PRECONDITION_FORBIDDEN",
+            details={"path": "$.pre_conditions.required"},
         )
 
     Draft7Validator.check_schema(schema)
@@ -508,6 +549,111 @@ def _policy_digest(policy: Mapping[str, Any]) -> str:
     return hashlib.sha256(serialized).hexdigest()
 
 
+def _thaw(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {key: _thaw(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_thaw(item) for item in value]
+    return copy.deepcopy(value)
+
+
+def _normalized_preconditions(
+    preconditions: tuple[CompiledPrecondition, ...],
+) -> Mapping[str, Any]:
+    if preconditions and all(item.legacy for item in preconditions):
+        return {"required": [item.name for item in preconditions]}
+
+    required: dict[str, Any] = {}
+    for item in preconditions:
+        specification: dict[str, Any] = {}
+        if item.declared_type is not None:
+            specification["type"] = item.declared_type
+        if item.pattern is not None:
+            specification["pattern"] = item.pattern.source
+        if item.enum is not None:
+            specification["enum"] = [_thaw(value) for value in item.enum]
+        if item.min_length is not None:
+            specification["minLength"] = item.min_length
+        if item.max_length is not None:
+            specification["maxLength"] = item.max_length
+        if item.minimum is not None:
+            specification["minimum"] = item.minimum
+        if item.maximum is not None:
+            specification["maximum"] = item.maximum
+        required[item.name] = specification
+    return {"required": required}
+
+
+def _restriction_values(
+    policy: Mapping[str, Any],
+    *,
+    roles: tuple[str, ...],
+    tools: tuple[CompiledToolLimit, ...],
+    risk: CompiledRiskPolicy,
+    retry: CompiledRetryPolicy | None,
+    guards: tuple[CompiledGuard, ...],
+    preconditions: tuple[CompiledPrecondition, ...],
+    output_validator: Any,
+) -> Mapping[str, Any]:
+    """Build normalized values only from validated or compiled semantics."""
+    tools_value = (
+        {
+            "allowed_tools": [
+                {"name": item.name, "max_calls": item.max_calls}
+                for item in tools
+            ],
+        }
+        if "tools" in policy
+        else None
+    )
+    retry_value = (
+        {
+            "max_retries": retry.max_retries,
+            "backoff_ms": retry.backoff_ms,
+        }
+        if retry is not None
+        else None
+    )
+    risk_value = {
+        "mode": risk.mode,
+        "threshold": risk.threshold,
+        "factors": [
+            {
+                "name": factor.name,
+                "weight": factor.weight,
+                "condition": factor.condition,
+            }
+            for factor in risk.factors
+        ],
+    }
+    guard_values = [
+        {"when": _thaw(item.when), "then": _thaw(item.then)}
+        for item in guards
+    ]
+    return freeze(
+        {
+            "roles": list(roles),
+            "conditions": _thaw(policy.get("conditions") or {}),
+            "tools": tools_value,
+            "retry_policy": retry_value,
+            "risk": risk_value,
+            "pre_conditions": _normalized_preconditions(preconditions),
+            "post_conditions": _thaw(policy.get("post_conditions") or {}),
+            "output_schema": (
+                _thaw(output_validator.schema)
+                if output_validator is not None
+                else None
+            ),
+            "guards": guard_values,
+            "workflow": (
+                _thaw(policy["workflow"])
+                if "workflow" in policy
+                else None
+            ),
+        }
+    )
+
+
 def _compile_validated_policy(
     policy: Mapping[str, Any],
     *,
@@ -518,6 +664,19 @@ def _compile_validated_policy(
     del source  # Reserved for evidence provenance added by the enforcement route.
     roles = tuple(policy.get("roles", ()))
     tool_items = (policy.get("tools") or {}).get("allowed_tools", ())
+    tool_name_counts = Counter(item["name"] for item in tool_items)
+    duplicate_tool_names = sorted(
+        name for name, count in tool_name_counts.items() if count > 1
+    )
+    if duplicate_tool_names:
+        raise PolicyValidationError(
+            "Tool constraints contain duplicate names",
+            code="TOOL_CONSTRAINT_AMBIGUOUS",
+            details={
+                "path": "$.tools.allowed_tools",
+                "tool_names": duplicate_tool_names,
+            },
+        )
     tools = tuple(
         CompiledToolLimit(name=item["name"], max_calls=item["max_calls"])
         for item in tool_items
@@ -564,7 +723,17 @@ def _compile_validated_policy(
         risk_mode=risk.mode,
         risk_threshold=risk.threshold,
         critical_ceiling=risk.critical_ceiling,
-        registered_fields=_REGISTERED_AUTHORITY_FIELDS,
+        registered_fields=REGISTRY.fields,
+        restriction_values=_restriction_values(
+            policy,
+            roles=roles,
+            tools=tools,
+            risk=risk,
+            retry=retry,
+            guards=guards,
+            preconditions=preconditions,
+            output_validator=output_validator,
+        ),
     )
     return CompiledPolicy(
         policy_digest=_policy_digest(policy),
@@ -582,6 +751,45 @@ def _compile_validated_policy(
     )
 
 
+def _compile_policy(
+    raw_policy: Mapping[str, Any],
+    *,
+    source: str,
+    allow_legacy: bool,
+    validate_guard_effects: bool,
+) -> CompiledPolicy:
+    detached = copy.deepcopy(dict(raw_policy))
+    _normalize_loader_dates(detached)
+    _validate_security_numbers(detached)
+    _validate_json_value(detached)
+    _validate_policy_schema(detached, allow_legacy=allow_legacy)
+    compiled = _compile_validated_policy(
+        detached,
+        source=source,
+        allow_legacy=allow_legacy,
+    )
+    if validate_guard_effects:
+        comparator = RestrictionComparator()
+        for index, guard in enumerate(compiled.guards):
+            candidate_raw = policy_from_restriction_values(
+                compiled.authority.restriction_values
+            )
+            merge_policy_effect(candidate_raw, guard.then)
+            candidate = _compile_policy(
+                candidate_raw,
+                source=f"{source}#guard[{index}]",
+                allow_legacy=allow_legacy,
+                validate_guard_effects=False,
+            )
+            comparator.assert_overlay_and_effective(
+                parent=compiled,
+                overlay=guard.then,
+                effective=candidate,
+                phase_prefix="guard_",
+            )
+    return compiled
+
+
 def compile_policy(
     raw_policy: Mapping[str, Any],
     *,
@@ -589,13 +797,11 @@ def compile_policy(
     allow_legacy: bool = False,
 ) -> CompiledPolicy:
     """Validate and compile a caller-detached immutable policy snapshot."""
-    detached = copy.deepcopy(dict(raw_policy))
-    _validate_security_numbers(detached)
-    _validate_policy_schema(detached, allow_legacy=allow_legacy)
-    return _compile_validated_policy(
-        detached,
+    return _compile_policy(
+        raw_policy,
         source=source,
         allow_legacy=allow_legacy,
+        validate_guard_effects=True,
     )
 
 

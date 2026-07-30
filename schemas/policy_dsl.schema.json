@@ -26,11 +26,13 @@
       "description": "Policy expiration date (YYYY-MM-DD)"
     },
     "roles": {
+      "x-aegis-security-sensitive": true,
       "type": "array",
       "minItems": 1,
       "items": { "type": "string" }
     },
     "conditions": {
+      "x-aegis-security-sensitive": true,
       "type": "object",
       "additionalProperties": {
         "type": "object",
@@ -48,6 +50,7 @@
       "additionalProperties": false,
       "properties": {
         "allowed_tools": {
+          "x-aegis-security-sensitive": true,
           "type": "array",
           "items": {
             "type": "object",
@@ -66,8 +69,18 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "max_retries": { "type": "integer", "minimum": 0, "maximum": 10 },
-        "backoff_ms": { "type": "integer", "minimum": 0, "maximum": 60000 }
+        "max_retries": {
+          "x-aegis-security-sensitive": true,
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "backoff_ms": {
+          "x-aegis-security-sensitive": true,
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 60000
+        }
       },
       "required": ["max_retries", "backoff_ms"]
     },
@@ -76,15 +89,18 @@
       "additionalProperties": false,
       "properties": {
         "mode": {
+          "x-aegis-security-sensitive": true,
           "type": "string",
           "enum": ["strict", "risk_scored", "warn_only"]
         },
         "threshold": {
+          "x-aegis-security-sensitive": true,
           "type": "number",
           "minimum": 0.0,
           "maximum": 1.0
         },
         "factors": {
+          "x-aegis-security-sensitive": true,
           "type": "array",
           "items": {
             "type": "object",
@@ -101,6 +117,7 @@
       "required": ["mode"]
     },
     "pre_conditions": {
+      "x-aegis-security-sensitive": true,
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -148,6 +165,7 @@
       }
     },
     "post_conditions": {
+      "x-aegis-security-sensitive": true,
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -162,10 +180,12 @@
       }
     },
     "output_schema": {
+      "x-aegis-security-sensitive": true,
       "type": "object",
       "minProperties": 1
     },
     "guards": {
+      "x-aegis-security-sensitive": true,
       "type": "array",
       "items": {
         "type": "object",
@@ -187,6 +207,7 @@
       }
     },
     "workflow": {
+      "x-aegis-security-sensitive": true,
       "type": "object",
       "additionalProperties": false,
       "description": "Workflow-level governance constraints for governed sessions",

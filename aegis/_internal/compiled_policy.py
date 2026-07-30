@@ -218,6 +218,7 @@ class AuthorityEnvelope:
     risk_threshold: float
     critical_ceiling: float
     registered_fields: frozenset[str]
+    restriction_values: Mapping[str, JsonValue]
 
 
 @dataclass(frozen=True, slots=True)

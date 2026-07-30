@@ -26,6 +26,8 @@ from typing import Any, Callable
 from jsonschema import Draft7Validator
 
 from aegis._internal.errors import PolicyLoadError, PolicyValidationError
+from aegis._internal.policy_compiler import compile_policy
+from aegis._internal.restrictions import RestrictionComparator
 
 logger = logging.getLogger("aegis.policy_loader")
 
@@ -225,6 +227,15 @@ def _merge_policies(
             continue
 
         if key not in merged:
+            merged[key] = copy.deepcopy(value)
+        elif (
+            key == "allowed_tools"
+            and isinstance(merged[key], list)
+            and isinstance(value, list)
+        ):
+            # This is a complete name/limit restriction declaration, not an
+            # additive generic list. The registry separately proves subset
+            # and limit monotonicity against the parent.
             merged[key] = copy.deepcopy(value)
         elif isinstance(merged[key], list) and isinstance(value, list):
             if composition_strategy == COMPOSITION_INTERSECT:
@@ -569,6 +580,70 @@ def _validate_composition_restriction(
                         )
 
 
+def _compile_and_compare_composition(
+    parent: dict[str, Any],
+    overlay: dict[str, Any],
+    effective: dict[str, Any],
+):
+    """Compile both sides of one inheritance edge and prove restriction."""
+    compiled_parent = compile_policy(parent, source="composition-parent")
+    comparator = RestrictionComparator()
+    try:
+        comparator.assert_overlay(compiled_parent, overlay)
+    except PolicyValidationError as exc:
+        if exc.code != "POLICY_WIDENING":
+            raise
+        category = (
+            "weakening"
+            if exc.details.get("path") in {"pre_conditions", "post_conditions"}
+            else "escalation"
+        )
+        raise PolicyValidationError(
+            f"Composition {category}: {exc}",
+            code=exc.code,
+            details=exc.details,
+        ) from exc
+    compiled_effective = compile_policy(
+        effective,
+        source="composition-effective",
+    )
+    try:
+        comparator.assert_effective(
+            compiled_parent.authority,
+            compiled_effective,
+        )
+    except PolicyValidationError as exc:
+        if exc.code != "POLICY_WIDENING":
+            raise
+        category = (
+            "weakening"
+            if exc.details.get("path") in {"pre_conditions", "post_conditions"}
+            else "escalation"
+        )
+        raise PolicyValidationError(
+            f"Composition {category}: {exc}",
+            code=exc.code,
+            details=exc.details,
+        ) from exc
+    return compiled_effective
+
+
+def compile_composed_policy(
+    parent: dict[str, Any],
+    child: dict[str, Any],
+):
+    """Compile a child policy only after raw and effective restriction checks."""
+    strategy = child.get("composition_strategy")
+    if strategy is not None and strategy not in VALID_COMPOSITION_STRATEGIES:
+        raise PolicyValidationError(
+            f"Invalid composition_strategy: {strategy!r}; "
+            f"expected one of {VALID_COMPOSITION_STRATEGIES}",
+            details={"composition_strategy": strategy},
+        )
+    effective = _merge_policies(parent, child, strategy)
+    return _compile_and_compare_composition(parent, child, effective)
+
+
 # ── Policy version dates ─────────────────────────────────────────
 
 
@@ -714,10 +789,9 @@ def _resolve_extends(
     # Merge current policy into base (current overrides base)
     merged = _merge_policies(base_policy_dict, policy, strategy)
 
-    # Enforce monotonic restriction: child must not escalate privileges.
-    # Pass the raw overlay policy so that array intersection/union strategies
-    # cannot hide widening attempts in workflow DSL fields.
-    _validate_composition_restriction(base_policy_dict, merged, overlay=policy)
+    # Compare both the raw child and compiled merged policy.  The raw check
+    # prevents a merge strategy from hiding an attempted widening.
+    _compile_and_compare_composition(base_policy_dict, policy, merged)
 
     # Remove extends and composition_strategy from merged policy
     merged.pop("extends", None)

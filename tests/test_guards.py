@@ -1,8 +1,96 @@
 """Tests for guard evaluation engine."""
 
 import pytest
-from aegis._internal.guards import evaluate_guards, _merge_policy_blocks, _evaluate_condition_expression
-from aegis._internal.errors import GuardEvaluationError, ConditionResolutionError
+from aegis._internal.compiled_policy import CompiledGuard, freeze
+from aegis._internal.guards import (
+    _evaluate_condition_expression,
+    _merge_policy_blocks,
+    evaluate_compiled_guards,
+    evaluate_guards,
+)
+from aegis._internal.errors import (
+    ConditionResolutionError,
+    GuardEvaluationError,
+    PolicyValidationError,
+)
+from aegis._internal.policy_compiler import compile_policy
+
+
+def test_two_matching_guard_effects_cannot_widen_cumulatively():
+    raw = {
+        "policy_version": "2.0",
+        "roles": ["planner", "reviewer"],
+        "conditions": {
+            "always": {"type": "boolean", "default": True},
+        },
+        "tools": {
+            "allowed_tools": [
+                {"name": "search", "max_calls": 2},
+            ],
+        },
+    }
+    compiled = compile_policy(raw, source="loaded")
+    first = CompiledGuard(
+        when=freeze({"condition": "always"}),
+        then=freeze({"roles": ["reviewer"]}),
+    )
+    second = CompiledGuard(
+        when=freeze({"condition": "always"}),
+        then=freeze(
+            {
+                "tools": {
+                    "allowed_tools": [
+                        {"name": "shell", "max_calls": 1},
+                    ],
+                },
+            },
+        ),
+    )
+
+    with pytest.raises(PolicyValidationError) as exc:
+        evaluate_compiled_guards(compiled, (first, second), {})
+
+    assert exc.value.code == "POLICY_WIDENING"
+    assert exc.value.details["phase"] == "guard_effective"
+    assert exc.value.details["path"] == "tools.allowed_tools"
+
+
+def test_guard_effect_can_lower_compiled_tool_limit():
+    raw = {
+        "policy_version": "2.0",
+        "roles": ["planner"],
+        "conditions": {
+            "always": {"type": "boolean", "default": True},
+        },
+        "tools": {
+            "allowed_tools": [
+                {"name": "search", "max_calls": 2},
+            ],
+        },
+        "guards": [
+            {
+                "when": {"condition": "always"},
+                "then": {
+                    "tools": {
+                        "allowed_tools": [
+                            {"name": "search", "max_calls": 1},
+                        ],
+                    },
+                },
+            },
+        ],
+    }
+    compiled = compile_policy(raw, source="loaded")
+
+    effective, _, _ = evaluate_compiled_guards(
+        compiled,
+        compiled.guards,
+        {},
+    )
+
+    assert [(item.name, item.max_calls) for item in effective.tools] == [
+        ("search", 1),
+    ]
 
 
 def test_guard_matches_boolean_condition():
@@ -245,7 +333,7 @@ def test_multiple_guards_accumulate():
 
 
 def test_guard_order_matters():
-    """Guards processed in declaration order."""
+    """Unknown guard-effect fields fail closed instead of becoming policy."""
     policy = {
         "policy_version": "1.0",
         "roles": ["planner"],
@@ -266,12 +354,11 @@ def test_guard_order_matters():
     context = {}
     invocation = {"role": "planner"}
 
-    effective_policy, guards_evaluated, conditions_resolved = evaluate_guards(
-        policy, context, invocation
-    )
+    with pytest.raises(PolicyValidationError) as exc:
+        evaluate_guards(policy, context, invocation)
 
-    # Second guard's scalar replaces first guard's scalar
-    assert effective_policy["priority"] == 2
+    assert exc.value.code == "RESTRICTION_SEMANTICS_MISSING"
+    assert exc.value.details["path"] == "priority"
 
 
 def test_guard_unknown_condition():

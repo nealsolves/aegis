@@ -12,10 +12,17 @@ from __future__ import annotations
 
 import copy
 import re
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
+from aegis._internal.compiled_policy import CompiledGuard, CompiledPolicy
 from aegis._internal.conditions import resolve_conditions
 from aegis._internal.errors import GuardEvaluationError
+from aegis._internal.policy_compiler import compile_policy
+from aegis._internal.restrictions import (
+    RestrictionComparator,
+    merge_policy_effect,
+    policy_from_restriction_values,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -487,16 +494,7 @@ def _merge_policy_blocks(base: dict[str, Any], overlay: Mapping[str, Any]) -> No
     :param base: Base dict to merge into (modified in-place)
     :param overlay: Overlay dict to merge from
     """
-    for key, value in overlay.items():
-        if key not in base:
-            base[key] = copy.deepcopy(value)
-        elif isinstance(base[key], list) and isinstance(value, list):
-            base[key].extend(copy.deepcopy(value))
-        elif isinstance(base[key], dict) and isinstance(value, dict):
-            _merge_policy_blocks(base[key], value)
-        else:
-            # Scalar replacement
-            base[key] = copy.deepcopy(value)
+    merge_policy_effect(base, overlay)
 
 
 def _evaluate_condition_expression(
@@ -527,6 +525,59 @@ def _evaluate_condition_expression(
     return evaluate_ast(ast, resolved_conditions, invocation)
 
 
+def evaluate_compiled_guards(
+    policy: CompiledPolicy,
+    guards: Sequence[CompiledGuard],
+    context: Mapping[str, Any],
+    *,
+    invocation: Mapping[str, Any] | None = None,
+    allow_legacy_effects: bool = False,
+) -> tuple[CompiledPolicy, list[dict[str, Any]], dict[str, bool]]:
+    """Apply every matching compiled effect, then prove the cumulative result."""
+    base_policy = policy_from_restriction_values(
+        policy.authority.restriction_values
+    )
+    resolved_conditions = resolve_conditions(base_policy, context)
+    effective_invocation = (
+        invocation
+        if invocation is not None
+        else {"role": context.get("role"), "context": dict(context)}
+    )
+    guards_evaluated: list[dict[str, Any]] = []
+    matching_effects: list[Mapping[str, Any]] = []
+
+    for guard in guards:
+        condition_expr = guard.when.get("condition", "")
+        matched = _evaluate_condition_expression(
+            condition_expr,
+            resolved_conditions,
+            effective_invocation,
+        )
+        guards_evaluated.append(
+            {"condition": condition_expr, "matched": matched}
+        )
+        if matched and guard.then:
+            matching_effects.append(guard.then)
+
+    candidate_raw = copy.deepcopy(base_policy)
+    for effect in matching_effects:
+        merge_policy_effect(candidate_raw, effect)
+    candidate = compile_policy(
+        candidate_raw,
+        source=f"guard-effective:{policy.policy_digest}",
+        allow_legacy=(
+            allow_legacy_effects
+            or any(item.legacy for item in policy.preconditions)
+        ),
+    )
+    RestrictionComparator().assert_effective(
+        policy.authority,
+        candidate,
+        phase="guard_effective",
+    )
+    return candidate, guards_evaluated, resolved_conditions
+
+
 def evaluate_guards(
     policy: Mapping[str, Any],
     context: Mapping[str, Any],
@@ -547,40 +598,26 @@ def evaluate_guards(
         {"is_enterprise": True, "audit_enabled": False}
     """
     guards = policy.get("guards", [])
-
-    # Resolve conditions first (even if no guards, for audit metadata)
     resolved_conditions = resolve_conditions(policy, context)
 
     if not guards:
         return dict(policy), [], resolved_conditions
 
-    # Evaluate all guard conditions first (no copies yet)
-    guards_evaluated: list[dict[str, Any]] = []
-    matching_effects: list[Mapping[str, Any]] = []
-
-    for guard in guards:
-        when_clause = guard.get("when", {})
-        condition_expr = when_clause.get("condition", "")
-
-        matched = _evaluate_condition_expression(
-            condition_expr, resolved_conditions, invocation
-        )
-
-        guards_evaluated.append(
-            {
-                "condition": condition_expr,
-                "matched": matched,
-            }
-        )
-
-        if matched:
-            then_clause = guard.get("then", {})
-            if then_clause:
-                matching_effects.append(then_clause)
-
-    # Single deep copy, then apply all matching effects in order
+    compiled = compile_policy(
+        policy,
+        source="guard-evaluation",
+        allow_legacy=True,
+    )
+    _, guards_evaluated, resolved_conditions = evaluate_compiled_guards(
+        compiled,
+        compiled.guards,
+        context,
+        invocation=invocation,
+        allow_legacy_effects=True,
+    )
     effective_policy = copy.deepcopy(dict(policy))
-    for effect in matching_effects:
-        _merge_policy_blocks(effective_policy, effect)
+    for guard, evaluation in zip(guards, guards_evaluated):
+        if evaluation["matched"] and guard.get("then"):
+            merge_policy_effect(effective_policy, guard["then"])
 
     return effective_policy, guards_evaluated, resolved_conditions
