@@ -2,7 +2,7 @@
 
 Date: 2026-07-30
 Branch: `codex/issue-45-aws-google-kms-adapters`
-Reviewed implementation range: `b62ce23..ef1e893`
+Reviewed implementation range: `b62ce23..3b7fad0`
 Design authority:
 `docs/superpowers/specs/2026-07-29-issue-45-aws-google-kms-adapters-design.md`
 Decision authority:
@@ -14,12 +14,12 @@ The implementation, provider contracts, failure classifications, test
 structure, documentation, package metadata, built artifacts, and all seven
 optional-extra lanes were reviewed adversarially. Every supported provider
 case ran with both extras installed; the focused provider matrix had no skips.
-The final repository state passed 3,101 Python tests at 91.35% coverage, all
+The final repository state passed 3,138 Python tests at 91.18% coverage, all
 lint/documentation/release gates, 298 frontend tests, the frontend production
 build, the fresh-wheel end-to-end candidate proof, and all seven isolated
 artifact lanes.
 
-Thirteen substantiated whole-branch findings were corrected in scoped commits:
+Twenty substantiated whole-branch findings were corrected in scoped commits:
 
 | Commit | Finding closed | Focused evidence |
 | --- | --- | --- |
@@ -36,6 +36,13 @@ Thirteen substantiated whole-branch findings were corrected in scoped commits:
 | `2b174ed` | Fetched Google public-key evidence had only a generic oversized case, not the exact 65,535/65,536/65,537-byte boundary triplet. | Exact-test discovery returned no match before the addition; all three fetched-PEM cases and all 278 Google tests passed. |
 | `d795a92` | The tracked Task 9 report was absent from the documentation parity manifest. | `scripts/check_doc_parity.py` failed section 0B on the exact report path, then all sections 0A through O passed after classification. |
 | `ef1e893` plus this evidence closeout | Maintained counts and the audit matrix were stale or non-executable: the optional-extra row was a placeholder, documentation tests cited non-test commands, and process/security rows lacked exact evidence. | The maintained count was advanced atomically to 3,101; the command index below now records every exact lane, documentation test command, method-order proof, injected-client proof, structural search, artifact identity, and residual. |
+| `89adfea` | Google availability classification omitted exact direct `google.api_core`, `requests`, and `google.auth` transport types and did not authenticate every exception source. | RED reproduced all five missing direct types; GREEN authenticated the exact installed distributions/RECORD entries and passed exact-type, subclass, spoof, and one-hop `RetryError` cause cases. |
+| `89adfea` | AWS transport classification omitted four direct botocore HTTP-session types and lacked evidence that `ResponseStreamingError` remains outside the non-streaming KMS availability surface. | GREEN exercised all seven exact authenticated botocore transport types; the related but excluded `ResponseStreamingError` produced a sanitized contract failure. |
+| `89adfea` | Google version parsing accepted noncanonical decimal identities such as aliases, zero, leading zeroes, and dotted forms. | RED reproduced the invalid identities across signer, target, and metadata paths; GREEN accepts only terminal positive ASCII decimal versions matching `[1-9][0-9]*`. |
+| `89adfea` | Retained and fetched Google PEM handling did not require exactly one public-key envelope. | RED accepted multiple blocks or surrounding junk; GREEN accepts exactly one `PUBLIC KEY` block with only supported surrounding ASCII whitespace. |
+| `89adfea` | AWS ARN validation allowlisted partitions but did not prove partition/Region coherence. | RED accepted cross-partition regions; GREEN applies one closed minimum-supported Region pattern to each of the exact eight accepted partitions. |
+| `89adfea` | Real AWS verification evidence did not prove successful ECDSA verification for both supported EC key specs. | Both new real-verifier success cases passed for `ECC_NIST_P256` and `ECC_SECG_P256K1`; no runtime correction was necessary. |
+| `8cbb8ae`, `3b7fad0` | Checkout install guidance used released-wheel syntax without stating editable source context, and the immutable released 1,923-test history was conflated with the current-source count. | All four maintained install surfaces now use `python -m pip install -e ".[…]"`; released history remains 1,923 and current source is recorded separately as 3,138. |
 
 No contradiction required a design amendment. No unresolved critical or
 high-severity implementation finding remains. The PR-reference and
@@ -48,26 +55,26 @@ Rows below cite these exact commands and their observed final results.
 
 | ID | Command | Observed result |
 | --- | --- | --- |
-| `F` | `../../.venv/bin/python -m pytest tests/test_kms_common.py tests/test_aws_kms.py tests/test_google_cloud_kms.py tests/test_external_signing.py tests/test_external_signing_conformance.py tests/test_public_api.py tests/test_v090_distribution_contract.py tests/test_v090_publish_workflow.py tests/test_kms_distribution_smoke.py -v` | `1015 passed in 8.47s`; no skips. |
-| `R` | `env PATH="../../.venv/bin:$PATH" ../../.venv/bin/python -m pytest --cov=aegis --cov-report=term-missing --cov-fail-under=90` | `3101 passed, 1 skipped, 14 warnings in 58.47s`; 7,142 statements, 618 missed, 91.35%. The PATH prefix supplies the same virtual-environment interpreter to the one public-boundary regression that intentionally launches bare `python`; an initial run without that execution-environment precondition found no `python` alias and was not a product failure. |
+| `F` | `../../.venv/bin/python -m pytest tests/test_kms_common.py tests/test_aws_kms.py tests/test_google_cloud_kms.py tests/test_external_signing.py tests/test_external_signing_conformance.py tests/test_public_api.py tests/test_v090_distribution_contract.py tests/test_v090_publish_workflow.py tests/test_kms_distribution_smoke.py -v` | `1051 passed in 9.50s`; no skips. |
+| `R` | `env PATH="../../.venv/bin:$PATH" ../../.venv/bin/python -m pytest --cov=aegis --cov-report=term-missing --cov-fail-under=90` | `3138 passed, 1 skipped, 14 warnings in 60.88s`; 7,269 statements, 641 missed, 91.18%. The PATH prefix supplies the same virtual-environment interpreter to the one public-boundary regression that intentionally launches bare `python`. |
 | `L` | `../../.venv/bin/python -m flake8 aegis` | Exit 0, no findings. |
 | `D1` | `../../.venv/bin/python scripts/check_doc_parity.py` | All sections 0A through O passed. |
 | `D2` | `../../.venv/bin/python scripts/check_public_docs_no_internal_imports.py` | `PASS: no public aegis._internal imports found`. |
 | `D3` | `../../.venv/bin/python scripts/validate_v090_release_freeze.py` | Brand/version parity and public-doc import checks passed. |
-| `DT` | `../../.venv/bin/python -m pytest tests/test_doc_parity_v090_truth.py -v` | `77 passed in 1.12s`; includes the per-guide retry warning and exact seven-lane documentation assertions. |
+| `DT` | `../../.venv/bin/python -m pytest tests/test_doc_parity_v090_truth.py -v` | `78 passed`; includes checkout-install, released-history/current-source-count, per-guide retry-warning, and exact seven-lane assertions. |
 | `SR` | `../../.venv/bin/python -m pytest tests/test_v090_distribution_contract.py::test_candidate_subprocess_failure_report_is_stable_and_redacted tests/test_kms_distribution_smoke.py::test_smoke_subprocess_failure_report_is_stable_and_redacted -v` | `2 passed`; each exercised two distinct temporary roots containing hostile URL/token data on stdout and stderr and asserted identical safe JSON. |
-| `UI1` | `npm --prefix demo-app-react test` | 30 files and 298 tests passed in 10.87s. |
+| `UI1` | `npm --prefix demo-app-react test` | 30 files and 298 tests passed in 10.77s. |
 | `UI2` | `npm --prefix demo-app-react run build` | TypeScript and Vite 8.0.10 build passed; 1,782 modules transformed. |
-| `B` | `../../.venv/bin/python -m build --outdir /private/tmp/aegis-task9-fix1-final.OQ92ck` | Built exactly one 189,843-byte wheel and one 3,606,357-byte sdist. Setuptools emitted only the separately recorded license/manifest warnings. |
-| `S` | `tar -tzf /private/tmp/aegis-task9-fix1-final.OQ92ck/aegis_ai_governance-0.9.0b1.tar.gz \| rg '^aegis_ai_governance-0\.9\.0b1/docs/reference/external/(AWS_KMS_SIGNING\|GOOGLE_CLOUD_KMS_SIGNING)\.md$'` | Returned exactly both maintained guide members. |
-| `C` | `../../.venv/bin/python scripts/validate_v090_distribution_candidate.py --dist-dir /private/tmp/aegis-task9-fix1-final.OQ92ck --no-build` | Artifact inspection passed in 0.023s and fresh-wheel end-to-end passed in 8.686s; dependency check, three profiles, trace, and three exports passed with `isolated-virtualenv` provenance. |
-| `P1` | `../../.venv/bin/python scripts/validate_kms_optional_extras.py --artifact /private/tmp/aegis-task9-fix1-final.OQ92ck/aegis_ai_governance-0.9.0b1-py3-none-any.whl --lane base --expected-versions '{}'` | PASS; no provider family installed. |
-| `P2` | `../../.venv/bin/python scripts/validate_kms_optional_extras.py --artifact /private/tmp/aegis-task9-fix1-final.OQ92ck/aegis_ai_governance-0.9.0b1-py3-none-any.whl --lane aws --expected-versions '{"boto3":"1.43.0"}'` | PASS; exact AWS floor plus real botocore transport checks. |
-| `P3` | `../../.venv/bin/python scripts/validate_kms_optional_extras.py --artifact /private/tmp/aegis-task9-fix1-final.OQ92ck/aegis_ai_governance-0.9.0b1-py3-none-any.whl --lane aws --expected-versions '{}'` | PASS; current AWS resolution plus identity/sign/verify. |
-| `P4` | `../../.venv/bin/python scripts/validate_kms_optional_extras.py --artifact /private/tmp/aegis-task9-fix1-final.OQ92ck/aegis_ai_governance-0.9.0b1-py3-none-any.whl --lane gcp --expected-versions '{"google-cloud-kms":"3.15.0","google-crc32c":"1.7.1","cryptography":"45.0.1"}'` | PASS; exact Google floors plus real SDK classes and retained-PEM verification. |
-| `P5` | `../../.venv/bin/python scripts/validate_kms_optional_extras.py --artifact /private/tmp/aegis-task9-fix1-final.OQ92ck/aegis_ai_governance-0.9.0b1-py3-none-any.whl --lane gcp --expected-versions '{}'` | PASS; current Google resolution plus identity/sign/retained-PEM verify. |
-| `P6` | `../../.venv/bin/python scripts/validate_kms_optional_extras.py --artifact /private/tmp/aegis-task9-fix1-final.OQ92ck/aegis_ai_governance-0.9.0b1-py3-none-any.whl --lane combined --expected-versions '{}'` | PASS; both current provider stacks from the wheel. |
-| `P7` | `../../.venv/bin/python scripts/validate_kms_optional_extras.py --artifact /private/tmp/aegis-task9-fix1-final.OQ92ck/aegis_ai_governance-0.9.0b1.tar.gz --lane combined --expected-versions '{}'` | PASS; both current provider stacks from the sdist. |
+| `B` | `../../.venv/bin/python -m build --outdir /private/tmp/aegis-issue45-final-fix.Eiquhy` | Built exactly one 192,058-byte wheel and one 3,609,059-byte sdist. The first sandboxed attempt could not resolve the package index; the immediate network-enabled rerun succeeded, so this was an external execution precondition rather than a product failure. |
+| `S` | `tar -tzf /private/tmp/aegis-issue45-final-fix.Eiquhy/aegis_ai_governance-0.9.0b1.tar.gz \| rg '^aegis_ai_governance-0\.9.0b1/docs/reference/external/(AWS_KMS_SIGNING\|GOOGLE_CLOUD_KMS_SIGNING)\.md$'` | Returned exactly both maintained guide members; separate exact searches found no `docs/audits` or `.superpowers` member. |
+| `C` | `../../.venv/bin/python scripts/validate_v090_distribution_candidate.py --dist-dir /private/tmp/aegis-issue45-final-fix.Eiquhy --no-build` | Artifact inspection passed in 0.023s and fresh-wheel end-to-end passed in 8.544s; dependency check, three profiles, trace, and three exports passed with `isolated-virtualenv` provenance. |
+| `P1` | `../../.venv/bin/python scripts/validate_kms_optional_extras.py --artifact /private/tmp/aegis-issue45-final-fix.Eiquhy/aegis_ai_governance-0.9.0b1-py3-none-any.whl --lane base --expected-versions '{}'` | PASS; no provider family installed. |
+| `P2` | `../../.venv/bin/python scripts/validate_kms_optional_extras.py --artifact /private/tmp/aegis-issue45-final-fix.Eiquhy/aegis_ai_governance-0.9.0b1-py3-none-any.whl --lane aws --expected-versions '{"boto3":"1.43.0"}'` | PASS; `boto3 1.43.0`, `botocore 1.43.59`, `s3transfer 0.17.1`; all seven exact transport types and the excluded `ResponseStreamingError` path passed. |
+| `P3` | `../../.venv/bin/python scripts/validate_kms_optional_extras.py --artifact /private/tmp/aegis-issue45-final-fix.Eiquhy/aegis_ai_governance-0.9.0b1-py3-none-any.whl --lane aws --expected-versions '{}'` | PASS; `boto3`/`botocore 1.43.59`, `s3transfer 0.19.2`; identity/sign/verify and transport matrix passed. |
+| `P4` | `../../.venv/bin/python scripts/validate_kms_optional_extras.py --artifact /private/tmp/aegis-issue45-final-fix.Eiquhy/aegis_ai_governance-0.9.0b1-py3-none-any.whl --lane gcp --expected-versions '{"google-cloud-kms":"3.15.0","google-crc32c":"1.7.1","cryptography":"45.0.1"}'` | PASS; exact requested floors resolved with `google-api-core 2.33.0`, `google-auth 2.56.2`, and `requests 2.34.2`; all five exact direct transport types and their one-hop `RetryError` wrappers passed. |
+| `P5` | `../../.venv/bin/python scripts/validate_kms_optional_extras.py --artifact /private/tmp/aegis-issue45-final-fix.Eiquhy/aegis_ai_governance-0.9.0b1-py3-none-any.whl --lane gcp --expected-versions '{}'` | PASS; KMS `3.16.0`, CRC32C `1.8.0`, cryptography `49.0.0`, API core `2.33.0`, auth `2.56.2`, requests `2.34.2`; identity/sign/retained-PEM verify and transport matrix passed. |
+| `P6` | `../../.venv/bin/python scripts/validate_kms_optional_extras.py --artifact /private/tmp/aegis-issue45-final-fix.Eiquhy/aegis_ai_governance-0.9.0b1-py3-none-any.whl --lane combined --expected-versions '{}'` | PASS; both current provider stacks from the wheel. |
+| `P7` | `../../.venv/bin/python scripts/validate_kms_optional_extras.py --artifact /private/tmp/aegis-issue45-final-fix.Eiquhy/aegis_ai_governance-0.9.0b1.tar.gz --lane combined --expected-versions '{}'` | PASS; both current provider stacks from the sdist. |
 | `HD` | `git log --follow --format='%h %cI %s' -- docs/superpowers/specs/2026-07-29-issue-45-aws-google-kms-adapters-design.md` | Design authority commit `b62ce23`, 2026-07-29 08:25:44 −05:00. |
 | `HP` | `git log --follow --format='%h %cI %s' -- docs/superpowers/plans/2026-07-29-issue-45-aws-google-kms-adapters.md` | Implementation plan commit `e2ed0fa`, 2026-07-29 08:51:41 −05:00: after the reviewed design and before implementation. |
 | `HI` | `git log --format='%h %cI %s' --reverse e2ed0fa..6fa7315` | The first implementation-range commit was `6fa7315`, 2026-07-29 09:01:02 −05:00, `test: support randomized external signatures`. |
@@ -105,7 +112,7 @@ The review environment contained:
 | `aegis-ai-governance` | `0.9.0b1` |
 | `boto3` / `botocore` | `1.43.59` / `1.43.59` |
 | `google-cloud-kms` | `3.16.0` |
-| `google-api-core` | `2.33.0` |
+| `google-api-core` / `google-auth` / `requests` | `2.33.0` / `2.56.2` / `2.34.2` |
 | `google-crc32c` | `1.8.0` |
 | `cryptography` | `49.0.0` |
 | `build` / `pytest` / `pytest-cov` / `flake8` | `1.5.0` / `9.1.1` / `7.1.0` / `7.3.0` |
@@ -195,7 +202,7 @@ observed-result, and residual evidence.
 
 | Attack or failure | Implementation file/symbol | Focused test | Command and observed result | Residual or explicit non-goal |
 | --- | --- | --- | --- | --- |
-| Artifact supplies arbitrary key URI | `aegis/integrations/aws_kms.py::AwsKmsArtifactVerifier.verify`; `aegis/integrations/google_cloud_kms.py::GoogleCloudKmsArtifactVerifier.verify` | `test_aws_verifier_forged_metadata_cannot_redirect_approved_target`; `test_detailed_metadata_artifact_hints_cannot_select_another_resolver` | `F`: both passed within 1,015 | Resolver correctness remains host-owned. |
+| Artifact supplies arbitrary key URI | `aegis/integrations/aws_kms.py::AwsKmsArtifactVerifier.verify`; `aegis/integrations/google_cloud_kms.py::GoogleCloudKmsArtifactVerifier.verify` | `test_aws_verifier_forged_metadata_cannot_redirect_approved_target`; `test_detailed_metadata_artifact_hints_cannot_select_another_resolver` | `F`: both passed within 1,051 | Resolver correctness remains host-owned. |
 | AWS alias changes during signing | `aegis/integrations/aws_kms.py::AwsKmsArtifactSigner.sign` | `test_aws_signer_rechecks_selector_and_aborts_alias_retarget_before_sign` | `F`: passed; no `Sign` on retarget | Alias may rotate after checkpoint, but immutable ARN remains the request target. |
 | AWS backing material rotates under one ARN | `aegis/integrations/aws_kms.py::AwsKmsArtifactSigner.sign`; `docs/decisions/ADR-0013-aws-google-kms-adapters.md` and both guides' identity boundaries | `test_aws_verifier_keeps_historical_arn_after_signer_alias_retargets`; `test_kms_guides_preserve_provider_identity_and_verification_boundaries` | `F` and `DT`: passed | No backing-material-version claim. |
 | AWS multi-Region replica substitution | `aegis/integrations/aws_kms.py::{_is_concrete_key_arn,AwsKmsArtifactSigner.sign}` | `test_aws_signer_rejects_multi_region_replica_arn_substitution_before_sign` | `F`: passed | Cross-ARN failover requires separate trust design. |
@@ -224,7 +231,7 @@ observed-result, and residual evidence.
 | Complete design review before planning | `docs/superpowers/specs/2026-07-29-issue-45-aws-google-kms-adapters-design.md` Requirements Locked, Options, Source Baseline, Error/Result, Security, Traceability, and Acceptance sections; `docs/superpowers/plans/2026-07-29-issue-45-aws-google-kms-adapters.md` | Commit-order evidence, not a runtime test | `HD`: design at 08:25:44; `HP`: plan at 08:51:41; `HI`: first test/implementation commit at 09:01:02 | A later contradiction or security-claim change still requires return to design review. |
 | Test-driven implementation | Design lock and plan Global Constraints; `.superpowers/sdd/2026-07-29-issue-45-aws-google-kms-adapters/task-1-report.md` through `task-9-report.md` | Recorded RED-before-GREEN cycles for runtime, test, guide, and parity-input changes; the evidence-matrix rewrite is review-only | `TDD` returned task-by-task RED/GREEN evidence; `HI` establishes that the first implementation-range commit was a test commit | Git history cannot prove developer intent; the review relies on recorded failing output, passing output, and commit order. |
 | Host-injected clients; adapters never instantiate SDK clients | `aegis/integrations/aws_kms.py::{AwsKmsArtifactSigner.__init__,AwsKmsArtifactVerifier.__init__}`; `aegis/integrations/google_cloud_kms.py::{GoogleCloudKmsArtifactSigner.__init__,GoogleCloudKmsArtifactVerifier.__init__}` | `test_aws_signer_rejects_a_missing_injected_client`; `test_aws_verifier_rejects_invalid_constructor_values`; `test_google_signer_rejects_a_missing_injected_client`; `test_google_verifier_constructor_is_lazy_frozen_and_accepts_historical_only` | `F`: all passed; `NC`: no `boto3.client` or `KeyManagementServiceClient(` construction found | Google verification intentionally permits `client=None` only for retained/offline verification. Client creation, credentials, endpoint, region/project, retry, timeout, networking, and SDK logging remain host-owned. |
-| Two tested providers | `aegis/integrations/aws_kms.py::{AwsKmsArtifactSigner,AwsKmsArtifactVerifier,AwsKmsVerificationTarget}`; `aegis/integrations/google_cloud_kms.py::{GoogleCloudKmsArtifactSigner,GoogleCloudKmsArtifactVerifier,GoogleCloudKmsVerificationTarget}` | `test_aws_signer_runs_shared_external_signing_conformance`; `test_aws_verifier_runs_shared_external_verifier_conformance`; `test_google_signer_runs_shared_randomized_signing_conformance`; `test_google_verifier_runs_shared_verifier_conformance` | `F`: all 1,015 passed | No generic, Azure, Vault, or PKCS#11 provider. |
+| Two tested providers | `aegis/integrations/aws_kms.py::{AwsKmsArtifactSigner,AwsKmsArtifactVerifier,AwsKmsVerificationTarget}`; `aegis/integrations/google_cloud_kms.py::{GoogleCloudKmsArtifactSigner,GoogleCloudKmsArtifactVerifier,GoogleCloudKmsVerificationTarget}` | `test_aws_signer_runs_shared_external_signing_conformance`; `test_aws_verifier_runs_shared_external_verifier_conformance`; `test_google_signer_runs_shared_randomized_signing_conformance`; `test_google_verifier_runs_shared_verifier_conformance` | `F`: all 1,051 passed | No generic, Azure, Vault, or PKCS#11 provider. |
 | Optional extras | `pyproject.toml [project.optional-dependencies].aws-kms/.gcp-kms`; `aegis/integrations/aws_kms.py::_botocore_client_error_code`; `aegis/integrations/google_cloud_kms.py::{_load_google_dependencies,_load_cryptography_dependencies}` | `test_kms_optional_extras_have_exact_unbounded_lower_bounds`; `test_google_signer_constructor_does_not_import_optional_dependencies`; `test_google_signer_missing_optional_dependencies_fails_only_at_use_time` | `F`: all passed; `P1`–`P7` passed | Provider SDKs are required only when used. |
 | One release path | `pyproject.toml [project].version`; `.github/workflows/publish.yml` jobs `build`, `validate-optional-extras`, and `publish` | `test_candidate_version_is_consistent_in_metadata_and_runtime`; `test_publish_workflow_separates_unprivileged_build_from_oidc_publish`; `test_every_optional_lane_downloads_the_build_once_and_never_rebuilds` | `F`: all passed; `C`: PASS | Actual publish is outside this task. |
 | No base dependency change | `pyproject.toml [project].dependencies` | `test_distribution_rename_does_not_change_runtime_dependencies`; `test_lane_isolation_rejects_opposite_provider_transitive_stacks` | `F` and `P1`: passed | Transitive base versions are resolver-selected. |
@@ -258,17 +265,17 @@ observed-result, and residual evidence.
 | Base, AWS-only, Google-only, and combined lanes pass. | `scripts/validate_kms_optional_extras.py::{main,_validate_artifact}`; `.github/workflows/publish.yml` job `validate-optional-extras` strategy matrix | `test_optional_extra_matrix_proves_exact_single_artifact_release_lanes`; `test_release_gates_publish_the_exact_optional_extra_artifact_lanes`; `test_lane_isolation_rejects_opposite_provider_transitive_stacks` | Exact commands `P1`–`P7`: seven of seven passed | Resolver-selected current versions can change over time. |
 | Wheel and sdist contents/metadata pass inspection. | `pyproject.toml`; `MANIFEST.in`; `scripts/validate_v090_distribution_candidate.py::main`; `scripts/validate_kms_optional_extras.py::main` | `test_wheel_contains_every_kms_integration_module`; `test_sdist_contains_both_maintained_kms_integration_guides`; `test_wheel_metadata_exposes_one_distribution_with_conditional_kms_extras` | `B`, `S`, `C`, `P6`, and `P7`: PASS | Setuptools license metadata deprecation is tracked below. |
 | Full test/lint/coverage/docs/public-API/frontend matrix passes cleanly provisioned. | `scripts/check_doc_parity.py::main`; `scripts/check_public_docs_no_internal_imports.py::main`; `scripts/validate_v090_release_freeze.py::main`; `demo-app-react/package.json` scripts `test` and `build` | `test_release_gates_publish_the_exact_optional_extra_artifact_lanes`; `test_v090_release_truth_accepts_exact_row_mapping_and_coupled_freeze`; `test_kms_integration_contract_stays_out_of_existing_public_namespaces` | `R`, `L`, `D1`–`D3`, `DT`, `UI1`, `UI2`: all passed | One documented non-KMS beta skip remains. |
-| AWS/Google guides and provider ADR accurately bound security claims. | `docs/decisions/ADR-0013-aws-google-kms-adapters.md`; `docs/reference/external/AWS_KMS_SIGNING.md`; `docs/reference/external/GOOGLE_CLOUD_KMS_SIGNING.md` | `test_kms_guides_publish_exact_extras_algorithms_and_compilable_examples`; `test_kms_guides_preserve_provider_identity_and_verification_boundaries`; `test_each_kms_guide_warns_about_remote_retry_signatures_and_one_receipt`; `test_kms_docs_make_only_bounded_operational_and_compliance_claims` | `DT`: all 77 passed; `D1`–`D3`: structural/release gates passed | No Technical Manual edit was made; future note retained above. |
+| AWS/Google guides and provider ADR accurately bound security claims. | `docs/decisions/ADR-0013-aws-google-kms-adapters.md`; `docs/reference/external/AWS_KMS_SIGNING.md`; `docs/reference/external/GOOGLE_CLOUD_KMS_SIGNING.md` | `test_kms_guides_publish_exact_extras_algorithms_and_compilable_examples`; `test_kms_guides_preserve_provider_identity_and_verification_boundaries`; `test_each_kms_guide_warns_about_remote_retry_signatures_and_one_receipt`; `test_kms_docs_make_only_bounded_operational_and_compliance_claims` | `DT`: all 78 passed; `D1`–`D3`: structural/release gates passed | No Technical Manual edit was made; future note retained above. |
 | Pull request references #45/#39; issues update only after merge. | External finalizer action governed by `docs/superpowers/specs/2026-07-29-issue-45-aws-google-kms-adapters-design.md` “Optional Dependencies and Release Path”; no runtime symbol can perform it | No repository test can prove a future PR body or post-merge issue mutation; direct finalizer inspection is required | Task 9 observed no push, PR, or issue mutation, as explicitly required by its handoff scope; criterion remains pending | Finalizer must include both issue references and defer issue-state changes until merge; this external action is not part of the Task 9 implementation verdict. |
 
 ## Built artifacts and installed-artifact evidence
 
-Fresh directory: `/private/tmp/aegis-task9-fix1-final.OQ92ck`
+Fresh directory: `/private/tmp/aegis-issue45-final-fix.Eiquhy`
 
 | Artifact | Size | SHA-256 |
 | --- | ---: | --- |
-| `aegis_ai_governance-0.9.0b1-py3-none-any.whl` | 189,843 bytes | `c0eaba907c38cb722cdc580fb0df16deceb3be65817a0f49c0a028473c02561e` |
-| `aegis_ai_governance-0.9.0b1.tar.gz` | 3,606,357 bytes | `b5aa37ee631773c77012bb2d209042b3767fbca61688edace7eb9613c2698273` |
+| `aegis_ai_governance-0.9.0b1-py3-none-any.whl` | 192,058 bytes | `eacc75737fd9f1ec90f7031da5b7f701345ecf2f479a7c765216227cc934cd04` |
+| `aegis_ai_governance-0.9.0b1.tar.gz` | 3,609,059 bytes | `38e562ab73fa8297c73405169956c72ecc131c7cc81976736db5f2278c0ea7f1` |
 
 The build followed every runtime, test, package metadata, public-count, and
 provider-guide change. Exact tar inspection found neither `docs/audits` nor
@@ -291,15 +298,18 @@ and
 | `base-wheel` | wheel | `{}` | No AWS or Google provider distribution installed; `PyYAML 6.0.3`, `jsonschema 4.26.0` | PASS |
 | `aws-min-wheel` | wheel | `boto3==1.43.0` | `boto3 1.43.0`, `botocore 1.43.59`, `s3transfer 0.17.1` | PASS |
 | `aws-current-wheel` | wheel | current resolver | `boto3 1.43.59`, `botocore 1.43.59`, `s3transfer 0.19.2` | PASS |
-| `gcp-min-wheel` | wheel | `google-cloud-kms==3.15.0`, `google-crc32c==1.7.1`, `cryptography==45.0.1` | Exact requested floors; `google-api-core 2.33.0` | PASS |
-| `gcp-current-wheel` | wheel | current resolver | `google-cloud-kms 3.16.0`, `google-crc32c 1.8.0`, `cryptography 49.0.0`, `google-api-core 2.33.0` | PASS |
+| `gcp-min-wheel` | wheel | `google-cloud-kms==3.15.0`, `google-crc32c==1.7.1`, `cryptography==45.0.1` | Exact requested floors; `google-api-core 2.33.0`, `google-auth 2.56.2`, `requests 2.34.2` | PASS |
+| `gcp-current-wheel` | wheel | current resolver | `google-cloud-kms 3.16.0`, `google-crc32c 1.8.0`, `cryptography 49.0.0`, `google-api-core 2.33.0`, `google-auth 2.56.2`, `requests 2.34.2` | PASS |
 | `combined-current-wheel` | wheel | current resolver | AWS current plus Google current versions above | PASS |
 | `combined-current-sdist` | sdist | current resolver | AWS current plus Google current versions above | PASS |
 
 Every provider lane exercised an identity/sign/verify cycle with real
-transport/SDK classes. Google lanes also performed retained-PEM verification;
-AWS lanes verified the exact botocore connect/read/endpoint transport classes.
-No installed-extra check skipped.
+transport/SDK classes. Google lanes also performed retained-PEM verification,
+all five exact direct API-core/requests/google-auth availability types, and a
+one-hop `RetryError` wrapper around each. AWS lanes verified all seven exact
+botocore HTTP-session transport types and proved that
+`ResponseStreamingError` remains a sanitized contract failure. No
+installed-extra check skipped.
 
 ## Residual risks and non-goals
 
@@ -336,6 +346,37 @@ No installed-extra check skipped.
   Actions workflow remains the cross-environment enforcement point; workflow
   shape, tag coupling, single-build provenance, and action pins passed static
   tests.
+
+## Final whole-branch fix wave
+
+The final independent review identified six Important findings and one Minor
+evidence/documentation finding. Regressions were written before runtime or
+guide changes: the combined defect set was RED at 34 failed and 52 passed.
+After `89adfea`, `8cbb8ae`, and `3b7fad0`, the same focused set was GREEN at
+89 passed. The final provider/conformance/distribution matrix then passed
+1,051 tests with no skips, and the complete suite passed 3,138 tests with the
+single documented non-KMS beta skip.
+
+The runtime now:
+
+- authenticates exact exception types to their installed `google-api-core`,
+  `requests`, `google-auth`, or `botocore` distribution source before
+  availability classification;
+- recognizes only the closed direct transport sets, follows exactly one
+  `RetryError` cause for Google, and excludes AWS
+  `ResponseStreamingError`;
+- accepts only canonical positive ASCII-decimal Google version IDs;
+- accepts exactly one supported Google public-key PEM block;
+- enforces a closed partition/Region relation for all eight AWS partitions;
+  and
+- has real successful AWS ECDSA verifier evidence for both supported EC key
+  specifications.
+
+The source-only guides use editable checkout installation, while released
+0.9.0b1 history remains immutable at 1,923 tests and the current-source truth
+is separately recorded at 3,138. Base dependencies, the exact extras,
+single-build release path, seven installed-artifact lanes, and the Technical
+Manual boundary were unchanged.
 
 ## Final verdict
 
