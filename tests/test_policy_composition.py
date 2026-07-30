@@ -1,5 +1,7 @@
 """Tests for policy composition via extends."""
 
+import copy
+
 import pytest
 from aegis._internal.policy_loader import compile_composed_policy, load_policy
 from aegis._internal.errors import PolicyLoadError, PolicyValidationError
@@ -175,3 +177,127 @@ def test_child_cannot_change_risk_scored_to_warn_only():
 
     assert exc.value.code == "POLICY_WIDENING"
     assert exc.value.details["path"] == "risk.mode"
+
+
+@pytest.mark.parametrize("restricted_field", ["roles", "protocols"])
+@pytest.mark.parametrize("erasure", ["missing", "empty"])
+def test_composition_cannot_erase_participant_restrictions(
+    restricted_field,
+    erasure,
+):
+    participant = {
+        "id": "agent-1",
+        "roles": ["planner"],
+        "protocols": ["local"],
+    }
+    parent = {
+        "policy_version": "2.0",
+        "roles": ["planner"],
+        "workflow": {"participants": [participant]},
+    }
+    replacement = copy.deepcopy(participant)
+    if erasure == "missing":
+        replacement.pop(restricted_field)
+    else:
+        replacement[restricted_field] = []
+    child = {
+        "policy_version": "2.0",
+        "roles": ["planner"],
+        "workflow": {"participants": [replacement]},
+    }
+
+    with pytest.raises(PolicyValidationError) as exc:
+        compile_composed_policy(parent, child)
+
+    assert exc.value.code == "POLICY_WIDENING"
+    assert exc.value.details["path"] == "workflow"
+
+
+def test_composed_candidate_rejects_duplicate_participant_ids():
+    participant = {
+        "id": "agent-1",
+        "roles": ["planner"],
+        "protocols": ["local"],
+    }
+    parent = {
+        "policy_version": "2.0",
+        "roles": ["planner"],
+        "workflow": {"participants": [participant]},
+    }
+    child = {
+        "policy_version": "2.0",
+        "roles": ["planner"],
+        "workflow": {"participants": [participant, participant]},
+    }
+
+    with pytest.raises(PolicyValidationError) as exc:
+        compile_composed_policy(parent, child)
+
+    assert exc.value.code == "WORKFLOW_PARTICIPANT_AMBIGUOUS"
+
+
+def test_composition_can_remove_some_participant_ids():
+    parent = {
+        "policy_version": "2.0",
+        "roles": ["planner"],
+        "workflow": {
+            "participants": [
+                {
+                    "id": "agent-1",
+                    "roles": ["planner"],
+                    "protocols": ["local"],
+                },
+                {
+                    "id": "agent-2",
+                    "roles": ["planner"],
+                    "protocols": ["local"],
+                },
+            ],
+        },
+    }
+    child = {
+        "policy_version": "2.0",
+        "roles": ["planner"],
+        "workflow": {
+            "participants": [
+                {
+                    "id": "agent-1",
+                    "roles": ["planner"],
+                    "protocols": ["local"],
+                },
+            ],
+        },
+    }
+
+    compiled = compile_composed_policy(parent, child)
+
+    assert compiled.authority.restriction_values["workflow"]["participants"] == (
+        {
+            "id": "agent-1",
+            "roles": ("planner",),
+            "protocols": ("local",),
+        },
+    )
+
+
+def test_composition_cannot_enable_default_disabled_protocol_capability():
+    parent = {
+        "policy_version": "2.0",
+        "roles": ["planner"],
+        "workflow": {},
+    }
+    child = {
+        "policy_version": "2.0",
+        "roles": ["planner"],
+        "workflow": {
+            "protocol_constraints": {
+                "openai_agents": {"allow_hosted_tools": True},
+            },
+        },
+    }
+
+    with pytest.raises(PolicyValidationError) as exc:
+        compile_composed_policy(parent, child)
+
+    assert exc.value.code == "POLICY_WIDENING"
+    assert exc.value.details["path"] == "workflow"

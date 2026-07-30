@@ -12,8 +12,10 @@ import pytest
 from aegis._internal.errors import PolicyValidationError
 from aegis._internal.policy_compiler import compile_policy
 from aegis._internal.restrictions import (
+    PROTOCOL_CAPABILITY_RULES,
     REGISTRY,
     RestrictionComparator,
+    protocol_capability_schema_fields,
     security_sensitive_schema_fields,
 )
 from aegis._internal.tools import validate_tool_constraints
@@ -72,6 +74,33 @@ def test_schema_security_markers_have_exact_registry_coverage():
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
 
     assert security_sensitive_schema_fields(schema) == REGISTRY.fields
+
+
+def test_protocol_schema_capabilities_have_exact_direction_registry_coverage():
+    schema_path = Path("schemas/policy_dsl.schema.json")
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+
+    assert protocol_capability_schema_fields(schema) == frozenset(
+        PROTOCOL_CAPABILITY_RULES,
+    )
+    assert {
+        path: (rule.default, rule.direction)
+        for path, rule in PROTOCOL_CAPABILITY_RULES.items()
+    } == {
+        "bedrock.require_trace": (False, "require"),
+        "bedrock.require_alias_backed_identity": (True, "require"),
+        "bedrock.require_alias": (True, "require"),
+        "a2a.protocol_version": ("1.0", "exact"),
+        "a2a.allowed_protocol_bindings": (
+            ("JSONRPC", "HTTP+JSON"),
+            "subset",
+        ),
+        "a2a.require_task_state": (True, "require"),
+        "openai_agents.require_trace": (False, "require"),
+        "openai_agents.allow_hosted_tools": (False, "allow"),
+        "openai_agents.allow_agent_as_tool": (True, "allow"),
+        "openai_agents.require_unique_agent_names": (True, "require"),
+    }
 
 
 def test_guard_effect_cannot_add_role(base_policy):
@@ -230,6 +259,22 @@ def test_duplicate_tool_names_are_ambiguous_compile_errors(base_policy):
         compile_policy(base_policy, source="duplicate-tools")
 
     assert exc.value.code == "TOOL_CONSTRAINT_AMBIGUOUS"
+
+
+def test_duplicate_workflow_participant_ids_are_ambiguous_compile_errors(
+    base_policy,
+):
+    base_policy["workflow"]["participants"] = [
+        {"id": "agent-1", "roles": ["planner"]},
+        {"id": "agent-1", "roles": ["reviewer"]},
+    ]
+
+    with pytest.raises(PolicyValidationError) as exc:
+        compile_policy(base_policy, source="duplicate-participants")
+
+    assert exc.value.code == "WORKFLOW_PARTICIPANT_AMBIGUOUS"
+    assert exc.value.details["path"] == "$.workflow.participants"
+    assert exc.value.details["participant_ids"] == ["agent-1"]
 
 
 @pytest.mark.parametrize(

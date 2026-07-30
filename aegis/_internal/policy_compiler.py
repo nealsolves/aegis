@@ -663,6 +663,25 @@ def _compile_validated_policy(
     """Project a schema-valid detached mapping onto the closed value objects."""
     del source  # Reserved for evidence provenance added by the enforcement route.
     roles = tuple(policy.get("roles", ()))
+    workflow = policy.get("workflow") or {}
+    participant_items = workflow.get("participants", ())
+    participant_id_counts = Counter(
+        item["id"] for item in participant_items
+    )
+    duplicate_participant_ids = sorted(
+        participant_id
+        for participant_id, count in participant_id_counts.items()
+        if count > 1
+    )
+    if duplicate_participant_ids:
+        raise PolicyValidationError(
+            "Workflow participants contain duplicate IDs",
+            code="WORKFLOW_PARTICIPANT_AMBIGUOUS",
+            details={
+                "path": "$.workflow.participants",
+                "participant_ids": duplicate_participant_ids,
+            },
+        )
     tool_items = (policy.get("tools") or {}).get("allowed_tools", ())
     tool_name_counts = Counter(item["name"] for item in tool_items)
     duplicate_tool_names = sorted(

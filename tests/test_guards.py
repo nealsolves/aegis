@@ -93,6 +93,106 @@ def test_guard_effect_can_lower_compiled_tool_limit():
     ]
 
 
+@pytest.mark.parametrize("restricted_field", ["roles", "protocols"])
+@pytest.mark.parametrize("erasure", ["missing", "empty"])
+def test_guard_effect_cannot_erase_participant_restrictions(
+    restricted_field,
+    erasure,
+):
+    participant = {
+        "id": "agent-1",
+        "roles": ["planner"],
+        "protocols": ["local"],
+    }
+    raw = {
+        "policy_version": "2.0",
+        "roles": ["planner"],
+        "conditions": {
+            "always": {"type": "boolean", "default": True},
+        },
+        "workflow": {"participants": [participant]},
+    }
+    compiled = compile_policy(raw, source="loaded")
+    replacement = dict(participant)
+    if erasure == "missing":
+        replacement.pop(restricted_field)
+    else:
+        replacement[restricted_field] = []
+    guard = CompiledGuard(
+        when=freeze({"condition": "always"}),
+        then=freeze({"workflow": {"participants": [replacement]}}),
+    )
+
+    with pytest.raises(PolicyValidationError) as exc:
+        evaluate_compiled_guards(compiled, (guard,), {})
+
+    assert exc.value.code == "POLICY_WIDENING"
+    assert exc.value.details["phase"] == "guard_effective"
+    assert exc.value.details["path"] == "workflow"
+
+
+def test_guard_candidate_rejects_duplicate_participant_ids():
+    participant = {
+        "id": "agent-1",
+        "roles": ["planner"],
+        "protocols": ["local"],
+    }
+    raw = {
+        "policy_version": "2.0",
+        "roles": ["planner"],
+        "conditions": {
+            "always": {"type": "boolean", "default": True},
+        },
+        "workflow": {"participants": [participant]},
+    }
+    compiled = compile_policy(raw, source="loaded")
+    guard = CompiledGuard(
+        when=freeze({"condition": "always"}),
+        then=freeze(
+            {
+                "workflow": {
+                    "participants": [participant, participant],
+                },
+            },
+        ),
+    )
+
+    with pytest.raises(PolicyValidationError) as exc:
+        evaluate_compiled_guards(compiled, (guard,), {})
+
+    assert exc.value.code == "WORKFLOW_PARTICIPANT_AMBIGUOUS"
+
+
+def test_guard_cannot_enable_default_disabled_protocol_capability():
+    raw = {
+        "policy_version": "2.0",
+        "roles": ["planner"],
+        "conditions": {
+            "always": {"type": "boolean", "default": True},
+        },
+        "workflow": {},
+    }
+    compiled = compile_policy(raw, source="loaded")
+    guard = CompiledGuard(
+        when=freeze({"condition": "always"}),
+        then=freeze(
+            {
+                "workflow": {
+                    "protocol_constraints": {
+                        "openai_agents": {"allow_hosted_tools": True},
+                    },
+                },
+            },
+        ),
+    )
+
+    with pytest.raises(PolicyValidationError) as exc:
+        evaluate_compiled_guards(compiled, (guard,), {})
+
+    assert exc.value.code == "POLICY_WIDENING"
+    assert exc.value.details["path"] == "workflow"
+
+
 def test_guard_matches_boolean_condition():
     """Guard with boolean condition that matches."""
     policy = {

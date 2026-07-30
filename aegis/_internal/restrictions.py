@@ -29,6 +29,40 @@ _NON_SECURITY_ROOT_FIELDS = frozenset(
 )
 
 
+@dataclass(frozen=True, slots=True)
+class ProtocolCapabilityRule:
+    """Runtime default and direction for one protocol capability."""
+
+    default: Any
+    direction: str
+
+
+PROTOCOL_CAPABILITY_RULES: Mapping[str, ProtocolCapabilityRule] = {
+    "bedrock.require_trace": ProtocolCapabilityRule(False, "require"),
+    "bedrock.require_alias_backed_identity": ProtocolCapabilityRule(
+        True,
+        "require",
+    ),
+    "bedrock.require_alias": ProtocolCapabilityRule(True, "require"),
+    "a2a.protocol_version": ProtocolCapabilityRule("1.0", "exact"),
+    "a2a.allowed_protocol_bindings": ProtocolCapabilityRule(
+        ("JSONRPC", "HTTP+JSON"),
+        "subset",
+    ),
+    "a2a.require_task_state": ProtocolCapabilityRule(True, "require"),
+    "openai_agents.require_trace": ProtocolCapabilityRule(False, "require"),
+    "openai_agents.allow_hosted_tools": ProtocolCapabilityRule(False, "allow"),
+    "openai_agents.allow_agent_as_tool": ProtocolCapabilityRule(True, "allow"),
+    "openai_agents.require_unique_agent_names": ProtocolCapabilityRule(
+        True,
+        "require",
+    ),
+}
+_PROTOCOL_FAMILIES = frozenset(
+    path.split(".", 1)[0] for path in PROTOCOL_CAPABILITY_RULES
+)
+
+
 def _plain(value: Any) -> Any:
     if isinstance(value, Mapping):
         return {key: _plain(item) for key, item in value.items()}
@@ -80,6 +114,94 @@ def _raise_widening(
             "reason": reason,
         },
     )
+
+
+def compare_protocol_capabilities(
+    parent: Mapping[str, Any],
+    candidate: Mapping[str, Any],
+) -> None:
+    """Prove candidate protocol capabilities are equal or more restrictive."""
+    unknown_families = sorted(
+        set(candidate) - _PROTOCOL_FAMILIES - {"local"},
+    )
+    if unknown_families:
+        raise PolicyValidationError(
+            "Protocol constraints contain an unsupported family",
+            details={"unknown_protocol_families": unknown_families},
+        )
+
+    if "local" in candidate:
+        candidate_local = candidate["local"]
+        parent_local = parent.get("local", {})
+        if not isinstance(candidate_local, Mapping) or not isinstance(
+            parent_local,
+            Mapping,
+        ):
+            raise PolicyValidationError(
+                "Local protocol constraints must be mappings",
+                details={"family": "local"},
+            )
+        if not _same(parent_local, candidate_local):
+            raise PolicyValidationError(
+                "Local protocol capabilities have no registered narrowing semantics",
+                details={"family": "local"},
+            )
+
+    for family in sorted(_PROTOCOL_FAMILIES):
+        if family not in candidate:
+            # Removing a protocol family makes that protocol unavailable.
+            continue
+        parent_family = parent.get(family, {})
+        candidate_family = candidate[family]
+        if not isinstance(parent_family, Mapping) or not isinstance(
+            candidate_family,
+            Mapping,
+        ):
+            raise PolicyValidationError(
+                "Protocol family constraints must be mappings",
+                details={"family": family},
+            )
+
+        prefix = f"{family}."
+        family_rules = {
+            path.removeprefix(prefix): rule
+            for path, rule in PROTOCOL_CAPABILITY_RULES.items()
+            if path.startswith(prefix)
+        }
+        unknown_fields = sorted(set(candidate_family) - set(family_rules))
+        if unknown_fields:
+            raise PolicyValidationError(
+                "Protocol constraints contain unsupported capability fields",
+                details={
+                    "family": family,
+                    "unknown_capability_fields": unknown_fields,
+                },
+            )
+
+        for field, rule in family_rules.items():
+            parent_value = parent_family.get(field, rule.default)
+            candidate_value = candidate_family.get(field, rule.default)
+            if rule.direction == "require":
+                widens = bool(parent_value) and not bool(candidate_value)
+            elif rule.direction == "allow":
+                widens = not bool(parent_value) and bool(candidate_value)
+            elif rule.direction == "subset":
+                widens = not set(candidate_value) <= set(parent_value)
+            elif rule.direction == "exact":
+                widens = not _same(parent_value, candidate_value)
+            else:  # pragma: no cover - guarded by the registry fitness test
+                widens = True
+            if widens:
+                raise PolicyValidationError(
+                    "Protocol capability widens runtime authority",
+                    details={
+                        "family": family,
+                        "key": field,
+                        "direction": rule.direction,
+                        "base": _plain(parent_value),
+                        "merged": _plain(candidate_value),
+                    },
+                )
 
 
 class RestrictionRule(Protocol):
@@ -500,14 +622,18 @@ class WorkflowRestrictionRule:
     ) -> None:
         if candidate is _MISSING and phase.endswith("overlay"):
             return
-        if parent in (_MISSING, None):
-            return
         from aegis._internal.policy_loader import (
             _merge_policies,
             _validate_composition_restriction,
         )
 
-        parent_policy = {"workflow": _plain(parent)}
+        parent_policy = {
+            "workflow": (
+                {}
+                if parent in (_MISSING, None)
+                else _plain(parent)
+            ),
+        }
         if phase.endswith("overlay"):
             overlay_policy = {"workflow": _plain(candidate)}
             merged_policy = _merge_policies(parent_policy, overlay_policy)
@@ -610,6 +736,29 @@ def security_sensitive_schema_fields(
             walk(child, path)
 
     walk(schema)
+    return frozenset(result)
+
+
+def protocol_capability_schema_fields(
+    schema: Mapping[str, Any],
+) -> frozenset[str]:
+    """Return every explicitly modeled workflow protocol capability path."""
+    node: Any = schema
+    for part in ("workflow", "protocol_constraints"):
+        properties = node.get("properties") if isinstance(node, Mapping) else None
+        node = properties.get(part) if isinstance(properties, Mapping) else None
+    families = node.get("properties") if isinstance(node, Mapping) else None
+    result: set[str] = set()
+    if not isinstance(families, Mapping):
+        return frozenset()
+    for family, family_schema in families.items():
+        fields = (
+            family_schema.get("properties")
+            if isinstance(family_schema, Mapping)
+            else None
+        )
+        if isinstance(fields, Mapping):
+            result.update(f"{family}.{field}" for field in fields)
     return frozenset(result)
 
 
@@ -722,7 +871,7 @@ def merge_policy_effect(
         if key not in base:
             base[key] = _plain(value)
         elif (
-            key == "allowed_tools"
+            key in {"allowed_tools", "participants"}
             and isinstance(base[key], list)
             and isinstance(value, (list, tuple))
         ):
