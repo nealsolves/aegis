@@ -494,7 +494,7 @@ corrected without changing the locked provider contract, the exact eight AWS
 partitions, or any Technical Manual file.
 
 1. **Tracked report missing from parity manifest.** RED:
-   `../../.venv/bin/python scripts/check_doc_parity.py` failed section 0A only
+   `../../.venv/bin/python scripts/check_doc_parity.py` failed section 0B only
    because
    `.superpowers/sdd/2026-07-29-issue-45-aws-google-kms-adapters/task-9-report.md`
    was an unclassified tracked document. GREEN after `d795a92`: every
@@ -604,7 +604,8 @@ work.
 - `2b174ed` — `test: prove fetched Google KMS PEM bounds`
 - `d795a92` — `docs: classify Task 9 evidence report`
 - `ef1e893` — `docs: refresh Task 9 verification count`
-- final fix-round evidence commit — corrected audit and this report (this
+- `5ccfe7a` — `docs: close KMS adapter adversarial fix round`
+- round-2 evidence correction — accurate inventory-section label (this
   commit)
 
 ## Self-review
@@ -621,3 +622,22 @@ work.
   classes, skip reason, and residuals are recorded.
 
 Final Task 9 status: `PASS`.
+
+## Task 9 adversarial fix round 2 (2026-07-30)
+
+Round 1 mislabeled the original unclassified-document failure. The checker
+registry maps candidate identity to section 0A and documentation inventory to
+section 0B; the exact tracked Task 9 report therefore failed section 0B.
+Both stale claims were corrected without changing runtime, tests, artifacts,
+hashes, counts, or provider evidence.
+
+Narrow verification passed:
+
+- exact search found the corrected section 0B failure claim in the audit and
+  this report and found no remaining stale failure-section claim;
+- documentation parity passed every section from 0A through O;
+- the v0.9.0 release-freeze validator passed brand/version parity and the
+  public-document import boundary;
+- `git diff --check` reported no whitespace errors.
+
+Round 2 status: `PASS`.
