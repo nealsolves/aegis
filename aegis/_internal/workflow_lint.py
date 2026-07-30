@@ -30,6 +30,8 @@ import yaml
 from jsonschema import Draft7Validator
 
 from aegis._internal.policy_loader import SCHEMAS_DIR
+from aegis._internal.errors import PolicyLoadError, PolicyValidationError
+from aegis._internal.policy_compiler import compile_policy
 
 
 # ---------------------------------------------------------------------------
@@ -562,7 +564,26 @@ def lint_policy(path: str, *, target_kind: str = "policy") -> list[dict]:
     if findings:
         return findings
 
-    # 5. Date consistency
+    # 5. Shared compiler semantics. Lint surfaces the compiler's stable code
+    # and path rather than maintaining a second authorization interpretation.
+    try:
+        compile_policy(policy, source=str(p), allow_legacy=False)
+    except (PolicyLoadError, PolicyValidationError) as exc:
+        details = (
+            dict(exc.details)
+            if isinstance(exc.details, dict)
+            else {}
+        )
+        findings.append(_finding(
+            exc.code,
+            str(exc),
+            target_kind,
+            str(p),
+            details=details,
+        ))
+        return findings
+
+    # 6. Date consistency
     eff = policy.get("effective_date")
     exp = policy.get("expiration_date")
     if eff and exp and eff > exp:
@@ -573,26 +594,6 @@ def lint_policy(path: str, *, target_kind: str = "policy") -> list[dict]:
             target_kind,
             str(p),
         ))
-
-    # 6. Duplicate tool names in tools.allowed_tools
-    tools_section = policy.get("tools", {})
-    allowed_tools = (
-        tools_section.get("allowed_tools", []) if isinstance(tools_section, dict) else []
-    )
-    seen: list[str] = []
-    for tool in (allowed_tools or []):
-        if not isinstance(tool, dict):
-            continue
-        name = tool.get("name", "")
-        if name in seen:
-            findings.append(_finding(
-                "TOOL_CONSTRAINT_VIOLATION",
-                f"Duplicate tool name in tools.allowed_tools: '{name}'.",
-                target_kind,
-                str(p),
-            ))
-        else:
-            seen.append(name)
 
     # 7. output_schema well-formedness
     output_schema = policy.get("output_schema")

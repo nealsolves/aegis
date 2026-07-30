@@ -13,9 +13,11 @@ recorded in audit artifact metadata for compliance evidence.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import Any, Mapping
 
 from aegis._internal.compiled_policy import (
+    CompiledPolicy,
     CompiledRiskFactor,
     CompiledRiskPolicy,
 )
@@ -35,6 +37,31 @@ VALID_RISK_MODES = (RISK_MODE_STRICT, RISK_MODE_RISK_SCORED, RISK_MODE_WARN_ONLY
 
 # Default threshold for strict/risk_scored modes
 DEFAULT_RISK_THRESHOLD = 0.7
+
+
+@dataclass(frozen=True, slots=True)
+class _RiskPolicyFacts:
+    """Minimal compatibility projection for the public scoring helper."""
+
+    roles: tuple[str, ...]
+    tools: tuple[object, ...]
+    preconditions: tuple[object, ...]
+    guards: tuple[object, ...]
+    output_validator: object | None
+
+
+def _compatibility_risk_facts(raw_policy: Mapping[str, Any]) -> _RiskPolicyFacts:
+    raw_tools = raw_policy.get("tools") or {}
+    raw_preconditions = raw_policy.get("pre_conditions") or {}
+    return _RiskPolicyFacts(
+        roles=tuple(raw_policy.get("roles") or ()),
+        tools=tuple(raw_tools.get("allowed_tools") or ()),
+        preconditions=tuple(raw_preconditions.get("required") or ()),
+        guards=tuple(raw_policy.get("guards") or ()),
+        output_validator=(
+            object() if raw_policy.get("output_schema") is not None else None
+        ),
+    )
 
 
 class RiskScore:
@@ -81,7 +108,7 @@ class RiskScore:
 def _compute_factor_score(
     factor: CompiledRiskFactor,
     invocation: Mapping[str, Any],
-    policy: Mapping[str, Any],
+    policy: CompiledPolicy | _RiskPolicyFacts,
 ) -> dict[str, Any]:
     """Compute score contribution for a single risk factor.
 
@@ -110,7 +137,7 @@ def _compute_factor_score(
 def _evaluate_risk_condition(
     condition: str,
     invocation: Mapping[str, Any],
-    policy: Mapping[str, Any],
+    policy: CompiledPolicy | _RiskPolicyFacts | Mapping[str, Any],
 ) -> bool:
     """Evaluate a risk condition deterministically.
 
@@ -122,19 +149,18 @@ def _evaluate_risk_condition(
       - "missing_guards": true if policy lacks guards
       - "external_model": true if model_provider is not "internal"
     """
+    if isinstance(policy, Mapping):
+        policy = _compatibility_risk_facts(policy)
     if condition == "no_output_schema":
-        return "output_schema" not in policy
+        return policy.output_validator is None
     if condition == "broad_roles":
-        roles = policy.get("roles", [])
-        return len(roles) > 3
+        return len(policy.roles) > 3
     if condition == "no_preconditions":
-        pre = policy.get("pre_conditions", {})
-        return not pre.get("required")
+        return not policy.preconditions
     if condition == "high_tool_count":
-        tools = policy.get("tools", {}).get("allowed_tools", [])
-        return len(tools) > 5
+        return len(policy.tools) > 5
     if condition == "missing_guards":
-        return not policy.get("guards")
+        return not policy.guards
     if condition == "external_model":
         return invocation.get("model_provider", "") != "internal"
     raise PolicyValidationError(
@@ -146,7 +172,7 @@ def _evaluate_risk_condition(
 
 def compute_risk_score(
     invocation: Mapping[str, Any],
-    policy: Mapping[str, Any],
+    policy: CompiledPolicy | Mapping[str, Any],
     *,
     risk_config: CompiledRiskPolicy | Mapping[str, Any] | None = None,
 ) -> RiskScore:
@@ -160,8 +186,15 @@ def compute_risk_score(
         - factors: list of {name, weight, condition}
     :return: RiskScore with score, threshold, mode, basis
     """
-    if risk_config is None:
-        risk_config = policy.get("risk", {})
+    if isinstance(policy, CompiledPolicy):
+        compiled_policy = policy
+        if risk_config is None:
+            risk_config = policy.risk
+    else:
+        raw_policy = policy
+        compiled_policy = _compatibility_risk_facts(policy)
+        if risk_config is None:
+            risk_config = raw_policy.get("risk", {})
     if isinstance(risk_config, CompiledRiskPolicy):
         compiled = risk_config
     else:
@@ -174,7 +207,7 @@ def compute_risk_score(
     total_score = 0.0
 
     for factor in compiled.factors:
-        entry = _compute_factor_score(factor, invocation, policy)
+        entry = _compute_factor_score(factor, invocation, compiled_policy)
         basis.append(entry)
         total_score += entry["contribution"]
 

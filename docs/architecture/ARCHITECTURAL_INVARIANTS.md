@@ -99,6 +99,11 @@ No system component may bypass:
 
 All enforcement must route through the governance engine.
 
+Every loader-to-enforcement boundary must immediately produce a
+`CompiledPolicy` with legacy authority disabled. Authorization gates may read
+only typed compiled fields; raw policy dictionaries are confined to loader and
+compiler compatibility APIs outside authorization.
+
 ---
 
 ## 4. Pipeline Ordering
@@ -283,6 +288,10 @@ It does not change any architectural invariant. Specifically:
 * Exactly one audit artifact is emitted per invocation attempt (Invariant 6). A Phase-A-only FAIL produces one FAIL artifact. A complete split invocation produces one final artifact.
 * Unified mode remains backward-compatible and fully supported.
 * Policy evaluation in Phase B must use the Phase A effective policy — no reload from disk.
+* Phase A and Phase B use the same compiled authority object in-process.
+  Serialized transfer uses a canonical compiled DTO and authenticated policy
+  digest; it must not serialize a raw policy snapshot or call `compile_policy()`
+  during Phase B reconstruction.
 
 Hosts using legacy unified mode via `pre_call_enforcement=False` are unaffected
 by split mode internals; the pipeline ordering and artifact contract are unchanged.
@@ -367,6 +376,30 @@ provider transport, retry and timeout behavior, availability policy, and
 artifact storage. AEGIS does not claim replay prevention, sequence
 completeness, complete-chain replacement detection, trusted time, immutable or
 WORM storage, certification, or regulatory compliance.
+
+---
+
+## 19. Single Compiled Policy Interpretation
+
+Policy loading, workflow lint, unified enforcement, split enforcement, async
+entry points, instance methods, adapters, and sessions share one compiler
+contract.
+
+The following rules are invariant:
+
+* compilation occurs exactly once immediately after each policy load or cache
+  retrieval used for enforcement
+* roles, tools, risk, typed preconditions, cumulative guard effects, output
+  validation, postconditions, and workflow limits are read from compiled fields
+* guard effects are compiled and compared cumulatively against the frozen
+  authority envelope
+* runtime risk overrides may only tighten compiled authority and the critical
+  ceiling remains fixed at `0.90`
+* session dynamic tool calls consume the compiled per-tool limits
+* lint reports the shared compiler's stable error code and path
+* architecture fitness tests reject raw `policy.get`, raw `policy[...]`, direct
+  enforcement `load_policy()` calls, and authorization-time raw tool-policy
+  compatibility branches
 
 ---
 

@@ -29,6 +29,7 @@ from aegis._internal.policy_loader import (
     load_policy,
 )
 from aegis._internal.errors import PolicyLoadError, PolicyValidationError
+from aegis._internal.policy_compiler import compile_policy
 from aegis._internal.lineage import AuditLineage
 from aegis._internal.policy_init import _cmd_policy_init
 from aegis._internal.workflow_init import _cmd_workflow_init
@@ -80,6 +81,18 @@ def _lint_policy(path: Path) -> list[str]:
         pointer = ".".join(str(p) for p in err.absolute_path) or "$"
         errors.append(f"  {pointer}: {err.message}")
 
+    if not errors:
+        try:
+            compile_policy(policy, source=str(path), allow_legacy=False)
+        except (PolicyLoadError, PolicyValidationError) as exc:
+            details = (
+                exc.details
+                if isinstance(exc.details, dict)
+                else {}
+            )
+            pointer = details.get("path", "$")
+            errors.append(f"[{exc.code}] {pointer}: {exc}")
+
     return errors
 
 
@@ -92,9 +105,11 @@ def _validate_policy(path: Path) -> list[str]:
     errors: list[str] = []
 
     try:
-        load_policy(str(path))
+        raw = load_policy(str(path))
+        compile_policy(raw, source=str(path), allow_legacy=False)
     except (PolicyLoadError, PolicyValidationError) as e:
-        errors.append(str(e))
+        details = e.details if isinstance(e.details, dict) else {}
+        errors.append(f"[{e.code}] {details.get('path', '$')}: {e}")
     except Exception as e:
         errors.append(f"Unexpected error: {e}")
 

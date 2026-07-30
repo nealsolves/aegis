@@ -226,6 +226,8 @@ class CompiledPolicy:
     """Detached immutable authorization data consumed by enforcement."""
 
     policy_digest: str
+    source_identity: str
+    declared_policy_version: str
     policy_contract_version: str
     pattern_engine: str
     canonicalization_profile: str
@@ -233,7 +235,10 @@ class CompiledPolicy:
     tools: tuple[CompiledToolLimit, ...]
     risk: CompiledRiskPolicy
     retry: CompiledRetryPolicy | None
+    conditions: Mapping[str, JsonValue]
     guards: tuple[CompiledGuard, ...]
     preconditions: tuple[CompiledPrecondition, ...]
+    postconditions: tuple[str, ...]
     output_validator: CompiledOutputValidator | None
+    workflow: Mapping[str, JsonValue]
     authority: AuthorityEnvelope

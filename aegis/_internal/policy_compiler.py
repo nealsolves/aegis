@@ -661,7 +661,6 @@ def _compile_validated_policy(
     allow_legacy: bool,
 ) -> CompiledPolicy:
     """Project a schema-valid detached mapping onto the closed value objects."""
-    del source  # Reserved for evidence provenance added by the enforcement route.
     roles = tuple(policy.get("roles", ()))
     workflow = policy.get("workflow") or {}
     participant_items = workflow.get("participants", ())
@@ -736,6 +735,9 @@ def _compile_validated_policy(
         if isinstance(output_schema, Mapping)
         else None
     )
+    postconditions = tuple(
+        (policy.get("post_conditions") or {}).get("required", ())
+    )
     authority = AuthorityEnvelope(
         roles=frozenset(roles),
         tools=tools,
@@ -756,6 +758,8 @@ def _compile_validated_policy(
     )
     return CompiledPolicy(
         policy_digest=_policy_digest(policy),
+        source_identity=source,
+        declared_policy_version=str(policy["policy_version"]),
         policy_contract_version=POLICY_CONTRACT_VERSION,
         pattern_engine=PATTERN_ENGINE,
         canonicalization_profile=CANONICALIZATION_PROFILE,
@@ -763,9 +767,12 @@ def _compile_validated_policy(
         tools=tools,
         risk=risk,
         retry=retry,
+        conditions=freeze(policy.get("conditions") or {}),
         guards=guards,
         preconditions=preconditions,
+        postconditions=postconditions,
         output_validator=output_validator,
+        workflow=freeze(workflow),
         authority=authority,
     )
 

@@ -15,14 +15,13 @@ from aegis._internal.errors import ToolConstraintViolationError
 
 def validate_tool_constraints(
     invocation: Mapping[str, Any],
-    tools: Sequence[CompiledToolLimit] | Mapping[str, Any],
+    tools: Sequence[CompiledToolLimit],
 ) -> dict[str, Any]:
     """
     Validate tool usage against policy constraints.
 
     :param invocation: Invocation dict with optional "tool_calls" field
-    :param tools: Immutable compiled tool limits. Raw mappings remain a
-        temporary compatibility input and are compiled before consumption.
+    :param tools: Immutable compiled tool limits.
     :return: Dict with validation summary for audit
 
     Validation rules:
@@ -41,22 +40,11 @@ def validate_tool_constraints(
     if not tool_calls:
         return {"tools_checked": [], "violations": []}
 
-    if isinstance(tools, Mapping):
-        from aegis._internal.policy_compiler import compile_policy
-
-        compiled_tools = compile_policy(
-            dict(tools),
-            source="tool-validation-compatibility",
-            allow_legacy=True,
-        ).tools
-    else:
-        compiled_tools = tuple(tools)
-
     # Skip if either not present
-    if not compiled_tools:
+    if not tools:
         return {"tools_checked": [], "violations": []}
 
-    tool_limits = {tool.name: tool.max_calls for tool in compiled_tools}
+    tool_limits = {tool.name: tool.max_calls for tool in tools}
 
     # Count actual calls per tool
     call_counts = Counter(tc["name"] for tc in tool_calls)
