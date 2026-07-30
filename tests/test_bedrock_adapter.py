@@ -329,6 +329,44 @@ def test_prepare_step_rejects_malformed_broad_invocation_output():
     assert invocation["output"] == "not-an-object"
 
 
+@pytest.mark.parametrize(
+    "output",
+    [
+        {"blob": "x" * (5 * 1024 * 1024)},
+        None,
+    ],
+    ids=["five-megabytes", "depth-10000"],
+)
+def test_prepare_step_rejects_adversarial_output_with_stable_error(output):
+    """The real adapter rejects hostile output before Phase A."""
+    from aegis.bedrock_adapter import (
+        BedrockParticipantBinding,
+        BedrockTraceAdapter,
+    )
+    from aegis._internal.errors import InvocationValidationError
+
+    if output is None:
+        nested = None
+        for _ in range(10_000):
+            nested = [nested]
+        output = {"deep": nested}
+
+    adapter = BedrockTraceAdapter()
+    invocation = dict(_BASE_INV)
+    invocation["output"] = output
+    with _make_session(protocol_constraints={"bedrock": {}}) as session:
+        binding = BedrockParticipantBinding(
+            participant_id="p1",
+            collaborator_alias=_VALID_ALIAS_ARN,
+            role="planner",
+        )
+        with pytest.raises(InvocationValidationError) as raised:
+            adapter.prepare_step(session, invocation, binding=binding)
+
+    assert raised.value.code == "INVOCATION_VALIDATION_ERROR"
+    assert invocation["output"] is output
+
+
 def test_prepare_step_accepts_partitioned_arn_alias():
     """GovCloud/China-style AWS partitions are valid Bedrock alias ARNs."""
     from aegis.bedrock_adapter import BedrockTraceAdapter, BedrockParticipantBinding

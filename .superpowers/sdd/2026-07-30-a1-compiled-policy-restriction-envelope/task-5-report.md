@@ -368,3 +368,72 @@ Residual considerations:
 - Direct enforcement APIs remain fail-closed and do not accept `output`.
 - The 13 full-suite warnings are existing precondition and deprecation warnings;
   no test failure or known security blocker remains.
+
+## Fix round 4 — bounded adapter-envelope output validation
+
+The final Important review finding was reproduced before implementation:
+the shared adapter helper fully serialized a 5 MiB compatibility `output` and
+allowed it through, while a depth-10,000 value escaped as raw
+`RecursionError`. The focused RED run produced 15 expected failures across
+limit enforcement, JSON semantics, exception translation, and real-adapter
+adversarial probes.
+
+No authoritative equivalent limits exist elsewhere in the project, so the
+adapter compatibility boundary now names and documents three conservative
+limits:
+
+- 1 MiB of compact UTF-8 encoded JSON;
+- 10,000 value nodes; and
+- nesting depth 64.
+
+Object keys must be strings and count toward the byte limit. The root plus
+object values and array elements count as nodes, and root depth is one.
+
+Validation is iterative and uses constant traversal-stack growth. It accounts
+for exact compact UTF-8 JSON bytes without first serializing strings, rejects an
+oversized string from its length lower bound, consumes container iterators one
+item at a time, and stops as soon as the byte, node, or depth limit is exceeded.
+Only after the complete preflight succeeds does the helper perform bounded
+serialization. `RecursionError`, `OverflowError`, `TypeError`, and `ValueError`
+are translated to stable `InvocationValidationError`.
+
+Tests cover the exact limit and one past it for every dimension; string-key
+object semantics; booleans, finite numbers, null, arrays, and objects;
+non-string keys; NaN and both infinities; every required serialization
+exception; and 5 MiB/depth-10,000 probes through both the shared helper and the
+real Bedrock adapter. Rejections preserve the caller's output object identity.
+Direct core and session pre-call rejection of `output` remains unchanged.
+
+Verification:
+
+```text
+# Shared helper and Bedrock RED:
+15 failed, 45 passed
+
+# Shared helper and Bedrock GREEN:
+60 passed
+
+# All protocol adapter suites:
+297 passed
+
+# Strict session and deep-review suites:
+91 passed, 1 skipped
+
+# Exact A1 completion gate:
+150 passed
+
+.venv/bin/pytest -q
+3388 passed, 1 skipped, 13 warnings
+```
+
+Changed-scope `flake8`, documentation parity, brand/version parity, the
+public-doc internal-import boundary, and `git diff --check` all pass.
+
+Residual considerations:
+
+- The limits apply only to the adapters' discarded compatibility `output`;
+  they do not weaken or alter direct Phase A/session invocation validation.
+- Successful compatibility values incur one final serialization only after
+  their traversal and maximum resource use are bounded.
+- The 13 full-suite warnings are existing precondition and deprecation
+  warnings. No known security blocker remains from this review.

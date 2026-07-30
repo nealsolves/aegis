@@ -123,6 +123,11 @@ output enters only through `complete_step(...)`, while direct session pre-call
 invocations must omit it. `complete_step(...)` validates the host-supplied task
 evidence and stores only a redacted summary in workflow step metadata.
 
+Compatibility `output` validation is bounded to 1 MiB of compact UTF-8 JSON,
+10,000 value nodes, and nesting depth 64. Object keys must be strings and count
+toward the byte limit; the root plus object values and array elements count as
+nodes, with the root at depth one.
+
 ## Strict Validation
 
 Compatibility is checked from `supportedInterfaces[].protocolVersion`, not from
