@@ -190,6 +190,107 @@ def test_smoke_report_uses_stable_artifact_provenance(
     assert "import_path" not in reports[0]
 
 
+def test_smoke_subprocess_failure_report_is_stable_and_redacted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+):
+    validator = _load_smoke_validator()
+    hostile_url = (
+        "boto3 @ https://release-user:provider-token-123@example.invalid/"
+        "boto3.whl"
+    )
+    reports = []
+    exception_messages = []
+
+    def fail_subprocess(command, **_kwargs):
+        root = next(
+            part.removesuffix("/venv/bin/python")
+            for part in command
+            if part.endswith("/venv/bin/python")
+        )
+        return subprocess.CompletedProcess(
+            args=command,
+            returncode=37,
+            stdout=f"stdout secret={hostile_url} root={root}\n",
+            stderr=f"stderr token=provider-token-123 path={root}/private\n",
+        )
+
+    monkeypatch.setattr(validator.subprocess, "run", fail_subprocess)
+
+    for root_name in ("first-random-root", "second-random-root"):
+        root = (tmp_path / root_name).resolve()
+        artifact = root / "candidate.whl"
+        artifact.parent.mkdir(parents=True)
+        artifact.write_bytes(b"candidate")
+
+        def fail_validation(
+            _artifact: Path,
+            _lane: str,
+            _expected_versions: dict[str, str],
+            *,
+            current_root=root,
+        ):
+            try:
+                validator._run(
+                    [
+                        str(current_root / "venv/bin/python"),
+                        "-m",
+                        "pip",
+                        "install",
+                        hostile_url,
+                    ],
+                    cwd=current_root,
+                    env={},
+                    stage="install_artifact",
+                )
+            except validator.OptionalExtrasValidationError as error:
+                exception_messages.append(str(error))
+                raise
+
+        monkeypatch.setattr(
+            validator,
+            "_validate_artifact",
+            fail_validation,
+        )
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                str(SCRIPT),
+                "--artifact",
+                str(artifact),
+                "--lane",
+                "base",
+                "--expected-versions",
+                "{}",
+            ],
+        )
+
+        assert validator.main() == 1
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        reports.append(json.loads(captured.err))
+
+    expected = {
+        "category": "subprocess",
+        "lane": "base",
+        "return_code": 37,
+        "schema_version": 1,
+        "stage": "install_artifact",
+        "status": "FAIL",
+    }
+    assert reports == [expected, expected]
+    assert exception_messages == [
+        "optional-extra subprocess failed",
+        "optional-extra subprocess failed",
+    ]
+    rendered = json.dumps(reports) + " ".join(exception_messages)
+    assert "provider-token-123" not in rendered
+    assert "example.invalid" not in rendered
+    assert str(tmp_path) not in rendered
+
+
 @pytest.mark.parametrize(
     ("lane", "installed", "forbidden"),
     [

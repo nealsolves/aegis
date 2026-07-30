@@ -58,6 +58,17 @@ PROVIDER_ENV_PREFIXES = (
 class CandidateValidationError(RuntimeError):
     """Raised when a release-candidate proof gate fails."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        category: str = "validation",
+        return_code: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.category = category
+        self.return_code = return_code
+
 
 def _run(
     command: list[str],
@@ -73,11 +84,11 @@ def _run(
         text=True,
     )
     if result.returncode != 0:
-        rendered = " ".join(command)
         raise CandidateValidationError(
-            f"command failed ({result.returncode}): {rendered}\n"
-            f"{result.stdout}{result.stderr}"
-        )
+            "candidate subprocess failed",
+            category="subprocess",
+            return_code=result.returncode,
+        ) from None
     return result
 
 
@@ -753,9 +764,27 @@ def _run_stage(
     operation: Callable[[], object],
 ) -> object:
     started = time.monotonic()
-    result = operation()
     stages = report.setdefault("stages", [])
     assert isinstance(stages, list)
+    try:
+        result = operation()
+    except Exception as error:
+        failure = {
+            "name": name,
+            "status": "FAIL",
+            "category": (
+                error.category
+                if isinstance(error, CandidateValidationError)
+                else "internal"
+            ),
+        }
+        if (
+            isinstance(error, CandidateValidationError)
+            and type(error.return_code) is int
+        ):
+            failure["return_code"] = error.return_code
+        stages.append(failure)
+        raise
     stages.append(
         {
             "name": name,
@@ -822,16 +851,28 @@ def main() -> int:
         report["status"] = "PASS"
         _write_report(args.output_json, report)
         return 0
-    except Exception as exc:
+    except Exception as error:
         stages = report.setdefault("stages", [])
         assert isinstance(stages, list)
-        stages.append(
-            {
-                "name": "failure",
+        if not any(
+            isinstance(stage, dict) and stage.get("status") == "FAIL"
+            for stage in stages
+        ):
+            failure = {
+                "name": "validation",
                 "status": "FAIL",
-                "error": f"{type(exc).__name__}: {exc}",
+                "category": (
+                    error.category
+                    if isinstance(error, CandidateValidationError)
+                    else "internal"
+                ),
             }
-        )
+            if (
+                isinstance(error, CandidateValidationError)
+                and type(error.return_code) is int
+            ):
+                failure["return_code"] = error.return_code
+            stages.append(failure)
         _write_report(args.output_json, report)
         return 1
 

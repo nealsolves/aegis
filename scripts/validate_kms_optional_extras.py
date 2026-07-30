@@ -88,6 +88,19 @@ KMS_PROVIDER_DISTRIBUTIONS = frozenset(
 class OptionalExtrasValidationError(RuntimeError):
     """Raised when an installed-artifact lane fails its contract."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        stage: str = "artifact_validation",
+        category: str = "validation",
+        return_code: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.stage = stage
+        self.category = category
+        self.return_code = return_code
+
 
 def _marker_operand_key(operand: object) -> tuple[str, str]:
     kind = type(operand).__name__.lower()
@@ -235,6 +248,7 @@ def _run(
     *,
     cwd: Path,
     env: dict[str, str],
+    stage: str,
 ) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(
         command,
@@ -245,9 +259,11 @@ def _run(
     )
     if result.returncode != 0:
         raise OptionalExtrasValidationError(
-            f"command failed ({result.returncode}): {' '.join(command)}\n"
-            f"{result.stdout}{result.stderr}"
-        )
+            "optional-extra subprocess failed",
+            stage=stage,
+            category="subprocess",
+            return_code=result.returncode,
+        ) from None
     return result
 
 
@@ -732,6 +748,7 @@ def _validate_artifact(
                 ],
                 cwd=smoke_dir,
                 env=env,
+                stage="install_expected_versions",
             )
 
         _run(
@@ -745,11 +762,13 @@ def _validate_artifact(
             ],
             cwd=smoke_dir,
             env=env,
+            stage="install_artifact",
         )
         _run(
             [str(python), "-m", "pip", "check"],
             cwd=smoke_dir,
             env=env,
+            stage="dependency_check",
         )
         smoke = _run(
             [
@@ -762,6 +781,7 @@ def _validate_artifact(
             ],
             cwd=smoke_dir,
             env=env,
+            stage="artifact_smoke",
         )
         child_report = json.loads(smoke.stdout)
         _validate_kms_requirement_metadata(child_report["requires_dist"])
@@ -818,10 +838,27 @@ def main() -> int:
             args.expected_versions,
         )
     except Exception as error:
-        print(
-            f"{type(error).__name__}: {error}",
-            file=sys.stderr,
-        )
+        failure = {
+            "schema_version": 1,
+            "status": "FAIL",
+            "lane": args.lane,
+            "stage": (
+                error.stage
+                if isinstance(error, OptionalExtrasValidationError)
+                else "artifact_validation"
+            ),
+            "category": (
+                error.category
+                if isinstance(error, OptionalExtrasValidationError)
+                else "internal"
+            ),
+        }
+        if (
+            isinstance(error, OptionalExtrasValidationError)
+            and type(error.return_code) is int
+        ):
+            failure["return_code"] = error.return_code
+        print(json.dumps(failure, sort_keys=True), file=sys.stderr)
         return 1
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0

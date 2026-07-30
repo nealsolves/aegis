@@ -4,6 +4,7 @@ from __future__ import annotations
 from email.parser import BytesParser
 from email.policy import default
 import importlib.util
+import json
 import re
 from pathlib import Path
 import subprocess
@@ -277,6 +278,101 @@ def test_candidate_installed_import_provenance_is_stable_across_temp_roots(
         {"import_location": "isolated-virtualenv"},
         {"import_location": "isolated-virtualenv"},
     ]
+
+
+def test_candidate_subprocess_failure_report_is_stable_and_redacted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+):
+    validator = _load_candidate_validator()
+    hostile_url = (
+        "https://release-user:provider-token-123@example.invalid/"
+        "candidate.whl"
+    )
+    reports = []
+    exception_messages = []
+
+    def fail_subprocess(command, **_kwargs):
+        root = next(
+            part.removesuffix("/venv/bin/python")
+            for part in command
+            if part.endswith("/venv/bin/python")
+        )
+        return subprocess.CompletedProcess(
+            args=command,
+            returncode=41,
+            stdout=f"stdout secret={hostile_url} root={root}\n",
+            stderr=f"stderr token=provider-token-123 path={root}/private\n",
+        )
+
+    monkeypatch.setattr(validator.subprocess, "run", fail_subprocess)
+
+    for root_name in ("first-random-root", "second-random-root"):
+        root = (tmp_path / root_name).resolve()
+        dist_dir = root / "dist"
+        dist_dir.mkdir(parents=True)
+
+        def fail_inspection(_dist_dir: Path, *, current_root=root):
+            try:
+                validator._run(
+                    [
+                        str(current_root / "venv/bin/python"),
+                        "-m",
+                        "pip",
+                        "install",
+                        hostile_url,
+                    ],
+                    cwd=current_root,
+                )
+            except validator.CandidateValidationError as error:
+                exception_messages.append(str(error))
+                raise
+
+        monkeypatch.setattr(
+            validator,
+            "_inspect_artifacts",
+            fail_inspection,
+        )
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                str(CANDIDATE_VALIDATOR),
+                "--dist-dir",
+                str(dist_dir),
+                "--no-build",
+            ],
+        )
+
+        assert validator.main() == 1
+        captured = capsys.readouterr()
+        assert captured.err == ""
+        reports.append(json.loads(captured.out))
+
+    expected = {
+        "distribution": "aegis-ai-governance",
+        "schema_version": 1,
+        "stages": [
+            {
+                "category": "subprocess",
+                "name": "inspect_artifacts",
+                "return_code": 41,
+                "status": "FAIL",
+            }
+        ],
+        "status": "FAIL",
+        "version": "0.9.0b1",
+    }
+    assert reports == [expected, expected]
+    assert exception_messages == [
+        "candidate subprocess failed",
+        "candidate subprocess failed",
+    ]
+    rendered = json.dumps(reports) + " ".join(exception_messages)
+    assert "provider-token-123" not in rendered
+    assert "example.invalid" not in rendered
+    assert str(tmp_path) not in rendered
 
 
 def test_wheel_contains_every_kms_integration_module(built_wheel: Path):
