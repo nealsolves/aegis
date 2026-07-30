@@ -17,7 +17,7 @@ flowchart LR
     A2 --> B2
     B2 --> A3["A3: Operation registry"]
     A3 --> B3["B3: Chain-before-sign"]
-    B3 --> B4
+    B3 --> B4["B4: Workflow claimed-set metadata"]
     B4 --> I46["#46: Trusted checkpoints"]
     B3 --> I46
 ```

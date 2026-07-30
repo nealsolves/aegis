@@ -889,6 +889,11 @@ The policy-schema contract advances to `2.0` for compiled policies:
   closed pattern-engine profile;
 - output schemas are pinned to safe Draft 7 behavior.
 
+`CompiledPolicy.policy_contract_version` is the discriminator for this AEGIS
+policy contract. It is distinct from the audit artifact's
+`policy_schema_version`, which continues to identify the JSON Schema dialect
+used to validate the policy.
+
 The root and packaged policy schemas remain byte-for-byte identical.
 
 ### Audit schema
@@ -1118,7 +1123,8 @@ Deliver:
 - declared risk-condition resolution;
 - runtime override comparator;
 - required RE2 pattern compiler, input bounds, and migration diagnostics;
-- safe output-schema compiler.
+- safe output-schema compiler;
+- frozen `canonicalization_profile` and closed `JsonValue` interfaces for B1.
 
 Closes or materially delivers:
 
