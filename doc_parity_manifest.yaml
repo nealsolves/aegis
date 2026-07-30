@@ -16,7 +16,7 @@ distribution_name: "aegis-ai-governance"
 import_package: "aegis"
 console_command: "aegis"
 candidate_status: "released-beta"
-test_count: 1923
+test_count: 3138
 coverage_threshold: 90
 audit_schema_version: "1.4"
 
@@ -88,6 +88,18 @@ documentation_inventory:
     - docs/superpowers/specs/2026-04-*
     - docs/superpowers/plans/2026-07-28-issue-44-trust-anchor-contracts.md
     - docs/superpowers/specs/2026-07-28-issue-44-trust-anchor-contracts-design.md
+    - docs/superpowers/plans/2026-07-25-aegis-demo-redesign.md
+    - docs/superpowers/specs/2026-07-25-aegis-demo-redesign-design.md
+    - docs/superpowers/plans/2026-07-26-labs-navigation-redesign.md
+    - docs/superpowers/specs/2026-07-26-labs-navigation-redesign-design.md
+    - docs/superpowers/plans/2026-07-26-landing-page-boundary-story.md
+    - docs/superpowers/specs/2026-07-26-landing-page-boundary-story-design.md
+    # Issue #45 design history is non-authoritative; maintained provider
+    # guidance lives under docs/reference/** and ADRs match docs/decisions/**.
+    - docs/superpowers/plans/2026-07-29-issue-45-aws-google-kms-adapters.md
+    - docs/superpowers/specs/2026-07-29-issue-45-aws-google-kms-adapters-design.md
+    - .superpowers/sdd/2026-07-29-issue-45-aws-google-kms-adapters/task-9-report.md
+    - .superpowers/sdd/2026-07-29-issue-45-aws-google-kms-adapters/final-fix-wave-report.md
   instruction_system:
     - CLAUDE.md
     - .claude/**

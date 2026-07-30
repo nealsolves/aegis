@@ -16,6 +16,15 @@ Source, tags, and release artifacts for versions before `0.9.0` remain in
 [`nealsolves/aigc`](https://github.com/nealsolves/aigc). This repository is the
 AEGIS `0.9.0`-and-later development home.
 
+The source-only metadata-aware signing line includes optional
+[AWS KMS](reference/external/AWS_KMS_SIGNING.md) and
+[Google Cloud KMS](reference/external/GOOGLE_CLOUD_KMS_SIGNING.md) adapters.
+They use their provider-specific modules directly and remain in the one
+`aegis-ai-governance` distribution. Artifact metadata does not select provider
+resources: the host's resolver authorizes an exact identity pair. The host
+also owns client construction, credentials, retry/timeout behavior, endpoints,
+regional/project configuration, IAM, trust policy, and retained evidence.
+
 The SDK enforces policy validation, schema compliance, and audit artifact
 generation. This guide covers what the **integrator** is responsible for
 beyond what the SDK handles at runtime.

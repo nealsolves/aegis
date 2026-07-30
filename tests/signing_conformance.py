@@ -21,6 +21,7 @@ from aegis.signing import (
     ArtifactVerificationResult,
     SignatureMetadata,
     SignatureStatus,
+    SigningReceipt,
     VerificationReasonCode,
     sign_artifact_with_metadata,
     verify_artifact_detailed,
@@ -51,10 +52,11 @@ class VerifierScenario(str, Enum):
 
 @dataclass(frozen=True)
 class SignerFixture:
-    """A signer plus its recorded signing payloads for redaction inspection."""
+    """A signer plus independent checks for its externally produced signatures."""
 
     signer: object
     recorded_payloads: Callable[[], Sequence[bytes]]
+    verify_signature: Callable[[bytes, SigningReceipt], bool]
 
 
 @dataclass(frozen=True)
@@ -261,8 +263,12 @@ def assert_external_signer_conformance(signer_factory: SignerFactory) -> None:
         payloads=(payload + b"!",),
         raw_signature=changed_receipt.signature,
     )
-    assert receipt.signature == repeated_receipt.signature
-    assert receipt.signature != changed_receipt.signature
+    assert fixture.verify_signature(payload, receipt) is True
+    assert fixture.verify_signature(payload, repeated_receipt) is True
+    assert fixture.verify_signature(payload + b"!", receipt) is False
+    assert fixture.verify_signature(payload + b"!", repeated_receipt) is False
+    assert fixture.verify_signature(payload, changed_receipt) is False
+    assert fixture.verify_signature(payload + b"!", changed_receipt) is True
     assert receipt.algorithm == identity.algorithm
     assert receipt.signature_encoding is identity.signature_encoding
     assert receipt.key_reference == identity.key_reference
@@ -294,6 +300,8 @@ def assert_external_signer_conformance(signer_factory: SignerFactory) -> None:
 def assert_external_verifier_conformance(
     signed_artifact_factory: SignedArtifactFactory,
     verifier_factory: VerifierFactory,
+    *,
+    unknown_version: str = "version/unknown",
 ) -> None:
     """Assert exact-version verification and safe public verification outcomes."""
     unsigned = _artifact()
@@ -376,7 +384,7 @@ def assert_external_verifier_conformance(
         signed_artifact_factory, "version/current"
     )
     unknown = fixture.artifact
-    unknown["signature_metadata"]["key_version"] = "version/unknown"
+    unknown["signature_metadata"]["key_version"] = unknown_version
     snapshot = deepcopy(unknown)
     with _capture_logs() as logs:
         recording_verifier = _RecordingVerifier(

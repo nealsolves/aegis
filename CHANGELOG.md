@@ -18,6 +18,15 @@ These changes exist in the current source tree but are not in the published
   `verify_artifact_detailed()` results. Legacy HMAC and boolean verification
   remain unchanged; external keys, credentials, transport, availability
   behavior, trusted checkpoints, and storage remain host-owned.
+- Add AWS KMS and Google Cloud KMS asymmetric artifact-signing adapters under
+  this same source-only version boundary and the single
+  `aegis-ai-governance` distribution. Optional `aws-kms` and `gcp-kms` extras
+  leave base dependencies unchanged; exact-pair trust resolution, clients,
+  credentials, provider configuration, IAM, and retained evidence remain
+  host-owned.
+- Current-source verification baseline: `3,138 tests` pass. This does not
+  rewrite the released `0.9.0b1` evidence below. The manifest notation is
+  `3138 tests`.
 
 ## [0.9.0b1] — 2026-07-25
 
@@ -32,7 +41,8 @@ This public beta is released as the `aegis-ai-governance` distribution from
   runtime dependencies.
 - Package the completed `v0.9.0` workflow governance surface as candidate
   version `0.9.0b1`.
-- Validate the candidate against `1923 tests` before release-ready promotion.
+- Validate the released candidate against `1,923 tests` before release-ready
+  promotion.
 
 ### Fixed
 

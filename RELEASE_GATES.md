@@ -173,3 +173,25 @@ present.
 - [x] `feat/v0.9-11-beta-freeze` lands
 - [x] `release/v0.9.0` identifies the verified release line
 - [x] only then is the `origin/develop` -> `origin/main` release cutover merged
+
+## Source-only KMS Adapter Release Gate
+
+AWS KMS and Google Cloud KMS remain optional extras on the one
+`aegis-ai-governance` distribution. The build job produces the wheel and
+source distribution once; every lane below downloads that same artifact set,
+checks exact dependency metadata and provider-family isolation, and exercises
+public identity/sign/verify behavior before the single publish job can run:
+
+- `base-wheel`
+- `aws-min-wheel`
+- `aws-current-wheel`
+- `gcp-min-wheel`
+- `gcp-current-wheel`
+- `combined-current-wheel`
+- `combined-current-sdist`
+
+The base dependency set remains exactly `PyYAML >= 6.0` and
+`jsonschema >= 4.0`. Provider requirements are conditional only:
+`boto3 >= 1.43.0` for `aws-kms`, and `google-cloud-kms >= 3.15.0`,
+`google-crc32c >= 1.7.1`, and `cryptography >= 45.0.1` for `gcp-kms`.
+No adapter-specific build, version, or publish path is permitted.
