@@ -1,7 +1,7 @@
 # Enforcement-Core Security Remediation Design
 
 Date: 2026-07-30
-Status: Revised after adversarial review; awaiting final approval
+Status: Approved for implementation planning
 Scope: Architecture and roadmap only; no remediation implementation
 
 ## Executive decision
@@ -698,7 +698,7 @@ return from its synchronous `emit` call is the acknowledgement boundary.
 ### Host-owned invocation chains
 
 AEGIS does not create a global invocation chain. A host that wants chaining
-configures a `ChainLinker` that returns chain coordinates before finalization.
+configures a `ChainLinker` that reserves chain coordinates before finalization.
 The host owns:
 
 - chain namespace and ordering;
@@ -714,8 +714,17 @@ linker returning any other primitive is invalid and finalization fails closed.
 The finalizer owns how supplied coordinates are covered. A host must not append
 chain fields to an already finalized artifact.
 
+The reservation is committed with the new v2 content checksum only after
+acknowledged emission. Any checksum, signing, schema, or delivery failure aborts
+the reservation. A host linker must define atomic reserve/commit/abort
+semantics; it may serialize callers while a predecessor checksum is pending.
+This prevents index gaps and prevents entry `N+1` from linking before entry
+`N`'s content checksum exists without transferring ordering ownership to
+AEGIS.
+
 The in-memory `AuditChain` utility may implement the linker contract for
-single-process use, but enforcement does not instantiate one automatically.
+single-process use by allowing one outstanding reservation, but enforcement
+does not instantiate one automatically.
 
 ## 6. Separately signed workflow evidence
 
@@ -1148,32 +1157,29 @@ CEL remains blocked until #42 is complete.
 
 ### Deferred hardening tracking gate
 
-The following findings stay outside Tracks A and B, but may not remain
-memory-only deferrals:
+The following findings stay outside Tracks A and B and are tracked separately:
 
-- `extends` containment within a configured policy root;
-- audit file anti-symlink and owner-only permission hardening;
-- demo request-body limits, YAML expansion controls, rate limiting, and
-  sanitized client errors.
+- [#57 — contain `extends` within a fixed policy root](https://github.com/nealsolves/aegis/issues/57);
+- [#58 — harden audit-file creation against symlinks and permissive modes](https://github.com/nealsolves/aegis/issues/58);
+- [#59 — bound demo requests/YAML expansion/rate and sanitize client errors](https://github.com/nealsolves/aegis/issues/59).
 
-Each receives its own linked issue and severity triage before the first
-implementation plan from this architecture is approved. Their issue links must
-replace this unnumbered list in the roadmap. Filing them does not silently add
-their implementation to A1–A3 or B1–B4; any dependency discovered during issue
-triage must be added explicitly.
+Filing them does not silently add their implementation to A1–A3 or B1–B4; any
+dependency discovered during issue triage must be added explicitly.
 
 ### Implementation-plan decomposition
 
 This architecture is intentionally broader than one implementation plan. After
-the written specification is approved, planning is split into these documents:
+the written specification is approved, planning is split into these documents,
+with the [plan index](../plans/2026-07-30-enforcement-core-plan-index.md)
+recording the executable dependency graph:
 
-1. A1 compiled policy, restriction envelope, and #53/#54/#56;
-2. A2 detached gate projections and closed gate, hook, and risk outcomes;
-3. A3 process-affine operation registry;
-4. B1 canonicalization, strict checksum, and typed verification;
-5. B2 central finalizer, fail-closed delivery, and workflow signing;
-6. B3 chain-before-sign and host linker;
-7. B4 workflow claimed-set and completeness metadata;
+1. [A1 compiled policy, restriction envelope, and #53/#54/#56](../plans/2026-07-30-a1-compiled-policy-restriction-envelope.md);
+2. [A2 detached gate projections and closed gate, hook, and risk outcomes](../plans/2026-07-30-a2-closed-outcome-gate-projection.md);
+3. [A3 process-affine operation registry](../plans/2026-07-30-a3-process-affine-operation-registry.md);
+4. [B1 canonicalization, strict checksum, and typed verification](../plans/2026-07-30-b1-canonicalization-checksum-verification.md);
+5. [B2 central finalizer, fail-closed delivery, and workflow signing](../plans/2026-07-30-b2-evidence-finalizer-workflow-signing.md);
+6. [B3 chain-before-sign and host linker](../plans/2026-07-30-b3-chain-before-sign-linker.md);
+7. [B4 workflow claimed-set and completeness metadata](../plans/2026-07-30-b4-workflow-completeness-metadata.md);
 8. #46 external checkpoint integration after both tracks converge.
 
 Each plan carries only the frozen interfaces it consumes from its predecessors.
@@ -1214,6 +1220,9 @@ replacement detection are unproven without an external checkpoint.
 | #46 trusted checkpoints | Typed verification and stable finalized evidence | #47, completion of #39 |
 | #38 adapter conformance | Shared invariant harness | new adapter releases |
 | #42 stateful providers | Compiled provider boundary | CEL and distributed policy state |
+| #57 policy-root containment | Deferred compiler hardening | future file-loader hardening plan |
+| #58 audit-file permissions/symlinks | Deferred sink hardening | future local-sink hardening plan |
+| #59 demo resource/error controls | Deferred demo hardening | future demo security plan |
 
 ## 13. Documentation deliverables
 
