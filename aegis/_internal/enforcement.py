@@ -25,7 +25,7 @@ import re
 import time as _time
 import types
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Mapping, NoReturn, Sequence
 
 if TYPE_CHECKING:
     from aegis._internal.session import GovernanceSession
@@ -947,8 +947,14 @@ def _validate_invocation(invocation: Mapping[str, Any]) -> None:
 
 
 def _validate_pre_call_invocation(invocation: Mapping[str, Any]) -> None:
-    """Validate a pre-call invocation (output not required or used)."""
+    """Validate a pre-call invocation before any model output exists."""
     _validate_invocation_core(invocation)
+    if "output" in invocation:
+        raise InvocationValidationError(
+            "Invocation field 'output' is not allowed during pre-call "
+            "enforcement",
+            details={"field": "output"},
+        )
 
 
 def _map_exception_to_failure_gate(exc: Exception) -> str:
@@ -3027,70 +3033,70 @@ class AEGIS:
         :return: PreCallResult token
         :raises: AIGCError subclasses on governance violation
         """
-        if not isinstance(invocation, Mapping):
-            _exc = InvocationValidationError(
-                "Invocation must be a mapping object",
-                details={"received_type": type(invocation).__name__},
-            )
-            _safe = {
-                "policy_file": "unknown", "model_provider": "unknown",
-                "model_identifier": "unknown", "role": "unknown",
-                "input": {}, "output": {}, "context": {},
-            }
-            _artifact = _generate_pre_pipeline_fail_artifact(
-                _safe, _exc,
-                redaction_patterns=self._redaction_patterns,
-            )
-            _artifact.setdefault("metadata", {})["enforcement_mode"] = (
-                "split_pre_call_only"
-            )
-            _exc.audit_artifact = _artifact
-            try:
-                emit_to_sink(
-                    _artifact,
-                    sink=self._sink,
-                    failure_mode=self._on_sink_failure,
-                )
-            except AuditSinkError as _sink_exc:
-                logger.error(
-                    "Sink emission failed on pre-pipeline FAIL path: %s",
-                    _sink_exc,
-                )
-            raise _exc
+        policy = self._prepare_pre_call_policy(invocation, policy=None)
+        return self._run_pre_call_compiled(invocation, policy)
 
-        try:
-            _validate_pre_call_invocation(invocation)
-            policy = _compile_cached_policy(
-                invocation["policy_file"],
-                cache=self._policy_cache,
-                loader=self._policy_loader,
-            )
-            _validate_policy_strict(policy, self._strict_mode)
-        except AIGCError as exc:
+    def _raise_pre_call_boundary_failure(
+        self,
+        invocation: object,
+        exc: AIGCError,
+    ) -> NoReturn:
+        """Attach and emit the canonical split-boundary failure artifact."""
+        if isinstance(invocation, Mapping):
             safe_inv = dict(invocation)
             safe_inv.setdefault("output", {})
-            artifact = _generate_pre_pipeline_fail_artifact(
-                safe_inv, exc,
-                redaction_patterns=self._redaction_patterns,
+        else:
+            safe_inv = {
+                "policy_file": "unknown",
+                "model_provider": "unknown",
+                "model_identifier": "unknown",
+                "role": "unknown",
+                "input": {},
+                "output": {},
+                "context": {},
+            }
+        artifact = _generate_pre_pipeline_fail_artifact(
+            safe_inv,
+            exc,
+            redaction_patterns=self._redaction_patterns,
+        )
+        artifact.setdefault("metadata", {})["enforcement_mode"] = (
+            "split_pre_call_only"
+        )
+        exc.audit_artifact = artifact
+        try:
+            emit_to_sink(
+                artifact,
+                sink=self._sink,
+                failure_mode=self._on_sink_failure,
             )
-            artifact.setdefault("metadata", {})["enforcement_mode"] = (
-                "split_pre_call_only"
+        except AuditSinkError as sink_exc:
+            logger.error(
+                "Sink emission failed on pre-pipeline FAIL path: %s",
+                sink_exc,
             )
-            exc.audit_artifact = artifact
-            try:
-                emit_to_sink(
-                    artifact,
-                    sink=self._sink,
-                    failure_mode=self._on_sink_failure,
-                )
-            except AuditSinkError as sink_exc:
-                logger.error(
-                    "Sink emission failed on pre-pipeline FAIL path: %s",
-                    sink_exc,
-                )
-            raise
+        raise exc
 
-        return self._enforce_pre_call_compiled(invocation, policy)
+    def _prepare_pre_call_policy(
+        self,
+        invocation: Mapping[str, Any],
+        *,
+        policy: CompiledPolicy | None,
+    ) -> CompiledPolicy:
+        """Apply split-boundary invariants once and return exact authority."""
+        try:
+            _validate_pre_call_invocation(invocation)
+            prepared_policy = policy
+            if prepared_policy is None:
+                prepared_policy = _compile_cached_policy(
+                    invocation["policy_file"],
+                    cache=self._policy_cache,
+                    loader=self._policy_loader,
+                )
+            _validate_policy_strict(prepared_policy, self._strict_mode)
+            return prepared_policy
+        except AIGCError as exc:
+            self._raise_pre_call_boundary_failure(invocation, exc)
 
     def _enforce_pre_call_compiled(
         self,
@@ -3098,6 +3104,18 @@ class AEGIS:
         policy: CompiledPolicy,
     ) -> PreCallResult:
         """Run Phase A from an already-authorized compiled policy object."""
+        prepared_policy = self._prepare_pre_call_policy(
+            invocation,
+            policy=policy,
+        )
+        return self._run_pre_call_compiled(invocation, prepared_policy)
+
+    def _run_pre_call_compiled(
+        self,
+        invocation: Mapping[str, Any],
+        policy: CompiledPolicy,
+    ) -> PreCallResult:
+        """Run Phase A after the shared split-boundary validation."""
         grouped_gates = sort_gates(self._custom_gates)
         pre_call_timestamp = int(_time.time())
         # Unique per-token nonce ensures _token_hmac is unique even for

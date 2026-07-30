@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
+import re
 
 
 _ROOT = Path(__file__).resolve().parents[1]
@@ -15,13 +16,20 @@ _MODULES = {
     name: _ROOT / "aegis" / "_internal" / f"{name}.py"
     for name in (
         "compiled_policy",
+        "conditions",
+        "gates",
         "policy_compiler",
         "policy_loader",
+        "provenance_gate",
         "restrictions",
         "guards",
         "enforcement",
+        "schema_compiler",
         "session",
         "tools",
+        "validator",
+        "validator_hook",
+        "risk_history",
         "risk_scoring",
         "retry",
         "workflow_lint",
@@ -186,10 +194,37 @@ _COMPILED_BOUNDARIES = {
     "_enforce_pre_call_compiled": {"policy"},
     "compute_compiled_risk_score": {"policy"},
 }
+_SEMANTIC_CALL_KINDS = {
+    "compile_policy": "compile_policy",
+    "load_policy": "load_policy",
+    "enforce": "reload-capable-entrypoint",
+    "enforce_invocation": "reload-capable-entrypoint",
+    "enforce_invocation_async": "reload-capable-entrypoint",
+    "enforce_pre_call": "reload-capable-entrypoint",
+    "enforce_pre_call_async": "reload-capable-entrypoint",
+}
+_NARROW_RETAINED_MAPPING_FIELDS = {
+    ("PreCallResult", "invocation_snapshot"),
+    ("PreCallResult", "phase_a_metadata"),
+    ("PreCallResult", "resolved_conditions"),
+}
 
 
 def _annotation_text(node: ast.AST | None) -> str:
     return ast.unparse(node) if node is not None else ""
+
+
+def _annotation_guarantees_compiled_policy(node: ast.AST | None) -> bool:
+    """Return whether the annotated value itself is a CompiledPolicy."""
+    type_names = set(re.findall(r"\b[A-Za-z_]\w*\b", _annotation_text(node)))
+    if "CompiledPolicy" not in type_names:
+        return False
+    return type_names <= {
+        "CompiledPolicy",
+        "None",
+        "Optional",
+        "Union",
+    }
 
 
 def _call_name(node: ast.Call) -> str | None:
@@ -200,6 +235,293 @@ def _call_name(node: ast.Call) -> str | None:
     return None
 
 
+def _parent_maps(
+    tree: ast.AST,
+) -> tuple[dict[ast.AST, ast.AST], dict[ast.AST, str]]:
+    parents: dict[ast.AST, ast.AST] = {}
+    classes: dict[ast.AST, str] = {}
+
+    def visit(node: ast.AST, class_name: str | None = None) -> None:
+        next_class = node.name if isinstance(node, ast.ClassDef) else class_name
+        if next_class is not None:
+            classes[node] = next_class
+        for child in ast.iter_child_nodes(node):
+            parents[child] = node
+            visit(child, next_class)
+
+    visit(tree)
+    return parents, classes
+
+
+def _semantic_import_aliases(tree: ast.AST) -> dict[str, str]:
+    aliases: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        for imported in node.names:
+            kind = _SEMANTIC_CALL_KINDS.get(imported.name)
+            if kind is not None:
+                aliases[imported.asname or imported.name] = kind
+    for name, kind in _SEMANTIC_CALL_KINDS.items():
+        aliases.setdefault(name, kind)
+    return aliases
+
+
+def _assigned_names(node: ast.Assign | ast.AnnAssign) -> list[str]:
+    targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+    return [target.id for target in targets if isinstance(target, ast.Name)]
+
+
+def _call_aliases(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    imported_aliases: dict[str, str],
+) -> dict[str, str]:
+    aliases = dict(imported_aliases)
+    changed = True
+    while changed:
+        changed = False
+        for assignment in (
+            child
+            for child in ast.walk(function)
+            if isinstance(child, (ast.Assign, ast.AnnAssign))
+        ):
+            value = assignment.value
+            kind: str | None = None
+            if isinstance(value, ast.Name):
+                kind = aliases.get(value.id)
+            elif isinstance(value, ast.Attribute):
+                kind = _SEMANTIC_CALL_KINDS.get(value.attr)
+            if kind is None:
+                continue
+            for name in _assigned_names(assignment):
+                if aliases.get(name) != kind:
+                    aliases[name] = kind
+                    changed = True
+    return aliases
+
+
+def _semantic_call_kind(call: ast.Call, aliases: dict[str, str]) -> str | None:
+    if isinstance(call.func, ast.Name):
+        return aliases.get(call.func.id)
+    if isinstance(call.func, ast.Attribute):
+        return _SEMANTIC_CALL_KINDS.get(call.func.attr)
+    return None
+
+
+def _compiled_attributes(tree: ast.AST) -> set[str]:
+    attributes: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.AnnAssign):
+            continue
+        if not _annotation_guarantees_compiled_policy(node.annotation):
+            continue
+        if isinstance(node.target, ast.Attribute):
+            attributes.add(node.target.attr)
+        elif isinstance(node.target, ast.Name):
+            attributes.add(node.target.id)
+
+    changed = True
+    while changed:
+        changed = False
+        for function in (
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        ):
+            compiled_names = {
+                arg.arg
+                for arg in (*function.args.posonlyargs, *function.args.args)
+                if _annotation_guarantees_compiled_policy(arg.annotation)
+            }
+            for assignment in (
+                child
+                for child in ast.walk(function)
+                if isinstance(child, (ast.Assign, ast.AnnAssign))
+            ):
+                value = assignment.value
+                value_is_compiled = (
+                    isinstance(value, ast.Name)
+                    and value.id in compiled_names
+                ) or (
+                    isinstance(value, ast.Attribute)
+                    and value.attr in attributes
+                )
+                if not value_is_compiled:
+                    continue
+                for target in (
+                    assignment.targets
+                    if isinstance(assignment, ast.Assign)
+                    else [assignment.target]
+                ):
+                    if (
+                        isinstance(target, ast.Attribute)
+                        and target.attr not in attributes
+                    ):
+                        attributes.add(target.attr)
+                        changed = True
+                    elif (
+                        isinstance(target, ast.Name)
+                        and target.id not in compiled_names
+                    ):
+                        compiled_names.add(target.id)
+    return attributes
+
+
+def _compiled_return_names(tree: ast.AST) -> set[str]:
+    return {
+        node.name
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and _annotation_guarantees_compiled_policy(node.returns)
+    } | {"CompiledPolicy", "compile_policy"}
+
+
+def _compiled_local_names(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    *,
+    compiled_attributes: set[str],
+    compiled_returns: set[str],
+    call_aliases: dict[str, str],
+) -> set[str]:
+    names = {
+        arg.arg
+        for arg in (*function.args.posonlyargs, *function.args.args)
+        if _annotation_guarantees_compiled_policy(arg.annotation)
+    }
+    changed = True
+    while changed:
+        changed = False
+        for assignment in (
+            child
+            for child in ast.walk(function)
+            if isinstance(child, (ast.Assign, ast.AnnAssign))
+        ):
+            value = assignment.value
+            value_is_compiled = (
+                isinstance(value, ast.Name)
+                and value.id in names
+            ) or (
+                isinstance(value, ast.Attribute)
+                and value.attr in compiled_attributes
+            ) or (
+                isinstance(value, ast.Call)
+                and (
+                    _call_name(value) in compiled_returns
+                    or _semantic_call_kind(value, call_aliases)
+                    == "compile_policy"
+                )
+            )
+            if not value_is_compiled:
+                continue
+            for name in _assigned_names(assignment):
+                if name not in names:
+                    names.add(name)
+                    changed = True
+    return names
+
+
+def _compiled_expression(
+    node: ast.AST,
+    *,
+    names: set[str],
+    attributes: set[str],
+) -> bool:
+    return (
+        isinstance(node, ast.Name)
+        and node.id in names
+    ) or (
+        isinstance(node, ast.Attribute)
+        and node.attr in attributes
+    )
+
+
+def _none_test(
+    test: ast.AST,
+    compiled_attributes: set[str],
+) -> tuple[str, bool] | None:
+    """Return (attribute, is_none_on_true_branch) for a compiled guard."""
+    if not (
+        isinstance(test, ast.Compare)
+        and len(test.ops) == 1
+        and len(test.comparators) == 1
+        and isinstance(test.left, ast.Attribute)
+        and test.left.attr in compiled_attributes
+        and isinstance(test.comparators[0], ast.Constant)
+        and test.comparators[0].value is None
+    ):
+        return None
+    if isinstance(test.ops[0], ast.Is):
+        return test.left.attr, True
+    if isinstance(test.ops[0], ast.IsNot):
+        return test.left.attr, False
+    return None
+
+
+def _node_is_within(node: ast.AST, statements: list[ast.stmt]) -> bool:
+    return any(
+        descendant is node
+        for statement in statements
+        for descendant in ast.walk(statement)
+    )
+
+
+def _reload_is_proven_unpinned(
+    call: ast.Call,
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    *,
+    parents: dict[ast.AST, ast.AST],
+    compiled_attributes: set[str],
+) -> bool:
+    current: ast.AST = call
+    while current is not function and current in parents:
+        parent = parents[current]
+        if isinstance(parent, ast.If):
+            guarded = _none_test(parent.test, compiled_attributes)
+            if guarded is not None:
+                _, none_on_true = guarded
+                in_true = _node_is_within(call, parent.body)
+                in_false = _node_is_within(call, parent.orelse)
+                if (in_true and none_on_true) or (
+                    in_false and not none_on_true
+                ):
+                    return True
+        current = parent
+    return False
+
+
+def _retained_mapping_field(
+    node: ast.AnnAssign,
+    *,
+    parents: dict[ast.AST, ast.AST],
+    classes: dict[ast.AST, str],
+) -> tuple[str, str] | None:
+    annotation = _annotation_text(node.annotation).replace(" ", "")
+    if (
+        "Mapping[str,Any]" not in annotation
+        and "Mapping[str,object]" not in annotation
+    ):
+        return None
+
+    class_name = classes.get(node)
+    if class_name is None:
+        return None
+    if isinstance(node.target, ast.Name):
+        field_name = node.target.id
+        if not isinstance(parents.get(node), ast.ClassDef):
+            return None
+    elif (
+        isinstance(node.target, ast.Attribute)
+        and isinstance(node.target.value, ast.Name)
+        and node.target.value.id == "self"
+    ):
+        field_name = node.target.attr
+    else:
+        return None
+    if (class_name, field_name) in _NARROW_RETAINED_MAPPING_FIELDS:
+        return None
+    return class_name, field_name
+
+
 def _fitness_violations(
     source: str,
     *,
@@ -207,14 +529,19 @@ def _fitness_violations(
 ) -> list[str]:
     """Find semantic boundary violations without relying on local variable names."""
     tree = ast.parse(source, filename=f"{module_name}.py")
+    parents, classes = _parent_maps(tree)
+    imported_aliases = _semantic_import_aliases(tree)
+    compiled_attributes = _compiled_attributes(tree)
+    compiled_returns = _compiled_return_names(tree)
     violations: list[str] = []
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             function_name = node.name
+            aliases = _call_aliases(node, imported_aliases)
             for call in (
                 child for child in ast.walk(node) if isinstance(child, ast.Call)
             ):
-                called = _call_name(call)
+                called = _semantic_call_kind(call, aliases)
                 if (
                     called == "compile_policy"
                     and (module_name, function_name) not in _COMPILE_ALLOWLIST
@@ -230,43 +557,36 @@ def _fitness_violations(
                     violations.append(
                         f"{module_name}:{call.lineno}:{function_name}:load_policy"
                     )
-
-            compiled_names = {
-                arg.arg
-                for arg in (*node.args.posonlyargs, *node.args.args)
-                if _annotation_text(arg.annotation) == "CompiledPolicy"
-            }
-            changed = True
-            while changed:
-                changed = False
-                for assignment in (
-                    child
-                    for child in ast.walk(node)
-                    if isinstance(child, (ast.Assign, ast.AnnAssign))
-                ):
-                    value = assignment.value
-                    targets = (
-                        assignment.targets
-                        if isinstance(assignment, ast.Assign)
-                        else [assignment.target]
+                if (
+                    called == "reload-capable-entrypoint"
+                    and compiled_attributes
+                    and not _reload_is_proven_unpinned(
+                        call,
+                        node,
+                        parents=parents,
+                        compiled_attributes=compiled_attributes,
                     )
-                    if (
-                        isinstance(value, ast.Name)
-                        and value.id in compiled_names
-                    ):
-                        for target in targets:
-                            if (
-                                isinstance(target, ast.Name)
-                                and target.id not in compiled_names
-                            ):
-                                compiled_names.add(target.id)
-                                changed = True
+                ):
+                    violations.append(
+                        f"{module_name}:{call.lineno}:{function_name}:"
+                        "reload-capable-entrypoint"
+                    )
+
+            compiled_names = _compiled_local_names(
+                node,
+                compiled_attributes=compiled_attributes,
+                compiled_returns=compiled_returns,
+                call_aliases=aliases,
+            )
             for child in ast.walk(node):
                 if (
                     isinstance(child, ast.Call)
                     and isinstance(child.func, ast.Attribute)
-                    and isinstance(child.func.value, ast.Name)
-                    and child.func.value.id in compiled_names
+                    and _compiled_expression(
+                        child.func.value,
+                        names=compiled_names,
+                        attributes=compiled_attributes,
+                    )
                     and child.func.attr == "get"
                 ):
                     violations.append(
@@ -274,8 +594,11 @@ def _fitness_violations(
                     )
                 if (
                     isinstance(child, ast.Subscript)
-                    and isinstance(child.value, ast.Name)
-                    and child.value.id in compiled_names
+                    and _compiled_expression(
+                        child.value,
+                        names=compiled_names,
+                        attributes=compiled_attributes,
+                    )
                 ):
                     violations.append(
                         f"{module_name}:{child.lineno}:{function_name}:raw-index"
@@ -313,16 +636,22 @@ def _fitness_violations(
                         "policy-shaped-snapshot"
                     )
 
-        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-            field_name = node.target.id
-            annotation = _annotation_text(node.annotation)
-            if (
-                field_name in _BANNED_SNAPSHOT_FIELDS
-                or (
-                    "Mapping" in annotation
-                    and "policy" in field_name.lower()
+        if isinstance(node, ast.AnnAssign):
+            field_name = (
+                node.target.id
+                if isinstance(node.target, ast.Name)
+                else (
+                    node.target.attr
+                    if isinstance(node.target, ast.Attribute)
+                    else ""
                 )
-            ):
+            )
+            retained_mapping = _retained_mapping_field(
+                node,
+                parents=parents,
+                classes=classes,
+            )
+            if field_name in _BANNED_SNAPSHOT_FIELDS or retained_mapping:
                 violations.append(
                     f"{module_name}:{node.lineno}:snapshot-field:{field_name}"
                 )
@@ -356,35 +685,125 @@ def test_full_authorization_module_set_obeys_compiled_boundary() -> None:
     assert violations == []
 
 
-def test_fitness_analyzer_catches_prior_forbidden_patterns() -> None:
-    """The fitness gate catches patterns by data flow and shape, not one name."""
-    fixtures = {
-        "guards": """
-def evaluate_compiled_guards(policy: CompiledPolicy):
-    authorized = policy
-    reopened = compile_policy({"roles": authorized["roles"]})
-    return reopened
-""",
-        "session": """
-def enforce_step_pre_call(self, invocation):
-    return load_policy(invocation["policy_file"])
-""",
-        "enforcement": """
+def test_fitness_analyzer_catches_reload_after_session_policy_pin() -> None:
+    """A pinned branch must not call a public entrypoint that reloads policy."""
+    source = """
+class GovernanceSession:
+    def __init__(self):
+        self._compiled_policy: CompiledPolicy | None = None
+
+    def enforce_step_pre_call(self, invocation):
+        if self._compiled_policy is not None:
+            return self._aigc.enforce_pre_call(invocation)
+"""
+
+    violations = _fitness_violations(source, module_name="session")
+
+    assert len(violations) == 1
+    assert violations[0].endswith(
+        ":enforce_step_pre_call:reload-capable-entrypoint"
+    )
+
+
+def test_fitness_analyzer_resolves_local_compile_call_alias() -> None:
+    """Assigning the compiler to another name must not evade the boundary."""
+    source = """
+def authorize(raw):
+    compiler = compile_policy
+    return compiler(raw, source="alias-bypass")
+"""
+
+    violations = _fitness_violations(source, module_name="guards")
+
+    assert len(violations) == 1
+    assert violations[0].endswith(":authorize:compile_policy")
+
+
+def test_fitness_analyzer_resolves_imported_compile_call_alias() -> None:
+    """An imported compiler alias must retain its security-sensitive identity."""
+    source = """
+from aegis._internal.policy_compiler import compile_policy as build_authority
+
+def authorize(raw):
+    return build_authority(raw, source="import-alias-bypass")
+"""
+
+    violations = _fitness_violations(source, module_name="guards")
+
+    assert len(violations) == 1
+    assert violations[0].endswith(":authorize:compile_policy")
+
+
+def test_fitness_analyzer_propagates_compiled_attribute_identity() -> None:
+    """A CompiledPolicy attribute alias must remain typed through assignment."""
+    source = """
+class Session:
+    def __init__(self):
+        self._compiled_policy: CompiledPolicy | None = None
+
+    def authorize(self):
+        authority = self._compiled_policy
+        return authority["roles"]
+"""
+
+    violations = _fitness_violations(source, module_name="session")
+
+    assert len(violations) == 1
+    assert violations[0].endswith(":authorize:raw-index")
+
+
+def test_fitness_analyzer_propagates_compiled_return_identity_to_get() -> None:
+    """A typed CompiledPolicy return must remain typed through assignment."""
+    source = """
+class Session:
+    def __init__(self):
+        self._compiled_policy: CompiledPolicy | None = None
+
+    def pinned(self) -> CompiledPolicy:
+        return self._compiled_policy
+
+    def authorize(self):
+        authority = self.pinned()
+        return authority.get("roles")
+"""
+
+    violations = _fitness_violations(source, module_name="session")
+
+    assert len(violations) == 1
+    assert violations[0].endswith(":authorize:raw-get")
+
+
+def test_fitness_analyzer_rejects_arbitrarily_named_retained_policy_map() -> None:
+    """A generic retained authority mapping must fail regardless of its name."""
+    source = """
 from dataclasses import dataclass
-from typing import Mapping
+from typing import Any, Mapping
+
 @dataclass
 class Token:
-    authority_blob: Mapping[str, object]
-def issue():
-    return {"roles": [], "tools": {}, "risk": {}, "workflow": {}}
-""",
-    }
-    violations = [
-        violation
-        for module_name, source in fixtures.items()
-        for violation in _fitness_violations(source, module_name=module_name)
-    ]
-    assert any("compile_policy" in item for item in violations)
-    assert any("raw-index" in item for item in violations)
-    assert any("load_policy" in item for item in violations)
-    assert any("policy-shaped-snapshot" in item for item in violations)
+    authority_blob: Mapping[str, Any]
+"""
+
+    violations = _fitness_violations(source, module_name="enforcement")
+
+    assert len(violations) == 1
+    assert violations[0].endswith(":snapshot-field:authority_blob")
+
+
+def test_fitness_analyzer_allows_narrow_evidence_and_typed_dto_maps() -> None:
+    """Narrow evidence and JsonValue DTO maps are not raw authority snapshots."""
+    source = """
+from dataclasses import dataclass
+from typing import Any, Mapping
+
+@dataclass
+class PreCallResult:
+    invocation_snapshot: Mapping[str, Any]
+    phase_a_metadata: Mapping[str, Any]
+
+@dataclass
+class CompiledSchema:
+    schema: Mapping[str, JsonValue]
+"""
+
+    assert _fitness_violations(source, module_name="enforcement") == []

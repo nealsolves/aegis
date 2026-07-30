@@ -237,3 +237,68 @@ Residual considerations:
   compiled sources only after the content digest verifies. No policy compiler,
   loader, or raw restriction interpreter is reachable from that path.
 - No known security blocker remains from this review.
+
+## Fix round 2 — session validation and semantic fitness
+
+The two remaining Important findings were reproduced before implementation:
+both pinned-session validation tests failed, and four isolated analyzer fixtures
+each demonstrated one independent false negative.
+
+Session enforcement now routes ordinary and pinned compiled pre-calls through
+one `_prepare_pre_call_policy()` boundary. It validates the split invocation and
+strict-policy invariants exactly once, then attaches and emits the same typed
+pre-pipeline FAIL artifact on either entrypoint. The ordinary path supplies no
+policy and therefore loads through the existing cache/compiler boundary; the
+session path supplies its exact pinned `CompiledPolicy`, so it performs no
+reload or recompilation. Pre-call invocations containing `output` are rejected
+with `INVOCATION_VALIDATION_ERROR`, and strict pinned sessions reject policies
+without required preconditions with the existing
+`POLICY_SCHEMA_VALIDATION_ERROR` details.
+
+The architecture analyzer now:
+
+- resolves imported and local aliases for compile, load, and reload-capable
+  entrypoints;
+- distinguishes a public reload in a pinned-policy branch from the legitimate
+  unpinned fallback branch;
+- propagates `CompiledPolicy` identity from guaranteed annotations, typed
+  attributes, typed returns, and assignments before checking `.get()` and
+  subscript access;
+- rejects retained `Mapping[str, Any]` authority fields structurally, regardless
+  of their name, while allowing the explicit `PreCallResult` invocation/evidence
+  mappings and `Mapping[str, JsonValue]` typed DTO fields; and
+- scans the enforcement, compiler/loader, conditions, guards/gates, restriction,
+  schema, session, tool, validator, provenance, risk, retry, lint, and CLI
+  authorization modules.
+
+Verification:
+
+```text
+.venv/bin/pytest tests/test_task5_fix_round2.py -q
+2 passed
+
+.venv/bin/pytest tests/test_architecture_security_boundaries.py -q
+11 passed
+
+# Session, strict mode, invocation validation, and split-entrypoint suites:
+120 passed
+
+# Focused Task 5, architecture, security, enforcement, compiler, session, CLI,
+# and historical audit aggregate:
+657 passed
+```
+
+Changed-scope `flake8`, documentation parity, brand/version parity, public-doc
+boundary checks, and `git diff --check` pass. Per the round instruction, the
+full repository suite was not rerun.
+
+Residual considerations:
+
+- The analyzer intentionally treats only annotations that guarantee a
+  `CompiledPolicy` as compiled authority. Public compatibility helpers whose
+  union types also admit raw mappings remain outside authorization and do not
+  produce false positives.
+- Reload-entrypoint analysis is control-flow aware for the session's pinned
+  `is None` / `is not None` branches; a reload not proven to be on the unpinned
+  branch fails closed.
+- No known production blocker remains from this review.
