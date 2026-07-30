@@ -115,6 +115,33 @@ def test_same_document_fragment_ref_is_allowed_and_functional():
         validator.validate({"result": 42})
 
 
+def test_same_document_ref_into_extension_compiles_target_patterns():
+    validator = compile_output_schema(
+        {
+            "$ref": "#/x-aegis-definitions/value",
+            "x-aegis-definitions": {
+                "value": {"type": "string", "pattern": "^ok$"},
+            },
+        }
+    )
+    validator.validate("ok")
+    with pytest.raises(SchemaValidationError):
+        validator.validate("not-ok")
+
+
+def test_cyclic_same_document_ref_is_bounded_compile_error():
+    with pytest.raises(PolicyValidationError) as exc:
+        compile_output_schema(
+            {
+                "$ref": "#/x-aegis-definitions/value",
+                "x-aegis-definitions": {
+                    "value": {"$ref": "#/x-aegis-definitions/value"},
+                },
+            }
+        )
+    assert exc.value.code == "OUTPUT_SCHEMA_REFERENCE_CYCLE"
+
+
 def test_unresolvable_same_document_ref_is_bounded_schema_error():
     validator = compile_output_schema(
         {
