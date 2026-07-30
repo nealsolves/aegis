@@ -43,9 +43,11 @@ from aegis._internal.compiled_policy import (
     AuthorityEnvelope,
     CompiledGuard,
     CompiledPolicy,
+    CompiledPolicyOverlay,
     CompiledPrecondition,
     CompiledRetryPolicy,
     CompiledRiskFactor,
+    CompiledRiskOverlay,
     CompiledRiskPolicy,
     CompiledToolLimit,
     freeze,
@@ -56,13 +58,12 @@ from aegis._internal.policy_compiler import (
     compile_policy,
     resolve_runtime_risk,
 )
-from aegis._internal.restrictions import policy_from_restriction_values
 from aegis._internal.audit import generate_audit_artifact, sanitize_failure_message
 from aegis._internal.guards import evaluate_compiled_guards
 from aegis._internal.tools import validate_tool_constraints
 from aegis._internal.sinks import emit_to_sink
 from aegis._internal.risk_scoring import (
-    compute_risk_score,
+    compute_compiled_risk_score,
     RISK_MODE_STRICT,
     RISK_MODE_WARN_ONLY,
     RiskScore,
@@ -151,15 +152,154 @@ def _plain_compiled_value(value: Any) -> Any:
 
 
 def _compiled_gate_projection(policy: CompiledPolicy) -> dict[str, Any]:
-    """Project normalized compiled values for read-only custom-gate input."""
-    return policy_from_restriction_values(
-        policy.authority.restriction_values,
-    )
+    """Derive a non-authoritative compatibility view for custom gates."""
+    return {
+        "policy_version": policy.declared_policy_version,
+        "roles": list(policy.roles),
+        "conditions": _plain_compiled_value(policy.conditions),
+        "tools": {
+            "allowed_tools": [
+                {"name": item.name, "max_calls": item.max_calls}
+                for item in policy.tools
+            ],
+        },
+        "retry_policy": (
+            {
+                "max_retries": policy.retry.max_retries,
+                "backoff_ms": policy.retry.backoff_ms,
+            }
+            if policy.retry is not None
+            else None
+        ),
+        "risk": {
+            "mode": policy.risk.mode,
+            "threshold": policy.risk.threshold,
+            "factors": [
+                {
+                    "name": item.name,
+                    "weight": item.weight,
+                    "condition": item.condition,
+                }
+                for item in policy.risk.factors
+            ],
+        },
+        "pre_conditions": {
+            "required": {
+                item.name: _compiled_precondition_spec(item)
+                for item in policy.preconditions
+            },
+        },
+        "post_conditions": {"required": list(policy.postconditions)},
+        "output_schema": (
+            _plain_compiled_value(policy.output_validator.schema)
+            if policy.output_validator is not None
+            else None
+        ),
+        "workflow": _plain_compiled_value(policy.workflow),
+    }
 
 
 def _compiled_audit_projection(policy: CompiledPolicy) -> dict[str, str]:
     """Expose only compiler-owned metadata required by audit generation."""
     return {"policy_version": policy.declared_policy_version}
+
+
+def _compiled_precondition_spec(
+    item: CompiledPrecondition,
+) -> dict[str, Any]:
+    specification: dict[str, Any] = {}
+    if item.declared_type is not None:
+        specification["type"] = item.declared_type
+    if item.pattern is not None:
+        specification["pattern"] = item.pattern.source
+    if item.enum is not None:
+        specification["enum"] = _plain_compiled_value(item.enum)
+    if item.min_length is not None:
+        specification["minLength"] = item.min_length
+    if item.max_length is not None:
+        specification["maxLength"] = item.max_length
+    if item.minimum is not None:
+        specification["minimum"] = item.minimum
+    if item.maximum is not None:
+        specification["maximum"] = item.maximum
+    return specification
+
+
+def _compiled_precondition_to_dto(
+    item: CompiledPrecondition,
+) -> dict[str, Any]:
+    return {
+        "name": item.name,
+        "declared_type": item.declared_type,
+        "pattern": item.pattern.source if item.pattern else None,
+        "enum": _plain_compiled_value(item.enum),
+        "min_length": item.min_length,
+        "max_length": item.max_length,
+        "minimum": item.minimum,
+        "maximum": item.maximum,
+        "legacy": item.legacy,
+    }
+
+
+def _compiled_overlay_to_dto(
+    overlay: CompiledPolicyOverlay,
+) -> dict[str, Any]:
+    return {
+        "roles": list(overlay.roles) if overlay.roles is not None else None,
+        "conditions": (
+            _plain_compiled_value(overlay.conditions)
+            if overlay.conditions is not None
+            else None
+        ),
+        "tools": (
+            [
+                {"name": item.name, "max_calls": item.max_calls}
+                for item in overlay.tools
+            ]
+            if overlay.tools is not None
+            else None
+        ),
+        "retry_max_retries": overlay.retry_max_retries,
+        "retry_backoff_ms": overlay.retry_backoff_ms,
+        "risk": (
+            {
+                "mode": overlay.risk.mode,
+                "threshold": overlay.risk.threshold,
+                "factors": [
+                    {
+                        "name": item.name,
+                        "weight": item.weight,
+                        "condition": item.condition,
+                    }
+                    for item in overlay.risk.factors
+                ],
+            }
+            if overlay.risk is not None
+            else None
+        ),
+        "preconditions": [
+            _compiled_precondition_to_dto(item)
+            for item in overlay.preconditions
+        ],
+        "postconditions": list(overlay.postconditions),
+        "output_schema": (
+            _plain_compiled_value(overlay.output_validator.schema)
+            if overlay.output_validator is not None
+            else None
+        ),
+        "guards": [
+            {
+                "condition": item.condition,
+                "effect": _compiled_overlay_to_dto(item.effect),
+            }
+            for item in overlay.guards
+        ],
+        "workflow": (
+            _plain_compiled_value(overlay.workflow)
+            if overlay.workflow is not None
+            else None
+        ),
+    }
 
 
 def _compiled_policy_to_dto(policy: CompiledPolicy) -> dict[str, Any]:
@@ -200,23 +340,13 @@ def _compiled_policy_to_dto(policy: CompiledPolicy) -> dict[str, Any]:
         "conditions": _plain_compiled_value(policy.conditions),
         "guards": [
             {
-                "when": _plain_compiled_value(item.when),
-                "then": _plain_compiled_value(item.then),
+                "condition": item.condition,
+                "effect": _compiled_overlay_to_dto(item.effect),
             }
             for item in policy.guards
         ],
         "preconditions": [
-            {
-                "name": item.name,
-                "declared_type": item.declared_type,
-                "pattern": item.pattern.source if item.pattern else None,
-                "enum": _plain_compiled_value(item.enum),
-                "min_length": item.min_length,
-                "max_length": item.max_length,
-                "minimum": item.minimum,
-                "maximum": item.maximum,
-                "legacy": item.legacy,
-            }
+            _compiled_precondition_to_dto(item)
             for item in policy.preconditions
         ],
         "postconditions": list(policy.postconditions),
@@ -226,25 +356,128 @@ def _compiled_policy_to_dto(policy: CompiledPolicy) -> dict[str, Any]:
             else None
         ),
         "workflow": _plain_compiled_value(policy.workflow),
-        "authority": {
-            "roles": sorted(policy.authority.roles),
-            "tools": [
-                {"name": item.name, "max_calls": item.max_calls}
-                for item in policy.authority.tools
-            ],
-            "risk_mode": policy.authority.risk_mode,
-            "risk_threshold": policy.authority.risk_threshold,
-            "critical_ceiling": policy.authority.critical_ceiling,
-            "registered_fields": sorted(policy.authority.registered_fields),
-            "restriction_values": _plain_compiled_value(
-                policy.authority.restriction_values,
-            ),
-        },
     }
 
 
+_COMPILED_DTO_DIGEST_DOMAIN = b"aegis.compiled-policy-dto.v1\x00"
+
+
+def _compiled_dto_content_digest(dto: Mapping[str, Any]) -> str:
+    """Hash canonical typed DTO content with an explicit domain separator."""
+    payload = json.dumps(
+        dto,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(_COMPILED_DTO_DIGEST_DOMAIN + payload).hexdigest()
+
+
+def _compiled_policy_content_digest(policy: CompiledPolicy) -> str:
+    return _compiled_dto_content_digest(_compiled_policy_to_dto(policy))
+
+
+def _compiled_preconditions_from_dto(
+    items: Sequence[Mapping[str, Any]],
+) -> tuple[CompiledPrecondition, ...]:
+    return tuple(
+        CompiledPrecondition(
+            name=item["name"],
+            declared_type=item["declared_type"],
+            pattern=(
+                compile_pattern(
+                    item["pattern"],
+                    path=(
+                        "$.pre_conditions.required."
+                        f"{item['name']}.pattern"
+                    ),
+                )
+                if item["pattern"] is not None
+                else None
+            ),
+            enum=(
+                tuple(freeze(item["enum"]))
+                if item["enum"] is not None
+                else None
+            ),
+            min_length=item["min_length"],
+            max_length=item["max_length"],
+            minimum=item["minimum"],
+            maximum=item["maximum"],
+            legacy=item["legacy"],
+        )
+        for item in items
+    )
+
+
+def _compiled_overlay_from_dto(
+    dto: Mapping[str, Any],
+) -> CompiledPolicyOverlay:
+    risk_data = dto["risk"]
+    risk = (
+        CompiledRiskOverlay(
+            mode=risk_data["mode"],
+            threshold=risk_data["threshold"],
+            factors=tuple(
+                CompiledRiskFactor(
+                    name=item["name"],
+                    weight=item["weight"],
+                    condition=item["condition"],
+                )
+                for item in risk_data["factors"]
+            ),
+        )
+        if risk_data is not None
+        else None
+    )
+    return CompiledPolicyOverlay(
+        roles=(
+            tuple(dto["roles"]) if dto["roles"] is not None else None
+        ),
+        conditions=(
+            freeze(dto["conditions"])
+            if dto["conditions"] is not None
+            else None
+        ),
+        tools=(
+            tuple(
+                CompiledToolLimit(
+                    name=item["name"],
+                    max_calls=item["max_calls"],
+                )
+                for item in dto["tools"]
+            )
+            if dto["tools"] is not None
+            else None
+        ),
+        retry_max_retries=dto["retry_max_retries"],
+        retry_backoff_ms=dto["retry_backoff_ms"],
+        risk=risk,
+        preconditions=_compiled_preconditions_from_dto(dto["preconditions"]),
+        postconditions=tuple(dto["postconditions"]),
+        output_validator=(
+            compile_output_schema(dto["output_schema"])
+            if dto["output_schema"] is not None
+            else None
+        ),
+        guards=tuple(
+            CompiledGuard(
+                condition=item["condition"],
+                effect=_compiled_overlay_from_dto(item["effect"]),
+            )
+            for item in dto["guards"]
+        ),
+        workflow=(
+            freeze(dto["workflow"])
+            if dto["workflow"] is not None
+            else None
+        ),
+    )
+
+
 def _compiled_policy_from_dto(dto: Mapping[str, Any]) -> CompiledPolicy:
-    """Restore compiled value objects; never invoke the policy compiler."""
+    """Restore authenticated compiled value objects without policy compilation."""
     tools = tuple(
         CompiledToolLimit(name=item["name"], max_calls=item["max_calls"])
         for item in dto["tools"]
@@ -273,57 +506,31 @@ def _compiled_policy_from_dto(dto: Mapping[str, Any]) -> CompiledPolicy:
         else None
     )
     guards = tuple(
-        CompiledGuard(when=freeze(item["when"]), then=freeze(item["then"]))
+        CompiledGuard(
+            condition=item["condition"],
+            effect=_compiled_overlay_from_dto(item["effect"]),
+        )
         for item in dto["guards"]
     )
-    preconditions = tuple(
-        CompiledPrecondition(
-            name=item["name"],
-            declared_type=item["declared_type"],
-            pattern=(
-                compile_pattern(
-                    item["pattern"],
-                    path=(
-                        "$.pre_conditions.required."
-                        f"{item['name']}.pattern"
-                    ),
-                )
-                if item["pattern"] is not None
-                else None
-            ),
-            enum=(
-                tuple(freeze(item["enum"]))
-                if item["enum"] is not None
-                else None
-            ),
-            min_length=item["min_length"],
-            max_length=item["max_length"],
-            minimum=item["minimum"],
-            maximum=item["maximum"],
-            legacy=item["legacy"],
-        )
-        for item in dto["preconditions"]
-    )
+    preconditions = _compiled_preconditions_from_dto(dto["preconditions"])
     output_validator = (
         compile_output_schema(dto["output_schema"])
         if dto["output_schema"] is not None
         else None
     )
-    authority_data = dto["authority"]
     authority = AuthorityEnvelope(
-        roles=frozenset(authority_data["roles"]),
-        tools=tuple(
-            CompiledToolLimit(
-                name=item["name"],
-                max_calls=item["max_calls"],
-            )
-            for item in authority_data["tools"]
+        roles=frozenset(dto["roles"]),
+        conditions=freeze(dto["conditions"]),
+        tools=tools,
+        retry=retry,
+        risk=risk,
+        preconditions=preconditions,
+        postconditions=tuple(dto["postconditions"]),
+        output_schema=(
+            output_validator.schema if output_validator is not None else None
         ),
-        risk_mode=authority_data["risk_mode"],
-        risk_threshold=authority_data["risk_threshold"],
-        critical_ceiling=authority_data["critical_ceiling"],
-        registered_fields=frozenset(authority_data["registered_fields"]),
-        restriction_values=freeze(authority_data["restriction_values"]),
+        guards=guards,
+        workflow=freeze(dto["workflow"]),
     )
     return CompiledPolicy(
         policy_digest=dto["policy_digest"],
@@ -520,7 +727,6 @@ class PreCallResult:
     Not public API directly -- exported via aegis.enforcement and aegis.__init__.
     """
 
-    effective_policy: Mapping[str, Any]
     resolved_guards: tuple[dict[str, Any], ...]
     resolved_conditions: Mapping[str, Any]
     phase_a_metadata: Mapping[str, Any]
@@ -545,24 +751,10 @@ class PreCallResult:
     _origin: "_EnforcementToken | None" = field(
         init=False, default=None, repr=False, compare=False,
     )
-    # Private deep-frozen copies taken at Phase A completion time.
-    # Phase B reads exclusively from these, so caller mutations to
-    # the public effective_policy / invocation_snapshot fields after
-    # Phase A have no effect on Phase B enforcement.
-    _frozen_effective_policy: Any = field(
-        init=False, default=None, repr=False, compare=False,
-    )
     _compiled_policy: CompiledPolicy | None = field(
         init=False, default=None, repr=False, compare=False,
     )
     _frozen_invocation_snapshot: Any = field(
-        init=False, default=None, repr=False, compare=False,
-    )
-    # Canonical JSON serializations of Phase A state.  A bytes object
-    # cannot have its contents mutated, so Phase B deserialization is
-    # immune to any post-Phase-A mutations of _frozen_effective_policy
-    # or phase_a_metadata (Findings 1 & 2, Round 2 audit).
-    _frozen_policy_bytes: Any = field(
         init=False, default=None, repr=False, compare=False,
     )
     _frozen_phase_a_metadata: Any = field(
@@ -618,8 +810,28 @@ def _precall_result_getstate(self: "PreCallResult") -> dict:
 
 
 def _precall_result_setstate(self: "PreCallResult", state: dict) -> None:
-    """Pickle support: restore all slots, re-wrapping gates as MappingProxyType."""
+    """Restore a token only after authenticating its canonical compiled DTO."""
     compiled_dto = state.pop("_compiled_policy_dto", None)
+    if compiled_dto is not None:
+        evidence_bytes = state.get("_frozen_evidence_bytes")
+        token_hmac = state.get("_token_hmac")
+        try:
+            if not _token_verify(evidence_bytes, token_hmac):
+                raise ValueError("evidence HMAC mismatch")
+            evidence = json.loads(evidence_bytes)
+            expected_digest = evidence["compiled_policy_content_digest"]
+            actual_digest = _compiled_dto_content_digest(compiled_dto)
+            if not _hmac_mod.compare_digest(
+                expected_digest,
+                actual_digest,
+            ):
+                raise ValueError("compiled DTO content digest mismatch")
+        except (KeyError, TypeError, ValueError) as exc:
+            raise InvocationValidationError(
+                "Serialized compiled policy integrity check failed before "
+                "compiled policy reconstruction",
+                details={"field": "_compiled_policy_dto"},
+            ) from exc
     for key, value in state.items():
         object.__setattr__(self, key, value)
     object.__setattr__(
@@ -1101,7 +1313,7 @@ def _run_phase_b(
             risk_config,
         )
         if effective_risk_config.factors:
-            risk_result = compute_risk_score(
+            risk_result = compute_compiled_risk_score(
                 invocation, effective_policy,
                 risk_config=effective_risk_config,
             )
@@ -1795,10 +2007,7 @@ def enforce_pre_call(
             enforcement_mode="split",
         )
 
-        # Deep-copy effective_policy so callers cannot weaken Phase B
-        # enforcement rules by mutating nested policy dicts (Finding 3).
         token = PreCallResult(
-            effective_policy=_compiled_gate_projection(effective_policy),
             resolved_guards=tuple(
                 dict(g) if isinstance(g, dict) else g
                 for g in guards_evaluated_engine
@@ -1825,27 +2034,11 @@ def enforce_pre_call(
         )
         object.__setattr__(token, "_origin", _ENFORCEMENT_TOKEN)
         object.__setattr__(token, "_compiled_policy", effective_policy)
-        # Take a second independent deep copy of the already-copied
-        # fields. Phase B reads from _frozen_* so caller mutations to
-        # the public fields after Phase A do not affect enforcement.
-        object.__setattr__(
-            token, "_frozen_effective_policy",
-            copy.deepcopy(token.effective_policy),
-        )
         object.__setattr__(
             token, "_frozen_invocation_snapshot",
             copy.deepcopy(token.invocation_snapshot),
         )
-        # Serialize token state to immutable bytes.  Phase B deserializes
-        # fresh copies from these bytes so any caller mutation of
-        # _frozen_effective_policy, _frozen_invocation_snapshot,
-        # _frozen_phase_a_metadata, resolved_guards, or resolved_conditions
-        # after Phase A has no effect on Phase B enforcement or artifacts
-        # (Round 3 audit Findings 1 & 2).
         try:
-            frozen_policy_bytes = json.dumps(
-                token.effective_policy, sort_keys=True,
-            ).encode()
             frozen_evidence_bytes = json.dumps(
                 {
                     "invocation_snapshot": dict(token.invocation_snapshot),
@@ -1855,9 +2048,10 @@ def enforce_pre_call(
                         for g in guards_evaluated_engine
                     ],
                     "conditions_resolved": dict(conditions_resolved),
-                    # Finding 1: policy in evidence so Phase B reads from signed bytes.
-                    "effective_policy": dict(token.effective_policy),
                     "policy_digest": effective_policy.policy_digest,
+                    "compiled_policy_content_digest": (
+                        _compiled_policy_content_digest(effective_policy)
+                    ),
                     # Finding 2: gate fingerprint so Phase B can verify _phase_b_grouped_gates.
                     "gate_fingerprint": _gate_fingerprint(grouped_gates),
                     # Finding 3: unique per-token nonce so _token_hmac is unique
@@ -1870,7 +2064,7 @@ def enforce_pre_call(
             freeze_err = InvocationValidationError(
                 f"Policy contains non-JSON-serializable values; "
                 f"cannot freeze token: {json_exc}",
-                details={"field": "effective_policy"},
+                details={"field": "compiled_policy"},
             )
             safe_inv = dict(invocation)
             safe_inv.setdefault("output", {})
@@ -1889,7 +2083,6 @@ def enforce_pre_call(
                     sink_exc,
                 )
             raise freeze_err from json_exc
-        object.__setattr__(token, "_frozen_policy_bytes", frozen_policy_bytes)
         object.__setattr__(token, "_frozen_evidence_bytes", frozen_evidence_bytes)
         object.__setattr__(token, "_token_hmac", _token_sign(frozen_evidence_bytes))
         # Deep-copy phase_a_metadata so Phase B artifact evidence cannot
@@ -2166,6 +2359,8 @@ def enforce_post_call(
     if (
         compiled_policy is None
         or evidence.get("policy_digest") != compiled_policy.policy_digest
+        or evidence.get("compiled_policy_content_digest")
+        != _compiled_policy_content_digest(compiled_policy)
     ):
         raise InvocationValidationError(
             "PreCallResult compiled policy is missing or does not match "
@@ -2369,7 +2564,6 @@ async def enforce_pre_call_async(
         )
 
         token = PreCallResult(
-            effective_policy=_compiled_gate_projection(effective_policy),
             resolved_guards=tuple(
                 dict(g) if isinstance(g, dict) else g
                 for g in guards_evaluated_engine
@@ -2391,17 +2585,10 @@ async def enforce_pre_call_async(
         object.__setattr__(token, "_origin", _ENFORCEMENT_TOKEN)
         object.__setattr__(token, "_compiled_policy", effective_policy)
         object.__setattr__(
-            token, "_frozen_effective_policy",
-            copy.deepcopy(token.effective_policy),
-        )
-        object.__setattr__(
             token, "_frozen_invocation_snapshot",
             copy.deepcopy(token.invocation_snapshot),
         )
         try:
-            frozen_policy_bytes = json.dumps(
-                token.effective_policy, sort_keys=True,
-            ).encode()
             frozen_evidence_bytes = json.dumps(
                 {
                     "invocation_snapshot": dict(token.invocation_snapshot),
@@ -2411,9 +2598,10 @@ async def enforce_pre_call_async(
                         for g in guards_evaluated_engine
                     ],
                     "conditions_resolved": dict(conditions_resolved),
-                    # Finding 1: policy in evidence so Phase B reads from signed bytes.
-                    "effective_policy": dict(token.effective_policy),
                     "policy_digest": effective_policy.policy_digest,
+                    "compiled_policy_content_digest": (
+                        _compiled_policy_content_digest(effective_policy)
+                    ),
                     # Finding 2: gate fingerprint so Phase B can verify _phase_b_grouped_gates.
                     "gate_fingerprint": _gate_fingerprint(grouped_gates),
                     # Finding 3: unique per-token nonce so _token_hmac is unique
@@ -2426,7 +2614,7 @@ async def enforce_pre_call_async(
             freeze_err = InvocationValidationError(
                 f"Policy contains non-JSON-serializable values; "
                 f"cannot freeze token: {json_exc}",
-                details={"field": "effective_policy"},
+                details={"field": "compiled_policy"},
             )
             safe_inv = dict(invocation)
             safe_inv.setdefault("output", {})
@@ -2445,7 +2633,6 @@ async def enforce_pre_call_async(
                     sink_exc,
                 )
             raise freeze_err from json_exc
-        object.__setattr__(token, "_frozen_policy_bytes", frozen_policy_bytes)
         object.__setattr__(token, "_frozen_evidence_bytes", frozen_evidence_bytes)
         object.__setattr__(token, "_token_hmac", _token_sign(frozen_evidence_bytes))
         object.__setattr__(
@@ -2903,6 +3090,14 @@ class AEGIS:
                 )
             raise
 
+        return self._enforce_pre_call_compiled(invocation, policy)
+
+    def _enforce_pre_call_compiled(
+        self,
+        invocation: Mapping[str, Any],
+        policy: CompiledPolicy,
+    ) -> PreCallResult:
+        """Run Phase A from an already-authorized compiled policy object."""
         grouped_gates = sort_gates(self._custom_gates)
         pre_call_timestamp = int(_time.time())
         # Unique per-token nonce ensures _token_hmac is unique even for
@@ -2987,7 +3182,6 @@ class AEGIS:
             )
 
             token = PreCallResult(
-                effective_policy=_compiled_gate_projection(effective_policy),
                 resolved_guards=tuple(
                     dict(g) if isinstance(g, dict) else g
                     for g in guards_evaluated_engine
@@ -3009,17 +3203,10 @@ class AEGIS:
             object.__setattr__(token, "_origin", _ENFORCEMENT_TOKEN)
             object.__setattr__(token, "_compiled_policy", effective_policy)
             object.__setattr__(
-                token, "_frozen_effective_policy",
-                copy.deepcopy(token.effective_policy),
-            )
-            object.__setattr__(
                 token, "_frozen_invocation_snapshot",
                 copy.deepcopy(token.invocation_snapshot),
             )
             try:
-                frozen_policy_bytes = json.dumps(
-                    token.effective_policy, sort_keys=True,
-                ).encode()
                 frozen_evidence_bytes = json.dumps(
                     {
                         "invocation_snapshot": dict(
@@ -3031,9 +3218,10 @@ class AEGIS:
                             for g in guards_evaluated_engine
                         ],
                         "conditions_resolved": dict(conditions_resolved),
-                        # Finding 1: policy in evidence so Phase B reads from signed bytes.
-                        "effective_policy": dict(token.effective_policy),
                         "policy_digest": effective_policy.policy_digest,
+                        "compiled_policy_content_digest": (
+                            _compiled_policy_content_digest(effective_policy)
+                        ),
                         # Finding 2: gate fingerprint so Phase B can verify _phase_b_grouped_gates.
                         "gate_fingerprint": _gate_fingerprint(grouped_gates),
                         # Finding 3: unique per-token nonce so _token_hmac is unique
@@ -3046,7 +3234,7 @@ class AEGIS:
                 freeze_err = InvocationValidationError(
                     f"Policy contains non-JSON-serializable values; "
                     f"cannot freeze token: {json_exc}",
-                    details={"field": "effective_policy"},
+                    details={"field": "compiled_policy"},
                 )
                 safe_inv = dict(invocation)
                 safe_inv.setdefault("output", {})
@@ -3070,9 +3258,6 @@ class AEGIS:
                         sink_exc,
                     )
                 raise freeze_err from json_exc
-            object.__setattr__(
-                token, "_frozen_policy_bytes", frozen_policy_bytes,
-            )
             object.__setattr__(
                 token, "_frozen_evidence_bytes", frozen_evidence_bytes,
             )
@@ -3438,6 +3623,8 @@ class AEGIS:
         if (
             compiled_policy is None
             or evidence.get("policy_digest") != compiled_policy.policy_digest
+            or evidence.get("compiled_policy_content_digest")
+            != _compiled_policy_content_digest(compiled_policy)
         ):
             raise InvocationValidationError(
                 "PreCallResult compiled policy is missing or does not match "
@@ -3665,7 +3852,6 @@ class AEGIS:
             )
 
             token = PreCallResult(
-                effective_policy=_compiled_gate_projection(effective_policy),
                 resolved_guards=tuple(
                     dict(g) if isinstance(g, dict) else g
                     for g in guards_evaluated_engine
@@ -3692,17 +3878,10 @@ class AEGIS:
             object.__setattr__(token, "_origin", _ENFORCEMENT_TOKEN)
             object.__setattr__(token, "_compiled_policy", effective_policy)
             object.__setattr__(
-                token, "_frozen_effective_policy",
-                copy.deepcopy(token.effective_policy),
-            )
-            object.__setattr__(
                 token, "_frozen_invocation_snapshot",
                 copy.deepcopy(token.invocation_snapshot),
             )
             try:
-                frozen_policy_bytes = json.dumps(
-                    token.effective_policy, sort_keys=True,
-                ).encode()
                 frozen_evidence_bytes = json.dumps(
                     {
                         "invocation_snapshot": dict(
@@ -3714,9 +3893,10 @@ class AEGIS:
                             for g in guards_evaluated_engine
                         ],
                         "conditions_resolved": dict(conditions_resolved),
-                        # Finding 1: policy in evidence so Phase B reads from signed bytes.
-                        "effective_policy": dict(token.effective_policy),
                         "policy_digest": effective_policy.policy_digest,
+                        "compiled_policy_content_digest": (
+                            _compiled_policy_content_digest(effective_policy)
+                        ),
                         # Finding 2: gate fingerprint so Phase B can verify _phase_b_grouped_gates.
                         "gate_fingerprint": _gate_fingerprint(grouped_gates),
                         # Finding 3: unique per-token nonce so _token_hmac is unique
@@ -3729,7 +3909,7 @@ class AEGIS:
                 freeze_err = InvocationValidationError(
                     f"Policy contains non-JSON-serializable values; "
                     f"cannot freeze token: {json_exc}",
-                    details={"field": "effective_policy"},
+                    details={"field": "compiled_policy"},
                 )
                 safe_inv = dict(invocation)
                 safe_inv.setdefault("output", {})
@@ -3753,9 +3933,6 @@ class AEGIS:
                         sink_exc,
                     )
                 raise freeze_err from json_exc
-            object.__setattr__(
-                token, "_frozen_policy_bytes", frozen_policy_bytes,
-            )
             object.__setattr__(
                 token, "_frozen_evidence_bytes", frozen_evidence_bytes,
             )

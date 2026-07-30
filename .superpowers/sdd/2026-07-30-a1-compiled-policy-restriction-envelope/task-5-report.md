@@ -161,3 +161,79 @@ clean.
 - The canonical compiled DTO intentionally reconstructs RE2 patterns and the
   non-retrieving output validator from already-compiled sources after
   pickle/deepcopy. It never calls `compile_policy()` or admits new authority.
+
+## Fix round 1 — independent security review
+
+The review's one Critical and five Important findings were reproduced first as
+10 failing regressions. The fix makes every enforcement handoff typed,
+authenticated, and closed against raw-policy re-entry:
+
+- Split enforcement now authenticates a domain-separated SHA-256 digest of the
+  complete canonical compiled DTO inside the Phase A HMAC evidence. Phase B
+  verifies both the evidence and the reconstructed DTO content before use.
+- Guards compile their conditions and restriction overlays exactly once at the
+  policy compiler boundary. Runtime guard evaluation resolves only compiled
+  conditions and applies typed, cumulative overlays.
+- `AuthorityEnvelope` contains explicit immutable authority fields; the generic
+  `restriction_values` snapshot and its reconstruction path were removed.
+  `PreCallResult` likewise no longer carries an effective-policy mapping or
+  frozen-policy compatibility bytes.
+- `GovernanceSession` pins the exact `CompiledPolicy` opened by the session and
+  routes each step through the compiled-policy enforcement entrypoint. Policy
+  file changes after session creation cannot alter step authorization.
+- CLI and workflow lint now defer policy semantics to the compiler and preserve
+  stable compiler error codes and paths.
+- The architecture fitness suite now checks every enforcement-relevant module
+  for compile/load bypasses, raw compiled-policy indexing, policy-shaped
+  mappings, banned snapshots, and untyped compiled-policy boundaries. Synthetic
+  violations prove the checks detect the reviewed failure modes.
+
+Verification:
+
+```text
+.venv/bin/pytest tests/test_task5_fix_round1.py -q
+19 passed
+
+.venv/bin/pytest tests/test_architecture_security_boundaries.py -q
+5 passed
+
+.venv/bin/pytest tests/test_guards.py tests/test_restriction_registry.py -q
+62 passed
+
+.venv/bin/pytest tests/test_v0_3_2_audit_round2.py \
+  tests/test_v0_3_2_regressions.py \
+  tests/test_final_audit_2026_04_05.py \
+  tests/test_release_audit_2026_04_05.py \
+  tests/test_audit_round3_2026_04_05.py \
+  tests/test_deep_review_2026_04_05.py -q
+117 passed
+
+# Focused architecture, security, enforcement, compiler, session, CLI, and
+# historical audit aggregate:
+591 passed
+```
+
+Changed-scope `flake8`, documentation parity, brand/version parity, public-doc
+boundary checks, and `git diff --check` all pass. Per the round instruction, the
+full repository suite was not rerun.
+
+Compatibility migrations in this round:
+
+- Tests constructing raw `CompiledGuard(when=..., then=...)` values now enter
+  through the compiler boundary and assert typed compiled overlays.
+- Historical token tests no longer construct or assert the removed generic
+  restriction map and frozen effective-policy fields.
+- Invalid lint-time risk numbers now report the compiler's stable
+  `RISK_NUMBER_INVALID` diagnostic.
+- The public raw-mapping risk helper remains available outside authorization;
+  compiled enforcement uses the typed risk scorer exclusively.
+
+Residual considerations:
+
+- Custom gates receive a transient, derived policy-shaped projection solely for
+  their longstanding public callback contract. It is never stored and cannot
+  re-enter authorization.
+- Cross-process DTO reconstruction rebuilds validators from authenticated
+  compiled sources only after the content digest verifies. No policy compiler,
+  loader, or raw restriction interpreter is reachable from that path.
+- No known security blocker remains from this review.

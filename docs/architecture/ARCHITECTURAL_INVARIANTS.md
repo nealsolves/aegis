@@ -289,9 +289,10 @@ It does not change any architectural invariant. Specifically:
 * Unified mode remains backward-compatible and fully supported.
 * Policy evaluation in Phase B must use the Phase A effective policy — no reload from disk.
 * Phase A and Phase B use the same compiled authority object in-process.
-  Serialized transfer uses a canonical compiled DTO and authenticated policy
-  digest; it must not serialize a raw policy snapshot or call `compile_policy()`
-  during Phase B reconstruction.
+  Serialized transfer uses one canonical compiled DTO plus an authenticated,
+  domain-separated content digest. The digest is verified before
+  reconstruction and before Phase B use; transfer must not serialize a raw
+  policy snapshot or call `compile_policy()` during reconstruction.
 
 Hosts using legacy unified mode via `pre_call_enforcement=False` are unaffected
 by split mode internals; the pipeline ordering and artifact contract are unchanged.
@@ -391,15 +392,19 @@ The following rules are invariant:
   retrieval used for enforcement
 * roles, tools, risk, typed preconditions, cumulative guard effects, output
   validation, postconditions, and workflow limits are read from compiled fields
-* guard effects are compiled and compared cumulatively against the frozen
-  authority envelope
+* authority envelopes contain explicit immutable per-field values, never a
+  generic restriction or effective-policy mapping
+* guard effects compile to typed immutable overlays at the load boundary and
+  are applied cumulatively without policy-map reconstruction or recompilation
 * runtime risk overrides may only tighten compiled authority and the critical
   ceiling remains fixed at `0.90`
-* session dynamic tool calls consume the compiled per-tool limits
+* policy-backed sessions pin the open-time compiled policy; steps and dynamic
+  tool calls consume that authority without reload or recompile
 * lint reports the shared compiler's stable error code and path
-* architecture fitness tests reject raw `policy.get`, raw `policy[...]`, direct
-  enforcement `load_policy()` calls, and authorization-time raw tool-policy
-  compatibility branches
+* architecture fitness tests cover compiler/load calls, compiled-policy alias
+  data flow, generic policy-shaped snapshots, session reloads, and compiled
+  parameter contracts across guards, enforcement, sessions, tools, risk,
+  retry, lint, and CLI modules
 
 ---
 

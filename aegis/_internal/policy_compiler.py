@@ -7,6 +7,7 @@ import hashlib
 import json
 import math
 from collections import Counter
+from dataclasses import replace
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Mapping
@@ -17,9 +18,11 @@ from aegis._internal.compiled_policy import (
     AuthorityEnvelope,
     CompiledGuard,
     CompiledPolicy,
+    CompiledPolicyOverlay,
     CompiledPrecondition,
     CompiledRetryPolicy,
     CompiledRiskFactor,
+    CompiledRiskOverlay,
     CompiledRiskPolicy,
     CompiledToolLimit,
     freeze,
@@ -27,10 +30,8 @@ from aegis._internal.compiled_policy import (
 from aegis._internal.errors import PolicyLoadError, PolicyValidationError
 from aegis._internal.patterns import compile_pattern
 from aegis._internal.restrictions import (
-    REGISTRY,
     RestrictionComparator,
     merge_policy_effect,
-    policy_from_restriction_values,
     validate_registry_coverage,
 )
 from aegis._internal.schema_compiler import compile_output_schema
@@ -557,103 +558,6 @@ def _thaw(value: Any) -> Any:
     return copy.deepcopy(value)
 
 
-def _normalized_preconditions(
-    preconditions: tuple[CompiledPrecondition, ...],
-) -> Mapping[str, Any]:
-    if preconditions and all(item.legacy for item in preconditions):
-        return {"required": [item.name for item in preconditions]}
-
-    required: dict[str, Any] = {}
-    for item in preconditions:
-        specification: dict[str, Any] = {}
-        if item.declared_type is not None:
-            specification["type"] = item.declared_type
-        if item.pattern is not None:
-            specification["pattern"] = item.pattern.source
-        if item.enum is not None:
-            specification["enum"] = [_thaw(value) for value in item.enum]
-        if item.min_length is not None:
-            specification["minLength"] = item.min_length
-        if item.max_length is not None:
-            specification["maxLength"] = item.max_length
-        if item.minimum is not None:
-            specification["minimum"] = item.minimum
-        if item.maximum is not None:
-            specification["maximum"] = item.maximum
-        required[item.name] = specification
-    return {"required": required}
-
-
-def _restriction_values(
-    policy: Mapping[str, Any],
-    *,
-    roles: tuple[str, ...],
-    tools: tuple[CompiledToolLimit, ...],
-    risk: CompiledRiskPolicy,
-    retry: CompiledRetryPolicy | None,
-    guards: tuple[CompiledGuard, ...],
-    preconditions: tuple[CompiledPrecondition, ...],
-    output_validator: Any,
-) -> Mapping[str, Any]:
-    """Build normalized values only from validated or compiled semantics."""
-    tools_value = (
-        {
-            "allowed_tools": [
-                {"name": item.name, "max_calls": item.max_calls}
-                for item in tools
-            ],
-        }
-        if "tools" in policy
-        else None
-    )
-    retry_value = (
-        {
-            "max_retries": retry.max_retries,
-            "backoff_ms": retry.backoff_ms,
-        }
-        if retry is not None
-        else None
-    )
-    risk_value = {
-        "mode": risk.mode,
-        "threshold": risk.threshold,
-        "factors": [
-            {
-                "name": factor.name,
-                "weight": factor.weight,
-                "condition": factor.condition,
-            }
-            for factor in risk.factors
-        ],
-    }
-    guard_values = [
-        {"when": _thaw(item.when), "then": _thaw(item.then)}
-        for item in guards
-    ]
-    return freeze(
-        {
-            "roles": list(roles),
-            "conditions": _thaw(policy.get("conditions") or {}),
-            "tools": tools_value,
-            "retry_policy": retry_value,
-            "risk": risk_value,
-            "pre_conditions": _normalized_preconditions(preconditions),
-            "post_conditions": _thaw(policy.get("post_conditions") or {}),
-            "output_schema": (
-                _thaw(output_validator.schema)
-                if output_validator is not None
-                else None
-            ),
-            "guards": guard_values,
-            "workflow": (
-                _thaw(policy["workflow"])
-                if "workflow" in policy
-                else None
-            ),
-        }
-    )
-
-
 def _compile_validated_policy(
     policy: Mapping[str, Any],
     *,
@@ -704,10 +608,7 @@ def _compile_validated_policy(
     risk = compile_risk_policy(raw_risk)
     retry = _compile_retry_policy(policy.get("retry_policy"))
 
-    guards = tuple(
-        CompiledGuard(when=freeze(item["when"]), then=freeze(item["then"]))
-        for item in policy.get("guards", ())
-    )
+    guards: tuple[CompiledGuard, ...] = ()
     raw_preconditions = (policy.get("pre_conditions") or {}).get("required", {})
     preconditions = (
         tuple(
@@ -740,21 +641,17 @@ def _compile_validated_policy(
     )
     authority = AuthorityEnvelope(
         roles=frozenset(roles),
+        conditions=freeze(policy.get("conditions") or {}),
         tools=tools,
-        risk_mode=risk.mode,
-        risk_threshold=risk.threshold,
-        critical_ceiling=risk.critical_ceiling,
-        registered_fields=REGISTRY.fields,
-        restriction_values=_restriction_values(
-            policy,
-            roles=roles,
-            tools=tools,
-            risk=risk,
-            retry=retry,
-            guards=guards,
-            preconditions=preconditions,
-            output_validator=output_validator,
+        retry=retry,
+        risk=risk,
+        preconditions=preconditions,
+        postconditions=postconditions,
+        output_schema=(
+            output_validator.schema if output_validator is not None else None
         ),
+        guards=guards,
+        workflow=freeze(workflow),
     )
     return CompiledPolicy(
         policy_digest=_policy_digest(policy),
@@ -777,6 +674,133 @@ def _compile_validated_policy(
     )
 
 
+def _compile_guard_overlay(
+    base_raw: Mapping[str, Any],
+    base: CompiledPolicy,
+    raw_guard: Mapping[str, Any],
+    *,
+    source: str,
+    allow_legacy: bool,
+) -> CompiledGuard:
+    """Compile and prove one raw guard effect at the policy load boundary."""
+    raw_effect = raw_guard["then"]
+    candidate_raw = copy.deepcopy(dict(base_raw))
+    candidate_raw.pop("guards", None)
+    merge_policy_effect(candidate_raw, raw_effect)
+    candidate = _compile_policy(
+        candidate_raw,
+        source=source,
+        allow_legacy=allow_legacy,
+        validate_guard_effects=True,
+    )
+    comparator = RestrictionComparator()
+    comparator.assert_overlay(
+        base,
+        raw_effect,
+        phase="guard_overlay",
+    )
+    comparator.assert_effective(
+        base.authority,
+        candidate,
+        phase="guard_effective",
+    )
+
+    effect_conditions = raw_effect.get("conditions")
+    conditions = (
+        freeze(
+            {
+                name: candidate.conditions[name]
+                for name in effect_conditions
+            }
+        )
+        if isinstance(effect_conditions, Mapping)
+        else None
+    )
+    effect_retry = raw_effect.get("retry_policy")
+    retry_max_retries = (
+        candidate.retry.max_retries
+        if isinstance(effect_retry, Mapping)
+        and "max_retries" in effect_retry
+        and candidate.retry is not None
+        else None
+    )
+    retry_backoff_ms = (
+        candidate.retry.backoff_ms
+        if isinstance(effect_retry, Mapping)
+        and "backoff_ms" in effect_retry
+        and candidate.retry is not None
+        else None
+    )
+    effect_risk = raw_effect.get("risk")
+    risk_overlay = None
+    if isinstance(effect_risk, Mapping):
+        factor_count = len(effect_risk.get("factors") or ())
+        risk_overlay = CompiledRiskOverlay(
+            mode=candidate.risk.mode if "mode" in effect_risk else None,
+            threshold=(
+                candidate.risk.threshold
+                if "threshold" in effect_risk
+                else None
+            ),
+            factors=(
+                candidate.risk.factors[-factor_count:]
+                if factor_count
+                else ()
+            ),
+        )
+    effect_preconditions = raw_effect.get("pre_conditions")
+    required_preconditions = (
+        effect_preconditions.get("required", {})
+        if isinstance(effect_preconditions, Mapping)
+        else {}
+    )
+    precondition_names = (
+        set(required_preconditions)
+        if isinstance(required_preconditions, Mapping)
+        else set(required_preconditions)
+    )
+    effect_postconditions = raw_effect.get("post_conditions")
+    postconditions = (
+        tuple(effect_postconditions.get("required") or ())
+        if isinstance(effect_postconditions, Mapping)
+        else ()
+    )
+    return CompiledGuard(
+        condition=raw_guard["when"]["condition"],
+        effect=CompiledPolicyOverlay(
+            roles=(
+                candidate.roles if "roles" in raw_effect else None
+            ),
+            conditions=conditions,
+            tools=(
+                candidate.tools if "tools" in raw_effect else None
+            ),
+            retry_max_retries=retry_max_retries,
+            retry_backoff_ms=retry_backoff_ms,
+            risk=risk_overlay,
+            preconditions=tuple(
+                item
+                for item in candidate.preconditions
+                if item.name in precondition_names
+            ),
+            postconditions=postconditions,
+            output_validator=(
+                candidate.output_validator
+                if "output_schema" in raw_effect
+                else None
+            ),
+            guards=(
+                candidate.guards if "guards" in raw_effect else ()
+            ),
+            workflow=(
+                freeze(raw_effect["workflow"])
+                if "workflow" in raw_effect
+                else None
+            ),
+        ),
+    )
+
+
 def _compile_policy(
     raw_policy: Mapping[str, Any],
     *,
@@ -795,23 +819,21 @@ def _compile_policy(
         allow_legacy=allow_legacy,
     )
     if validate_guard_effects:
-        comparator = RestrictionComparator()
-        for index, guard in enumerate(compiled.guards):
-            candidate_raw = policy_from_restriction_values(
-                compiled.authority.restriction_values
-            )
-            merge_policy_effect(candidate_raw, guard.then)
-            candidate = _compile_policy(
-                candidate_raw,
+        guards = tuple(
+            _compile_guard_overlay(
+                detached,
+                compiled,
+                raw_guard,
                 source=f"{source}#guard[{index}]",
                 allow_legacy=allow_legacy,
-                validate_guard_effects=False,
             )
-            comparator.assert_overlay_and_effective(
-                parent=compiled,
-                overlay=guard.then,
-                effective=candidate,
-                phase_prefix="guard_",
+            for index, raw_guard in enumerate(detached.get("guards", ()))
+        )
+        if guards:
+            compiled = replace(
+                compiled,
+                guards=guards,
+                authority=replace(compiled.authority, guards=guards),
             )
     return compiled
 

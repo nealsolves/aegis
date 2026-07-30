@@ -12,16 +12,26 @@ from __future__ import annotations
 
 import copy
 import re
+from dataclasses import replace
 from typing import Any, Mapping, Sequence
 
-from aegis._internal.compiled_policy import CompiledGuard, CompiledPolicy
-from aegis._internal.conditions import resolve_conditions
-from aegis._internal.errors import GuardEvaluationError
-from aegis._internal.policy_compiler import compile_policy
+from aegis._internal.compiled_policy import (
+    AuthorityEnvelope,
+    CompiledGuard,
+    CompiledPolicy,
+    CompiledRetryPolicy,
+    CompiledRiskPolicy,
+    freeze,
+)
+from aegis._internal.conditions import (
+    resolve_compiled_conditions,
+    resolve_conditions,
+)
+from aegis._internal.errors import GuardEvaluationError, PolicyValidationError
 from aegis._internal.restrictions import (
+    REGISTRY,
     RestrictionComparator,
     merge_policy_effect,
-    policy_from_restriction_values,
 )
 
 
@@ -533,21 +543,22 @@ def evaluate_compiled_guards(
     invocation: Mapping[str, Any] | None = None,
     allow_legacy_effects: bool = False,
 ) -> tuple[CompiledPolicy, list[dict[str, Any]], dict[str, bool]]:
-    """Apply every matching compiled effect, then prove the cumulative result."""
-    base_policy = policy_from_restriction_values(
-        policy.authority.restriction_values
+    """Apply matching typed effects cumulatively without reopening policy input."""
+    del allow_legacy_effects
+    resolved_conditions = resolve_compiled_conditions(
+        policy.conditions,
+        context,
     )
-    resolved_conditions = resolve_conditions(base_policy, context)
     effective_invocation = (
         invocation
         if invocation is not None
         else {"role": context.get("role"), "context": dict(context)}
     )
     guards_evaluated: list[dict[str, Any]] = []
-    matching_effects: list[Mapping[str, Any]] = []
+    effective = policy
 
     for guard in guards:
-        condition_expr = guard.when.get("condition", "")
+        condition_expr = guard.condition
         matched = _evaluate_condition_expression(
             condition_expr,
             resolved_conditions,
@@ -556,26 +567,144 @@ def evaluate_compiled_guards(
         guards_evaluated.append(
             {"condition": condition_expr, "matched": matched}
         )
-        if matched and guard.then:
-            matching_effects.append(guard.then)
+        if matched:
+            effective = _apply_compiled_overlay(effective, guard)
 
-    candidate_raw = copy.deepcopy(base_policy)
-    for effect in matching_effects:
-        merge_policy_effect(candidate_raw, effect)
-    candidate = compile_policy(
-        candidate_raw,
-        source=f"guard-effective:{policy.policy_digest}",
-        allow_legacy=(
-            allow_legacy_effects
-            or any(item.legacy for item in policy.preconditions)
-        ),
-    )
     RestrictionComparator().assert_effective(
         policy.authority,
-        candidate,
+        effective,
         phase="guard_effective",
     )
-    return candidate, guards_evaluated, resolved_conditions
+    return effective, guards_evaluated, resolved_conditions
+
+
+def _merge_typed_workflow(
+    base: Mapping[str, Any],
+    overlay: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    """Return the immutable cumulative workflow value for a typed overlay."""
+    result = {
+        key: copy.deepcopy(value)
+        for key, value in base.items()
+    }
+    for key, value in overlay.items():
+        if (
+            key == "participants"
+            and isinstance(value, (list, tuple))
+        ):
+            result[key] = copy.deepcopy(value)
+        elif (
+            key in result
+            and isinstance(result[key], Mapping)
+            and isinstance(value, Mapping)
+        ):
+            result[key] = _merge_typed_workflow(result[key], value)
+        elif (
+            key in result
+            and isinstance(result[key], (list, tuple))
+            and isinstance(value, (list, tuple))
+        ):
+            result[key] = tuple(result[key]) + tuple(value)
+        else:
+            result[key] = copy.deepcopy(value)
+    return freeze(result)
+
+
+def _apply_compiled_overlay(
+    policy: CompiledPolicy,
+    guard: CompiledGuard,
+) -> CompiledPolicy:
+    """Apply one compiler-validated typed guard effect immutably."""
+    effect = guard.effect
+    roles = effect.roles if effect.roles is not None else policy.roles
+    conditions = policy.conditions
+    if effect.conditions is not None:
+        conditions = freeze({**conditions, **effect.conditions})
+    tools = effect.tools if effect.tools is not None else policy.tools
+
+    retry = policy.retry
+    if (
+        effect.retry_max_retries is not None
+        or effect.retry_backoff_ms is not None
+    ):
+        retry = CompiledRetryPolicy(
+            max_retries=(
+                effect.retry_max_retries
+                if effect.retry_max_retries is not None
+                else retry.max_retries
+            ),
+            backoff_ms=(
+                effect.retry_backoff_ms
+                if effect.retry_backoff_ms is not None
+                else retry.backoff_ms
+            ),
+        )
+
+    risk = policy.risk
+    if effect.risk is not None:
+        risk = CompiledRiskPolicy(
+            mode=effect.risk.mode or risk.mode,
+            threshold=(
+                effect.risk.threshold
+                if effect.risk.threshold is not None
+                else risk.threshold
+            ),
+            critical_ceiling=risk.critical_ceiling,
+            factors=(*risk.factors, *effect.risk.factors),
+        )
+
+    preconditions_by_name = {
+        item.name: item for item in policy.preconditions
+    }
+    preconditions_by_name.update(
+        {item.name: item for item in effect.preconditions}
+    )
+    preconditions = tuple(
+        preconditions_by_name[name]
+        for name in sorted(preconditions_by_name)
+    )
+    postconditions = (*policy.postconditions, *effect.postconditions)
+    output_validator = (
+        effect.output_validator
+        if effect.output_validator is not None
+        else policy.output_validator
+    )
+    guards = (*policy.guards, *effect.guards)
+    workflow = (
+        _merge_typed_workflow(policy.workflow, effect.workflow)
+        if effect.workflow is not None
+        else policy.workflow
+    )
+    authority = AuthorityEnvelope(
+        roles=frozenset(roles),
+        conditions=conditions,
+        tools=tools,
+        retry=retry,
+        risk=risk,
+        preconditions=preconditions,
+        postconditions=postconditions,
+        output_schema=(
+            output_validator.schema
+            if output_validator is not None
+            else None
+        ),
+        guards=guards,
+        workflow=workflow,
+    )
+    return replace(
+        policy,
+        roles=roles,
+        conditions=conditions,
+        tools=tools,
+        retry=retry,
+        risk=risk,
+        preconditions=preconditions,
+        postconditions=postconditions,
+        output_validator=output_validator,
+        guards=guards,
+        workflow=workflow,
+        authority=authority,
+    )
 
 
 def evaluate_guards(
@@ -603,21 +732,30 @@ def evaluate_guards(
     if not guards:
         return dict(policy), [], resolved_conditions
 
-    compiled = compile_policy(
-        policy,
-        source="guard-evaluation",
-        allow_legacy=True,
-    )
-    _, guards_evaluated, resolved_conditions = evaluate_compiled_guards(
-        compiled,
-        compiled.guards,
-        context,
-        invocation=invocation,
-        allow_legacy_effects=True,
-    )
-    effective_policy = copy.deepcopy(dict(policy))
-    for guard, evaluation in zip(guards, guards_evaluated):
-        if evaluation["matched"] and guard.get("then"):
-            merge_policy_effect(effective_policy, guard["then"])
+    compatibility_view = copy.deepcopy(dict(policy))
+    guards_evaluated: list[dict[str, Any]] = []
+    for guard in guards:
+        effect = guard.get("then") or {}
+        unknown_fields = sorted(
+            set(effect)
+            - {path.split(".", 1)[0] for path in REGISTRY.fields}
+        )
+        if unknown_fields:
+            raise PolicyValidationError(
+                "Guard effect contains a field with no restriction semantics",
+                code="RESTRICTION_SEMANTICS_MISSING",
+                details={"path": unknown_fields[0]},
+            )
+        condition_expr = guard.get("when", {}).get("condition", "")
+        matched = _evaluate_condition_expression(
+            condition_expr,
+            resolved_conditions,
+            invocation,
+        )
+        guards_evaluated.append(
+            {"condition": condition_expr, "matched": matched}
+        )
+        if matched and effect:
+            merge_policy_effect(compatibility_view, effect)
 
-    return effective_policy, guards_evaluated, resolved_conditions
+    return compatibility_view, guards_evaluated, resolved_conditions

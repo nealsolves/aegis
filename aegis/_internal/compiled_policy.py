@@ -108,11 +108,37 @@ class CompiledRetryPolicy:
 
 
 @dataclass(frozen=True, slots=True)
-class CompiledGuard:
-    """Detached guard source, awaiting semantic guard compilation."""
+class CompiledRiskOverlay:
+    """Typed risk fields declared by one compiler-validated guard effect."""
 
-    when: Mapping[str, JsonValue]
-    then: Mapping[str, JsonValue]
+    mode: str | None = None
+    threshold: float | None = None
+    factors: tuple[CompiledRiskFactor, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class CompiledPolicyOverlay:
+    """Typed immutable delta produced for one validated guard effect."""
+
+    roles: tuple[str, ...] | None = None
+    conditions: Mapping[str, JsonValue] | None = None
+    tools: tuple[CompiledToolLimit, ...] | None = None
+    retry_max_retries: int | None = None
+    retry_backoff_ms: int | None = None
+    risk: CompiledRiskOverlay | None = None
+    preconditions: tuple["CompiledPrecondition", ...] = ()
+    postconditions: tuple[str, ...] = ()
+    output_validator: "CompiledOutputValidator | None" = None
+    guards: tuple["CompiledGuard", ...] = ()
+    workflow: Mapping[str, JsonValue] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class CompiledGuard:
+    """A guard condition paired with its compiler-validated typed effect."""
+
+    condition: str
+    effect: CompiledPolicyOverlay
 
 
 @dataclass(frozen=True, slots=True)
@@ -213,12 +239,15 @@ class AuthorityEnvelope:
     """The policy's closed authorization limits for later restriction checks."""
 
     roles: frozenset[str]
+    conditions: Mapping[str, JsonValue]
     tools: tuple[CompiledToolLimit, ...]
-    risk_mode: str
-    risk_threshold: float
-    critical_ceiling: float
-    registered_fields: frozenset[str]
-    restriction_values: Mapping[str, JsonValue]
+    retry: CompiledRetryPolicy | None
+    risk: CompiledRiskPolicy
+    preconditions: tuple[CompiledPrecondition, ...]
+    postconditions: tuple[str, ...]
+    output_schema: Mapping[str, JsonValue] | None
+    guards: tuple[CompiledGuard, ...]
+    workflow: Mapping[str, JsonValue]
 
 
 @dataclass(frozen=True, slots=True)

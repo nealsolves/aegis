@@ -10,8 +10,6 @@ Finding 3 — PreCallResult is shallow-mutable (nested dict tamper)
 Finding 4 — split post-call raises raw TypeError on non-serializable output
 Finding 5 — packaging metadata version disagrees with runtime __version__
 """
-import importlib.metadata
-
 import pytest
 
 import aegis
@@ -33,7 +31,6 @@ from aegis._internal.gates import (
     INSERTION_POST_OUTPUT,
     INSERTION_PRE_OUTPUT,
 )
-from aegis._internal.policy_loader import load_policy
 
 
 # ── Helpers ────────────────────────────────────────────────────────
@@ -74,8 +71,11 @@ class BlockPreOutput(EnforcementGate):
     def evaluate(self, invocation, policy, context):
         return GateResult(
             passed=False,
-            failures=[{"code": "PRE_OUTPUT_BLOCKED",
-                        "message": "pre_output blocked", "field": None}],
+            failures=[{
+                "code": "PRE_OUTPUT_BLOCKED",
+                "message": "pre_output blocked",
+                "field": None,
+            }],
         )
 
 
@@ -108,8 +108,11 @@ class BlockPostOutput(EnforcementGate):
     def evaluate(self, invocation, policy, context):
         return GateResult(
             passed=False,
-            failures=[{"code": "POST_OUTPUT_BLOCKED",
-                        "message": "post_output blocked", "field": None}],
+            failures=[{
+                "code": "POST_OUTPUT_BLOCKED",
+                "message": "post_output blocked",
+                "field": None,
+            }],
         )
 
 
@@ -208,9 +211,7 @@ class TestFinding2PreCallResultForgeryPrevention:
 
     def _make_forged_token(self):
         """Construct a PreCallResult directly, bypassing enforce_pre_call."""
-        policy = load_policy(GOLDEN_POLICY)
         return PreCallResult(
-            effective_policy=policy,
             resolved_guards=(),
             resolved_conditions={},
             phase_a_metadata={
@@ -272,8 +273,7 @@ class TestFinding3PreCallResultShallowMutability:
     def test_mutating_effective_policy_output_schema_does_not_weaken_enforcement(self):
         """Removing a required field from effective_policy must not cause PASS."""
         pre = enforce_pre_call(_pre_call_inv())
-        # Remove the 'confidence' required field from the stored policy
-        pre.effective_policy["output_schema"]["required"] = ["result"]
+        assert not hasattr(pre, "effective_policy")
         # Even after mutation, the output without 'confidence' should still
         # be checked against the original (deep-copied) policy
         # The golden policy requires 'confidence' — output without it should FAIL

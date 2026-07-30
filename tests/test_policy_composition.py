@@ -271,7 +271,7 @@ def test_composition_can_remove_some_participant_ids():
 
     compiled = compile_composed_policy(parent, child)
 
-    assert compiled.authority.restriction_values["workflow"]["participants"] == (
+    assert compiled.authority.workflow["participants"] == (
         {
             "id": "agent-1",
             "roles": ("planner",),

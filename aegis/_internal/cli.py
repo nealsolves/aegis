@@ -22,12 +22,9 @@ from pathlib import Path
 from typing import Any, Sequence
 
 import yaml
-from jsonschema import Draft7Validator, validate, ValidationError
+from jsonschema import validate, ValidationError
 
-from aegis._internal.policy_loader import (
-    _resolve_policy_schema_path,
-    load_policy,
-)
+from aegis._internal.policy_loader import load_policy
 from aegis._internal.errors import PolicyLoadError, PolicyValidationError
 from aegis._internal.policy_compiler import compile_policy
 from aegis._internal.lineage import AuditLineage
@@ -35,12 +32,6 @@ from aegis._internal.policy_init import _cmd_policy_init
 from aegis._internal.workflow_init import _cmd_workflow_init
 from aegis._internal.workflow_lint import lint_target
 from aegis._internal.workflow_doctor import diagnose_target
-
-
-def _load_schema() -> dict:
-    """Load the policy DSL JSON Schema."""
-    schema_path = _resolve_policy_schema_path()
-    return json.loads(schema_path.read_text())
 
 
 def _load_audit_schema() -> dict:
@@ -72,26 +63,12 @@ def _lint_policy(path: Path) -> list[str]:
     if not isinstance(policy, dict):
         return ["Policy must be a YAML mapping (dict)"]
 
-    # 2. JSON Schema validation
-    schema = _load_schema()
-    validator = Draft7Validator(schema)
-    for err in sorted(
-        validator.iter_errors(policy), key=lambda e: list(e.path)
-    ):
-        pointer = ".".join(str(p) for p in err.absolute_path) or "$"
-        errors.append(f"  {pointer}: {err.message}")
-
-    if not errors:
-        try:
-            compile_policy(policy, source=str(path), allow_legacy=False)
-        except (PolicyLoadError, PolicyValidationError) as exc:
-            details = (
-                exc.details
-                if isinstance(exc.details, dict)
-                else {}
-            )
-            pointer = details.get("path", "$")
-            errors.append(f"[{exc.code}] {pointer}: {exc}")
+    try:
+        compile_policy(policy, source=str(path), allow_legacy=False)
+    except (PolicyLoadError, PolicyValidationError) as exc:
+        details = exc.details if isinstance(exc.details, dict) else {}
+        pointer = details.get("path", "$")
+        errors.append(f"[{exc.code}] {pointer}: {exc}")
 
     return errors
 

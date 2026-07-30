@@ -11,6 +11,7 @@ from typing import Any, Mapping, Protocol
 from aegis._internal.compiled_policy import (
     AuthorityEnvelope,
     CompiledPolicy,
+    CompiledPrecondition,
     CompiledToolLimit,
 )
 from aegis._internal.errors import PolicyValidationError
@@ -64,6 +65,23 @@ _PROTOCOL_FAMILIES = frozenset(
 
 
 def _plain(value: Any) -> Any:
+    if isinstance(value, CompiledPrecondition):
+        specification: dict[str, Any] = {}
+        if value.declared_type is not None:
+            specification["type"] = value.declared_type
+        if value.pattern is not None:
+            specification["pattern"] = value.pattern.source
+        if value.enum is not None:
+            specification["enum"] = _plain(value.enum)
+        if value.min_length is not None:
+            specification["minLength"] = value.min_length
+        if value.max_length is not None:
+            specification["maxLength"] = value.max_length
+        if value.minimum is not None:
+            specification["minimum"] = value.minimum
+        if value.maximum is not None:
+            specification["maximum"] = value.maximum
+        return specification
     if isinstance(value, Mapping):
         return {key: _plain(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
@@ -93,6 +111,49 @@ def _path_value(value: Mapping[str, Any], path: str) -> Any:
             return _MISSING
         current = current[part]
     return current
+
+
+def _authority_value(authority: AuthorityEnvelope, path: str) -> Any:
+    """Select one registered field from explicit typed authority."""
+    if path == "roles":
+        return authority.roles
+    if path == "conditions":
+        return authority.conditions
+    if path == "tools.allowed_tools":
+        return authority.tools
+    if path == "retry_policy.max_retries":
+        return (
+            authority.retry.max_retries
+            if authority.retry is not None
+            else None
+        )
+    if path == "retry_policy.backoff_ms":
+        return (
+            authority.retry.backoff_ms
+            if authority.retry is not None
+            else None
+        )
+    if path == "risk.mode":
+        return authority.risk.mode
+    if path == "risk.threshold":
+        return authority.risk.threshold
+    if path == "risk.factors":
+        return authority.risk.factors
+    if path == "pre_conditions":
+        return authority.preconditions
+    if path == "post_conditions":
+        return authority.postconditions
+    if path == "output_schema":
+        return authority.output_schema
+    if path == "guards":
+        return authority.guards
+    if path == "workflow":
+        return authority.workflow
+    raise PolicyValidationError(
+        f"No typed authority accessor is registered for {path}",
+        code="RESTRICTION_SEMANTICS_MISSING",
+        details={"path": path},
+    )
 
 
 def _raise_widening(
@@ -389,6 +450,10 @@ class RequirementsSupersetRule:
     def _required(self, value: Any) -> Any:
         if value in (_MISSING, None):
             return {}
+        if isinstance(value, tuple):
+            if all(isinstance(item, CompiledPrecondition) for item in value):
+                return {item.name: item for item in value}
+            return value
         if not isinstance(value, Mapping):
             return value
         return value.get("required", {})
@@ -587,17 +652,9 @@ class GuardSupersetRule:
         if phase.endswith("overlay") or parent in (_MISSING, None):
             return
         candidate_items = [] if candidate in (_MISSING, None) else list(candidate)
-        remaining = [
-            json.dumps(_plain(item), sort_keys=True, separators=(",", ":"))
-            for item in candidate_items
-        ]
+        remaining = list(candidate_items)
         for item in parent:
-            encoded = json.dumps(
-                _plain(item),
-                sort_keys=True,
-                separators=(",", ":"),
-            )
-            if encoded not in remaining:
+            if item not in remaining:
                 _raise_widening(
                     path=path,
                     phase=phase,
@@ -605,7 +662,7 @@ class GuardSupersetRule:
                     candidate=candidate,
                     reason="candidate removes an inherited guard",
                 )
-            remaining.remove(encoded)
+            remaining.remove(item)
 
 
 @dataclass(frozen=True, slots=True)
@@ -803,15 +860,19 @@ class RestrictionComparator:
 
     def _compare_values(
         self,
-        parent: Mapping[str, Any],
-        candidate: Mapping[str, Any],
+        parent: AuthorityEnvelope,
+        candidate: AuthorityEnvelope | Mapping[str, Any],
         *,
         phase: str,
     ) -> None:
         for path in sorted(self._registry.fields):
             self._registry.compare(
-                _path_value(parent, path),
-                _path_value(candidate, path),
+                _authority_value(parent, path),
+                (
+                    _authority_value(candidate, path)
+                    if isinstance(candidate, AuthorityEnvelope)
+                    else _path_value(candidate, path)
+                ),
                 path=path,
                 phase=phase,
             )
@@ -843,7 +904,7 @@ class RestrictionComparator:
         phase: str = "overlay",
     ) -> None:
         self._compare_values(
-            parent.authority.restriction_values,
+            parent.authority,
             overlay,
             phase=phase,
         )
@@ -856,8 +917,8 @@ class RestrictionComparator:
         phase: str = "effective",
     ) -> None:
         self._compare_values(
-            loaded_authority.restriction_values,
-            candidate.authority.restriction_values,
+            loaded_authority,
+            candidate.authority,
             phase=phase,
         )
 
@@ -882,23 +943,3 @@ def merge_policy_effect(
             merge_policy_effect(base[key], value)
         else:
             base[key] = _plain(value)
-
-
-def policy_from_restriction_values(
-    values: Mapping[str, Any],
-) -> dict[str, Any]:
-    """Build a detached compiler input from normalized restriction values."""
-    policy = _plain(values)
-    policy["policy_version"] = "2.0"
-    for key in (
-        "conditions",
-        "tools",
-        "retry_policy",
-        "pre_conditions",
-        "post_conditions",
-        "output_schema",
-        "workflow",
-    ):
-        if policy.get(key) is None:
-            policy.pop(key, None)
-    return policy

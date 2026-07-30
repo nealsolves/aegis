@@ -38,19 +38,10 @@ from aegis._internal.policy_compiler import compile_policy
 # Schema loading (lazy, cached at module level)
 # ---------------------------------------------------------------------------
 
-_POLICY_SCHEMA: dict | None = None
 _WORKFLOW_SCHEMA: dict | None = None
 _AUDIT_SCHEMA: dict | None = None
 _UNSUPPORTED_PROTOCOLS = frozenset({"grpc", "websocket", "soap"})
 _MAX_WITNESS_TRACE_EVENTS = 8
-
-
-def _policy_schema() -> dict:
-    global _POLICY_SCHEMA
-    if _POLICY_SCHEMA is None:
-        path = SCHEMAS_DIR / "policy_dsl.schema.json"
-        _POLICY_SCHEMA = json.loads(path.read_text(encoding="utf-8"))
-    return _POLICY_SCHEMA
 
 
 def _workflow_schema() -> dict:
@@ -549,22 +540,7 @@ def lint_policy(path: str, *, target_kind: str = "policy") -> list[dict]:
         ))
         return findings
 
-    # 4. JSON-schema validation
-    schema = _policy_schema()
-    validator = Draft7Validator(schema)
-    schema_errors = sorted(validator.iter_errors(policy), key=lambda e: list(e.path))
-    for err in schema_errors:
-        pointer = ".".join(str(seg) for seg in err.absolute_path) or "$"
-        findings.append(_finding(
-            "POLICY_SCHEMA_VALIDATION_ERROR",
-            f"Schema violation at {pointer}: {err.message}",
-            target_kind,
-            str(p),
-        ))
-    if findings:
-        return findings
-
-    # 5. Shared compiler semantics. Lint surfaces the compiler's stable code
+    # 4. Shared compiler semantics. Lint surfaces the compiler's stable code
     # and path rather than maintaining a second authorization interpretation.
     try:
         compile_policy(policy, source=str(p), allow_legacy=False)

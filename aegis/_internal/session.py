@@ -22,6 +22,7 @@ from aegis._internal.tools import validate_tool_constraints
 from aegis._internal.utils import canonical_json_bytes
 
 if TYPE_CHECKING:
+    from aegis._internal.compiled_policy import CompiledPolicy
     from aegis._internal.enforcement import AEGIS
 
 logger = logging.getLogger(__name__)
@@ -501,6 +502,7 @@ class GovernanceSession:
         self._handoffs: list[dict] | None = None
         self._escalation: dict | None = None
         self._protocol_constraints: dict | None = None
+        self._compiled_policy: "CompiledPolicy | None" = None
         self._sequence_position: int = 0
         self._last_completed_step_id: str | None = None
         self._last_completed_participant_id: str | None = None
@@ -513,6 +515,7 @@ class GovernanceSession:
                 cache=self._aigc._policy_cache,
                 loader=self._aigc._policy_loader,
             )
+            self._compiled_policy = _policy
             _wf = _policy.workflow
             try:
                 self._max_steps = _wf.get("max_steps")
@@ -959,6 +962,8 @@ class GovernanceSession:
         projected_call = {"name": tool_name, "id": tool_call_id}
         inner = entry.get("inner")
         effective_policy = getattr(inner, "_compiled_policy", None)
+        if effective_policy is None:
+            effective_policy = self._compiled_policy
         if effective_policy is None:
             raise InvocationValidationError(
                 "Pending step is missing compiled policy authority",
@@ -1414,7 +1419,13 @@ class GovernanceSession:
                 },
             )
 
-        inner_result = self._aigc.enforce_pre_call(enriched)
+        if self._compiled_policy is not None:
+            inner_result = self._aigc._enforce_pre_call_compiled(
+                enriched,
+                self._compiled_policy,
+            )
+        else:
+            inner_result = self._aigc.enforce_pre_call(enriched)
 
         # Run validator hooks after invocation-level governance passes
         # (Fix 3: hooks are wired internally — validator_hooks is NOT a parameter of

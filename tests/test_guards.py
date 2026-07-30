@@ -1,7 +1,6 @@
 """Tests for guard evaluation engine."""
 
 import pytest
-from aegis._internal.compiled_policy import CompiledGuard, freeze
 from aegis._internal.guards import (
     _evaluate_condition_expression,
     _merge_policy_blocks,
@@ -29,29 +28,28 @@ def test_two_matching_guard_effects_cannot_widen_cumulatively():
             ],
         },
     }
-    compiled = compile_policy(raw, source="loaded")
-    first = CompiledGuard(
-        when=freeze({"condition": "always"}),
-        then=freeze({"roles": ["reviewer"]}),
-    )
-    second = CompiledGuard(
-        when=freeze({"condition": "always"}),
-        then=freeze(
-            {
+    raw["guards"] = [
+        {
+            "when": {"condition": "always"},
+            "then": {"roles": ["reviewer"]},
+        },
+        {
+            "when": {"condition": "always"},
+            "then": {
                 "tools": {
                     "allowed_tools": [
                         {"name": "shell", "max_calls": 1},
                     ],
                 },
             },
-        ),
-    )
+        },
+    ]
 
     with pytest.raises(PolicyValidationError) as exc:
-        evaluate_compiled_guards(compiled, (first, second), {})
+        compile_policy(raw, source="loaded")
 
     assert exc.value.code == "POLICY_WIDENING"
-    assert exc.value.details["phase"] == "guard_effective"
+    assert exc.value.details["phase"] == "guard_overlay"
     assert exc.value.details["path"] == "tools.allowed_tools"
 
 
@@ -112,22 +110,21 @@ def test_guard_effect_cannot_erase_participant_restrictions(
         },
         "workflow": {"participants": [participant]},
     }
-    compiled = compile_policy(raw, source="loaded")
     replacement = dict(participant)
     if erasure == "missing":
         replacement.pop(restricted_field)
     else:
         replacement[restricted_field] = []
-    guard = CompiledGuard(
-        when=freeze({"condition": "always"}),
-        then=freeze({"workflow": {"participants": [replacement]}}),
-    )
+    raw["guards"] = [{
+        "when": {"condition": "always"},
+        "then": {"workflow": {"participants": [replacement]}},
+    }]
 
     with pytest.raises(PolicyValidationError) as exc:
-        evaluate_compiled_guards(compiled, (guard,), {})
+        compile_policy(raw, source="loaded")
 
     assert exc.value.code == "POLICY_WIDENING"
-    assert exc.value.details["phase"] == "guard_effective"
+    assert exc.value.details["phase"] == "guard_overlay"
     assert exc.value.details["path"] == "workflow"
 
 
@@ -145,20 +142,17 @@ def test_guard_candidate_rejects_duplicate_participant_ids():
         },
         "workflow": {"participants": [participant]},
     }
-    compiled = compile_policy(raw, source="loaded")
-    guard = CompiledGuard(
-        when=freeze({"condition": "always"}),
-        then=freeze(
-            {
-                "workflow": {
-                    "participants": [participant, participant],
-                },
+    raw["guards"] = [{
+        "when": {"condition": "always"},
+        "then": {
+            "workflow": {
+                "participants": [participant, participant],
             },
-        ),
-    )
+        },
+    }]
 
     with pytest.raises(PolicyValidationError) as exc:
-        evaluate_compiled_guards(compiled, (guard,), {})
+        compile_policy(raw, source="loaded")
 
     assert exc.value.code == "WORKFLOW_PARTICIPANT_AMBIGUOUS"
 
@@ -172,22 +166,19 @@ def test_guard_cannot_enable_default_disabled_protocol_capability():
         },
         "workflow": {},
     }
-    compiled = compile_policy(raw, source="loaded")
-    guard = CompiledGuard(
-        when=freeze({"condition": "always"}),
-        then=freeze(
-            {
-                "workflow": {
-                    "protocol_constraints": {
-                        "openai_agents": {"allow_hosted_tools": True},
-                    },
+    raw["guards"] = [{
+        "when": {"condition": "always"},
+        "then": {
+            "workflow": {
+                "protocol_constraints": {
+                    "openai_agents": {"allow_hosted_tools": True},
                 },
             },
-        ),
-    )
+        },
+    }]
 
     with pytest.raises(PolicyValidationError) as exc:
-        evaluate_compiled_guards(compiled, (guard,), {})
+        compile_policy(raw, source="loaded")
 
     assert exc.value.code == "POLICY_WIDENING"
     assert exc.value.details["path"] == "workflow"

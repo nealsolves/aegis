@@ -91,10 +91,10 @@ Policy validation includes:
 * YAML parsing
 * JSON Schema validation
 * policy composition
-* closed guard-effect validation
+* typed immutable guard-effect compilation and restriction validation
 * precompiled typed preconditions and RE2 patterns
 * precompiled output-schema validation
-* frozen tool, risk, workflow, and authority limits
+* explicit immutable per-field tool, risk, workflow, and authority limits
 
 Invalid policies fail immediately.
 
@@ -106,7 +106,10 @@ authorization stage reopens or reinterprets the loaded dictionary.
 
 ### 2. Guard Evaluation
 
-Conditional guards expand the effective policy.
+Conditional guards select compiler-produced `CompiledPolicyOverlay` values.
+Runtime evaluation resolves conditions and applies matching typed effects
+cumulatively with immutable field operations. It never reconstructs a policy
+dictionary or calls the policy compiler.
 
 Example:
 
@@ -253,8 +256,16 @@ wrapped model call executed.
 
 The split token carries the exact in-memory `CompiledPolicy`. Pickle/deepcopy
 compatibility transfers a canonical typed compiled DTO, reconstructs compiled
-value objects without calling `compile_policy()`, and binds Phase B to the
-authenticated `policy_digest`.
+value objects without calling `compile_policy()`, and binds Phase B to both the
+source `policy_digest` and a domain-separated canonical compiled-DTO content
+digest inside HMAC-authenticated Phase A evidence. The digest is verified
+before DTO reconstruction and again before Phase B use. Tokens retain no
+generic effective-policy map or serialized raw-policy copy.
+
+A policy-backed workflow session pins the exact `CompiledPolicy` created when
+the session opens. Step authorization and dynamic tool checks use that pinned
+authority (or typed guard-derived restrictions from it), so policy-file changes
+cannot mix open-time workflow limits with later authorization rules.
 
 Policy lint uses the same compiler and reports its stable error code and
 `details.path`, so diagnostics cannot drift from enforcement semantics.

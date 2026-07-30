@@ -186,21 +186,52 @@ def compute_risk_score(
         - factors: list of {name, weight, condition}
     :return: RiskScore with score, threshold, mode, basis
     """
-    if isinstance(policy, CompiledPolicy):
-        compiled_policy = policy
-        if risk_config is None:
-            risk_config = policy.risk
-    else:
+    if not isinstance(policy, CompiledPolicy):
         raw_policy = policy
         compiled_policy = _compatibility_risk_facts(policy)
         if risk_config is None:
             risk_config = raw_policy.get("risk", {})
-    if isinstance(risk_config, CompiledRiskPolicy):
-        compiled = risk_config
-    else:
+        if isinstance(risk_config, CompiledRiskPolicy):
+            compiled = risk_config
+        else:
+            compatible = dict(risk_config)
+            compatible.setdefault("threshold", DEFAULT_RISK_THRESHOLD)
+            compiled = compile_risk_policy(compatible)
+        return _compute_risk_score_from_facts(
+            invocation,
+            compiled_policy,
+            compiled,
+        )
+
+    if risk_config is None:
+        risk_config = policy.risk
+    if not isinstance(risk_config, CompiledRiskPolicy):
         compatible = dict(risk_config)
         compatible.setdefault("threshold", DEFAULT_RISK_THRESHOLD)
-        compiled = compile_risk_policy(compatible)
+        risk_config = compile_risk_policy(compatible)
+    return compute_compiled_risk_score(
+        invocation,
+        policy,
+        risk_config=risk_config,
+    )
+
+
+def compute_compiled_risk_score(
+    invocation: Mapping[str, Any],
+    policy: CompiledPolicy,
+    *,
+    risk_config: CompiledRiskPolicy,
+) -> RiskScore:
+    """Score only compiler-owned policy and risk values for enforcement."""
+    return _compute_risk_score_from_facts(invocation, policy, risk_config)
+
+
+def _compute_risk_score_from_facts(
+    invocation: Mapping[str, Any],
+    compiled_policy: CompiledPolicy | _RiskPolicyFacts,
+    compiled: CompiledRiskPolicy,
+) -> RiskScore:
+    """Shared scoring arithmetic after authority projection."""
 
     mode = compiled.mode
     basis: list[dict[str, Any]] = []

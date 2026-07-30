@@ -226,13 +226,13 @@ def test_output_schema_comparison_preserves_json_boolean_number_distinction(
     assert exc.value.details["path"] == "output_schema"
 
 
-def test_restriction_snapshot_is_detached_and_immutable(base_policy):
+def test_typed_authority_fields_are_detached_and_immutable(base_policy):
     compiled = compile_policy(base_policy, source="snapshot")
     base_policy["workflow"]["max_steps"] = 100
 
-    assert compiled.authority.restriction_values["workflow"]["max_steps"] == 5
+    assert compiled.authority.workflow["max_steps"] == 5
     with pytest.raises(TypeError):
-        compiled.authority.restriction_values["workflow"]["max_steps"] = 6
+        compiled.authority.workflow["max_steps"] = 6
 
 
 def test_tool_validation_consumes_compiled_limits(base_policy):
