@@ -1,5 +1,9 @@
 """Tests for the risk scoring engine (M2 feature)."""
 import pytest
+from aegis._internal.compiled_policy import (
+    CompiledRiskFactor,
+    CompiledRiskPolicy,
+)
 from aegis._internal.errors import PolicyValidationError
 from aegis._internal.policy_compiler import compile_risk_policy
 from aegis._internal.risk_scoring import (
@@ -150,6 +154,32 @@ def test_fixed_critical_ceiling_is_inclusive():
 
     assert result.exceeded
     assert result.threshold == 1.0
+
+
+def test_caller_constructed_compiled_policy_cannot_raise_critical_ceiling():
+    """The scoring boundary must own the fixed 0.90 critical ceiling."""
+    risk = CompiledRiskPolicy(
+        mode="warn_only",
+        threshold=1.0,
+        critical_ceiling=1.0,
+        factors=(
+            CompiledRiskFactor(
+                name="f1",
+                weight=0.9,
+                condition="no_output_schema",
+            ),
+        ),
+    )
+
+    result = compute_risk_score(
+        _base_invocation(),
+        _base_policy(),
+        risk_config=risk,
+    )
+
+    assert result.score == 0.9
+    assert result.threshold == 1.0
+    assert result.exceeded
 
 
 # ── Factor conditions ────────────────────────────────────────────

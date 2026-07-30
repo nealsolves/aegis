@@ -20,7 +20,10 @@ from aegis._internal.compiled_policy import (
     CompiledRiskPolicy,
 )
 from aegis._internal.errors import PolicyValidationError
-from aegis._internal.policy_compiler import compile_risk_policy
+from aegis._internal.policy_compiler import (
+    CRITICAL_RISK_CEILING,
+    compile_risk_policy,
+)
 
 logger = logging.getLogger("aegis.risk_scoring")
 
@@ -183,7 +186,7 @@ def compute_risk_score(
         threshold=compiled.threshold,
         mode=mode,
         basis=basis,
-        critical_ceiling=compiled.critical_ceiling,
+        critical_ceiling=CRITICAL_RISK_CEILING,
     )
 
     logger.debug(

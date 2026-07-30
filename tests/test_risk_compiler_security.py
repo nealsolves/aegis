@@ -23,12 +23,38 @@ def _policy_with_risk(**risk: object) -> dict[str, object]:
     }
 
 
+class _NonFiniteNormalizingFloat(float):
+    """Stores a finite value while normalizing to an attacker-chosen float."""
+
+    def __new__(cls, normalized: float):
+        instance = super().__new__(cls, 0.5)
+        instance.normalized = normalized
+        return instance
+
+    def __float__(self) -> float:
+        return self.normalized
+
+
 @pytest.mark.parametrize(
     "value",
     [float("nan"), float("inf"), -float("inf"), True, "0.9"],
 )
 def test_security_number_rejects_non_finite_or_coerced_thresholds(value):
     """Changing risk validation back to float coercion must fail this test."""
+    with pytest.raises(PolicyValidationError) as exc:
+        compile_policy(_policy_with_risk(threshold=value), source="test")
+
+    assert exc.value.code == "RISK_NUMBER_INVALID"
+
+
+@pytest.mark.parametrize(
+    "normalized",
+    [float("nan"), float("inf"), -float("inf")],
+)
+def test_security_number_revalidates_normalized_float_subclass(normalized):
+    """A finite-looking subclass must not smuggle a non-finite float."""
+    value = _NonFiniteNormalizingFloat(normalized)
+
     with pytest.raises(PolicyValidationError) as exc:
         compile_policy(_policy_with_risk(threshold=value), source="test")
 

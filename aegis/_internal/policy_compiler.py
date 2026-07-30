@@ -80,12 +80,10 @@ def require_finite_number(
             code="RISK_NUMBER_INVALID",
             details={"path": path},
         )
+    normalized = float(value)
     if (
-        (
-            isinstance(value, float)
-            and not math.isfinite(value)
-        )
-        or not minimum <= value <= maximum
+        not math.isfinite(normalized)
+        or not minimum <= normalized <= maximum
     ):
         raise PolicyValidationError(
             "Security number out of range",
@@ -96,7 +94,7 @@ def require_finite_number(
                 "maximum": maximum,
             },
         )
-    return float(value)
+    return normalized
 
 
 def _require_bounded_integer(
