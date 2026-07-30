@@ -24,6 +24,9 @@ These changes exist in the current source tree but are not in the published
   leave base dependencies unchanged; exact-pair trust resolution, clients,
   credentials, provider configuration, IAM, and retained evidence remain
   host-owned.
+- Current-source verification baseline: `3,138 tests` pass. This does not
+  rewrite the released `0.9.0b1` evidence below. The manifest notation is
+  `3138 tests`.
 
 ## [0.9.0b1] — 2026-07-25
 

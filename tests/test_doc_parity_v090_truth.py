@@ -1196,6 +1196,7 @@ def test_kms_source_checkout_install_and_release_history_are_distinct():
     for document in (readme, contract):
         assert 'python -m pip install -e ".[aws-kms]"' in document
         assert 'python -m pip install -e ".[gcp-kms]"' in document
+    assert "Current-source verification baseline: `3,138 tests`" in changelog
     assert "1,923 tests" in changelog
     assert "current source" in readme.lower()
 
