@@ -1718,6 +1718,74 @@ def test_google_verifier_fetches_checksummed_public_key_and_verifies(
     )
 
 
+@pytest.mark.parametrize(
+    ("pem_size", "accepted"),
+    [
+        (MAX_PUBLIC_KEY_PEM_BYTES - 1, True),
+        (MAX_PUBLIC_KEY_PEM_BYTES, True),
+        (MAX_PUBLIC_KEY_PEM_BYTES + 1, False),
+    ],
+)
+def test_google_fetched_pem_covers_limit_minus_one_limit_and_limit_plus_one(
+    google_private_keys,
+    controlled_google_modules,
+    pem_size,
+    accepted,
+):
+    algorithm = "RSA_SIGN_PSS_2048_SHA256"
+    name = GOOGLE_KEY_VERSION_NAMES[algorithm]
+    payload = b"fetched PEM boundary"
+
+    class SizedFetchedPemClient(RecordingGoogleCloudKmsClient):
+        def get_public_key(self, **kwargs):
+            response = super().get_public_key(**kwargs)
+            original = response.public_key.data
+            padded = original + b" " * (pem_size - len(original))
+            response.public_key.data = padded
+            response.public_key.crc32c_checksum = google_crc32c_value(
+                padded
+            )
+            return response
+
+    client = SizedFetchedPemClient(google_private_keys)
+    verifier = _google_verifier(
+        client,
+        target=GoogleCloudKmsVerificationTarget(name, algorithm),
+    )
+    signature = _google_signature(
+        google_private_keys[algorithm],
+        algorithm,
+        payload,
+    )
+
+    if accepted:
+        outcome = verifier.verify(
+            payload,
+            b64encode(signature).decode("ascii"),
+            _google_metadata(algorithm, name),
+        )
+        assert (
+            outcome.reason_code
+            is VerificationReasonCode.SIGNATURE_VALID_ANCHORED
+        )
+    else:
+        with pytest.raises(
+            VerificationContractError,
+            match=(
+                r"^Google Cloud KMS verifier returned "
+                r"an invalid response$"
+            ),
+        ) as caught:
+            verifier.verify(
+                payload,
+                b64encode(signature).decode("ascii"),
+                _google_metadata(algorithm, name),
+            )
+        _assert_safe_error(caught.value)
+
+    assert len(client.get_public_key_calls) == 1
+
+
 def test_controlled_google_public_key_response_uses_exact_sdk_shapes(
     google_private_keys,
     controlled_google_modules,
