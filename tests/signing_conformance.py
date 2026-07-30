@@ -300,6 +300,8 @@ def assert_external_signer_conformance(signer_factory: SignerFactory) -> None:
 def assert_external_verifier_conformance(
     signed_artifact_factory: SignedArtifactFactory,
     verifier_factory: VerifierFactory,
+    *,
+    unknown_version: str = "version/unknown",
 ) -> None:
     """Assert exact-version verification and safe public verification outcomes."""
     unsigned = _artifact()
@@ -382,7 +384,7 @@ def assert_external_verifier_conformance(
         signed_artifact_factory, "version/current"
     )
     unknown = fixture.artifact
-    unknown["signature_metadata"]["key_version"] = "version/unknown"
+    unknown["signature_metadata"]["key_version"] = unknown_version
     snapshot = deepcopy(unknown)
     with _capture_logs() as logs:
         recording_verifier = _RecordingVerifier(

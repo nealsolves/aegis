@@ -61,6 +61,7 @@ GCP_PROVIDER_FAMILY = frozenset(
         "grpcio",
         "grpcio-status",
         "proto-plus",
+        "requests",
     }
 )
 FORBIDDEN_PROVIDER_FAMILIES = {
@@ -336,6 +337,7 @@ import aegis
 import aegis.integrations.kms
 import aegis.integrations.aws_kms as aws_kms
 import aegis.integrations.google_cloud_kms as google_kms
+from aegis.errors import VerificationContractError
 from aegis.integrations.kms import KmsKeyDisposition
 from aegis.signing import (
     CANONICALIZATION_VERSION,
@@ -425,8 +427,13 @@ def run_aws_cycle():
     import boto3
     from botocore.exceptions import (
         ConnectTimeoutError,
+        ConnectionClosedError,
         EndpointConnectionError,
+        HTTPClientError,
+        ProxyConnectionError,
         ReadTimeoutError,
+        ResponseStreamingError,
+        SSLError,
     )
 
     key_arn = (
@@ -510,14 +517,22 @@ def run_aws_cycle():
     if outcome.reason_code is not VerificationReasonCode.SIGNATURE_VALID_ANCHORED:
         raise AssertionError("AWS fake-client cycle failed")
 
-    for exception_type in (
-        ConnectTimeoutError,
-        ReadTimeoutError,
-        EndpointConnectionError,
-    ):
+    transport_failures = (
+        ConnectTimeoutError(endpoint_url="https://offline.invalid"),
+        ReadTimeoutError(endpoint_url="https://offline.invalid"),
+        EndpointConnectionError(endpoint_url="https://offline.invalid"),
+        SSLError(
+            endpoint_url="https://offline.invalid",
+            error="offline",
+        ),
+        ProxyConnectionError(proxy_url="https://offline.invalid"),
+        ConnectionClosedError(endpoint_url="https://offline.invalid"),
+        HTTPClientError(error="offline"),
+    )
+    for transport_failure in transport_failures:
         class TransportClient(FakeClient):
             def verify(self, **kwargs):
-                raise exception_type(endpoint_url="https://offline.invalid")
+                raise transport_failure
 
         transport_verifier = aws_kms.AwsKmsArtifactVerifier(
             TransportClient(),
@@ -534,21 +549,48 @@ def run_aws_cycle():
         ):
             raise AssertionError("real botocore transport class was not mapped")
 
+    class StreamingClient(FakeClient):
+        def verify(self, **kwargs):
+            raise ResponseStreamingError(error="offline")
+
+    streaming_verifier = aws_kms.AwsKmsArtifactVerifier(
+        StreamingClient(),
+        resolver=lambda _reference, _version: target,
+    )
+    try:
+        streaming_verifier.verify(
+            payload,
+            receipt.signature,
+            signature_metadata(receipt, signed_at=3),
+        )
+    except VerificationContractError:
+        pass
+    else:
+        raise AssertionError("streaming response error was overclassified")
+
     return {
         "boto3": boto3.__version__,
         "botocore_transport_classes": [
-            ConnectTimeoutError.__name__,
-            ReadTimeoutError.__name__,
-            EndpointConnectionError.__name__,
+            type(error).__name__ for error in transport_failures
         ],
+        "botocore_excluded_class": ResponseStreamingError.__name__,
     }
 
 def run_google_cycle():
     from cryptography.hazmat.primitives import hashes, serialization
     from cryptography.hazmat.primitives.asymmetric import padding, rsa, utils
-    from google.api_core.exceptions import DeadlineExceeded
+    from google.api_core.exceptions import (
+        BadGateway,
+        InternalServerError,
+        RetryError,
+    )
+    from google.auth.exceptions import TransportError
     from google.cloud import kms_v1
     import google_crc32c
+    from requests.exceptions import (
+        ConnectionError as RequestsConnectionError,
+        Timeout as RequestsTimeout,
+    )
 
     algorithm = "RSA_SIGN_PSS_2048_SHA256"
     name = (
@@ -655,27 +697,46 @@ def run_google_cycle():
     ):
         raise AssertionError("real Google checksummed response classes failed")
 
-    class UnavailableClient:
-        def get_public_key(self, **kwargs):
-            if type(kwargs["request"]) is not kms_v1.GetPublicKeyRequest:
-                raise AssertionError("unexpected Google public-key request")
-            raise DeadlineExceeded("offline transport classification")
-
     unavailable_target = google_kms.GoogleCloudKmsVerificationTarget(
         name,
         algorithm,
     )
-    unavailable_verifier = google_kms.GoogleCloudKmsArtifactVerifier(
-        UnavailableClient(),
-        resolver=lambda _reference, _version: unavailable_target,
+    transport_failures = (
+        InternalServerError("internal"),
+        BadGateway("gateway"),
+        RequestsConnectionError("connection"),
+        RequestsTimeout("timeout"),
+        TransportError("transport"),
     )
-    unavailable = unavailable_verifier.verify(
-        payload,
-        receipt.signature,
-        signature_metadata(receipt, signed_at=4),
-    )
-    if unavailable.reason_code is not VerificationReasonCode.VERIFIER_UNAVAILABLE:
-        raise AssertionError("real Google API exception class was not mapped")
+    for direct_error in transport_failures:
+        for provider_error in (
+            direct_error,
+            RetryError("retry", direct_error),
+        ):
+            class UnavailableClient:
+                def get_public_key(self, **kwargs):
+                    if type(kwargs["request"]) is not kms_v1.GetPublicKeyRequest:
+                        raise AssertionError(
+                            "unexpected Google public-key request"
+                        )
+                    raise provider_error
+
+            unavailable_verifier = google_kms.GoogleCloudKmsArtifactVerifier(
+                UnavailableClient(),
+                resolver=lambda _reference, _version: unavailable_target,
+            )
+            unavailable = unavailable_verifier.verify(
+                payload,
+                receipt.signature,
+                signature_metadata(receipt, signed_at=4),
+            )
+            if (
+                unavailable.reason_code
+                is not VerificationReasonCode.VERIFIER_UNAVAILABLE
+            ):
+                raise AssertionError(
+                    "real Google transport exception class was not mapped"
+                )
 
     return {
         "google_request_classes": [
@@ -690,7 +751,10 @@ def run_google_cycle():
             "PublicKey",
             "ChecksummedData",
         ],
-        "google_api_exception_class": DeadlineExceeded.__name__,
+        "google_transport_exception_classes": [
+            type(error).__name__ for error in transport_failures
+        ],
+        "google_retry_wrapper_class": RetryError.__name__,
     }
 
 provider_checks = {}

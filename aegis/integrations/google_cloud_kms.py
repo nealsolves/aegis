@@ -17,6 +17,7 @@ from aegis.integrations._kms_common import (
     _canonical_b64decode,
     _canonical_b64encode,
     _is_canonical_key_disposition,
+    _load_authenticated_module,
     _normalize_crc32c,
     _normalize_timeout,
     _outcome,
@@ -582,7 +583,11 @@ def _parse_crypto_key_version_name(
         or parts[4] != "keyRings"
         or parts[6] != "cryptoKeys"
         or parts[8] != "cryptoKeyVersions"
-        or any(not _is_resource_segment(parts[index]) for index in (1, 3, 5, 7, 9))
+        or any(
+            not _is_resource_segment(parts[index])
+            for index in (1, 3, 5, 7)
+        )
+        or not _is_crypto_key_version_segment(parts[9])
     ):
         return None
     key_reference = "/".join(parts[:8])
@@ -607,6 +612,15 @@ def _is_resource_segment(value: str) -> bool:
             or character in "._:-"
         )
         for character in value
+    )
+
+
+def _is_crypto_key_version_segment(value: object) -> bool:
+    return (
+        type(value) is str
+        and bool(value)
+        and value[0] in "123456789"
+        and all(character in "0123456789" for character in value[1:])
     )
 
 
@@ -739,16 +753,8 @@ def _is_key_reference(value: object) -> bool:
 
 def _is_metadata_key_version(value: object) -> bool:
     return (
-        type(value) is str
-        and 1 <= len(value) <= _MAX_KEY_VERSION_LENGTH
-        and all(
-            character.isascii()
-            and (
-                character.isalnum()
-                or character in "._:/-"
-            )
-            for character in value
-        )
+        _is_crypto_key_version_segment(value)
+        and len(value) <= _MAX_KEY_VERSION_LENGTH  # type: ignore[arg-type]
     )
 
 
@@ -794,7 +800,8 @@ def _load_validated_public_key(
         rsa,
         _utils,
     ) = _load_cryptography_dependencies()
-    public_key = serialization.load_pem_public_key(public_key_pem)  # type: ignore[attr-defined]
+    normalized_pem = _single_public_key_pem(public_key_pem)
+    public_key = serialization.load_pem_public_key(normalized_pem)  # type: ignore[attr-defined]
     key_kind, key_size = _GOOGLE_ALGORITHMS[algorithm]
     if key_kind == "rsa":
         if (
@@ -814,6 +821,23 @@ def _load_validated_public_key(
     ):
         raise ValueError
     return public_key
+
+
+def _single_public_key_pem(value: bytes) -> bytes:
+    whitespace = b" \t\r\n\v\f"
+    normalized = value.strip(whitespace)
+    begin_marker = b"-----BEGIN PUBLIC KEY-----"
+    end_marker = b"-----END PUBLIC KEY-----"
+    if (
+        not normalized.startswith(begin_marker)
+        or not normalized.endswith(end_marker)
+        or normalized.count(begin_marker) != 1
+        or normalized.count(end_marker) != 1
+        or normalized.count(b"-----BEGIN ") != 1
+        or normalized.count(b"-----END ") != 1
+    ):
+        raise ValueError
+    return normalized
 
 
 def _verify_local_signature(
@@ -1140,6 +1164,8 @@ def _load_google_api_availability_types_unchecked(
     direct_names = (
         "DeadlineExceeded",
         "GatewayTimeout",
+        "InternalServerError",
+        "BadGateway",
         "ResourceExhausted",
         "TooManyRequests",
         "PermissionDenied",
@@ -1173,6 +1199,9 @@ def _load_google_api_availability_types_unchecked(
         for candidate in direct_types
         if candidate is not None
     )
+    transport_types = _load_google_transport_availability_types()
+    if transport_types is None:
+        return None
     canonical_types = (
         ("GoogleAPIError", google_api_error),
         ("_GoogleAPICallErrorMeta", api_call_metaclass),
@@ -1207,10 +1236,101 @@ def _load_google_api_availability_types_unchecked(
     ):
         return None
     return _GoogleApiAvailabilityTypes(
-        direct_types=typed_direct_types,
+        direct_types=typed_direct_types + transport_types,
         bad_request_type=bad_request_type,
         retry_error_type=retry_error_type,
     )
+
+
+def _load_google_transport_availability_types(
+) -> tuple[type[BaseException], ...] | None:
+    requests_exceptions = _load_authenticated_module(
+        module_name="requests.exceptions",
+        package_name="requests",
+        distribution_name="requests",
+        source_entry_name="requests/exceptions.py",
+    )
+    auth_exceptions = _load_authenticated_module(
+        module_name="google.auth.exceptions",
+        package_name="google.auth",
+        distribution_name="google-auth",
+        source_entry_name="google/auth/exceptions.py",
+    )
+    if requests_exceptions is None or auth_exceptions is None:
+        return None
+
+    request_exception = _canonical_exact_exception_class(
+        requests_exceptions,
+        "RequestException",
+        module_name="requests.exceptions",
+        base_type=OSError,
+    )
+    google_auth_error = _canonical_exact_exception_class(
+        auth_exceptions,
+        "GoogleAuthError",
+        module_name="google.auth.exceptions",
+        base_type=Exception,
+    )
+    if request_exception is None or google_auth_error is None:
+        return None
+
+    requests_connection_error = _canonical_exact_exception_class(
+        requests_exceptions,
+        "ConnectionError",
+        module_name="requests.exceptions",
+        base_type=request_exception,
+    )
+    requests_timeout = _canonical_exact_exception_class(
+        requests_exceptions,
+        "Timeout",
+        module_name="requests.exceptions",
+        base_type=request_exception,
+    )
+    auth_transport_error = _canonical_exact_exception_class(
+        auth_exceptions,
+        "TransportError",
+        module_name="google.auth.exceptions",
+        base_type=google_auth_error,
+    )
+    candidates = (
+        requests_connection_error,
+        requests_timeout,
+        auth_transport_error,
+    )
+    if any(candidate is None for candidate in candidates):
+        return None
+    typed_candidates = tuple(
+        candidate
+        for candidate in candidates
+        if candidate is not None
+    )
+    if not _all_type_identities_are_unique(typed_candidates):
+        return None
+    return typed_candidates
+
+
+def _canonical_exact_exception_class(
+    module: object,
+    name: str,
+    *,
+    module_name: str,
+    base_type: type,
+) -> type[BaseException] | None:
+    try:
+        candidate = getattr(module, name)
+    except Exception:
+        return None
+    if (
+        type(candidate) is not type
+        or candidate.__module__ != module_name
+        or candidate.__name__ != name
+        or candidate.__qualname__ != name
+        or not _has_exact_base_identity(candidate, base_type)
+        or dict.get(vars(module), name) is not candidate
+        or not issubclass(candidate, BaseException)
+    ):
+        return None
+    return candidate
 
 
 def _read_bounded_google_exception_source(
@@ -1267,7 +1387,7 @@ def _is_valid_google_api_availability_types(
     if (
         type(value) is not _GoogleApiAvailabilityTypes
         or type(value.direct_types) is not tuple
-        or len(value.direct_types) != 9
+        or len(value.direct_types) != 14
     ):
         return False
     all_types = value.direct_types + (

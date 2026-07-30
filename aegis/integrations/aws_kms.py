@@ -16,6 +16,7 @@ from aegis.integrations._kms_common import (
     _canonical_b64decode,
     _canonical_b64encode,
     _is_canonical_key_disposition,
+    _load_authenticated_module,
     _outcome,
     _sha256_digest,
 )
@@ -70,6 +71,38 @@ _AWS_KMS_PARTITIONS = frozenset(
     }
 )
 
+_AWS_KMS_REGION_PATTERNS = {
+    "aws": re.compile(
+        r"\A(?:us|eu|ap|sa|ca|me|af|il|mx)-[a-z0-9]+-[0-9]+\Z",
+        re.ASCII,
+    ),
+    "aws-cn": re.compile(r"\Acn-[a-z0-9]+-[0-9]+\Z", re.ASCII),
+    "aws-eusc": re.compile(
+        r"\Aeusc-de-[a-z0-9]+-[0-9]+\Z",
+        re.ASCII,
+    ),
+    "aws-iso": re.compile(
+        r"\Aus-iso-[a-z0-9]+-[0-9]+\Z",
+        re.ASCII,
+    ),
+    "aws-iso-b": re.compile(
+        r"\Aus-isob-[a-z0-9]+-[0-9]+\Z",
+        re.ASCII,
+    ),
+    "aws-iso-e": re.compile(
+        r"\Aeu-isoe-[a-z0-9]+-[0-9]+\Z",
+        re.ASCII,
+    ),
+    "aws-iso-f": re.compile(
+        r"\Aus-isof-[a-z0-9]+-[0-9]+\Z",
+        re.ASCII,
+    ),
+    "aws-us-gov": re.compile(
+        r"\Aus-gov-[a-z0-9]+-[0-9]+\Z",
+        re.ASCII,
+    ),
+}
+
 _AWS_VERIFY_AVAILABILITY_EXCEPTION_NAMES = (
     "AccessDeniedException",
     "DependencyTimeoutException",
@@ -100,13 +133,20 @@ _AWS_VERIFY_AVAILABILITY_ERROR_CODES = frozenset(
 
 _AWS_KEY_ARN_PATTERN = re.compile(
     r"\Aarn:(?P<partition>[a-z0-9-]+):kms:"
-    r"[a-z0-9]+(?:-[a-z0-9]+)*:[0-9]{12}:key/"
+    r"(?P<region>[a-z0-9]+(?:-[a-z0-9]+)*):[0-9]{12}:key/"
     r"(?:"
     r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
     r"|mrk-[0-9a-f]{32}"
     r")\Z",
     re.ASCII,
 )
+
+
+@dataclass(frozen=True, slots=True, repr=False)
+class _BotocoreExceptionTypes:
+    client_error_type: type[BaseException]
+    transport_types: tuple[type[BaseException], ...]
+
 
 __all__ = [
     "AwsKmsArtifactSigner",
@@ -498,9 +538,14 @@ def _is_concrete_key_arn(value: object) -> bool:
     if type(value) is not str or not 1 <= len(value) <= 128:
         return False
     match = _AWS_KEY_ARN_PATTERN.fullmatch(value)
+    if match is None:
+        return False
+    partition = match.group("partition")
+    region_pattern = _AWS_KMS_REGION_PATTERNS.get(partition)
     return (
-        match is not None
-        and match.group("partition") in _AWS_KMS_PARTITIONS
+        partition in _AWS_KMS_PARTITIONS
+        and region_pattern is not None
+        and region_pattern.fullmatch(match.group("region")) is not None
     )
 
 
@@ -652,11 +697,10 @@ def _client_exception_type(
 
 
 def _botocore_client_error_code(error: BaseException) -> str | None:
-    try:
-        from botocore.exceptions import ClientError
-    except (ImportError, ModuleNotFoundError):
+    exception_types = _load_botocore_exception_types()
+    if exception_types is None:
         return None
-    if type(ClientError) is not type or type(error) is not ClientError:
+    if type(error) is not exception_types.client_error_type:
         return None
     try:
         response = error.response
@@ -674,34 +718,121 @@ def _botocore_client_error_code(error: BaseException) -> str | None:
 
 
 def _is_botocore_transport_error(error: BaseException) -> bool:
-    try:
-        from botocore.exceptions import (
-            ConnectTimeoutError,
-            EndpointConnectionError,
-            ReadTimeoutError,
-        )
-    except (ImportError, ModuleNotFoundError):
+    exception_types = _load_botocore_exception_types()
+    if exception_types is None:
         return False
-    allowed_types = (
-        ConnectTimeoutError,
-        ReadTimeoutError,
-        EndpointConnectionError,
+    return any(
+        type(error) is candidate
+        for candidate in exception_types.transport_types
     )
-    if (
-        any(type(candidate) is not type for candidate in allowed_types)
-        or tuple(candidate.__name__ for candidate in allowed_types)
-        != (
-            "ConnectTimeoutError",
-            "ReadTimeoutError",
-            "EndpointConnectionError",
+
+
+def _load_botocore_exception_types() -> _BotocoreExceptionTypes | None:
+    exceptions = _load_authenticated_module(
+        module_name="botocore.exceptions",
+        package_name="botocore",
+        distribution_name="botocore",
+        source_entry_name="botocore/exceptions.py",
+    )
+    if exceptions is None:
+        return None
+
+    boto_core_error = _canonical_botocore_exception_class(
+        exceptions,
+        "BotoCoreError",
+        first_base=Exception,
+        exact_bases=True,
+    )
+    client_error = _canonical_botocore_exception_class(
+        exceptions,
+        "ClientError",
+        first_base=Exception,
+        exact_bases=True,
+    )
+    if boto_core_error is None or client_error is None:
+        return None
+    connection_error = _canonical_botocore_exception_class(
+        exceptions,
+        "ConnectionError",
+        first_base=boto_core_error,
+        exact_bases=True,
+    )
+    http_client_error = _canonical_botocore_exception_class(
+        exceptions,
+        "HTTPClientError",
+        first_base=boto_core_error,
+        exact_bases=True,
+    )
+    if connection_error is None or http_client_error is None:
+        return None
+
+    names_and_bases = (
+        ("ConnectTimeoutError", connection_error),
+        ("ReadTimeoutError", http_client_error),
+        ("EndpointConnectionError", connection_error),
+        ("SSLError", connection_error),
+        ("ProxyConnectionError", connection_error),
+        ("ConnectionClosedError", http_client_error),
+    )
+    indirect_transports = tuple(
+        _canonical_botocore_exception_class(
+            exceptions,
+            name,
+            first_base=base_type,
+            exact_bases=False,
         )
-        or any(
-            not issubclass(candidate, BaseException)
-            for candidate in allowed_types
-        )
+        for name, base_type in names_and_bases
+    )
+    if any(candidate is None for candidate in indirect_transports):
+        return None
+    transport_types = tuple(
+        candidate
+        for candidate in indirect_transports
+        if candidate is not None
+    ) + (http_client_error,)
+    all_types = (
+        client_error,
+        boto_core_error,
+        connection_error,
+    ) + transport_types
+    if not all(
+        candidate is not other
+        for index, candidate in enumerate(all_types)
+        for other in all_types[index + 1:]
     ):
-        return False
-    return type(error) in allowed_types
+        return None
+    return _BotocoreExceptionTypes(
+        client_error_type=client_error,
+        transport_types=transport_types,
+    )
+
+
+def _canonical_botocore_exception_class(
+    module: object,
+    name: str,
+    *,
+    first_base: type,
+    exact_bases: bool,
+) -> type[BaseException] | None:
+    try:
+        candidate = getattr(module, name)
+    except Exception:
+        return None
+    bases = getattr(candidate, "__bases__", None)
+    if (
+        type(candidate) is not type
+        or candidate.__module__ != "botocore.exceptions"
+        or candidate.__name__ != name
+        or candidate.__qualname__ != name
+        or type(bases) is not tuple
+        or not bases
+        or bases[0] is not first_base
+        or (exact_bases and len(bases) != 1)
+        or dict.get(vars(module), name) is not candidate
+        or not issubclass(candidate, BaseException)
+    ):
+        return None
+    return candidate
 
 
 def _successful_verification_outcome(

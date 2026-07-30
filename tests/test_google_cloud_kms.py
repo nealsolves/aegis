@@ -72,10 +72,26 @@ def controlled_google_modules(monkeypatch):
     import aegis.integrations.google_cloud_kms as google_cloud_kms
 
     modules = install_controlled_google_kms_modules(monkeypatch)
+    transport_types = tuple(
+        type(
+            name,
+            (Exception,),
+            {"__module__": "controlled.google.transport"},
+        )
+        for name in (
+            "InternalServerError",
+            "BadGateway",
+            "RequestsConnectionError",
+            "RequestsTimeout",
+            "GoogleAuthTransportError",
+        )
+    )
     availability_types = google_cloud_kms._GoogleApiAvailabilityTypes(
         direct_types=(
             kms_fixtures.DeadlineExceeded,
             kms_fixtures.GatewayTimeout,
+            transport_types[0],
+            transport_types[1],
             kms_fixtures.ResourceExhausted,
             kms_fixtures.TooManyRequests,
             kms_fixtures.PermissionDenied,
@@ -83,6 +99,9 @@ def controlled_google_modules(monkeypatch):
             kms_fixtures.ServiceUnavailable,
             kms_fixtures.FailedPrecondition,
             kms_fixtures.NotFound,
+            transport_types[2],
+            transport_types[3],
+            transport_types[4],
         ),
         bad_request_type=kms_fixtures.BadRequest,
         retry_error_type=kms_fixtures.RetryError,
@@ -319,6 +338,14 @@ def test_google_signer_rejects_a_missing_injected_client():
         "projects/p/locations//keyRings/r/cryptoKeys/k/cryptoKeyVersions/1",
         "projects/p/locations/l/keyRings//cryptoKeys/k/cryptoKeyVersions/1",
         "projects/p/locations/l/keyRings/r/cryptoKeys//cryptoKeyVersions/1",
+        "projects/p/locations/l/keyRings/r/cryptoKeys/k/cryptoKeyVersions/primary",
+        "projects/p/locations/l/keyRings/r/cryptoKeys/k/cryptoKeyVersions/latest",
+        "projects/p/locations/l/keyRings/r/cryptoKeys/k/cryptoKeyVersions/0",
+        "projects/p/locations/l/keyRings/r/cryptoKeys/k/cryptoKeyVersions/01",
+        "projects/p/locations/l/keyRings/r/cryptoKeys/k/cryptoKeyVersions/+1",
+        "projects/p/locations/l/keyRings/r/cryptoKeys/k/cryptoKeyVersions/-1",
+        "projects/p/locations/l/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1.0",
+        "projects/p/locations/l/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1a",
         "projects/p/locations/l/keyRings/r/cryptoKeys/k/cryptoKeyVersions/one two",
         "projects/p/locations/l/keyRings/r/cryptoKeys/k/cryptoKeyVersions/unicodé",
         "projects/p/locations/l/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1?x=2",
@@ -388,7 +415,7 @@ def test_google_signer_dot_resource_segment_fails_before_provider_calls(
     assert client.asymmetric_sign_calls == []
 
 
-@pytest.mark.parametrize("segment_index", [1, 3, 5, 7, 9])
+@pytest.mark.parametrize("segment_index", [1, 3, 5, 7])
 @pytest.mark.parametrize("segment", [".a", "a.", "...", "a..b"])
 def test_google_signer_preserves_permitted_dot_segment_near_misses_exactly(
     google_private_keys,
@@ -415,6 +442,25 @@ def test_google_signer_preserves_permitted_dot_segment_near_misses_exactly(
         + identity.key_version
         == name
     )
+
+
+@pytest.mark.parametrize(
+    "version",
+    ["primary", "latest", "0", "00", "01", "+1", "-1", "1.0", "1a", "１"],
+)
+def test_google_target_rejects_noncanonical_version_identifiers(version):
+    name = _version_name_with_segment(9, version)
+
+    with pytest.raises(
+        VerificationContractError,
+        match=r"^Google Cloud KMS verification target is invalid$",
+    ) as caught:
+        GoogleCloudKmsVerificationTarget(
+            name,
+            "RSA_SIGN_PSS_2048_SHA256",
+        )
+
+    _assert_safe_error(caught.value)
 
 
 def test_controlled_google_version_states_match_the_audited_floor():
@@ -1313,6 +1359,42 @@ def test_google_target_rejects_private_malformed_and_wrong_key_pem(
         _assert_safe_error(caught.value)
 
 
+def test_google_target_accepts_only_one_public_key_pem_block_with_whitespace(
+    google_private_keys,
+):
+    algorithm = "RSA_SIGN_PSS_2048_SHA256"
+    name = GOOGLE_KEY_VERSION_NAMES[algorithm]
+    public_pem = _google_public_pem(google_private_keys[algorithm])
+    private_pem = _google_private_pem(google_private_keys[algorithm])
+
+    wrapped = b" \t\r\n\v\f" + public_pem + b"\f\v\n\r\t "
+    target = GoogleCloudKmsVerificationTarget(
+        name,
+        algorithm,
+        public_key_pem=wrapped,
+    )
+    assert target.public_key_pem == wrapped
+
+    for invalid_pem in (
+        public_pem + public_pem,
+        public_pem + private_pem,
+        private_pem + public_pem,
+        b"prefix" + public_pem,
+        public_pem + b"suffix",
+        b"\x00" + public_pem,
+    ):
+        with pytest.raises(
+            VerificationContractError,
+            match=r"^Google Cloud KMS verification target is invalid$",
+        ) as caught:
+            GoogleCloudKmsVerificationTarget(
+                name,
+                algorithm,
+                public_key_pem=invalid_pem,
+            )
+        _assert_safe_error(caught.value)
+
+
 def test_google_target_rejects_wrong_rsa_size_and_non_p256_curves():
     from cryptography.hazmat.primitives.asymmetric import ec, rsa
 
@@ -1532,6 +1614,34 @@ def test_google_verifier_maps_none_resolver_to_unknown():
     )
 
     assert outcome.reason_code is VerificationReasonCode.KEY_UNKNOWN
+
+
+@pytest.mark.parametrize("version", ["primary", "0", "01", "1.0"])
+def test_google_verifier_rejects_noncanonical_metadata_version_before_resolver(
+    version,
+):
+    algorithm = "RSA_SIGN_PSS_2048_SHA256"
+    canonical_name = GOOGLE_KEY_VERSION_NAMES[algorithm]
+    metadata = _google_metadata(algorithm, canonical_name)
+    object.__setattr__(metadata, "key_version", version)
+    resolver_calls = []
+    verifier = GoogleCloudKmsArtifactVerifier(
+        None,
+        resolver=lambda *pair: resolver_calls.append(pair),
+    )
+
+    with pytest.raises(
+        VerificationContractError,
+        match=r"^Google Cloud KMS verification request is invalid$",
+    ) as caught:
+        verifier.verify(
+            b"noncanonical version metadata",
+            b64encode(b"signature").decode("ascii"),
+            metadata,
+        )
+
+    _assert_safe_error(caught.value)
+    assert resolver_calls == []
 
 
 def test_google_verifier_sanitizes_resolver_failures():
@@ -1782,6 +1892,58 @@ def test_google_fetched_pem_covers_limit_minus_one_limit_and_limit_plus_one(
                 _google_metadata(algorithm, name),
             )
         _assert_safe_error(caught.value)
+
+
+@pytest.mark.parametrize("suffix_kind", ["second-public", "private", "junk"])
+def test_google_verifier_rejects_fetched_pem_with_trailing_material(
+    google_private_keys,
+    controlled_google_modules,
+    suffix_kind,
+):
+    algorithm = "RSA_SIGN_PSS_2048_SHA256"
+    name = GOOGLE_KEY_VERSION_NAMES[algorithm]
+    payload = b"fetched PEM envelope"
+
+    class TrailingMaterialClient(RecordingGoogleCloudKmsClient):
+        def get_public_key(self, **kwargs):
+            response = super().get_public_key(**kwargs)
+            suffix = {
+                "second-public": response.public_key.data,
+                "private": _google_private_pem(
+                    google_private_keys[algorithm]
+                ),
+                "junk": b"not-whitespace",
+            }[suffix_kind]
+            combined = response.public_key.data + suffix
+            response.public_key.data = combined
+            response.public_key.crc32c_checksum = google_crc32c_value(
+                combined
+            )
+            return response
+
+    client = TrailingMaterialClient(google_private_keys)
+    verifier = _google_verifier(
+        client,
+        target=GoogleCloudKmsVerificationTarget(name, algorithm),
+    )
+    signature = _google_signature(
+        google_private_keys[algorithm],
+        algorithm,
+        payload,
+    )
+
+    with pytest.raises(
+        VerificationContractError,
+        match=r"^Google Cloud KMS verifier returned an invalid response$",
+    ) as caught:
+        verifier.verify(
+            payload,
+            b64encode(signature).decode("ascii"),
+            _google_metadata(algorithm, name),
+        )
+
+    _assert_safe_error(caught.value)
+    assert len(client.get_public_key_calls) == 1
 
     assert len(client.get_public_key_calls) == 1
 
@@ -2050,12 +2212,12 @@ def test_google_availability_classification_never_calls_class_equality(
             (Exception,),
             {},
         )
-        for index in range(11)
+        for index in range(16)
     )
     availability_types = google_cloud_kms._GoogleApiAvailabilityTypes(
-        direct_types=bomb_types[:9],
-        bad_request_type=bomb_types[9],
-        retry_error_type=bomb_types[10],
+        direct_types=bomb_types[:14],
+        bad_request_type=bomb_types[14],
+        retry_error_type=bomb_types[15],
     )
     monkeypatch.setattr(
         google_cloud_kms,
@@ -2068,7 +2230,7 @@ def test_google_availability_classification_never_calls_class_equality(
 
     provider_error = UnexpectedProviderError(SENSITIVE_CORPUS[1])
     if provider_error_kind == "retry":
-        provider_error = bomb_types[10]("retry " + SENSITIVE_CORPUS[1])
+        provider_error = bomb_types[15]("retry " + SENSITIVE_CORPUS[1])
         provider_error.cause = UnexpectedProviderError(SENSITIVE_CORPUS[2])
 
     class Client:
@@ -2437,6 +2599,8 @@ def test_actual_google_api_exception_classes_have_audited_identity_when_installe
     for name in (
         "DeadlineExceeded",
         "GatewayTimeout",
+        "InternalServerError",
+        "BadGateway",
         "ResourceExhausted",
         "TooManyRequests",
         "PermissionDenied",
@@ -2516,6 +2680,87 @@ def test_actual_google_api_availability_classification_when_installed():
     assert google_cloud_kms._is_google_availability_error(
         retry_unexpected
     ) is False
+
+
+def test_actual_google_transport_availability_classes_when_installed():
+    import aegis.integrations.google_cloud_kms as google_cloud_kms
+
+    api_exceptions = pytest.importorskip("google.api_core.exceptions")
+    auth_exceptions = pytest.importorskip("google.auth.exceptions")
+    requests_exceptions = pytest.importorskip("requests.exceptions")
+    transport_errors = (
+        api_exceptions.InternalServerError("internal"),
+        api_exceptions.BadGateway("gateway"),
+        requests_exceptions.ConnectionError("connection"),
+        requests_exceptions.Timeout("timeout"),
+        auth_exceptions.TransportError("transport"),
+    )
+
+    for error in transport_errors:
+        assert google_cloud_kms._is_google_availability_error(error) is True
+        retry_error = api_exceptions.RetryError("retry", error)
+        assert (
+            google_cloud_kms._is_google_availability_error(retry_error)
+            is True
+        )
+
+        subclass = type(
+            type(error).__name__ + "Subclass",
+            (type(error),),
+            {},
+        )
+        assert (
+            google_cloud_kms._is_google_availability_error(
+                subclass("subclass")
+            )
+            is False
+        )
+
+    nested_retry = api_exceptions.RetryError(
+        "outer",
+        api_exceptions.RetryError(
+            "inner",
+            api_exceptions.InternalServerError("internal"),
+        ),
+    )
+    assert (
+        google_cloud_kms._is_google_availability_error(nested_retry)
+        is False
+    )
+
+
+@pytest.mark.parametrize(
+    ("module_name", "exception_name"),
+    [
+        ("requests.exceptions", "ConnectionError"),
+        ("google.auth.exceptions", "TransportError"),
+    ],
+)
+def test_google_transport_spoofs_without_distribution_provenance_are_rejected(
+    monkeypatch,
+    module_name,
+    exception_name,
+):
+    import sys
+    from types import ModuleType
+
+    import aegis.integrations.google_cloud_kms as google_cloud_kms
+
+    spoof_type = type(
+        exception_name,
+        (Exception,),
+        {"__module__": module_name},
+    )
+    spoof_module = ModuleType(module_name)
+    setattr(spoof_module, exception_name, spoof_type)
+    monkeypatch.setitem(sys.modules, module_name, spoof_module)
+
+    assert (
+        google_cloud_kms._is_google_availability_error(
+            spoof_type("spoofed")
+        )
+        is False
+    )
 
 
 def test_actual_google_api_copied_provenance_spoof_is_rejected_when_installed(
@@ -2664,6 +2909,8 @@ def test_actual_google_api_provenance_accepts_symlinked_module_path_when_install
     import aegis.integrations.google_cloud_kms as google_cloud_kms
 
     exceptions = pytest.importorskip("google.api_core.exceptions")
+    real_find_spec = importlib.util.find_spec
+    distribution_for_name = importlib.metadata.distribution
     real_distribution = importlib.metadata.distribution("google-api-core")
     source_path = Path(exceptions.__file__).resolve()
     symlink_path = tmp_path / "google" / "api_core" / "exceptions.py"
@@ -2691,6 +2938,8 @@ def test_actual_google_api_provenance_accepts_symlinked_module_path_when_install
         "RetryError",
         "DeadlineExceeded",
         "GatewayTimeout",
+        "InternalServerError",
+        "BadGateway",
         "ResourceExhausted",
         "TooManyRequests",
         "PermissionDenied",
@@ -2706,11 +2955,23 @@ def test_actual_google_api_provenance_accepts_symlinked_module_path_when_install
         "_import_google_api_exceptions",
         lambda: wrapper,
     )
-    monkeypatch.setattr(importlib.util, "find_spec", lambda _name: spec)
+    monkeypatch.setattr(
+        importlib.util,
+        "find_spec",
+        lambda name: (
+            spec
+            if name == "google.api_core.exceptions"
+            else real_find_spec(name)
+        ),
+    )
     monkeypatch.setattr(
         importlib.metadata,
         "distribution",
-        lambda _name: real_distribution,
+        lambda name: (
+            real_distribution
+            if name == "google-api-core"
+            else distribution_for_name(name)
+        ),
     )
 
     loaded = google_cloud_kms._load_google_api_availability_types()
@@ -3237,6 +3498,7 @@ def test_google_verifier_runs_shared_verifier_conformance(
     assert_external_verifier_conformance(
         signed_artifact_factory,
         verifier_factory,
+        unknown_version="999999",
     )
 
 

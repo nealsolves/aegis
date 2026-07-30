@@ -133,6 +133,14 @@ _MALFORMED_AWS_KEY_ARNS = (
         "arn:aws:kms:us-east-1:111122223333:key/"
         "12345678-1234-4abc-8def-1234567890ab?version=1"
     ),
+    "arn:aws:kms:cn-north-1:111122223333:key/12345678-1234-4abc-8def-1234567890ab",
+    "arn:aws-cn:kms:us-east-1:111122223333:key/12345678-1234-4abc-8def-1234567890ab",
+    "arn:aws-us-gov:kms:us-east-1:111122223333:key/12345678-1234-4abc-8def-1234567890ab",
+    "arn:aws-iso:kms:us-isob-east-1:111122223333:key/12345678-1234-4abc-8def-1234567890ab",
+    "arn:aws-iso-b:kms:us-iso-east-1:111122223333:key/12345678-1234-4abc-8def-1234567890ab",
+    "arn:aws-iso-e:kms:eu-west-1:111122223333:key/12345678-1234-4abc-8def-1234567890ab",
+    "arn:aws-iso-f:kms:us-isof--1:111122223333:key/12345678-1234-4abc-8def-1234567890ab",
+    "arn:aws-eusc:kms:eusc-east-1:111122223333:key/12345678-1234-4abc-8def-1234567890ab",
 )
 
 _UNSUPPORTED_AWS_PROVIDER_PARTITION_ARNS = (
@@ -258,8 +266,9 @@ def test_aws_target_rejects_forged_exact_disposition_instances():
 
 def test_aws_verification_target_is_frozen_and_honors_metadata_arn_bound():
     maximum_arn = (
-        "arn:aws:kms:"
-        + "r" * 62
+        "arn:aws:kms:us-"
+        + "r" * 57
+        + "-1"
         + ":111122223333:key/12345678-1234-4abc-8def-1234567890ab"
     )
     assert len(maximum_arn) == 128
@@ -275,7 +284,7 @@ def test_aws_verification_target_is_frozen_and_honors_metadata_arn_bound():
 
     with pytest.raises(VerificationContractError) as caught:
         AwsKmsVerificationTarget(
-            maximum_arn.replace("r" * 62, "r" * 63),
+            maximum_arn.replace("r" * 57, "r" * 58),
             frozenset({"RSASSA_PSS_SHA_256"}),
         )
     _assert_safe_error(caught.value)
@@ -1031,6 +1040,48 @@ def test_aws_verifier_uses_exact_pair_once_and_exact_digest_request(
             "MessageType": "DIGEST",
             "Signature": b64decode(signature, validate=True),
             "SigningAlgorithm": "RSASSA_PSS_SHA_256",
+        }
+    ]
+
+
+@pytest.mark.parametrize("key_spec", ["ECC_NIST_P256", "ECC_SECG_P256K1"])
+def test_aws_verifier_accepts_real_ecdsa_signature_for_each_supported_curve(
+    aws_private_keys,
+    key_spec,
+):
+    algorithm = "ECDSA_SHA_256"
+    key_arn = AWS_KEY_ARNS[key_spec]
+    payload = b"AWS ECDSA verification payload " + key_spec.encode("ascii")
+    client = RecordingAwsKmsClient(aws_private_keys, key_spec=key_spec)
+    raw_signature = client._sign_digest(
+        sha256(payload).digest(),
+        algorithm,
+    )
+    verifier = AwsKmsArtifactVerifier(
+        client,
+        resolver=lambda _reference, _version: AwsKmsVerificationTarget(
+            key_arn,
+            frozenset({algorithm}),
+        ),
+    )
+
+    outcome = verifier.verify(
+        payload,
+        b64encode(raw_signature).decode("ascii"),
+        _aws_metadata(
+            algorithm=algorithm,
+            key_version=key_arn,
+        ),
+    )
+
+    _assert_outcome(outcome, VerificationReasonCode.SIGNATURE_VALID_ANCHORED)
+    assert client.verify_calls == [
+        {
+            "KeyId": key_arn,
+            "Message": sha256(payload).digest(),
+            "MessageType": "DIGEST",
+            "Signature": raw_signature,
+            "SigningAlgorithm": algorithm,
         }
     ]
 
@@ -1844,21 +1895,8 @@ def test_aws_verifier_uses_closed_exact_botocore_client_error_codes(
     aws_private_keys,
     monkeypatch,
 ):
-    class ClientError(Exception):
-        def __init__(self, code):
-            super().__init__("client error " + " | ".join(SENSITIVE_CORPUS))
-            self.response = {"Error": {"Code": code}}
-
-    botocore_module = ModuleType("botocore")
-    exceptions_module = ModuleType("botocore.exceptions")
-    exceptions_module.ClientError = ClientError
-    botocore_module.exceptions = exceptions_module
-    monkeypatch.setitem(sys.modules, "botocore", botocore_module)
-    monkeypatch.setitem(
-        sys.modules,
-        "botocore.exceptions",
-        exceptions_module,
-    )
+    _install_fake_botocore_transport(monkeypatch)
+    ClientError = sys.modules["botocore.exceptions"].ClientError
 
     for code in (
         "AccessDeniedException",
@@ -2018,10 +2056,10 @@ def test_aws_verifier_rejects_botocore_transport_subclasses_and_lookalikes(
             exceptions_module.ConnectionError(
                 endpoint_url=endpoint,
             ),
-            exceptions_module.HTTPClientError(
+            exceptions_module.BotocoreError(
                 endpoint_url=endpoint,
             ),
-            exceptions_module.ProxyConnectionError(
+            exceptions_module.ResponseStreamingError(
                 endpoint_url=endpoint,
             ),
         )
@@ -2042,7 +2080,35 @@ def test_aws_verifier_rejects_botocore_transport_subclasses_and_lookalikes(
                 _aws_metadata(),
             )
 
-        _assert_safe_error(caught.value)
+    _assert_safe_error(caught.value)
+
+
+def test_aws_botocore_transport_spoof_without_distribution_provenance_is_rejected(
+    monkeypatch,
+):
+    import aegis.integrations.aws_kms as aws_kms
+
+    class EndpointConnectionError(Exception):
+        pass
+
+    EndpointConnectionError.__module__ = "botocore.exceptions"
+    botocore_module = ModuleType("botocore")
+    exceptions_module = ModuleType("botocore.exceptions")
+    exceptions_module.EndpointConnectionError = EndpointConnectionError
+    botocore_module.exceptions = exceptions_module
+    monkeypatch.setitem(sys.modules, "botocore", botocore_module)
+    monkeypatch.setitem(
+        sys.modules,
+        "botocore.exceptions",
+        exceptions_module,
+    )
+
+    assert (
+        aws_kms._is_botocore_transport_error(
+            EndpointConnectionError("spoofed")
+        )
+        is False
+    )
 
 
 def test_aws_verifier_uses_real_botocore_transport_types_when_available(
@@ -2051,20 +2117,30 @@ def test_aws_verifier_uses_real_botocore_transport_types_when_available(
     try:
         from botocore.exceptions import (
             ConnectTimeoutError,
+            ConnectionClosedError,
             EndpointConnectionError,
+            HTTPClientError,
+            ProxyConnectionError,
             ReadTimeoutError,
+            ResponseStreamingError,
+            SSLError,
         )
     except (ImportError, ModuleNotFoundError):
         pytest.skip("botocore is not installed in the base test environment")
 
     endpoint = SENSITIVE_CORPUS[5]
-    for exception_type in (
-        ConnectTimeoutError,
-        ReadTimeoutError,
-        EndpointConnectionError,
-    ):
+    failures = (
+        ConnectTimeoutError(endpoint_url=endpoint),
+        ReadTimeoutError(endpoint_url=endpoint),
+        EndpointConnectionError(endpoint_url=endpoint),
+        SSLError(endpoint_url=endpoint, error="offline"),
+        ProxyConnectionError(proxy_url=endpoint),
+        ConnectionClosedError(endpoint_url=endpoint),
+        HTTPClientError(error="offline"),
+    )
+    for failure in failures:
         client = RecordingAwsKmsClient(aws_private_keys)
-        client.verify_error = exception_type(endpoint_url=endpoint)
+        client.verify_error = failure
         verifier = _aws_verifier_for_client(client)
 
         outcome = verifier.verify(
@@ -2074,6 +2150,18 @@ def test_aws_verifier_uses_real_botocore_transport_types_when_available(
         )
 
         _assert_outcome(outcome, VerificationReasonCode.VERIFIER_UNAVAILABLE)
+
+    streaming_client = RecordingAwsKmsClient(aws_private_keys)
+    streaming_client.verify_error = ResponseStreamingError(error="offline")
+    with pytest.raises(
+        VerificationContractError,
+        match=r"^AWS KMS verifier returned an invalid response$",
+    ):
+        _aws_verifier_for_client(streaming_client).verify(
+            b"payload",
+            b64encode(b"signature").decode("ascii"),
+            _aws_metadata(),
+        )
 
 
 def test_aws_verifier_missing_botocore_keeps_concrete_classification_safe(
@@ -2360,6 +2448,8 @@ class _BarrierAwsKmsClient(RecordingAwsKmsClient):
 
 
 def _install_fake_botocore_transport(monkeypatch):
+    import aegis.integrations.aws_kms as aws_kms
+
     class BotocoreError(Exception):
         def __init__(self, *, endpoint_url):
             self.endpoint_url = endpoint_url
@@ -2385,6 +2475,15 @@ def _install_fake_botocore_transport(monkeypatch):
     class ProxyConnectionError(ConnectionError):
         pass
 
+    class SSLError(ConnectionError):
+        pass
+
+    class ConnectionClosedError(HTTPClientError):
+        pass
+
+    class ResponseStreamingError(HTTPClientError):
+        pass
+
     class ClientError(Exception):
         def __init__(self, code):
             super().__init__("client error " + " | ".join(SENSITIVE_CORPUS))
@@ -2399,6 +2498,9 @@ def _install_fake_botocore_transport(monkeypatch):
     exceptions_module.ReadTimeoutError = ReadTimeoutError
     exceptions_module.EndpointConnectionError = EndpointConnectionError
     exceptions_module.ProxyConnectionError = ProxyConnectionError
+    exceptions_module.SSLError = SSLError
+    exceptions_module.ConnectionClosedError = ConnectionClosedError
+    exceptions_module.ResponseStreamingError = ResponseStreamingError
     exceptions_module.ClientError = ClientError
     botocore_module.exceptions = exceptions_module
     monkeypatch.setitem(sys.modules, "botocore", botocore_module)
@@ -2407,11 +2509,24 @@ def _install_fake_botocore_transport(monkeypatch):
         "botocore.exceptions",
         exceptions_module,
     )
-    return (
+    transport_types = (
         ConnectTimeoutError,
         ReadTimeoutError,
         EndpointConnectionError,
+        SSLError,
+        ProxyConnectionError,
+        ConnectionClosedError,
+        HTTPClientError,
     )
+    monkeypatch.setattr(
+        aws_kms,
+        "_load_botocore_exception_types",
+        lambda: aws_kms._BotocoreExceptionTypes(
+            client_error_type=ClientError,
+            transport_types=transport_types,
+        ),
+    )
+    return transport_types
 
 
 def _aws_verifier_for_client(client):
