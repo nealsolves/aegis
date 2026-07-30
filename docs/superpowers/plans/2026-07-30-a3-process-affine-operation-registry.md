@@ -8,6 +8,10 @@
 
 **Tech Stack:** Python 3.10+, `threading.Lock`, frozen dataclasses, UUIDs, `os.getpid`, pytest threads and multiprocessing, A1 `CompiledPolicy`, A2 `NormalizedOutcome`.
 
+**Predecessor contract:** A3 starts only after B2 has replaced every emission
+path with the central finalizer. Registry rewiring is then performed against
+that stable live Phase A/B structure; A3 and B2 are never executed in parallel.
+
 ## Global Constraints
 
 - No token expiry or renewal logic.
@@ -19,6 +23,10 @@
 - Cancellation and session finalization remove outstanding records.
 - No public handle contains `CompiledPolicy`, invocation snapshots, gates, or signer/sink references.
 - ADR-0009 portability and mutable `_consumed` claims are superseded.
+- The replacement is subtractive: all four legacy `PreCallResult(...)`
+  issuance sites, sentinel/HMAC validation, `_consumed_token_registry`,
+  `_consumed`, `_origin`, `_token_hmac`, and session token-ID replay state are
+  deleted rather than left as alternate paths.
 
 ---
 
@@ -151,6 +159,16 @@ def test_precall_result_contains_no_authorization_state(valid_invocation):
         "_phase_b_grouped_gates", "_token_hmac",
     }
     assert forbidden.isdisjoint(handle.__slots__)
+
+
+def test_legacy_split_token_machinery_is_absent():
+    production = read_split_production_sources()
+    for forbidden in (
+        "_consumed_token_registry", "_EnforcementToken",
+        "_ENFORCEMENT_TOKEN", "_token_hmac", "_origin",
+        "_consumed_token_ids", "_IS_SESSION_TOKEN",
+    ):
+        assert forbidden not in production
 ```
 
 Add pickle/deepcopy tests that prove a copied handle identifies the same one-shot operation rather than duplicating state.
@@ -178,7 +196,19 @@ Move every former token field into `OperationRecord`. Keep the public class impo
 
 - [ ] **Step 4: Route module APIs through the registry**
 
-Phase A calls `issue()` only after an allow-class result. Phase B calls `consume()` before type/schema validation of output.
+Replace, do not wrap, the four current issuance sites: module sync, module
+async, instance sync, and instance async. Phase A calls `issue()` only after an
+allow-class result. Phase B calls `consume()` before type/schema validation of
+output.
+
+Delete the complete legacy machinery from `enforcement.py`: the provenance
+sentinel classes/instances, token-signing key and HMAC helpers used only for
+split results, `_consumed_token_registry`, per-token nonce/signature creation,
+`_origin` checks, `_token_hmac` checks, separate registry membership/add, and
+mutable `_consumed` marking. Delete the equivalent
+`SessionPreCallResult._IS_SESSION_TOKEN`, `_token_id`, `_consumed`,
+`_consumed_token_ids`, membership/add, and marking paths from `session.py`.
+No compatibility shim may issue or accept a portable authorization token.
 
 Run: `.venv/bin/pytest tests/test_precall_result.py tests/test_split_enforcement.py tests/test_split_enforcement_edge_cases.py tests/test_process_affine_split.py -v`
 
@@ -274,7 +304,11 @@ Expected: PASS only with PID checks performed at consumption time.
 
 - [ ] **Step 3: Add an architecture fitness check**
 
-Fail if `PreCallResult` fields include policy/invocation data, `_consumed`, or HMAC-backed portable evidence, or if consumption does `get`/membership before a separate `pop`.
+Fail if `PreCallResult` fields include policy/invocation data, `_consumed`, or
+HMAC-backed portable evidence; if any enumerated legacy symbol or any of the
+four legacy constructors remains; or if consumption does `get`/membership
+before a separate `pop`. This is a deletion gate, not only a positive registry
+test.
 
 - [ ] **Step 4: Update ADR and public migration docs**
 

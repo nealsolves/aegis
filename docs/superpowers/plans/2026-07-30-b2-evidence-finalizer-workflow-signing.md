@@ -20,6 +20,12 @@
 - `"log"` sink failure remains explicit host-authorized legacy behavior only.
 - Missing signer produces explicit unsigned status; no signing branch is silently skipped.
 - No raw exception, key, token, signature bytes, schema body, path, or provider response enters public failure messages.
+- Instance and module-level APIs use the same finalizer contract. Module-level
+  enforcement requires an explicitly configured, then sealed, private runtime;
+  absence of that runtime fails before authorization.
+- `emit_to_sink` and mutable sink-failure setters are not v2 public APIs. A
+  custom gate cannot obtain the finalizer's private delivery capability or
+  change the current/future v2 failure mode.
 
 ---
 
@@ -158,11 +164,12 @@ class EvidenceFinalizerConfig:
     failure_mode: Literal["raise"]
     signer: FinalizerSigner | None
     schema_validator: Draft7Validator
+    delivery_capability: "_DeliveryCapability"
 
 
 def finalize(self, draft: EvidenceDraft) -> dict[str, JsonValue]:
     normalized_body = normalize_json_v2(self._build_artifact(draft))
-    checksum, checksummed = content_checksum_v2(normalized_body)
+    checksummed = build_content_checksum_v2(normalized_body)
     signed = self._sign_or_mark_unsigned(checksummed)
     self._schema_validator.validate(signed)
     self._emit_acknowledged(signed)
@@ -170,6 +177,12 @@ def finalize(self, draft: EvidenceDraft) -> dict[str, JsonValue]:
 ```
 
 Reject caller-supplied `checksum`, `signature`, `signature_metadata`, and finalization markers in drafts.
+
+`_DeliveryCapability` is minted inside `evidence_finalizer.py`, is not exported,
+and is required by the internal acknowledged-delivery function. `AuditSink`
+remains a public implementation protocol, so hosts may call their own sink
+objects directly, but no such call can produce or resume an AEGIS authorization
+result. Only `EvidenceFinalizer.finalize()` owns that transition.
 
 - [ ] **Step 4: Make signer selection explicit**
 
@@ -194,18 +207,25 @@ git commit -m "feat: add central evidence finalizer"
 - Modify: `aegis/_internal/enforcement.py`
 - Modify: `aegis/_internal/session.py`
 - Modify: `aegis/_internal/decorators.py`
+- Modify: `aegis/sinks.py`
 - Create: `tests/test_evidence_emission_inventory.py`
 - Modify: `tests/test_pre_pipeline_artifact_schema.py`
 - Modify: `tests/test_custom_gate_exception_artifacts.py`
 - Modify: `tests/test_risk_config_exception_artifacts.py`
+- Create: `tests/test_module_level_evidence_runtime.py`
 
 **Interfaces:**
 - Consumes: `AttemptFactory`, `EvidenceDraft`, `EvidenceFinalizer`.
-- Produces: exactly one finalization attempt for every terminal invocation/session path.
+- Produces: exactly one finalization attempt for every terminal
+  invocation/session path, including module sync/async unified and split APIs.
 
 - [ ] **Step 1: Inventory and freeze current bypass count**
 
-Add an AST test that enumerates every `emit_to_sink`, `sign_artifact`, and final checksum construction call. Initially assert the known violations are non-empty so the test proves it detects the current architecture.
+Add an AST test that enumerates every `emit_to_sink`, `sign_artifact`, final
+checksum construction, and direct `AuditSink.emit` production call. Resolve
+imports/aliases rather than matching only the string
+`aegis._internal.sinks`. Initially assert the known violations are non-empty so
+the test proves it detects the current architecture.
 
 - [ ] **Step 2: Run inventory and capture all bypasses**
 
@@ -215,7 +235,10 @@ Expected: FAIL and list enforcement/session/adapter bypass locations.
 
 - [ ] **Step 3: Replace each bypass with a draft**
 
-At each public entry:
+Enumerate and migrate every public entry, not only methods that have
+`self._finalizer`: module sync/async `enforce_invocation`, module sync/async
+pre-call and post-call, instance sync/async unified and split, decorators, and
+session step/finalize paths. At each entry:
 
 ```python
 attempt = self._attempt_factory.allocate("enforce_invocation", "unified", invocation)
@@ -230,6 +253,13 @@ return self._finalizer.finalize(EvidenceDraft.from_outcome(attempt, outcome))
 
 Preserve the original enforcement exception after finalized FAIL evidence succeeds. If evidence fails, raise the evidence error chained from the original.
 
+Module-level functions call a private `_ModuleEnforcementRuntime` containing the
+same `AttemptFactory`, `EvidenceDiagnostics`, and `EvidenceFinalizer`. The host
+must call `configure_module_enforcement(...)` before first use. The first
+enforcement attempt atomically seals the runtime; reconfiguration thereafter
+fails. No registered sink means `V2_SINK_REQUIRED`, never PASS without
+evidence.
+
 - [ ] **Step 4: Handle genuinely impossible evidence**
 
 Catch finalizer failures once at the public boundary, record diagnostics with safe stage/code, and raise `EvidenceFinalizationError` or `AuditSinkError`. There is no exception-type-specific silent branch.
@@ -241,7 +271,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add aegis/_internal/enforcement.py aegis/_internal/session.py aegis/_internal/decorators.py tests/test_evidence_emission_inventory.py tests/test_pre_pipeline_artifact_schema.py tests/test_custom_gate_exception_artifacts.py tests/test_risk_config_exception_artifacts.py
+git add aegis/_internal/enforcement.py aegis/_internal/session.py aegis/_internal/decorators.py aegis/sinks.py tests/test_evidence_emission_inventory.py tests/test_pre_pipeline_artifact_schema.py tests/test_custom_gate_exception_artifacts.py tests/test_risk_config_exception_artifacts.py tests/test_module_level_evidence_runtime.py
 git commit -m "refactor: route enforcement evidence through finalizer"
 ```
 
@@ -249,6 +279,8 @@ git commit -m "refactor: route enforcement evidence through finalizer"
 
 **Files:**
 - Modify: `aegis/_internal/sinks.py`
+- Modify: `aegis/sinks.py`
+- Modify: `aegis/__init__.py`
 - Modify: `aegis/_internal/enforcement.py`
 - Modify: `aegis/_internal/evidence_finalizer.py`
 - Modify: `tests/test_audit_sinks.py`
@@ -273,6 +305,18 @@ def test_broken_sink_cannot_return_pass(valid_invocation):
 def test_v2_requires_sink():
     with pytest.raises(ValueError, match="V2_SINK_REQUIRED"):
         AEGIS(sink=None)
+
+
+def test_module_level_api_without_runtime_fails_closed(valid_invocation):
+    reset_module_runtime_for_test()
+    with pytest.raises(EvidenceConfigurationError) as exc:
+        enforce_invocation(valid_invocation)
+    assert exc.value.code == "V2_SINK_REQUIRED"
+
+
+def test_gate_cannot_downgrade_v2_delivery_mode(configured_module_runtime):
+    with pytest.raises(RuntimeError):
+        set_sink_failure_mode("log")
 ```
 
 - [ ] **Step 2: Run and verify current default-log behavior**
@@ -287,7 +331,15 @@ Successful synchronous `sink.emit()` return is acknowledgement. Any exception is
 
 - [ ] **Step 4: Preserve only host-authorized legacy log mode**
 
-Require B1 `LegacyAuthorization` containing `sink_failure_log`; reject policy/provider/invocation attempts to select it.
+Remove `emit_to_sink`, `set_sink_failure_mode`, and
+`get_sink_failure_mode` from `aegis.sinks.__all__` and the v2 import surface.
+The v2 finalizer never reads module-global `_sink_failure_mode`.
+
+If compatibility is retained, move it behind a separately named legacy adapter
+that requires B1 `LegacyAuthorization("sink_failure_log")`; it cannot configure
+or mutate a v2 instance/module runtime. `set_audit_sink` is deprecated in favor
+of the one-time module runtime configurator and is not consulted by v2.
+Reject policy/provider/invocation attempts to select legacy behavior.
 
 Run: `.venv/bin/pytest tests/test_fail_closed_evidence_delivery.py tests/test_audit_sinks.py tests/test_legacy_authority_boundary.py -v`
 
@@ -296,7 +348,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add aegis/_internal/sinks.py aegis/_internal/enforcement.py aegis/_internal/evidence_finalizer.py tests/test_audit_sinks.py tests/test_fail_closed_evidence_delivery.py docs/PUBLIC_INTEGRATION_CONTRACT.md docs/migration.md
+git add aegis/_internal/sinks.py aegis/sinks.py aegis/__init__.py aegis/_internal/enforcement.py aegis/_internal/evidence_finalizer.py tests/test_audit_sinks.py tests/test_fail_closed_evidence_delivery.py tests/test_module_level_evidence_runtime.py docs/PUBLIC_INTEGRATION_CONTRACT.md docs/migration.md
 git commit -m "fix: fail closed on evidence delivery"
 ```
 
@@ -331,7 +383,14 @@ Use the workflow signing domain and finalizer; do not add it to an invocation ch
 
 - [ ] **Step 4: Make architecture tests blocking**
 
-The AST test must fail if any production module outside `evidence_finalizer.py` imports/calls `emit_to_sink`, `sign_artifact*`, or v2 checksum constructors. Wire it into `security-boundaries.yml`.
+The blocking test must fail if any production module outside
+`evidence_finalizer.py` reaches acknowledged delivery, imports/calls
+`emit_to_sink`, calls a sink's `.emit()` as part of enforcement, calls
+`sign_artifact*`, constructs v2 checksum/final fields, or exposes mutable
+failure-mode controls. It resolves public re-exports and aliases, asserts the
+forbidden names are absent from `aegis.sinks.__all__`, and runs behavioral
+coverage over every module/instance/session entry point. Wire it into
+`security-boundaries.yml`.
 
 Run: `.venv/bin/pytest tests/test_workflow_evidence_signing.py tests/test_evidence_emission_inventory.py tests/test_architecture_security_boundaries.py -v`
 

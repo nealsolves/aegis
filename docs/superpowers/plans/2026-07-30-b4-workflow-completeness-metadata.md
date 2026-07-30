@@ -2,7 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Sign a session-scoped, ordered claim over every finalized invocation attempt while reporting completeness as unproven until #46 supplies an external checkpoint.
+**Goal:** Sign a session-scoped, ordered claim over every allocated invocation
+attempt, each backed by one terminal finalized artifact, while reporting
+completeness as unproven until #46 supplies an external checkpoint.
 
 **Architecture:** `GovernanceSession` atomically allocates `step_index` before the first authorization gate. Every attempt—allowed, rejected, failed, or canceled—must reach one terminal invocation artifact. The separately signed workflow artifact contains `step_count` and ordered `(step_index, invocation_checksum)` entries; a typed verifier compares that claim with a supplied artifact set.
 
@@ -15,7 +17,8 @@
 - Allocation occurs before the first authorization gate.
 - Completion order may differ from index order.
 - Every allocated attempt requires one terminal finalized invocation record.
-- `step_count` counts all finalized attempts, not only successful steps.
+- `step_count` is the allocated-attempt count (`_next_step_index`), not the
+  number of surviving/finalized records.
 - Workflow signature covers schema/profile, session identity, final status, count, ordered pairs, summaries, and workflow checksum.
 - A valid claimed set proves integrity/order of the supplied set, not full historical completeness.
 - Only #46 can upgrade completeness from `UNPROVEN` to `CHECKPOINT_PROVEN`.
@@ -113,6 +116,14 @@ def test_session_cannot_complete_with_allocated_unfinalized_attempt(session):
 def test_out_of_order_completion_records_by_index(session):
     # allocate 0 and 1, finalize 1 then 0
     assert [r.step_index for r in session.finalized_attempts()] == [0, 1]
+
+
+@pytest.mark.parametrize("status", ["FAILED", "CANCELED", "INCOMPLETE"])
+def test_no_session_status_can_hide_an_allocated_attempt(session, status):
+    session._allocate_step_index("s1", 1)
+    with pytest.raises(SessionStateError) as exc:
+        session.finalize(status=status)
+    assert exc.value.code == "SESSION_ATTEMPT_INCOMPLETE"
 ```
 
 - [ ] **Step 2: Run and verify `_steps` can omit attempts**
@@ -129,7 +140,15 @@ Allow `SessionStateError` to accept a specific `code` keyword while retaining
 
 - [ ] **Step 4: Define session terminal behavior**
 
-`COMPLETED` requires all allocated attempts terminal and no pending operation handles. `FAILED`, `CANCELED`, and `INCOMPLETE` also sign the attempts successfully finalized before session closure and state why completion is not claimed.
+Every session status requires all allocated attempts to have a terminal
+invocation artifact. `COMPLETED` additionally requires no failed/canceled
+attempt and no pending operation handle. Closing a session with an outstanding
+handle first burns the handle and finalizes a synthetic, schema-valid
+`CANCELED` invocation attempt; rejected Phase A and internal failure attempts
+already finalize `DENY`/`EXECUTION_FAILURE` records through B2. If that terminal
+artifact cannot be finalized/delivered, workflow finalization raises and emits
+only the B2 diagnostics signal—AEGIS must not sign a survivor-derived workflow
+claim.
 
 Run: `.venv/bin/pytest tests/test_session_attempt_terminal_records.py tests/test_governance_session.py tests/test_session_core.py -v`
 
@@ -162,6 +181,13 @@ def test_workflow_claims_every_attempt_in_index_order(finalized_session):
     assert artifact["step_count"] == len(artifact["invocations"])
     assert [item["step_index"] for item in artifact["invocations"]] == list(range(artifact["step_count"]))
     assert verify_artifact(artifact, signer)
+
+
+def test_allocated_index_one_cannot_be_relabelled_as_single_step(session):
+    session._next_step_index = 2
+    session._attempts = {1: terminal_record(index=1)}
+    with pytest.raises(SessionStateError):
+        session.finalize(status="INCOMPLETE")
 ```
 
 Mutate count, reorder pairs, remove a failure attempt, duplicate an index, and assert checksum/signature verification fails.
@@ -175,15 +201,23 @@ Expected: FAIL.
 - [ ] **Step 3: Build the workflow draft from finalized attempt records**
 
 ```python
-records = self.finalized_attempts()
-body["step_count"] = len(records)
+allocated_count = self._next_step_index
+records = self.terminal_attempts()
+if len(records) != allocated_count:
+    raise SessionStateError(code="SESSION_ATTEMPT_INCOMPLETE")
+if [record.step_index for record in records] != list(range(allocated_count)):
+    raise SessionStateError(code="SESSION_ATTEMPT_GAP")
+body["step_count"] = allocated_count
 body["invocations"] = [
     {"step_index": record.step_index, "checksum": record.invocation_checksum}
     for record in records
 ]
 ```
 
-Use B2 workflow signing domain; workflow checksum/signature cover the entire claim.
+Use B2 workflow signing domain; workflow checksum/signature cover the entire
+claim. The builder never derives `step_count` from `len(records)` without first
+proving it equals the immutable allocated count and the indices are exactly
+`0..allocated_count-1`.
 
 - [ ] **Step 4: Update both schema copies and parity tests**
 

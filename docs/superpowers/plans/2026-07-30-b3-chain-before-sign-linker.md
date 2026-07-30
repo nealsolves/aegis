@@ -8,6 +8,10 @@
 
 **Tech Stack:** Python 3.10+, protocols and frozen dataclasses, B1 content checksum, B2 finalizer, existing `AuditChain`, pytest threading.
 
+**Predecessor contract:** B3 starts after A3 lands on top of B2. It consumes
+the finalizer and process-affine Phase A/B paths as frozen interfaces; the
+enforcement-heavy slices are merged in the index order.
+
 ## Global Constraints
 
 - `previous_audit_checksum` is exactly the previous v2 content checksum, never a signature, signed-object digest, or storage digest.
@@ -18,6 +22,11 @@
 - Re-signing/key rotation does not change content checksum or chain linkage.
 - Linker failure cannot silently emit unchained evidence when chaining is configured.
 - Workflow evidence does not join invocation chains.
+- Reservation completion is bounded and idempotent. No leaked reservation may
+  block governed traffic forever.
+- A persistent linker must reconcile the emit/commit crash window by
+  reservation ID before allocating another coordinate; otherwise it stays
+  unavailable and enforcement fails closed.
 
 ---
 
@@ -30,9 +39,10 @@
 
 **Interfaces:**
 - Produces: `ChainLinkRequest(attempt_id, artifact_type, correlation_id)`
-- Produces: `ChainCoordinates(chain_id, chain_index, previous_audit_checksum)`
-- Produces: `ChainLinker.reserve(request) -> ChainReservation`
-- Produces: `ChainReservation.coordinates`, `.commit(content_checksum)`, `.abort()`
+- Produces: `ChainCoordinates(chain_id, chain_index, previous_audit_checksum, reservation_id)`
+- Produces: `ChainLinker.reserve(request, *, timeout) -> ChainReservation`
+- Produces: `ChainReservation.coordinates`, idempotent `.commit(content_checksum)`, idempotent `.abort()`
+- Produces: `ChainLinker.reconcile(reservation_id, observed_artifact | None)`
 - Produces: `validate_chain_coordinates(value) -> ChainCoordinates`.
 
 - [ ] **Step 1: Write malformed-coordinate tests**
@@ -63,6 +73,7 @@ class ChainCoordinates:
     chain_id: str
     chain_index: int
     previous_audit_checksum: str | None
+    reservation_id: str
 
     def __post_init__(self) -> None:
         if not self.chain_id or self.chain_index < 0:
@@ -79,6 +90,13 @@ class ChainReservation(Protocol):
     def commit(self, content_checksum: str) -> None: ...
     def abort(self) -> None: ...
 ```
+
+`reservation_id` is bounded, unpredictable, included in the artifact before
+checksum/signature, and identifies only this placement transaction. The state
+machine is `RESERVED -> COMMITTED | ABORTED`; repeated commit with the same
+checksum and repeated abort after abort are safe, while conflicting terminal
+transitions fail closed. `reserve(timeout=...)` raises `CHAIN_LINK_TIMEOUT`
+instead of waiting forever.
 
 - [ ] **Step 4: Run contract tests**
 
@@ -98,6 +116,8 @@ git commit -m "feat: define host-owned chain linker"
 **Files:**
 - Modify: `aegis/_internal/evidence_finalizer.py`
 - Modify: `aegis/_internal/enforcement.py`
+- Modify: `schemas/audit_artifact.schema.json`
+- Modify: `aegis/schemas/audit_artifact.schema.json`
 - Create: `tests/test_chain_before_sign.py`
 - Modify: `tests/test_evidence_finalizer_signing.py`
 
@@ -112,11 +132,14 @@ def test_chain_coordinates_are_checksum_and_signature_covered(finalizer):
     artifact = finalizer.finalize(invocation_draft())
     tampered = copy.deepcopy(artifact)
     tampered["chain_index"] += 1
-    assert verify_content_checksum_v2(tampered) is False
+    assert verify_content_checksum_v2(tampered) is ContentIntegrity.INVALID
     assert verify_artifact(tampered, signer) is False
 ```
 
 Add an event recorder asserting `link -> checksum -> sign -> schema -> emit`.
+Also add tests for finalizer exceptions at every stage, idempotent abort, a
+bounded second waiter, and simulated process death after acknowledged emit but
+before commit.
 
 - [ ] **Step 2: Run and verify current sign-before-link behavior**
 
@@ -127,21 +150,45 @@ Expected: FAIL.
 - [ ] **Step 3: Integrate the linker**
 
 ```python
-reservation = None
-if draft.chain_eligible and self._chain_linker is not None:
-    reservation = self._chain_linker.reserve(ChainLinkRequest.from_draft(draft))
-    coordinates = validate_chain_coordinates(reservation.coordinates)
-    artifact.update(coordinates.to_artifact_fields())
+reservation = self._reserve_if_required(draft)
+emission_acknowledged = False
+try:
+    artifact = self._finalize_without_emitting(reservation, draft)
+    self._emit_acknowledged(artifact)
+    emission_acknowledged = True
+    if reservation is not None:
+        reservation.commit(artifact["checksum"])
+    return artifact
+finally:
+    if reservation is not None and not emission_acknowledged:
+        reservation.abort()
 ```
 
-This code runs before `content_checksum_v2()`. After acknowledged emission,
-call `reservation.commit(artifact["checksum"])`. In the finalizer's exception
-path call `reservation.abort()` before re-raising. Linker exceptions normalize
-to `ChainLinkError`; finalization stops without emission.
+Coordinate attachment runs before `build_content_checksum_v2()`. The
+`try/finally` is mandatory, but abort is legal only before acknowledged
+emission. Abort must be idempotent and must not mask the original finalization
+exception. Once emission is acknowledged, commit failure leaves the durable
+reservation unresolved/quarantined for reconciliation; it must never abort and
+reuse the coordinate. Linker exceptions normalize to
+`ChainLinkError`; finalization stops without an allow-class result.
+
+There is an unavoidable external transaction boundary between sink
+acknowledgement and linker commit. The signed artifact therefore carries
+`reservation_id`. A persistent linker records `RESERVED` durably before
+returning coordinates. After restart, an unresolved reservation blocks new
+allocation only until the bounded reconciliation API is called: the host
+supplies the artifact observed in its sink and the linker verifies matching
+reservation ID, coordinates, and v2 checksum before idempotent commit; the host
+may abort only after positively confirming absence. Unreconciled or
+contradictory state returns a typed unavailable/error result and governed
+traffic fails closed. The in-memory `AuditChain` explicitly documents that it
+does not provide crash persistence.
 
 - [ ] **Step 4: Prohibit workflow linkage**
 
-Reject a workflow draft carrying chain fields or `chain_eligible=True`.
+Reject a workflow draft carrying chain fields or `chain_eligible=True`. Add the
+bounded `reservation_id` only to the complete invocation coordinate set in both
+audit schema copies and keep them byte-identical.
 
 Run: `.venv/bin/pytest tests/test_chain_before_sign.py tests/test_evidence_finalizer_signing.py tests/test_workflow_evidence_signing.py -v`
 
@@ -150,7 +197,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add aegis/_internal/evidence_finalizer.py aegis/_internal/enforcement.py tests/test_chain_before_sign.py tests/test_evidence_finalizer_signing.py
+git add aegis/_internal/evidence_finalizer.py aegis/_internal/enforcement.py schemas/audit_artifact.schema.json aegis/schemas/audit_artifact.schema.json tests/test_chain_before_sign.py tests/test_evidence_finalizer_signing.py
 git commit -m "fix: attach chain coordinates before signing"
 ```
 
@@ -169,8 +216,10 @@ git commit -m "fix: attach chain coordinates before signing"
 - [ ] **Step 1: Write single-process allocation tests**
 
 Test index 0/null previous, index 1/previous content checksum, a second
-concurrent reservation waiting for the first commit, abort/retry without an
-index gap, and refusal to commit a malformed content checksum.
+concurrent reservation timing out while the first is outstanding, abort/retry
+without an index gap, idempotent terminal transitions, refusal to commit a
+malformed content checksum, and reconciliation of the emit/commit crash
+window.
 
 - [ ] **Step 2: Run and verify current mutation-based chain utility**
 
@@ -181,7 +230,7 @@ Expected: FAIL against the old append/mutate API.
 - [ ] **Step 3: Implement locked allocation**
 
 Use one `threading.Condition` and permit only one outstanding reservation. A
-second caller waits until the first reservation commits or aborts. Commit
+second caller waits only until its explicit deadline. Commit
 advances the index and last content checksum, then notifies waiters; abort
 releases the slot without advancing either value. This deliberately serializes
 the in-memory host linker while leaving global ordering outside AEGIS

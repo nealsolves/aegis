@@ -20,6 +20,10 @@
 - Same-document JSON Schema fragments are allowed; all external/document-relative retrieval is forbidden.
 - Critical score ceiling is the fixed finite value `0.90`.
 - Legacy behavior is host-selected only and never enabled by policy content.
+- The required `google-re2` dependency is exercised on Python 3.10–3.14 on
+  Ubuntu, macOS, and Windows before the supported matrix is published.
+- Guard restriction is re-evaluated after all matching effects have been
+  cumulatively applied; checking effects one at a time is insufficient.
 
 ---
 
@@ -31,7 +35,9 @@
 - Modify: `aegis/_internal/errors.py`
 - Modify: `pyproject.toml`
 - Modify: `docs/reference/SUPPORTED_ENVIRONMENTS.md`
+- Create: `.github/workflows/security-boundaries.yml`
 - Test: `tests/test_policy_compiler.py`
+- Test: `tests/test_re2_platform_smoke.py`
 
 **Interfaces:**
 - Produces: `compile_policy(raw_policy: Mapping[str, Any], *, source: str, allow_legacy: bool = False) -> CompiledPolicy`
@@ -72,11 +78,17 @@ JsonValue: TypeAlias = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
 @dataclass(frozen=True, slots=True)
 class AuthorityEnvelope:
     roles: frozenset[str]
-    tools: frozenset[str]
+    tools: tuple["CompiledToolLimit", ...]
     risk_mode: str
     risk_threshold: float
     critical_ceiling: float
     registered_fields: frozenset[str]
+
+
+@dataclass(frozen=True, slots=True)
+class CompiledToolLimit:
+    name: str
+    max_calls: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,7 +98,7 @@ class CompiledPolicy:
     pattern_engine: str
     canonicalization_profile: str
     roles: tuple[str, ...]
-    tools: tuple[str, ...]
+    tools: tuple[CompiledToolLimit, ...]
     risk: "CompiledRiskPolicy"
     guards: tuple["CompiledGuard", ...]
     preconditions: tuple["CompiledPrecondition", ...]
@@ -142,10 +154,26 @@ Run: `.venv/bin/pytest tests/test_policy_compiler.py -v`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Add the required interpreter/platform matrix**
+
+Create a blocking matrix job with `fail-fast: false`,
+`os: [ubuntu-latest, macos-latest, windows-latest]`, and
+`python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]`. Each lane installs
+the project, imports `re2`, compiles and matches a representative pattern, and
+runs `tests/test_re2_platform_smoke.py`. Add Python 3.13 and 3.14 classifiers
+and publish exactly this tested matrix in `SUPPORTED_ENVIRONMENTS.md`.
+
+Run the local 3.12 lane:
+
+` .venv/bin/pytest tests/test_re2_platform_smoke.py tests/test_policy_compiler.py -v`
+
+Expected: PASS. The protected-branch `security-boundaries` check is not
+complete until all 15 hosted lanes pass.
+
+- [ ] **Step 6: Commit**
 
 ```bash
-git add pyproject.toml aegis/_internal/compiled_policy.py aegis/_internal/policy_compiler.py aegis/_internal/errors.py tests/test_policy_compiler.py docs/reference/SUPPORTED_ENVIRONMENTS.md
+git add pyproject.toml aegis/_internal/compiled_policy.py aegis/_internal/policy_compiler.py aegis/_internal/errors.py tests/test_policy_compiler.py tests/test_re2_platform_smoke.py docs/reference/SUPPORTED_ENVIRONMENTS.md .github/workflows/security-boundaries.yml
 git commit -m "feat: add immutable compiled policy boundary"
 ```
 
@@ -161,6 +189,7 @@ git commit -m "feat: add immutable compiled policy boundary"
 - Test: `tests/test_adversarial_preconditions.py`
 - Test: `tests/test_safe_pattern_compiler.py`
 - Test: `tests/test_safe_output_schema.py`
+- Create: `tests/test_policy_fixture_corpus.py`
 
 **Interfaces:**
 - Produces: `CompiledPattern.fullmatch(candidate: str) -> bool`
@@ -251,12 +280,18 @@ Replace runtime `jsonschema.validate()` calls with the compiled validator. Map o
 
 - [ ] **Step 5: Update both schema copies, run parity and regression suites, then commit**
 
-Run: `.venv/bin/pytest tests/test_adversarial_preconditions.py tests/test_safe_pattern_compiler.py tests/test_safe_output_schema.py tests/test_validation.py tests/test_doc_parity_v090_truth.py -v`
+Inventory every repository policy fixture containing preconditions. Assert all
+strict fixtures compile under 2.0 and no ambiguous typed form remains. Keep
+`tests/fixtures/bare_string_preconditions_policy.yaml` only as an explicit
+legacy-authority fixture and assert strict compilation rejects it; policy
+content alone may not enable that mode.
+
+Run: `.venv/bin/pytest tests/test_adversarial_preconditions.py tests/test_safe_pattern_compiler.py tests/test_safe_output_schema.py tests/test_policy_fixture_corpus.py tests/test_validation.py tests/test_doc_parity_v090_truth.py -v`
 
 Expected: PASS and byte-for-byte policy-schema parity.
 
 ```bash
-git add aegis/_internal/patterns.py aegis/_internal/schema_compiler.py aegis/_internal/policy_compiler.py aegis/_internal/validator.py schemas/policy_dsl.schema.json aegis/schemas/policy_dsl.schema.json tests/test_adversarial_preconditions.py tests/test_safe_pattern_compiler.py tests/test_safe_output_schema.py
+git add aegis/_internal/patterns.py aegis/_internal/schema_compiler.py aegis/_internal/policy_compiler.py aegis/_internal/validator.py schemas/policy_dsl.schema.json aegis/schemas/policy_dsl.schema.json tests/test_adversarial_preconditions.py tests/test_safe_pattern_compiler.py tests/test_safe_output_schema.py tests/test_policy_fixture_corpus.py
 git commit -m "fix: compile bounded policy constraints"
 ```
 
@@ -349,6 +384,7 @@ git commit -m "fix: compile finite tighten-only risk policy"
 - Modify: `aegis/_internal/policy_loader.py`
 - Modify: `aegis/_internal/guards.py`
 - Modify: `aegis/_internal/policy_compiler.py`
+- Modify: `aegis/_internal/tools.py`
 - Test: `tests/test_restriction_registry.py`
 - Test: `tests/test_policy_composition.py`
 - Test: `tests/test_guards.py`
@@ -372,6 +408,24 @@ def test_unregistered_security_field_fails_closed(base_policy):
     with pytest.raises(PolicyValidationError) as exc:
         compile_policy(base_policy, source="test")
     assert exc.value.code == "RESTRICTION_SEMANTICS_MISSING"
+
+
+def test_two_matching_guard_effects_cannot_widen_cumulatively(compiled_policy):
+    first = guard("true", then={"roles": ["reviewer"]})
+    second = guard("true", then={"tools": {"allowed_tools": [
+        {"name": "shell", "max_calls": 1},
+    ]}})
+    with pytest.raises(PolicyValidationError) as exc:
+        evaluate_compiled_guards(compiled_policy, (first, second), {})
+    assert exc.value.code == "POLICY_WIDENING"
+
+
+def test_tool_limit_cannot_increase(parent_policy):
+    child = overlay(parent_policy, tools={"allowed_tools": [
+        {"name": "search", "max_calls": 6},
+    ]})
+    with pytest.raises(PolicyValidationError):
+        compile_composed_policy(parent_policy, child)
 ```
 
 - [ ] **Step 2: Run the composition suites and record current widening failures**
@@ -386,7 +440,7 @@ Expected: FAIL for roles, tools, risk mode, and guard-effect smuggling.
 REGISTRY = RestrictionRegistry({
     "roles": SetSubsetRule(),
     "tools.allowed_tools": ToolSubsetRule(),
-    "risk.mode": OrderedStrictnessRule(("warn_only", "risk_scored", "strict")),
+    "risk.mode": RiskModeCompositionRule(only_same_or_strict=True),
     "risk.threshold": NumericMaximumRule(),  # candidate <= parent
     "pre_conditions": RequirementsSupersetRule(),
     "post_conditions": RequirementsSupersetRule(),
@@ -409,7 +463,19 @@ comparator.assert_overlay_and_effective(
 )
 ```
 
-Compile each `then` effect as a candidate overlay and compare its effective policy against the loaded policy before storing the guard.
+Compile each `then` effect to reject malformed or independently widening
+effects, but do not treat that as the runtime proof. `evaluate_guards()` must
+collect every matching effect, apply the complete cumulative sequence to a
+detached candidate, compile that candidate, and call
+`RestrictionComparator.assert_effective(loaded_authority, candidate)` before
+role, tool, risk, or precondition enforcement. Remove authorization use of
+`_merge_policy_blocks()` unless its result immediately passes that cumulative
+comparison.
+
+`ToolSubsetRule` compares both dimensions: candidate tool names are a subset
+of the parent names and each candidate `max_calls` is less than or equal to the
+parent limit. Change `validate_tool_constraints()` to consume
+`CompiledPolicy.tools`; it may not reconstruct limits from a raw dictionary.
 
 Run: `.venv/bin/pytest tests/test_restriction_registry.py tests/test_policy_composition.py tests/test_guards.py -v`
 
@@ -418,7 +484,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add aegis/_internal/restrictions.py aegis/_internal/policy_loader.py aegis/_internal/guards.py aegis/_internal/policy_compiler.py tests/test_restriction_registry.py tests/test_policy_composition.py tests/test_guards.py
+git add aegis/_internal/restrictions.py aegis/_internal/policy_loader.py aegis/_internal/guards.py aegis/_internal/policy_compiler.py aegis/_internal/tools.py tests/test_restriction_registry.py tests/test_policy_composition.py tests/test_guards.py
 git commit -m "fix: make policy restriction semantics default deny"
 ```
 
@@ -426,6 +492,7 @@ git commit -m "fix: make policy restriction semantics default deny"
 
 **Files:**
 - Modify: `aegis/_internal/enforcement.py`
+- Modify: `aegis/_internal/tools.py`
 - Modify: `aegis/_internal/workflow_lint.py`
 - Modify: `aegis/_internal/cli.py`
 - Create: `tests/test_enforcement_compiled_policy_boundary.py`
@@ -457,7 +524,10 @@ def _load_compiled_policy(policy_file: str, *, loader: PolicyLoaderBase | None) 
     return compile_policy(raw, source=policy_file, allow_legacy=False)
 ```
 
-Pass the compiled object through unified, split, async, instance, and session paths. Lint calls the same compiler and renders compiler error paths/codes.
+Pass the compiled object through unified, split, async, instance, and session
+paths. Route role, tool-limit, risk, precondition, guard, and output validation
+through compiled accessors. Lint calls the same compiler and renders compiler
+error paths/codes.
 
 - [ ] **Step 4: Run A1 and broad compatibility tests**
 
@@ -468,7 +538,7 @@ Expected: PASS.
 - [ ] **Step 5: Update docs and commit**
 
 ```bash
-git add aegis/_internal/enforcement.py aegis/_internal/workflow_lint.py aegis/_internal/cli.py tests/test_enforcement_compiled_policy_boundary.py tests/test_architecture_security_boundaries.py docs/architecture/ENFORCEMENT_PIPELINE.md docs/architecture/ARCHITECTURAL_INVARIANTS.md
+git add aegis/_internal/enforcement.py aegis/_internal/tools.py aegis/_internal/workflow_lint.py aegis/_internal/cli.py tests/test_enforcement_compiled_policy_boundary.py tests/test_architecture_security_boundaries.py docs/architecture/ENFORCEMENT_PIPELINE.md docs/architecture/ARCHITECTURAL_INVARIANTS.md
 git commit -m "refactor: enforce only compiled policies"
 ```
 

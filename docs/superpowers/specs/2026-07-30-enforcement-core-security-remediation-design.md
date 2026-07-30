@@ -1,7 +1,8 @@
 # Enforcement-Core Security Remediation Design
 
 Date: 2026-07-30
-Status: Approved for implementation planning
+Status: Approved architecture; adversarial plan corrections incorporated,
+renewed execution approval required
 Scope: Architecture and roadmap only; no remediation implementation
 
 ## Executive decision
@@ -222,6 +223,9 @@ It returns an immutable deep snapshot containing:
 
 No enforcement stage reopens, reloads, merges, or converts the raw policy.
 Phase B carries the exact `CompiledPolicy` authorized in Phase A.
+Tool constraints retain both the tool name and compiled `max_calls`; a
+name-only tuple is not a valid compiled representation. The live tool validator
+consumes this compiled structure and never re-reads raw `allowed_tools`.
 
 ### Compilation phases
 
@@ -383,12 +387,17 @@ changes are rejected.
 ### Guard-effect rule
 
 Guard effects are compiled with the same schema and restriction registry as
-static policy overlays. When a guard matches:
+static policy overlays. Individual effect validation catches malformed or
+independently widening effects but is not the authorization proof. At runtime:
 
-1. apply its compiled effect to the immutable base;
-2. produce a candidate effective policy;
-3. compare the candidate to the loaded policy's authority envelope;
-4. authorize evaluation only if the candidate is not weaker.
+1. evaluate all guards against detached inputs;
+2. collect every matching compiled effect in deterministic order;
+3. cumulatively apply the complete effect sequence to a detached candidate;
+4. compile the candidate effective policy;
+5. compare that one cumulative candidate to the loaded policy's authority
+   envelope;
+6. begin role/tool/risk/precondition enforcement only if the candidate is not
+   weaker.
 
 Roles, tools, conditions, risk behavior, retries, and future registered fields
 therefore cannot be smuggled through a guard effect.
@@ -508,18 +517,18 @@ remains pending.
 
 ### Binding
 
-The signed handle binds:
+The opaque handle identifies:
 
 - a random issuer-instance identifier;
 - the current process identifier;
 - operation identifier;
-- invocation digest;
-- compiled-policy digest;
-- resolved-guard and gate fingerprint;
+- compiled-policy digest and canonicalization profile;
 - session and step identity when present.
 
 The issuer also keeps a pending record in its in-memory `OperationRegistry`.
-Possession of signed bytes alone is insufficient.
+That private record holds the invocation snapshot, compiled policy,
+resolved-guard/gate state, and Phase A metadata. Possession or copying of the
+public handle alone is insufficient; there is no portable signed-token fallback.
 
 The design is intentionally stronger than process affinity:
 
@@ -534,7 +543,7 @@ The design is intentionally stronger than process affinity:
 
 Consumption is one locked pop-and-own operation:
 
-1. verify shape, signature, issuer, process, and bound digests;
+1. verify shape, issuer, process, and public binding fields;
 2. atomically remove the pending record;
 3. mark the operation consumed;
 4. begin Phase B validation.
@@ -557,13 +566,18 @@ This contract supersedes ADR-0009 sections that describe:
 - concurrent consumption as undefined.
 
 The replacement is non-portable, registry-backed, and concurrency-safe.
+Implementation deletes all legacy sentinel/HMAC issuance and verification,
+module-global consumed-token registry, mutable `_consumed` bits, and session
+token-ID replay state. Retaining either issuance system as an alternate path
+would leave the TOCTOU vulnerability live.
 
 ## 5. Central evidence finalization
 
 ### Structural boundary: #51
 
-No enforcement, session, gate, hook, or exception path calls `emit_to_sink`
-directly. Every path creates an `EvidenceDraft` and passes it to
+No enforcement, session, gate, hook, or exception path calls `emit_to_sink` or
+a sink's `emit()` directly. Every module-level, instance, async, split,
+decorator, and session path creates an `EvidenceDraft` and passes it to
 `EvidenceFinalizer`.
 
 The finalizer performs, in order:
@@ -578,8 +592,11 @@ The finalizer performs, in order:
 8. validate the final artifact schema;
 9. emit the exact finalized object once.
 
-An architecture fitness test scans source imports and calls. Only the
-finalizer module may reach the sink emission primitive. A second fitness test
+An architecture fitness test resolves internal imports, public re-exports, and
+aliases. Only the finalizer module, holding a non-exported delivery capability,
+may turn a sink acknowledgement into a returned authorization result.
+`emit_to_sink` and mutable failure-mode setters are absent from the v2 public
+surface. A second fitness test
 asserts that every finalizer branch invokes the checksum/signing stage before
 emission. Both tests are mandatory blocking CI checks: a pull request cannot
 merge and a release artifact cannot publish while either check fails.
@@ -632,6 +649,14 @@ serialization vectors applicable to the accepted AEGIS domain.
 
 Newly finalized artifacts always carry a non-null checksum.
 
+Construction and verification are separate APIs. The builder accepts only a
+full unsigned artifact that already declares the exact v2 discriminator and
+`aegis-json-v2`; it never writes/overwrites a profile and rejects caller-supplied
+finalization fields. Verification computes over a temporary copy of the full
+finalized artifact and returns a typed status without mutation or returning a
+signature-stripped payload. Artifact content cannot promote a legacy object to
+v2 assurance.
+
 The content-checksum payload is `aegis-json-v2` canonical JSON of the final
 artifact excluding only:
 
@@ -683,6 +708,9 @@ telemetry.
 - The v2 default is `on_sink_failure="raise"`.
 - A v2 enforcement instance requires an acknowledged sink before processing
   governed traffic.
+- Module-level v2 APIs require a private module runtime configured by the host
+  before first use. The first attempt seals it; missing configuration or later
+  mutation fails closed.
 - A configured sink failure raises `AuditSinkError` and the call cannot return
   an allow-class enforcement result.
 - Returning the artifact to the caller is not a fallback for a configured sink
@@ -691,6 +719,8 @@ telemetry.
   host-selected legacy compatibility surface and cannot be enabled by policy,
   guard effects, custom providers, or artifact content.
 - Strict/v2 enforcement never converts delivery failure into PASS.
+- Custom gates receive neither the sink/finalizer nor a mutable global setting,
+  and cannot downgrade current or future v2 delivery behavior.
 
 The sink receives a detached copy of the exact finalized artifact. Successful
 return from its synchronous `emit` call is the acknowledgement boundary.
@@ -715,9 +745,15 @@ The finalizer owns how supplied coordinates are covered. A host must not append
 chain fields to an already finalized artifact.
 
 The reservation is committed with the new v2 content checksum only after
-acknowledged emission. Any checksum, signing, schema, or delivery failure aborts
-the reservation. A host linker must define atomic reserve/commit/abort
-semantics; it may serialize callers while a predecessor checksum is pending.
+acknowledged emission. A checksum, signing, schema, or pre-acknowledgement
+delivery failure aborts the reservation from a mandatory conditional
+`try/finally`. After acknowledgement, commit failure must never abort/reuse the
+coordinate; it leaves the reservation quarantined for reconciliation. Reserve
+has a bounded timeout;
+commit and abort are idempotent closed state transitions, so a leaked
+reservation cannot wait forever. A host linker must define atomic
+reserve/commit/abort semantics; it may serialize callers while a predecessor
+checksum is pending.
 This prevents index gaps and prevents entry `N+1` from linking before entry
 `N`'s content checksum exists without transferring ordering ownership to
 AEGIS.
@@ -725,6 +761,16 @@ AEGIS.
 The in-memory `AuditChain` utility may implement the linker contract for
 single-process use by allowing one outstanding reservation, but enforcement
 does not instantiate one automatically.
+
+Emission and linker commit cannot be one transaction across an arbitrary
+host-owned sink. Each reservation therefore has a bounded unpredictable
+`reservation_id` covered by checksum and signature. A persistent linker records
+`RESERVED` durably before returning coordinates. After a crash between sink
+acknowledgement and commit, it refuses new allocation until the host reconciles
+that ID: commit only after verifying the matching stored v2 artifact, or abort
+only after positively confirming absence. Contradictory or unreconciled state
+is typed unavailable/error and enforcement fails closed. The in-memory linker
+does not claim crash persistence.
 
 ## 6. Separately signed workflow evidence
 
@@ -742,8 +788,12 @@ carries additive correlation metadata:
 
 Allocation uses a per-session lock and atomic increment. Concurrent attempts may
 complete out of order, so the session stores finalized attempt records by
-index and the workflow finalizer sorts by index. Finalization cannot report
-`COMPLETED` while an allocated attempt lacks a terminal finalized record.
+index and the workflow finalizer sorts by index. No final session status—not
+`COMPLETED`, `FAILED`, `CANCELED`, or `INCOMPLETE`—may sign a survivor-derived
+claim while an allocated attempt lacks a terminal finalized record. Closing an
+outstanding operation first burns its handle and finalizes a terminal canceled
+attempt. If that evidence cannot be finalized/delivered, workflow finalization
+fails and only the evidence-loss diagnostic path runs.
 
 The finalized workflow artifact uses a workflow-specific signing domain and
 covers:
@@ -751,8 +801,9 @@ covers:
 - workflow schema/profile version;
 - session identity;
 - final status;
-- signed `step_count`, counting every finalized invocation attempt assigned an
-  index rather than only successful steps;
+- signed `step_count`, equal to the allocated-attempt count
+  (`next_step_index`), never derived from the number of surviving finalized
+  records;
 - the ordered list of `(step_index, invocation_checksum)` pairs;
 - approval and hook summaries;
 - workflow artifact checksum.
@@ -854,6 +905,11 @@ Artifacts produced by the new finalizer use audit schema `2.0`:
 Version `1.4` remains readable through explicit legacy verification. It is not
 silently promoted to the new assurance level.
 
+The discriminator is the existing `audit_schema_version` field. There is no
+generic top-level `schema_version`. The existing `policy_schema_version` keeps
+its JSON Schema dialect meaning and is not repurposed as the AEGIS audit
+contract version.
+
 ### Workflow schema
 
 Finalized workflow evidence uses workflow schema `2.0` with required
@@ -861,6 +917,10 @@ Finalized workflow evidence uses workflow schema `2.0` with required
 profile fields, including `canonicalization_profile`. Legacy workflow artifacts
 remain readable as unsigned, unanchored evidence but cannot satisfy the new
 verified-workflow contract.
+
+The workflow discriminator is the existing `workflow_schema_version` field.
+The currently missing root `schemas/workflow_artifact.schema.json` is created
+from the packaged schema before both copies advance and become parity-gated.
 
 ### Required records
 
@@ -929,9 +989,12 @@ production itself is impossible.
 - Reproduce #56 with network and filesystem retrieval sentinels.
 - Prove same-document `$ref` remains functional.
 - Property-test role/tool subsets, thresholds, budgets, and unknown fields.
-- Test raw child, merged child, and guard-expanded policies independently.
+- Test raw child, merged child, each guard effect, and the cumulative result of
+  multiple simultaneously matching guard effects.
 - Assert unknown risk conditions and runtime downgrades fail closed.
-- Assert score `0.90` and `1.0` block in every mode.
+- Assert score equal to its policy threshold is exceeded (`>=`), and score
+  `0.90` and `1.0` block in every mode through the live enforcement entry
+  points, not only an isolated normalizer.
 
 ### Outcome tests
 
@@ -968,7 +1031,10 @@ production itself is impossible.
   signature, and emitted value remain identical.
 - Reproduce checksum stripping and malformed-entry behavior from #50.
 - Inventory every current emission path and prove it reaches the finalizer.
-- Assert no source outside the finalizer calls the sink primitive.
+- Assert no source outside the finalizer reaches acknowledged delivery through
+  an internal import, public re-export, alias, or direct sink call.
+- Exercise missing/broken sinks on every module-level and instance
+  sync/async/unified/split entry point.
 - Reproduce early invocation failures and workflow finalization with a signer.
 - Verify the emitted object is byte-equivalent to the signed object.
 - Mutate chain fields, workflow correlation, checksum, signing metadata, and
@@ -978,6 +1044,10 @@ production itself is impossible.
 - Verify internally valid prefixes report completeness unproven.
 - Verify workflow step count, gap detection, ordering, duplication, and claimed
   set integrity.
+- Simulate an allocated abandoned workflow attempt and prove no session status
+  can sign a survivor-derived count.
+- Simulate every linker finalization failure and the emit/commit crash window;
+  prove bounded wait, idempotent cleanup, and persistent reconciliation.
 - Break a configured sink and assert no API returns PASS or another allow-class
   result; assert the delivery counter, structured log, and `AuditSinkError`.
 - Force finalization failure before a full invocation can be parsed and assert
@@ -1010,12 +1080,16 @@ These tests are release controls, not advisory coverage:
   `CompiledPolicy`, backing mapping, registry, signer, sink, or operation
   reference;
 - `evidence-finalizer-boundary` fails if any production module outside the
-  finalizer reaches the sink primitive or constructs final checksum/signature
-  fields;
+  finalizer reaches acknowledged sink delivery through internal imports,
+  public re-exports, aliases, or direct calls; constructs final
+  checksum/signature fields; or exposes mutable v2 failure-mode controls;
 - `schema-copy-parity` fails unless root and packaged policy, audit, and
   workflow schemas are byte-for-byte identical;
 - `security-regression-suite` runs all reproduced cases from #50–#56 plus the
   immutable-view, canonicalization, and sink-delivery regressions.
+- `re2-platform-matrix` installs the required dependency and runs compiler
+  smoke tests on Python 3.10–3.14 across Ubuntu, macOS, and Windows. The
+  published support matrix contains only passing lanes.
 
 The protected branch and release workflow require every control above. Any
 temporary waiver requires a public security exception naming the failed
@@ -1026,6 +1100,11 @@ a releasable artifact.
 
 Work proceeds on two dependency tracks. Pull requests within a numbered slice
 must be independently reviewable and testable.
+
+Conceptual tracks do not authorize concurrent edits to live enforcement paths.
+After A1, A2 and B1 may proceed independently and converge at B2. The
+enforcement-heavy merge order is then serialized and fixed:
+**B2 → A3 → B3 → B4**. In particular, A3 and B2 do not execute in parallel.
 
 ### Track A — authorization integrity
 
@@ -1071,7 +1150,8 @@ Deliver:
 - cross-process and concurrency tests;
 - ADR-0009 supersession.
 
-Depends on A1 policy digests and A2 terminal outcomes.
+Depends on A1 policy digests, A2 terminal outcomes, and B2's finalized live
+Phase A/B emission structure.
 
 ### Track B — evidence integrity
 
@@ -1087,6 +1167,9 @@ Deliver #50 before changing the signing pipeline:
 - malformed input normalization;
 - completeness-unproven result.
 
+Depends only on A1's frozen canonicalization-profile and closed JSON-value
+interfaces; this is an interface dependency, not a behavioral dependency.
+
 #### B2. Central finalizer and workflow signing
 
 Deliver #51:
@@ -1097,6 +1180,8 @@ Deliver #51:
 - blocking architectural call-site fitness tests;
 - signed PASS, FAIL, early-failure, session, and workflow paths;
 - explicit unsigned status when no signer exists.
+- identical fail-closed finalization for module-level and instance APIs, with a
+  sealed configured module runtime.
 
 Depends on B1's checksum profile and #44's signer contracts.
 
@@ -1109,7 +1194,7 @@ Deliver #52:
 - exact finalized-object emission;
 - stable re-signing and mutation vectors.
 
-Depends on B1 and B2.
+Depends on B1, B2, and the A3 rewrite merged on top of B2.
 
 #### B4. Workflow completeness metadata
 
@@ -1120,7 +1205,7 @@ Deliver:
 - claimed-set verifier;
 - explicit unproven-completeness language.
 
-Depends on B2 and B3's finalized evidence profile.
+Depends on B3's finalized evidence profile and the A3 operation/session model.
 
 ### Convergence — external assurance
 
@@ -1175,9 +1260,9 @@ recording the executable dependency graph:
 
 1. [A1 compiled policy, restriction envelope, and #53/#54/#56](../plans/2026-07-30-a1-compiled-policy-restriction-envelope.md);
 2. [A2 detached gate projections and closed gate, hook, and risk outcomes](../plans/2026-07-30-a2-closed-outcome-gate-projection.md);
-3. [A3 process-affine operation registry](../plans/2026-07-30-a3-process-affine-operation-registry.md);
-4. [B1 canonicalization, strict checksum, and typed verification](../plans/2026-07-30-b1-canonicalization-checksum-verification.md);
-5. [B2 central finalizer, fail-closed delivery, and workflow signing](../plans/2026-07-30-b2-evidence-finalizer-workflow-signing.md);
+3. [B1 canonicalization, strict checksum, and typed verification](../plans/2026-07-30-b1-canonicalization-checksum-verification.md);
+4. [B2 central finalizer, fail-closed delivery, and workflow signing](../plans/2026-07-30-b2-evidence-finalizer-workflow-signing.md);
+5. [A3 process-affine operation registry](../plans/2026-07-30-a3-process-affine-operation-registry.md);
 6. [B3 chain-before-sign and host linker](../plans/2026-07-30-b3-chain-before-sign-linker.md);
 7. [B4 workflow claimed-set and completeness metadata](../plans/2026-07-30-b4-workflow-completeness-metadata.md);
 8. #46 external checkpoint integration after both tracks converge.
@@ -1208,15 +1293,21 @@ replacement detection are unproven without an external checkpoint.
 | #54 non-finite risk | Policy compilation and risk decisions | A2 |
 | #56 external schema references | Safe JSON Schema compiler | runtime schema enforcement, #38 |
 | composition/guard widening | Restriction comparator | every authorization flow |
+| cumulative matching guard widening | Runtime effective-policy comparator | role/tool/risk enforcement |
+| compiled tool-limit loss | Compiled tool model | tool enforcement, A3 |
 | `_ImmutableView._data` live-state mutation | Gate projection factory | custom gate execution, A2 |
 | custom gate fail-open | Outcome normalizer | A3 |
+| threshold equality and dead critical-risk wiring | Outcome normalizer plus live enforcement integration | A3 |
 | #55 hook execution failure | Outcome normalizer | workflow authorization |
 | process-affine token decision | Operation registry | new split-mode contract |
 | canonicalization collisions and malformed key types | Canonicalization profile v2 | #50, #51, #52, #46 |
 | #50 checksum stripping | Checksum profile and verification | #51, #52, #46 |
 | #51 unsigned emissions | Central finalizer | #52, workflow assurance |
 | allow-class result after sink failure | Evidence delivery contract | every v2 authorization flow |
+| module-level no-sink PASS and mutable public sink controls | Sealed module runtime and delivery capability | every module-level API |
 | #52 signing order | Finalizer and linker | #46 |
+| chain reservation leak/crash fork | Bounded idempotent linker recovery | #46 |
+| survivor-derived workflow count | Allocated-attempt terminal ledger | #46 |
 | #46 trusted checkpoints | Typed verification and stable finalized evidence | #47, completion of #39 |
 | #38 adapter conformance | Shared invariant harness | new adapter releases |
 | #42 stateful providers | Compiled provider boundary | CEL and distributed policy state |
@@ -1265,30 +1356,42 @@ The architecture is ready for an implementation plan only when:
 
 - every issue in #50–#56 maps to an owning component and test suite;
 - no enforcement stage consumes raw policy dictionaries;
+- tool names and per-tool call limits survive compilation and live enforcement;
+- cumulative matching guard effects are compared as one effective policy before
+  any authorization check;
 - gates receive detached immutable projections with no reachable handle to live
   policy, invocation, registry, signer, sink, or operation state;
 - `_ImmutableView` is retired and gate documentation makes no sandbox claim;
 - no non-allow terminal result can authorize execution;
 - no operation handle can be consumed twice or outside its issuer process and
   instance;
+- all portable-token issuance, HMAC/sentinel, and consumed-registry machinery
+  is deleted;
 - policy patterns compile only through required RE2; oversize patterns fail
   compilation and oversize candidates deny at runtime;
 - v2 canonicalization rejects non-string keys and non-JSON containers,
   deterministically handles numbers, and is bound into compiled policies,
   artifacts, signatures, and verification;
 - no artifact can reach a sink outside the finalizer;
+- module-level APIs require the same sealed, acknowledged finalizer runtime as
+  instances, and v2 exposes no mutable failure-mode setter;
 - no configured evidence-delivery failure can return an allow-class result;
 - every enforcement attempt begins with the minimum `AttemptEnvelope`, and
   impossible finalization or delivery produces the counter/log/raise signal;
 - chain coordinates cannot be attached after signing;
+- chain reservations have bounded waits, idempotent cleanup, and a documented
+  persistent emit/commit reconciliation contract;
 - `previous_audit_checksum` is contractually the prior v2 content checksum,
   never a signature or storage digest;
 - workflow evidence remains separately signed;
 - per-session `step_index` allocation is atomic and gapless across concurrent
   attempts;
+- signed workflow `step_count` equals allocated count, and no terminal session
+  status may omit an allocated attempt;
 - legacy behavior is selectable only through trusted host/operator
   configuration and never through untrusted content;
 - verification never implies completeness without an anchor;
 - all architecture fitness tests are blocking protected-branch and release
   controls;
+- the required RE2 dependency passes the declared Python/OS CI matrix;
 - #38, #39, #42, #46, and #47 have the dependency order recorded above.

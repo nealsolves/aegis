@@ -244,6 +244,7 @@ git commit -m "fix: normalize custom gates fail closed"
 **Files:**
 - Modify: `aegis/_internal/validator_hook.py`
 - Modify: `aegis/_internal/risk_scoring.py`
+- Modify: `aegis/_internal/enforcement.py`
 - Modify: `aegis/_internal/session.py`
 - Modify: `tests/test_validator_hook.py`
 - Create: `tests/test_validator_hook_fail_closed.py`
@@ -275,6 +276,12 @@ def test_exhausted_execution_failure_denies():
 def test_critical_score_blocks_in_every_mode(mode):
     score = RiskScore(score=0.90, threshold=0.99, mode=mode, basis=[])
     assert normalize_risk_result(score).terminal is TerminalClass.DENY
+
+
+@pytest.mark.parametrize("mode", ["strict", "risk_scored", "warn_only"])
+def test_score_equal_to_policy_threshold_is_exceeded(mode):
+    score = RiskScore(score=0.75, threshold=0.75, mode=mode, basis=[])
+    assert score.exceeded is True
 ```
 
 - [ ] **Step 2: Run and verify current fail-open behavior**
@@ -288,6 +295,13 @@ Expected: FAIL for exhausted execution failure and non-strict critical scores.
 Map `ALLOW -> ALLOW`, `WARN -> WARN`, `DENY/REVIEW_REQUIRED -> DENY`, `TIMEOUT -> TIMEOUT`, and final `EXECUTION_FAILURE -> EXECUTION_FAILURE`. Unknown or malformed results map to `INVALID_RESULT`.
 
 - [ ] **Step 4: Implement the risk decision**
+
+First change `RiskScore.exceeded` to `score >= threshold`; equality is a
+threshold breach. Then replace the live branch in every unified, split, async,
+instance, and session authorization path—including the decision currently in
+`enforcement.py`—with `normalize_risk_result(score)`. No authorization path
+outside that normalizer may branch directly on `score.exceeded` or
+`score.mode` after this task.
 
 ```python
 CRITICAL_RISK_CEILING = 0.90
@@ -308,7 +322,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add aegis/_internal/validator_hook.py aegis/_internal/risk_scoring.py aegis/_internal/session.py tests/test_validator_hook.py tests/test_validator_hook_fail_closed.py tests/test_risk_scoring.py tests/test_critical_risk_ceiling.py
+git add aegis/_internal/validator_hook.py aegis/_internal/risk_scoring.py aegis/_internal/enforcement.py aegis/_internal/session.py tests/test_validator_hook.py tests/test_validator_hook_fail_closed.py tests/test_risk_scoring.py tests/test_critical_risk_ceiling.py
 git commit -m "fix: close hook and critical-risk outcomes"
 ```
 
@@ -316,7 +330,7 @@ git commit -m "fix: close hook and critical-risk outcomes"
 
 **Files:**
 - Modify: `tests/test_architecture_security_boundaries.py`
-- Create: `.github/workflows/security-boundaries.yml`
+- Modify: `.github/workflows/security-boundaries.yml`
 - Modify: `docs/architecture/ENFORCEMENT_PIPELINE.md`
 - Modify: `docs/architecture/ARCHITECTURAL_INVARIANTS.md`
 - Modify: `docs/PUBLIC_INTEGRATION_CONTRACT.md`

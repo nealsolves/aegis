@@ -8,6 +8,11 @@
 
 **Tech Stack:** Python 3.10+, `rfc8785>=0.1.4,<0.2`, SHA-256, JSON Schema, frozen dataclasses/enums, pytest.
 
+**Predecessor contract:** B1 starts after A1 freezes
+`CompiledPolicy.canonicalization_profile == "aegis-json-v2"` and the closed JSON
+value aliases. B1 consumes those names only; it does not otherwise depend on
+authorization behavior.
+
 ## Global Constraints
 
 - Profile identifier is exactly `aegis-json-v2`.
@@ -20,6 +25,10 @@
 - V2 never calls legacy `canonical_json_bytes()`.
 - A valid supplied prefix reports completeness `UNPROVEN`, not true/complete.
 - Legacy verification requires trusted host opt-in and returns legacy/unproven status.
+- Verification reports five independent axes: content integrity, chain
+  continuity, signature status, anchor status, and completeness.
+- A checksum builder validates an already-declared v2 profile/version; it never
+  writes a profile into an input or promotes a v1 artifact.
 
 ---
 
@@ -53,9 +62,18 @@ def test_round_trip_keeps_bytes_and_value_identical():
     second = canonicalize_v2(json.loads(first.data))
     assert first.data == second.data
     assert first.value == second.value
+
+
+def test_plain_ascii_v1_and_v2_byte_coincidence_does_not_promote_assurance():
+    artifact = {"audit_schema_version": "1.4", "value": "ascii"}
+    assert canonical_json_bytes(artifact) == canonicalize_v2(artifact).data
+    report = verify_chain_detailed([relabel_and_rechecksum_as_v2(artifact)])
+    assert report.signature_status is not SignatureStatus.VALID
 ```
 
-Add RFC 8785 number/string vectors, safe-integer edges, lone surrogates, and mixed-key cases.
+Add RFC 8785 number/string vectors, safe-integer edges, lone surrogates,
+mixed-key cases, all key collisions identified in the review, and property
+tests that distinct accepted normalized values never produce the same bytes.
 
 - [ ] **Step 2: Run and verify current collisions**
 
@@ -136,13 +154,17 @@ git commit -m "feat: add strict v2 evidence canonicalization"
 - Modify: `aegis/_internal/audit.py`
 - Modify: `schemas/audit_artifact.schema.json`
 - Modify: `aegis/schemas/audit_artifact.schema.json`
-- Modify: `schemas/workflow_artifact.schema.json`
+- Create: `schemas/workflow_artifact.schema.json`
 - Modify: `aegis/schemas/workflow_artifact.schema.json`
 - Create: `tests/test_evidence_checksum_v2.py`
 - Modify: `tests/test_audit_artifact_contract.py`
+- Modify: `tests/golden_replays/golden_expected_audit.json`
+- Modify: `tests/golden_replays/golden_expected_split_pass_audit.json`
+- Modify: `tests/golden_replays/golden_expected_split_pre_fail_role_audit.json`
 
 **Interfaces:**
-- Produces: `content_checksum_v2(artifact: Mapping[str, Any]) -> tuple[str, dict[str, JsonValue]]`
+- Produces: `build_content_checksum_v2(unsigned_artifact) -> dict[str, JsonValue]`
+- Produces: `verify_content_checksum_v2(finalized_artifact) -> ContentIntegrity`
 - Checksum excludes only `checksum`, `signature`, and `signature_metadata`.
 
 - [ ] **Step 1: Write mandatory-checksum and round-trip tests**
@@ -150,9 +172,11 @@ git commit -m "feat: add strict v2 evidence canonicalization"
 ```python
 def test_content_checksum_covers_chain_and_workflow_metadata():
     artifact = v2_artifact(previous_audit_checksum="a" * 64, step_index=2)
-    checksum, normalized = content_checksum_v2(artifact)
-    normalized["step_index"] = 3
-    assert content_checksum_v2(normalized)[0] != checksum
+    finalized = build_content_checksum_v2(artifact)
+    original_checksum = finalized["checksum"]
+    candidate = unsigned_copy(finalized)
+    candidate["step_index"] = 3
+    assert build_content_checksum_v2(candidate)["checksum"] != original_checksum
 
 
 def test_v2_schema_rejects_missing_checksum():
@@ -160,6 +184,18 @@ def test_v2_schema_rejects_missing_checksum():
     artifact.pop("checksum")
     errors = list(audit_v2_validator.iter_errors(artifact))
     assert errors
+
+
+def test_checksum_builder_rejects_legacy_profile_instead_of_overwriting_it():
+    with pytest.raises(EvidenceProfileError) as exc:
+        build_content_checksum_v2({"audit_schema_version": "1.4"})
+    assert exc.value.code == "EVIDENCE_PROFILE_MISMATCH"
+
+
+def test_checksum_verifier_does_not_return_a_signature_stripped_artifact(v2_signed_artifact):
+    before = copy.deepcopy(v2_signed_artifact)
+    assert verify_content_checksum_v2(v2_signed_artifact) is ContentIntegrity.VALID
+    assert v2_signed_artifact == before
 ```
 
 - [ ] **Step 2: Run and verify current optional-checksum behavior**
@@ -170,24 +206,33 @@ Expected: FAIL.
 
 - [ ] **Step 3: Implement checksum construction**
 
-```python
-EXCLUDED_CHECKSUM_FIELDS = frozenset({"checksum", "signature", "signature_metadata"})
+Split construction from verification. `build_content_checksum_v2()` accepts an
+unsigned, full artifact that already declares exactly one of
+`audit_schema_version: "2.0"` or `workflow_schema_version: "2.0"` and
+`canonicalization_profile: "aegis-json-v2"`. It rejects missing, legacy,
+conflicting, or unknown values and caller-supplied checksum/signature fields;
+then it returns the complete normalized artifact plus its checksum.
 
-
-def content_checksum_v2(artifact):
-    candidate = dict(artifact)
-    candidate["canonicalization_profile"] = CANONICALIZATION_PROFILE_V2
-    payload = {k: v for k, v in candidate.items() if k not in EXCLUDED_CHECKSUM_FIELDS}
-    canonical = canonicalize_v2(payload)
-    digest = hashlib.sha256(canonical.data).hexdigest()
-    normalized = dict(canonical.value)
-    normalized["checksum"] = digest
-    return digest, normalized
-```
+`verify_content_checksum_v2()` accepts a full finalized artifact, validates the
+same exact declarations, computes over a temporary copy excluding only
+`checksum`, `signature`, and `signature_metadata`, and returns a typed status.
+It never mutates the artifact and never returns a stripped payload. Profile
+selection is host expected-profile input, not artifact-granted authority.
 
 - [ ] **Step 4: Advance both schema pairs**
 
-Require `schema_version: "2.0"`, `canonicalization_profile: "aegis-json-v2"`, and a 64-hex checksum. Keep root/packaged copies byte-identical.
+Require the existing exact discriminator names:
+`audit_schema_version: "2.0"` for invocation artifacts and
+`workflow_schema_version: "2.0"` for workflow artifacts. There is no generic
+`schema_version` field. Preserve `policy_schema_version` as the JSON Schema
+dialect URI; do not repurpose it as an AEGIS contract version. Require
+`canonicalization_profile: "aegis-json-v2"` and a 64-hex checksum.
+
+Create the missing root workflow schema from the packaged source before
+changing both copies, then keep each root/packaged pair byte-identical. In this
+same commit migrate all three golden replay files and every test asserting the
+old audit/workflow discriminator. The suite may not pass through an
+intermediate commit where schemas are 2.0 and goldens are 1.x.
 
 Run: `.venv/bin/pytest tests/test_evidence_checksum_v2.py tests/test_audit_artifact_contract.py tests/test_doc_parity_v090_truth.py -v`
 
@@ -196,7 +241,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add aegis/_internal/evidence_profiles.py aegis/_internal/audit.py schemas/audit_artifact.schema.json aegis/schemas/audit_artifact.schema.json schemas/workflow_artifact.schema.json aegis/schemas/workflow_artifact.schema.json tests/test_evidence_checksum_v2.py tests/test_audit_artifact_contract.py
+git add aegis/_internal/evidence_profiles.py aegis/_internal/audit.py schemas/audit_artifact.schema.json aegis/schemas/audit_artifact.schema.json schemas/workflow_artifact.schema.json aegis/schemas/workflow_artifact.schema.json tests/test_evidence_checksum_v2.py tests/test_audit_artifact_contract.py tests/golden_replays
 git commit -m "fix: require v2 evidence content checksums"
 ```
 
@@ -209,11 +254,14 @@ git commit -m "fix: require v2 evidence content checksums"
 - Modify: `aegis/__init__.py`
 - Create: `tests/test_typed_chain_verification.py`
 - Modify: `tests/test_audit_chain.py`
+- Modify: `demo-app-api/main.py`
+- Modify: `demo-app-api/tests/test_api.py`
 
 **Interfaces:**
 - Produces enums: `ContentIntegrity`, `ChainContinuity`, `Completeness`
-- Produces: `ChainVerificationReport(content_integrity, chain_continuity, completeness, errors)`
-- Produces: `verify_chain_detailed(artifacts, *, allow_legacy=False) -> ChainVerificationReport`
+- Reuses #44 `SignatureStatus` and `AnchorStatus`
+- Produces: `ChainVerificationReport(content_integrity, chain_continuity, signature_status, anchor_status, completeness, errors)`
+- Produces: `verify_chain_detailed(artifacts, *, signature_verifier=None, anchor_verifier=None, legacy_authorization=None) -> ChainVerificationReport`
 - Preserves `verify_chain(...) -> tuple[bool, list[str]]` only as a deprecated wrapper whose boolean means internal validity, never completeness.
 
 - [ ] **Step 1: Write #50 strict and prefix tests**
@@ -228,6 +276,13 @@ def test_valid_prefix_never_claims_completeness():
     report = verify_chain_detailed(valid_prefix())
     assert report.chain_continuity is ChainContinuity.VALID
     assert report.completeness is Completeness.UNPROVEN
+
+
+def test_checksum_valid_unsigned_chain_is_not_authentic(v2_unsigned_prefix):
+    report = verify_chain_detailed(v2_unsigned_prefix)
+    assert report.content_integrity is ContentIntegrity.VALID
+    assert report.signature_status is SignatureStatus.UNSIGNED
+    assert report.anchor_status is AnchorStatus.NOT_EVALUATED
 ```
 
 - [ ] **Step 2: Run and verify current bare-boolean semantics**
@@ -238,11 +293,19 @@ Expected: FAIL because checksum-free entries and prefixes can return `(True, [])
 
 - [ ] **Step 3: Implement closed verification axes**
 
-Normalize malformed input into stable error records. Select canonicalization only from the host-authorized expected profile; artifact content cannot grant legacy mode.
+Normalize malformed input into stable error records. Select canonicalization
+only from the host-authorized expected profile; artifact content cannot grant
+legacy mode. Delegate the signature and anchor axes to the #44 closed outcome
+model. Content/continuity validity must never imply signature validity or
+anchoring, including when legacy and v2 canonical bytes happen to coincide.
 
 - [ ] **Step 4: Add explicit compatibility wrapper**
 
-The wrapper emits `DeprecationWarning`, returns `False` for invalid content/continuity, and documents that `True` says nothing about completeness.
+The wrapper emits `DeprecationWarning`, returns `False` for invalid
+content/continuity, and documents that `True` says nothing about signature,
+anchor, or completeness. Migrate `demo-app-api/main.py` to
+`verify_chain_detailed()` and return all five axes; add a demo regression so the
+strict-default API change cannot break the endpoint unnoticed.
 
 Run: `.venv/bin/pytest tests/test_typed_chain_verification.py tests/test_audit_chain.py tests/test_public_api.py -v`
 
@@ -251,7 +314,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add aegis/_internal/verification.py aegis/_internal/audit_chain.py aegis/audit_chain.py aegis/__init__.py tests/test_typed_chain_verification.py tests/test_audit_chain.py
+git add aegis/_internal/verification.py aegis/_internal/audit_chain.py aegis/audit_chain.py aegis/__init__.py tests/test_typed_chain_verification.py tests/test_audit_chain.py demo-app-api/main.py demo-app-api/tests/test_api.py
 git commit -m "fix: return typed strict chain verification"
 ```
 
@@ -313,8 +376,10 @@ git commit -m "fix: make legacy behavior host-authorized only"
 Run:
 
 ```bash
-.venv/bin/pytest tests/test_canonicalization_v2.py tests/test_evidence_checksum_v2.py tests/test_typed_chain_verification.py tests/test_legacy_authority_boundary.py tests/test_audit_chain.py tests/test_doc_parity_v090_truth.py -v
+.venv/bin/pytest tests/test_canonicalization_v2.py tests/test_evidence_checksum_v2.py tests/test_typed_chain_verification.py tests/test_legacy_authority_boundary.py tests/test_audit_chain.py tests/test_doc_parity_v090_truth.py demo-app-api/tests/test_api.py -v
 .venv/bin/pytest -q
 ```
 
-Expected: both commands exit `0`; #50 is closed within its corrected scope, and B2/B3 consume one stable v2 content-checksum profile.
+Expected: both commands exit `0`; #50 is closed within its corrected scope,
+the demo consumes the strict five-axis result, schema/golden migrations are
+atomic, and B2/B3 consume one stable v2 content-checksum profile.
