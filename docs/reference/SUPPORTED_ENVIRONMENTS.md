@@ -9,9 +9,10 @@ This matrix applies to the `aegis-ai-governance==0.9.0b1` public beta.
 | Python 3.10 | Supported |
 | Python 3.11 | Supported |
 | Python 3.12 | Supported |
+| Python 3.13 | Supported |
+| Python 3.14 | Supported |
 
-Python 3.9 and earlier are not tested and not supported. Python 3.13 is not
-yet validated.
+Python 3.9 and earlier are not tested and not supported.
 
 ## Operating systems
 
@@ -26,14 +27,26 @@ yet validated.
 | Package | Minimum version | Purpose |
 |---------|----------------|---------|
 | `PyYAML` | `>=6.0` | Policy file parsing |
-| `jsonschema` | `>=4.0` | Policy and artifact schema validation |
+| `jsonschema` | `>=4.18,<5` | Policy and artifact schema validation |
+| `google-re2` | `>=1.1.20251105` | Bounded-time policy pattern compilation |
 
-Both packages are listed in `pyproject.toml`. Normal source installs require
+All packages are listed in `pyproject.toml`. Normal source installs require
 PyPI access (or an internal mirror). Install with:
 
 ```bash
 pip install -e .
 ```
+
+## Security-boundary CI matrix
+
+The blocking `security-boundaries` check runs the policy compiler's RE2 smoke
+test on every supported Python and operating-system combination:
+
+| Operating system | Python versions |
+|------------------|-----------------|
+| Ubuntu | 3.10, 3.11, 3.12, 3.13, 3.14 |
+| macOS | 3.10, 3.11, 3.12, 3.13, 3.14 |
+| Windows | 3.10, 3.11, 3.12, 3.13, 3.14 |
 
 ## Development extras
 
