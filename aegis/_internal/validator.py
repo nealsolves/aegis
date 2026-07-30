@@ -13,21 +13,15 @@ import logging
 import warnings
 from typing import Any, Mapping
 
-import jsonschema
-from jsonschema import ValidationError
+from aegis._internal.compiled_policy import CompiledOutputValidator
 from aegis._internal.errors import (
     GovernanceViolationError,
     PreconditionError,
-    SchemaValidationError,
 )
+from aegis._internal.policy_compiler import compile_precondition
+from aegis._internal.schema_compiler import compile_output_schema
 
 logger = logging.getLogger("aegis.validator")
-
-
-def _path_to_pointer(path: list[Any]) -> str:
-    if not path:
-        return "$"
-    return "$." + ".".join(str(part) for part in path)
 
 
 def validate_role(role: str, policy: Mapping[str, Any]) -> None:
@@ -40,22 +34,23 @@ def validate_role(role: str, policy: Mapping[str, Any]) -> None:
         )
 
 
-def validate_schema(output: Mapping[str, Any], schema: Mapping[str, Any]) -> None:
+def validate_schema(
+    output: Mapping[str, Any],
+    schema: Mapping[str, Any] | CompiledOutputValidator,
+) -> None:
     """
     Validate output of model against JSON schema.
 
     :param output: LLM output parsed to dict
     :param schema: JSON schema to validate against
-    :raises jsonschema.ValidationError on mismatch
+    :raises SchemaValidationError on mismatch
     """
-    try:
-        jsonschema.validate(output, schema)
-    except ValidationError as err:
-        pointer = _path_to_pointer(list(err.absolute_path))
-        raise SchemaValidationError(
-            f"Output schema validation failed at {pointer}: {err.message}",
-            details={"path": pointer, "validator": err.validator},
-        ) from err
+    compiled = (
+        schema
+        if isinstance(schema, CompiledOutputValidator)
+        else compile_output_schema(schema)
+    )
+    compiled.validate(output)
 
 
 def _validate_typed_precondition(
@@ -64,47 +59,12 @@ def _validate_typed_precondition(
     context: Mapping[str, Any],
 ) -> None:
     """Validate a single typed precondition against context value."""
-    if key not in context:
-        raise PreconditionError(
-            f"Missing required precondition: {key}",
-            details={"precondition": key},
-        )
-
-    value = context[key]
-
-    # Build a mini JSON Schema for validation
-    schema: dict[str, Any] = {}
-    if "type" in spec and spec["type"] != "any":
-        schema["type"] = spec["type"]
-    if "pattern" in spec:
-        schema["pattern"] = spec["pattern"]
-    if "enum" in spec:
-        schema["enum"] = spec["enum"]
-    if "minLength" in spec:
-        schema["minLength"] = spec["minLength"]
-    if "maxLength" in spec:
-        schema["maxLength"] = spec["maxLength"]
-    if "minimum" in spec:
-        schema["minimum"] = spec["minimum"]
-    if "maximum" in spec:
-        schema["maximum"] = spec["maximum"]
-
-    if not schema:
-        # Type "any" or no constraints - just check existence
-        if not bool(value):
-            raise PreconditionError(
-                f"Missing or false required precondition: {key}",
-                details={"precondition": key},
-            )
-        return
-
-    try:
-        jsonschema.validate(value, schema)
-    except ValidationError as err:
-        raise PreconditionError(
-            f"Precondition '{key}' validation failed: {err.message}",
-            details={"precondition": key, "value": value, "constraint": schema},
-        ) from err
+    compiled = compile_precondition(
+        key,
+        spec,
+        path=f"$.pre_conditions.required.{key}",
+    )
+    compiled.validate(context)
 
 
 def validate_preconditions(

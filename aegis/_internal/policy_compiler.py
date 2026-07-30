@@ -13,7 +13,6 @@ from jsonschema import Draft7Validator
 from aegis._internal.compiled_policy import (
     AuthorityEnvelope,
     CompiledGuard,
-    CompiledOutputValidator,
     CompiledPolicy,
     CompiledPrecondition,
     CompiledRiskPolicy,
@@ -21,6 +20,8 @@ from aegis._internal.compiled_policy import (
     freeze,
 )
 from aegis._internal.errors import PolicyLoadError, PolicyValidationError
+from aegis._internal.patterns import compile_pattern
+from aegis._internal.schema_compiler import compile_output_schema
 
 
 POLICY_CONTRACT_VERSION = "2.0"
@@ -40,7 +41,13 @@ def _path_to_pointer(path: list[Any]) -> str:
 
 def _validate_policy_schema(policy: Mapping[str, Any], *, allow_legacy: bool) -> None:
     """Validate the detached mapping against the packaged Draft 7 policy schema."""
-    del allow_legacy  # Later compiler stages apply explicit legacy semantics.
+    required = (policy.get("pre_conditions") or {}).get("required", {})
+    if isinstance(required, list) and not allow_legacy:
+        raise PolicyValidationError(
+            "Bare-string preconditions require explicit legacy authority",
+            code="LEGACY_PRECONDITION_FORBIDDEN",
+            details={"path": "$.pre_conditions.required"},
+        )
     try:
         schema = json.loads(_POLICY_SCHEMA_PATH.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -82,7 +89,10 @@ def _policy_digest(policy: Mapping[str, Any]) -> str:
 
 
 def _compile_validated_policy(
-    policy: Mapping[str, Any], *, source: str
+    policy: Mapping[str, Any],
+    *,
+    source: str,
+    allow_legacy: bool,
 ) -> CompiledPolicy:
     """Project a schema-valid detached mapping onto the closed value objects."""
     del source  # Reserved for evidence provenance added by the enforcement route.
@@ -107,18 +117,27 @@ def _compile_validated_policy(
     raw_preconditions = (policy.get("pre_conditions") or {}).get("required", {})
     preconditions = (
         tuple(
-            CompiledPrecondition(name=name, specification=freeze(specification))
-            for name, specification in raw_preconditions.items()
+            compile_precondition(
+                name,
+                specification,
+                path=f"$.pre_conditions.required.{name}",
+            )
+            for name, specification in sorted(raw_preconditions.items())
         )
         if isinstance(raw_preconditions, Mapping)
         else tuple(
-            CompiledPrecondition(name=name, specification=True)
+            CompiledPrecondition(
+                name=name,
+                declared_type=None,
+                legacy=True,
+            )
             for name in raw_preconditions
+            if allow_legacy
         )
     )
     output_schema = policy.get("output_schema")
     output_validator = (
-        CompiledOutputValidator(schema=freeze(output_schema))
+        compile_output_schema(output_schema)
         if isinstance(output_schema, Mapping)
         else None
     )
@@ -154,4 +173,80 @@ def compile_policy(
     """Validate and compile a caller-detached immutable policy snapshot."""
     detached = copy.deepcopy(dict(raw_policy))
     _validate_policy_schema(detached, allow_legacy=allow_legacy)
-    return _compile_validated_policy(detached, source=source)
+    return _compile_validated_policy(
+        detached,
+        source=source,
+        allow_legacy=allow_legacy,
+    )
+
+
+def compile_precondition(
+    name: str,
+    specification: Mapping[str, Any],
+    *,
+    path: str,
+) -> CompiledPrecondition:
+    """Compile one structurally valid typed precondition."""
+    declared_type = specification.get("type")
+    string_keywords = ("pattern", "minLength", "maxLength")
+    numeric_keywords = ("minimum", "maximum")
+
+    for keyword in string_keywords:
+        if keyword in specification and declared_type != "string":
+            raise PolicyValidationError(
+                f"{keyword} requires type 'string' at {path}",
+                code="PRECONDITION_TYPE_REQUIRED",
+                details={"path": f"{path}.{keyword}", "required_type": "string"},
+            )
+    for keyword in numeric_keywords:
+        if (
+            keyword in specification
+            and declared_type not in ("number", "integer")
+        ):
+            raise PolicyValidationError(
+                f"{keyword} requires type 'number' or 'integer' at {path}",
+                code="PRECONDITION_TYPE_REQUIRED",
+                details={
+                    "path": f"{path}.{keyword}",
+                    "required_type": ["number", "integer"],
+                },
+            )
+
+    has_constraint = (
+        declared_type not in (None, "any")
+        or "enum" in specification
+        or any(
+            keyword in specification
+            for keyword in string_keywords + numeric_keywords
+        )
+    )
+    if not has_constraint:
+        raise PolicyValidationError(
+            f"Typed precondition has no semantic constraint at {path}",
+            code="PRECONDITION_CONSTRAINT_REQUIRED",
+            details={"path": path},
+        )
+
+    pattern = (
+        compile_pattern(
+            specification["pattern"],
+            path=f"{path}.pattern",
+        )
+        if "pattern" in specification
+        else None
+    )
+    enum = (
+        tuple(freeze(value) for value in specification["enum"])
+        if "enum" in specification
+        else None
+    )
+    return CompiledPrecondition(
+        name=name,
+        declared_type=declared_type,
+        pattern=pattern,
+        enum=enum,
+        min_length=specification.get("minLength"),
+        max_length=specification.get("maxLength"),
+        minimum=specification.get("minimum"),
+        maximum=specification.get("maximum"),
+    )
