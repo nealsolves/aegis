@@ -41,7 +41,12 @@ def _path_to_pointer(path: list[Any]) -> str:
 
 def _validate_policy_schema(policy: Mapping[str, Any], *, allow_legacy: bool) -> None:
     """Validate the detached mapping against the packaged Draft 7 policy schema."""
-    required = (policy.get("pre_conditions") or {}).get("required", {})
+    preconditions = policy.get("pre_conditions")
+    required = (
+        preconditions.get("required", {})
+        if isinstance(preconditions, Mapping)
+        else {}
+    )
     if isinstance(required, list) and not allow_legacy:
         raise PolicyValidationError(
             "Bare-string preconditions require explicit legacy authority",

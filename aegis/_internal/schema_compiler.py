@@ -24,6 +24,22 @@ from aegis._internal.patterns import (
 
 
 _SCHEMA_DRAFT_07 = "http://json-schema.org/draft-07/schema#"
+_SINGLE_SCHEMA_KEYWORDS = frozenset(
+    {
+        "additionalItems",
+        "additionalProperties",
+        "contains",
+        "else",
+        "if",
+        "not",
+        "propertyNames",
+        "then",
+    }
+)
+_SCHEMA_ARRAY_KEYWORDS = frozenset({"allOf", "anyOf", "oneOf"})
+_SCHEMA_MAPPING_KEYWORDS = frozenset(
+    {"definitions", "dependencies", "patternProperties", "properties"}
+)
 _ACTIVE_PATTERNS: ContextVar[Mapping[str, CompiledPattern] | None] = ContextVar(
     "aegis_output_schema_patterns",
     default=None,
@@ -178,19 +194,55 @@ def _inspect_schema(
                         path=pattern_path,
                     )
 
-        for key, child in value.items():
+        for keyword in _SINGLE_SCHEMA_KEYWORDS:
+            child = value.get(keyword)
+            if isinstance(child, (bool, Mapping)):
+                _inspect_schema(
+                    child,
+                    path=_child_path(path, keyword),
+                    patterns=patterns,
+                )
+
+        items = value.get("items")
+        if isinstance(items, (bool, Mapping)):
             _inspect_schema(
-                child,
-                path=_child_path(path, key),
+                items,
+                path=_child_path(path, "items"),
                 patterns=patterns,
             )
-    elif isinstance(value, (list, tuple)):
-        for index, child in enumerate(value):
-            _inspect_schema(
-                child,
-                path=_child_path(path, index),
-                patterns=patterns,
-            )
+        elif isinstance(items, list):
+            for index, child in enumerate(items):
+                if isinstance(child, (bool, Mapping)):
+                    _inspect_schema(
+                        child,
+                        path=_child_path(_child_path(path, "items"), index),
+                        patterns=patterns,
+                    )
+
+        for keyword in _SCHEMA_ARRAY_KEYWORDS:
+            children = value.get(keyword)
+            if not isinstance(children, list):
+                continue
+            for index, child in enumerate(children):
+                if isinstance(child, (bool, Mapping)):
+                    _inspect_schema(
+                        child,
+                        path=_child_path(_child_path(path, keyword), index),
+                        patterns=patterns,
+                    )
+
+        for keyword in _SCHEMA_MAPPING_KEYWORDS:
+            children = value.get(keyword)
+            if not isinstance(children, Mapping):
+                continue
+            for name, child in children.items():
+                if not isinstance(child, (bool, Mapping)):
+                    continue
+                _inspect_schema(
+                    child,
+                    path=_child_path(_child_path(path, keyword), name),
+                    patterns=patterns,
+                )
 
 
 def compile_output_schema(

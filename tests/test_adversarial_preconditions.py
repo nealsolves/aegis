@@ -152,6 +152,18 @@ def test_strict_compilation_rejects_bare_string_preconditions():
     assert exc.value.code == "LEGACY_PRECONDITION_FORBIDDEN"
 
 
+def test_malformed_preconditions_reports_stable_schema_error():
+    policy = {
+        "policy_version": "1.0",
+        "roles": ["verifier"],
+        "pre_conditions": "bad",
+    }
+    with pytest.raises(PolicyValidationError) as exc:
+        compile_policy(policy, source="test")
+    assert exc.value.code == "POLICY_SCHEMA_VALIDATION_ERROR"
+    assert exc.value.details["path"] == "$.pre_conditions"
+
+
 def test_explicit_legacy_authority_preserves_truthiness_semantics():
     policy = {
         "policy_version": "1.0",

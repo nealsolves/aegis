@@ -71,6 +71,35 @@ def test_incompatible_schema_dialect_is_compile_error():
     assert exc.value.code == "OUTPUT_SCHEMA_DIALECT_UNSUPPORTED"
 
 
+@pytest.mark.parametrize(
+    ("schema", "instance"),
+    [
+        (
+            {"enum": [{"pattern": "(?=x)x"}]},
+            {"pattern": "(?=x)x"},
+        ),
+        (
+            {"enum": [{"$ref": "https://example.invalid/inert"}]},
+            {"$ref": "https://example.invalid/inert"},
+        ),
+        (
+            {"const": {"pattern": "(?=x)x"}},
+            {"pattern": "(?=x)x"},
+        ),
+        (
+            {"const": {"$ref": "https://example.invalid/inert"}},
+            {"$ref": "https://example.invalid/inert"},
+        ),
+    ],
+)
+def test_instance_data_keywords_remain_opaque_during_schema_walk(
+    schema,
+    instance,
+):
+    validator = compile_output_schema(schema)
+    validator.validate(instance)
+
+
 def test_same_document_fragment_ref_is_allowed_and_functional():
     validator = compile_output_schema(
         {
