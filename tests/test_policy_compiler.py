@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+from pathlib import Path
 
 import pytest
 
@@ -12,6 +13,9 @@ from aegis._internal.errors import (
     SchemaValidationError,
 )
 from aegis._internal.policy_compiler import compile_policy
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture
@@ -47,6 +51,28 @@ def test_compiled_policy_records_closed_profiles(valid_policy):
     assert compiled.policy_contract_version == "2.0"
     assert compiled.pattern_engine == "google-re2"
     assert compiled.canonicalization_profile == "aegis-json-v2"
+
+
+def test_supported_environment_matrix_is_provisional_until_hosted_lane_passes():
+    """Docs must not claim a target matrix is supported before CI proves it."""
+    environments = (
+        REPO_ROOT / "docs" / "reference" / "SUPPORTED_ENVIRONMENTS.md"
+    ).read_text(encoding="utf-8")
+    normalized = " ".join(environments.split())
+
+    assert "Security-boundary CI target matrix (provisional)" in environments
+    assert "A lane becomes supported only after its corresponding hosted" in normalized
+    for version in ("3.10", "3.11", "3.12", "3.13", "3.14"):
+        assert f"| Python {version} | Target / provisional |" in environments
+    for operating_system in (
+        "macOS (Apple Silicon and Intel)",
+        "Linux (x86-64)",
+        "Windows (x86-64)",
+    ):
+        assert f"| {operating_system} | Target / provisional |" in environments
+    assert "| Ubuntu | 3.10, 3.11, 3.12, 3.13, 3.14 |" in environments
+    assert "| macOS | 3.10, 3.11, 3.12, 3.13, 3.14 |" in environments
+    assert "| Windows | 3.10, 3.11, 3.12, 3.13, 3.14 |" in environments
 
 
 @pytest.mark.parametrize(

@@ -2,25 +2,25 @@
 
 This matrix applies to the `aegis-ai-governance==0.9.0b1` public beta.
 
-## Python versions
+## Target Python versions (provisional)
 
 | Version | Status |
 |---------|--------|
-| Python 3.10 | Supported |
-| Python 3.11 | Supported |
-| Python 3.12 | Supported |
-| Python 3.13 | Supported |
-| Python 3.14 | Supported |
+| Python 3.10 | Target / provisional |
+| Python 3.11 | Target / provisional |
+| Python 3.12 | Target / provisional |
+| Python 3.13 | Target / provisional |
+| Python 3.14 | Target / provisional |
 
 Python 3.9 and earlier are not tested and not supported.
 
-## Operating systems
+## Target operating systems (provisional)
 
 | OS | Status |
 |----|--------|
-| macOS (Apple Silicon and Intel) | Supported |
-| Linux (x86-64) | Supported |
-| Windows (x86-64) | Supported |
+| macOS (Apple Silicon and Intel) | Target / provisional |
+| Linux (x86-64) | Target / provisional |
+| Windows (x86-64) | Target / provisional |
 
 ## Required packages
 
@@ -37,10 +37,13 @@ PyPI access (or an internal mirror). Install with:
 pip install -e .
 ```
 
-## Security-boundary CI matrix
+## Security-boundary CI target matrix (provisional)
 
-The blocking `security-boundaries` check runs the policy compiler's RE2 smoke
-test on every supported Python and operating-system combination:
+The blocking `security-boundaries` check targets the policy compiler's RE2
+smoke test at every Python and operating-system combination below. This matrix
+is provisional: it does not itself expand the support claim. A lane becomes
+supported only after its corresponding hosted `security-boundaries` lane
+passes.
 
 | Operating system | Python versions |
 |------------------|-----------------|
