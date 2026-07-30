@@ -81,13 +81,30 @@ class CompiledToolLimit:
 
 
 @dataclass(frozen=True, slots=True)
+class CompiledRiskFactor:
+    """One validated risk contribution with a declared condition."""
+
+    name: str
+    weight: float
+    condition: str
+
+
+@dataclass(frozen=True, slots=True)
 class CompiledRiskPolicy:
-    """Initial closed risk representation; richer factors arrive in Task 3."""
+    """Closed risk representation used by scoring and override checks."""
 
     mode: str
     threshold: float
     critical_ceiling: float
-    factors: tuple[object, ...] = ()
+    factors: tuple[CompiledRiskFactor, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class CompiledRetryPolicy:
+    """Validated bounds for the compatibility retry wrapper."""
+
+    max_retries: int
+    backoff_ms: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -214,6 +231,7 @@ class CompiledPolicy:
     roles: tuple[str, ...]
     tools: tuple[CompiledToolLimit, ...]
     risk: CompiledRiskPolicy
+    retry: CompiledRetryPolicy | None
     guards: tuple[CompiledGuard, ...]
     preconditions: tuple[CompiledPrecondition, ...]
     output_validator: CompiledOutputValidator | None

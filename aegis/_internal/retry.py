@@ -58,16 +58,20 @@ def with_retry(
     """
     # Load policy to check retry_policy
     from aegis._internal.policy_loader import load_policy
+    from aegis._internal.policy_compiler import compile_policy
 
     policy = load_policy(invocation["policy_file"])
-
-    retry_policy = policy.get("retry_policy")
+    compiled_policy = compile_policy(
+        policy,
+        source=str(invocation["policy_file"]),
+    )
+    retry_policy = compiled_policy.retry
     if not retry_policy:
         # No retry policy - single attempt
         return enforcement_fn(invocation)
 
-    max_retries = retry_policy.get("max_retries", 0)
-    backoff_ms = retry_policy.get("backoff_ms", 0)
+    max_retries = retry_policy.max_retries
+    backoff_ms = retry_policy.backoff_ms
 
     last_error: Exception | None = None
 

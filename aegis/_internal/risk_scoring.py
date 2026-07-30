@@ -15,7 +15,12 @@ from __future__ import annotations
 import logging
 from typing import Any, Mapping
 
+from aegis._internal.compiled_policy import (
+    CompiledRiskFactor,
+    CompiledRiskPolicy,
+)
 from aegis._internal.errors import PolicyValidationError
+from aegis._internal.policy_compiler import compile_risk_policy
 
 logger = logging.getLogger("aegis.risk_scoring")
 
@@ -32,7 +37,14 @@ DEFAULT_RISK_THRESHOLD = 0.7
 class RiskScore:
     """Immutable risk score result with scoring basis evidence."""
 
-    __slots__ = ("score", "threshold", "mode", "basis", "exceeded")
+    __slots__ = (
+        "score",
+        "threshold",
+        "mode",
+        "basis",
+        "exceeded",
+        "_critical_ceiling",
+    )
 
     def __init__(
         self,
@@ -40,12 +52,17 @@ class RiskScore:
         threshold: float,
         mode: str,
         basis: list[dict[str, Any]],
+        critical_ceiling: float = 0.90,
     ) -> None:
         self.score = score
         self.threshold = threshold
         self.mode = mode
         self.basis = basis
-        self.exceeded = score > threshold
+        self._critical_ceiling = critical_ceiling
+        self.exceeded = (
+            score >= threshold
+            or score >= critical_ceiling
+        )
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dict for audit artifact metadata."""
@@ -59,7 +76,7 @@ class RiskScore:
 
 
 def _compute_factor_score(
-    factor: dict[str, Any],
+    factor: CompiledRiskFactor,
     invocation: Mapping[str, Any],
     policy: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -72,9 +89,9 @@ def _compute_factor_score(
 
     Returns a basis entry with name, weight, triggered, contribution.
     """
-    name = factor.get("name", "unknown")
-    weight = float(factor.get("weight", 0.0))
-    condition = factor.get("condition", "")
+    name = factor.name
+    weight = factor.weight
+    condition = factor.condition
 
     triggered = _evaluate_risk_condition(condition, invocation, policy)
     contribution = weight if triggered else 0.0
@@ -101,7 +118,6 @@ def _evaluate_risk_condition(
       - "high_tool_count": true if >5 tools allowed
       - "missing_guards": true if policy lacks guards
       - "external_model": true if model_provider is not "internal"
-      - any context key: true if context[key] is truthy
     """
     if condition == "no_output_schema":
         return "output_schema" not in policy
@@ -118,16 +134,18 @@ def _evaluate_risk_condition(
         return not policy.get("guards")
     if condition == "external_model":
         return invocation.get("model_provider", "") != "internal"
-    # Fallback: check context key
-    ctx = invocation.get("context", {})
-    return bool(ctx.get(condition))
+    raise PolicyValidationError(
+        f"Unknown risk condition: {condition!r}",
+        code="RISK_CONDITION_UNKNOWN",
+        details={"condition": condition},
+    )
 
 
 def compute_risk_score(
     invocation: Mapping[str, Any],
     policy: Mapping[str, Any],
     *,
-    risk_config: dict[str, Any] | None = None,
+    risk_config: CompiledRiskPolicy | Mapping[str, Any] | None = None,
 ) -> RiskScore:
     """Compute a deterministic risk score for an invocation.
 
@@ -141,21 +159,18 @@ def compute_risk_score(
     """
     if risk_config is None:
         risk_config = policy.get("risk", {})
+    if isinstance(risk_config, CompiledRiskPolicy):
+        compiled = risk_config
+    else:
+        compatible = dict(risk_config)
+        compatible.setdefault("threshold", DEFAULT_RISK_THRESHOLD)
+        compiled = compile_risk_policy(compatible)
 
-    mode = risk_config.get("mode", RISK_MODE_STRICT)
-    if mode not in VALID_RISK_MODES:
-        raise PolicyValidationError(
-            f"Invalid risk mode: {mode!r}; expected one of {VALID_RISK_MODES}",
-            details={"invalid_mode": mode, "valid_modes": list(VALID_RISK_MODES)},
-        )
-
-    threshold = float(risk_config.get("threshold", DEFAULT_RISK_THRESHOLD))
-    factors = risk_config.get("factors", [])
-
+    mode = compiled.mode
     basis: list[dict[str, Any]] = []
     total_score = 0.0
 
-    for factor in factors:
+    for factor in compiled.factors:
         entry = _compute_factor_score(factor, invocation, policy)
         basis.append(entry)
         total_score += entry["contribution"]
@@ -165,9 +180,10 @@ def compute_risk_score(
 
     result = RiskScore(
         score=total_score,
-        threshold=threshold,
+        threshold=compiled.threshold,
         mode=mode,
         basis=basis,
+        critical_ceiling=compiled.critical_ceiling,
     )
 
     logger.debug(

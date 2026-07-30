@@ -66,8 +66,8 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "max_retries": { "type": "integer", "minimum": 0 },
-        "backoff_ms": { "type": "integer", "minimum": 0 }
+        "max_retries": { "type": "integer", "minimum": 0, "maximum": 10 },
+        "backoff_ms": { "type": "integer", "minimum": 0, "maximum": 60000 }
       },
       "required": ["max_retries", "backoff_ms"]
     },
