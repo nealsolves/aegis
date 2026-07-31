@@ -14,6 +14,8 @@ _ENFORCEMENT = _ROOT / "aegis" / "_internal" / "enforcement.py"
 _SESSION = _ROOT / "aegis" / "_internal" / "session.py"
 _TOOLS = _ROOT / "aegis" / "_internal" / "tools.py"
 _RISK = _ROOT / "aegis" / "_internal" / "risk_scoring.py"
+_GATES = _ROOT / "aegis" / "_internal" / "gates.py"
+_GATE_PROJECTION = _ROOT / "aegis" / "_internal" / "gate_projection.py"
 _MODULES = {
     name: _ROOT / "aegis" / "_internal" / f"{name}.py"
     for name in (
@@ -143,6 +145,87 @@ def test_tool_validation_has_no_raw_policy_compatibility_branch() -> None:
         )
     ]
     assert mapping_checks == []
+
+
+def test_gate_projection_boundary_has_no_live_view_wrapper() -> None:
+    """A wrapper with caller-owned backing data would reopen live authority."""
+    violations = []
+    for path in (_GATES, _GATE_PROJECTION):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        violations.extend(
+            f"{path.name}:{node.lineno}"
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ClassDef) and node.name == "_ImmutableView"
+        )
+    assert violations == []
+
+
+def test_custom_gate_calls_do_not_receive_compiled_policy_directly() -> None:
+    """Compiled authority must cross the gate boundary only as a projection."""
+    tree = ast.parse(_GATES.read_text(encoding="utf-8"), filename=str(_GATES))
+    violations: list[str] = []
+    for function in (
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    ):
+        compiled_names = {
+            argument.arg
+            for argument in (*function.args.posonlyargs, *function.args.args)
+            if "CompiledPolicy" in _annotation_text(argument.annotation)
+        }
+        for assignment in (
+            node
+            for node in ast.walk(function)
+            if isinstance(node, (ast.Assign, ast.AnnAssign))
+        ):
+            value = assignment.value
+            if isinstance(value, ast.Name) and value.id in compiled_names:
+                compiled_names.update(_assigned_names(assignment))
+        for call in (
+            node for node in ast.walk(function) if isinstance(node, ast.Call)
+        ):
+            if (
+                isinstance(call.func, ast.Attribute)
+                and call.func.attr == "evaluate"
+                and len(call.args) >= 2
+                and isinstance(call.args[1], ast.Name)
+                and call.args[1].id in compiled_names
+            ):
+                violations.append(f"{_GATES.name}:{call.lineno}:{function.name}")
+    assert violations == []
+
+
+def test_enforcement_branches_only_on_normalized_boundary_outcomes() -> None:
+    """Raw gate, hook, and risk values must not make authorization decisions."""
+    forbidden_attributes = {"passed", "failures", "decision", "exceeded", "mode"}
+    violations: list[str] = []
+    for path in (_ENFORCEMENT, _SESSION):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for branch in (
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.If, ast.IfExp, ast.While, ast.Assert))
+        ):
+            test = branch.test
+            raw_attributes = {
+                node.attr
+                for node in ast.walk(test)
+                if isinstance(node, ast.Attribute)
+                and node.attr in forbidden_attributes
+            }
+            raw_decision_constants = {
+                node.id
+                for node in ast.walk(test)
+                if isinstance(node, ast.Name)
+                and node.id.startswith("VALIDATOR_")
+            }
+            if raw_attributes or raw_decision_constants:
+                violations.append(
+                    f"{path.name}:{branch.lineno}:"
+                    f"{sorted(raw_attributes | raw_decision_constants)}"
+                )
+    assert violations == []
 
 
 _COMPILE_ALLOWLIST = {

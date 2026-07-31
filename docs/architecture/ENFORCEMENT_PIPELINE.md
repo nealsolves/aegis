@@ -290,9 +290,18 @@ Gates implement the `EnforcementGate` ABC and return `GateResult` objects.
 
 ### Gate Contract
 
-Gates receive immutable projections derived from compiled fields and an
-immutable view of the invocation. They do not receive the loaded raw policy.
-Any attempt to mutate these objects is converted into a gate failure.
+Gates receive copy-then-freeze projections derived from an explicit allowlist
+of compiled fields plus detached invocation and context projections. No gate
+argument retains a live policy, invocation, registry, signer, sink, or
+operation object. This is an argument-projection guarantee: it prevents a gate
+from reaching AEGIS enforcement state through supplied arguments; it is not a
+claim that arbitrary in-process Python code is sandboxed.
+
+Every `GateResult` is converted to a closed terminal outcome before
+authorization continues. `passed=False` always denies, even when `failures` is
+empty. `passed=True` with any failure is an invalid result and denies. Unknown
+returns and exceptions become stable fail-closed outcomes without exposing raw
+exception text. Only `ALLOW` and `WARN` terminal classes continue.
 
 Custom gates may:
 
@@ -303,6 +312,17 @@ Custom gates may NOT:
 
 * remove failures
 * bypass enforcement stages
+
+Internal `ValidatorHook` results use the same closed terminal model. Exhausted
+execution failures, timeouts, malformed results, unknown decisions, denials,
+and review-required results all block a workflow step; only normalized
+`ALLOW` and `WARN` results continue.
+
+Risk authorization is also centralized in its normalizer. Equality with the
+policy threshold is a breach. Scores at or above the fixed `0.90` critical
+ceiling deny in `strict`, `risk_scored`, and `warn_only` modes. Below that
+ceiling, threshold breaches deny in `strict` and normalize to `WARN` in the two
+non-blocking modes.
 
 ---
 

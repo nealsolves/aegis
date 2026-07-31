@@ -179,7 +179,8 @@ This policy declares:
   `internal_search` with a cap of 10 calls.
 - **Risk scoring**: Strict mode with a 0.7 threshold. Three weighted factors evaluate whether
   the policy itself is well-formed (has a schema, uses a narrow role set, runs an internal
-  model). If the composite score exceeds 0.7, enforcement fails with `RiskThresholdError`.
+  model). If the composite score reaches 0.7, enforcement fails with `RiskThresholdError`.
+  Independently, a score at or above 0.90 fails in every risk mode.
 - **Policy dates**: Active from 2025-01-01 through 2027-12-31. Loading the policy outside this
   window raises `PolicyValidationError`.
 
@@ -218,14 +219,17 @@ class TenantIsolationGate(EnforcementGate):
 ```
 
 The gate runs at `pre_authorization`, before role validation and precondition checks. It
-receives read-only views of `invocation` and `policy`. If it fails, the pipeline stops and a
-FAIL artifact is generated with the gate's failure details. The gate's `metadata` dict is
-merged into the audit artifact's `metadata` on PASS.
+receives detached, recursively immutable projections of `invocation` and an explicit
+allowlist of compiled policy fields. Supplied arguments contain no handle to live AEGIS
+enforcement state; this argument guarantee is not an in-process Python sandbox. If the gate
+fails, the pipeline stops and a FAIL artifact is generated with the gate's failure details.
+The gate's `metadata` dict is merged into the audit artifact's `metadata` on PASS.
 
 Custom gates appear as `"custom:tenant_isolation"` in the artifact's `metadata.gates_evaluated`
-list. Gate metadata is merged into `metadata.custom_gate_metadata`. If a gate raises an
-unhandled exception, the pipeline converts it to a failure with code `CUSTOM_GATE_ERROR` —
-governance never crashes.
+list. `passed=False` denies even without a failure list, while `passed=True` plus failures is
+an invalid result and denies. Gate metadata is merged into `metadata.custom_gate_metadata`.
+If a gate raises an unhandled exception, the pipeline converts it to a sanitized, stable
+execution-failure outcome with code `CUSTOM_GATE_ERROR` — governance never crashes.
 
 ### 2.3 Application startup
 
@@ -635,9 +639,9 @@ aegis = AEGIS(custom_gates=[ComplianceTagGate()])
 ```
 
 Gate metadata is merged into `metadata.custom_gate_metadata` in the audit artifact.
-`invocation` and `policy` are read-only `Mapping` views. Failures are append-only — a gate
-cannot suppress earlier failures. Unhandled exceptions are converted to failures (code
-`CUSTOM_GATE_ERROR`), never to crashes.
+`invocation` and `policy` are detached, recursively immutable `Mapping` projections.
+Failures are append-only — a gate cannot suppress earlier failures. Unhandled exceptions
+become sanitized execution failures (code `CUSTOM_GATE_ERROR`), never crashes.
 
 ### Built-In Gates
 
@@ -683,9 +687,13 @@ Any other condition name is looked up as a context key.
 
 Modes:
 
-- **`strict`**: Score exceeding threshold raises `RiskThresholdError`
-- **`risk_scored`**: Score recorded in the audit artifact, no enforcement action
-- **`warn_only`**: Warning logged, no enforcement action
+- **`strict`**: Score equal to or above the threshold raises `RiskThresholdError`
+- **`risk_scored`**: A policy-threshold breach below 0.90 is recorded as a warning
+- **`warn_only`**: A policy-threshold breach below 0.90 is logged and recorded as a warning
+
+The fixed critical ceiling is inclusive: a score at or above `0.90` raises
+`RiskThresholdError` in all three modes. `risk_scored` and `warn_only` therefore
+cannot be used to bypass a critical score.
 
 The `AEGIS` class accepts `risk_config` as a constructor override; otherwise the policy's
 `risk` field is used.
@@ -1409,12 +1417,13 @@ tool call from the invocation.
 
 ### Q: `RiskThresholdError: Risk score exceeds threshold`
 
-**Cause**: The computed risk score exceeds the policy's `risk.threshold` and risk mode is
-`strict`.
+**Cause**: The computed risk score reached the policy's `risk.threshold` in `strict` mode,
+or reached the fixed `0.90` critical ceiling in any mode.
 
-**Fix**: Either lower the risk factors by strengthening the policy (add output_schema,
-reduce roles, add guards), raise the threshold, or switch to `risk_scored` or `warn_only`
-mode during development:
+**Fix**: Lower the risk factors by strengthening the policy (add output_schema, reduce
+roles, add guards). For a non-critical policy-threshold breach, you may raise the threshold
+or switch to `risk_scored` or `warn_only` during development. Mode changes do not bypass
+the `0.90` critical ceiling:
 
 ```yaml
 risk:
