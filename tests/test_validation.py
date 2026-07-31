@@ -2,7 +2,11 @@ import warnings
 
 import pytest
 from aegis._internal.validator import validate_preconditions, validate_postconditions
-from aegis._internal.errors import GovernanceViolationError, PreconditionError
+from aegis._internal.errors import (
+    GovernanceViolationError,
+    PolicyValidationError,
+    PreconditionError,
+)
 
 
 def test_precondition_missing():
@@ -116,13 +120,14 @@ def test_typed_precondition_missing_key():
     assert "session_id" in str(exc_info.value)
 
 
-def test_typed_precondition_type_any_acts_as_legacy():
-    """type: any behaves like legacy key-existence check."""
+def test_typed_precondition_type_any_cannot_select_legacy_semantics():
+    """Policy content cannot opt a typed precondition into legacy truthiness."""
     policy = {"pre_conditions": {"required": {
         "flag": {"type": "any"}
     }}}
-    satisfied = validate_preconditions({"flag": True}, policy)
-    assert "flag" in satisfied
+    with pytest.raises(PolicyValidationError) as exc:
+        validate_preconditions({"flag": True}, policy)
+    assert exc.value.code == "PRECONDITION_CONSTRAINT_REQUIRED"
 
 
 def test_typed_precondition_deterministic_ordering():

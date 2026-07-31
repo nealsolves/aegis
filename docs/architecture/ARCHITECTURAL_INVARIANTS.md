@@ -99,6 +99,11 @@ No system component may bypass:
 
 All enforcement must route through the governance engine.
 
+Every loader-to-enforcement boundary must immediately produce a
+`CompiledPolicy` with legacy authority disabled. Authorization gates may read
+only typed compiled fields; raw policy dictionaries are confined to loader and
+compiler compatibility APIs outside authorization.
+
 ---
 
 ## 4. Pipeline Ordering
@@ -226,9 +231,16 @@ Policies compose via `extends` inheritance with recursive merge.
 
 Current merge rules:
 
-* arrays append
+* ordinary arrays use the configured append, union, intersect, or replace
+  strategy
 * dicts recurse
 * scalars replace
+* authorization-bearing `roles`, `tools.allowed_tools`, and workflow
+  participants use complete replacement plus subset validation
+* an inherited `workflow.required_sequence` is exact across composition and
+  guard overlays
+* absent tool configuration and explicit empty `allowed_tools` remain distinct;
+  the latter denies all tool calls
 
 Circular dependency chains are detected and rejected at load time.
 
@@ -283,6 +295,11 @@ It does not change any architectural invariant. Specifically:
 * Exactly one audit artifact is emitted per invocation attempt (Invariant 6). A Phase-A-only FAIL produces one FAIL artifact. A complete split invocation produces one final artifact.
 * Unified mode remains backward-compatible and fully supported.
 * Policy evaluation in Phase B must use the Phase A effective policy — no reload from disk.
+* Phase A and Phase B use the same compiled authority object in-process.
+  Serialized transfer uses one canonical compiled DTO plus an authenticated,
+  domain-separated content digest. The digest is verified before
+  reconstruction and before Phase B use; transfer must not serialize a raw
+  policy snapshot or call `compile_policy()` during reconstruction.
 
 Hosts using legacy unified mode via `pre_call_enforcement=False` are unaffected
 by split mode internals; the pipeline ordering and artifact contract are unchanged.
@@ -367,6 +384,35 @@ provider transport, retry and timeout behavior, availability policy, and
 artifact storage. AEGIS does not claim replay prevention, sequence
 completeness, complete-chain replacement detection, trusted time, immutable or
 WORM storage, certification, or regulatory compliance.
+
+---
+
+## 19. Single Compiled Policy Interpretation
+
+Policy loading, workflow lint, unified enforcement, split enforcement, async
+entry points, instance methods, adapters, and sessions share one compiler
+contract.
+
+The following rules are invariant:
+
+* compilation occurs exactly once immediately after each policy load or cache
+  retrieval used for enforcement
+* roles, tools, risk, typed preconditions, cumulative guard effects, output
+  validation, postconditions, and workflow limits are read from compiled fields
+* authority envelopes contain explicit immutable per-field values, never a
+  generic restriction or effective-policy mapping
+* guard effects compile to typed immutable overlays at the load boundary and
+  are applied cumulatively without policy-map reconstruction or recompilation
+* runtime risk overrides may only tighten compiled authority and the critical
+  ceiling remains fixed at `0.90`
+* policy-backed sessions pin the open-time compiled policy; steps and dynamic
+  tool calls consume that authority without reload or recompile
+* lint reports the shared compiler's stable error code and path, resolving
+  source-relative `extends` chains before compiling composed files
+* architecture fitness tests cover compiler/load calls, compiled-policy alias
+  data flow, generic policy-shaped snapshots, session reloads, and compiled
+  parameter contracts across guards, enforcement, sessions, tools, risk,
+  retry, lint, and CLI modules
 
 ---
 

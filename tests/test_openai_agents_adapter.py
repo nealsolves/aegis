@@ -660,7 +660,6 @@ _BASE_INV = {
     "model_identifier": "gpt-4o",
     "role": "planner",
     "input": {"messages": [{"role": "user", "content": "hi"}]},
-    "output": {"result": "ok", "confidence": 0.9},
     "context": {"role_declared": True, "schema_exists": True},
 }
 

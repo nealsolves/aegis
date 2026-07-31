@@ -26,6 +26,9 @@ from aegis import (
     WorkflowSessionTokenInvalidError,
     WorkflowUnsupportedBindingError,
 )
+from aegis._internal.adapter_invocation import (
+    project_adapter_pre_call_invocation,
+)
 
 if TYPE_CHECKING:
     from aegis._internal.session import GovernanceSession
@@ -598,7 +601,12 @@ class A2APreparedStep:
 
 
 class A2AAdapter:
-    """AEGIS governance adapter for host-owned A2A interactions."""
+    """AEGIS governance adapter for host-owned A2A interactions.
+
+    ``prepare_step()`` accepts a broad host invocation with an optional,
+    validated ``output`` for compatibility, but sends a detached output-free
+    projection to Phase A. Actual output is supplied only to ``complete_step()``.
+    """
 
     def prepare_step(
         self,
@@ -705,7 +713,7 @@ class A2AAdapter:
                 },
             )
 
-        enriched = dict(invocation)
+        enriched = project_adapter_pre_call_invocation(invocation)
         ctx = dict(ctx_raw)
         proto = dict(proto_raw)
         enriched["protocol"] = "a2a"

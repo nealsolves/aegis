@@ -582,6 +582,7 @@ def test_prepare_step_success_registers_state_and_does_not_mutate_invocation():
 
     adapter = A2AAdapter()
     original = copy.deepcopy(_BASE_INV)
+    original["output"] = {"result": "host-placeholder"}
     with _make_session(protocol_constraints={"a2a": {}}) as session:
         prepared = adapter.prepare_step(
             session,
@@ -595,6 +596,9 @@ def test_prepare_step_success_registers_state_and_does_not_mutate_invocation():
         assert state["protocol_binding"] == "JSONRPC"
         assert "protocol" not in original
         assert "protocol_evidence" not in original["context"]
+        assert original["output"] == {"result": "host-placeholder"}
+        pending = session._pending_results[prepared._session_result._token_id]
+        assert "output" not in pending["inner"].invocation_snapshot
         adapter.complete_step(
             prepared,
             dict(_GOOD_OUTPUT),

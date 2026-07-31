@@ -23,32 +23,28 @@ from __future__ import annotations
 import ast
 import json
 import re
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
 import yaml
 from jsonschema import Draft7Validator
 
-from aegis._internal.policy_loader import SCHEMAS_DIR
+from aegis._internal.policy_loader import (
+    SCHEMAS_DIR,
+    load_resolve_compile_policy,
+)
+from aegis._internal.errors import PolicyLoadError, PolicyValidationError
 
 
 # ---------------------------------------------------------------------------
 # Schema loading (lazy, cached at module level)
 # ---------------------------------------------------------------------------
 
-_POLICY_SCHEMA: dict | None = None
 _WORKFLOW_SCHEMA: dict | None = None
 _AUDIT_SCHEMA: dict | None = None
 _UNSUPPORTED_PROTOCOLS = frozenset({"grpc", "websocket", "soap"})
 _MAX_WITNESS_TRACE_EVENTS = 8
-
-
-def _policy_schema() -> dict:
-    global _POLICY_SCHEMA
-    if _POLICY_SCHEMA is None:
-        path = SCHEMAS_DIR / "policy_dsl.schema.json"
-        _POLICY_SCHEMA = json.loads(path.read_text(encoding="utf-8"))
-    return _POLICY_SCHEMA
 
 
 def _workflow_schema() -> dict:
@@ -74,6 +70,18 @@ def _audit_schema() -> dict:
 def _json_safe(value: Any) -> Any:
     """Return a JSON-serializable copy of deterministic lint evidence."""
     return json.loads(json.dumps(value, default=str))
+
+
+def _plain_compiled_value(value: Any) -> Any:
+    """Detach a compiled JSON value for non-authorizing diagnostics."""
+    if isinstance(value, Mapping):
+        return {
+            key: _plain_compiled_value(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, tuple):
+        return [_plain_compiled_value(item) for item in value]
+    return value
 
 
 def _event_dict(event: Any) -> dict[str, Any]:
@@ -547,25 +555,34 @@ def lint_policy(path: str, *, target_kind: str = "policy") -> list[dict]:
         ))
         return findings
 
-    # 4. JSON-schema validation
-    schema = _policy_schema()
-    validator = Draft7Validator(schema)
-    schema_errors = sorted(validator.iter_errors(policy), key=lambda e: list(e.path))
-    for err in schema_errors:
-        pointer = ".".join(str(seg) for seg in err.absolute_path) or "$"
+    # 4. The loader/compiler boundary owns source-aware inheritance and returns
+    # only typed compiled output. Standalone parsed input retains the existing
+    # compiler-first diagnostic normalization.
+    try:
+        compiled = load_resolve_compile_policy(
+            str(p),
+            parsed_policy=policy,
+            allow_legacy=False,
+        )
+    except (PolicyLoadError, PolicyValidationError) as exc:
+        details = (
+            dict(exc.details)
+            if isinstance(exc.details, dict)
+            else {}
+        )
         findings.append(_finding(
-            "POLICY_SCHEMA_VALIDATION_ERROR",
-            f"Schema violation at {pointer}: {err.message}",
+            exc.code,
+            str(exc),
             target_kind,
             str(p),
+            details=details,
         ))
-    if findings:
         return findings
 
-    # 5. Date consistency
+    # 6. Date consistency
     eff = policy.get("effective_date")
     exp = policy.get("expiration_date")
-    if eff and exp and eff > exp:
+    if "extends" not in policy and eff and exp and eff > exp:
         findings.append(_finding(
             "POLICY_LOAD_ERROR",
             f"effective_date ({eff}) is after expiration_date ({exp}); "
@@ -574,40 +591,7 @@ def lint_policy(path: str, *, target_kind: str = "policy") -> list[dict]:
             str(p),
         ))
 
-    # 6. Duplicate tool names in tools.allowed_tools
-    tools_section = policy.get("tools", {})
-    allowed_tools = (
-        tools_section.get("allowed_tools", []) if isinstance(tools_section, dict) else []
-    )
-    seen: list[str] = []
-    for tool in (allowed_tools or []):
-        if not isinstance(tool, dict):
-            continue
-        name = tool.get("name", "")
-        if name in seen:
-            findings.append(_finding(
-                "TOOL_CONSTRAINT_VIOLATION",
-                f"Duplicate tool name in tools.allowed_tools: '{name}'.",
-                target_kind,
-                str(p),
-            ))
-        else:
-            seen.append(name)
-
-    # 7. output_schema well-formedness
-    output_schema = policy.get("output_schema")
-    if output_schema is not None and isinstance(output_schema, dict):
-        try:
-            Draft7Validator.check_schema(output_schema)
-        except Exception as exc:
-            findings.append(_finding(
-                "POLICY_SCHEMA_VALIDATION_ERROR",
-                f"output_schema is not a valid JSON Schema Draft 7: {exc}",
-                target_kind,
-                str(p),
-            ))
-
-    workflow = policy.get("workflow") or {}
+    workflow = _plain_compiled_value(compiled.workflow)
     if isinstance(workflow, dict):
         required_sequence = workflow.get("required_sequence") or []
         if (

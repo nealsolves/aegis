@@ -54,8 +54,14 @@ def test_aigc_enforce_pre_call_uses_policy_cache():
     assert isinstance(pre2, PreCallResult)
     assert pre2.policy_file == GOLDEN_POLICY
 
-    # Both should have the same effective policy content
-    assert pre1.effective_policy == pre2.effective_policy
+    # Both carry equivalent typed compiler authority, never policy maps.
+    assert pre1._compiled_policy is not None
+    assert pre2._compiled_policy is not None
+    assert (
+        pre1._compiled_policy.policy_digest
+        == pre2._compiled_policy.policy_digest
+    )
+    assert not hasattr(pre1, "effective_policy")
 
 
 def test_aigc_enforce_post_call_does_not_reload_policy():

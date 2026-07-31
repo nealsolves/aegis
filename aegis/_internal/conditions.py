@@ -39,7 +39,14 @@ def resolve_conditions(
         result = resolve_conditions(policy, context)
         # {"is_enterprise": True, "audit_enabled": raises error}
     """
-    conditions_spec = policy.get("conditions", {})
+    return resolve_compiled_conditions(policy.get("conditions", {}), context)
+
+
+def resolve_compiled_conditions(
+    conditions_spec: Mapping[str, Any],
+    context: Mapping[str, Any],
+) -> dict[str, bool]:
+    """Resolve one compiler-owned condition field without a policy mapping."""
     resolved: dict[str, bool] = {}
 
     for name, spec in conditions_spec.items():

@@ -41,11 +41,12 @@ class TestPreCallResultFrozen:
         with pytest.raises(AttributeError):
             result.role = "hacker"
 
-    def test_frozen_rejects_effective_policy_assignment(self):
-        """Cannot replace effective_policy on a frozen result."""
+    def test_token_exposes_no_effective_policy_mapping(self):
+        """The split token carries only private typed compiled authority."""
         result = enforce_pre_call(_pre_call_invocation())
 
-        with pytest.raises(AttributeError):
+        assert not hasattr(result, "effective_policy")
+        with pytest.raises((AttributeError, TypeError)):
             result.effective_policy = {}
 
 

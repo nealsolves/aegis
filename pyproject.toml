@@ -30,13 +30,16 @@ classifiers = [
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Topic :: Software Development :: Libraries :: Python Modules",
   "Topic :: Security",
   "Typing :: Typed",
 ]
 dependencies = [
   "PyYAML>=6.0",
-  "jsonschema>=4.0",
+  "jsonschema>=4.18,<5",
+  "google-re2>=1.1.20251105",
 ]
 
 [project.scripts]

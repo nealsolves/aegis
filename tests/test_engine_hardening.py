@@ -473,7 +473,7 @@ def test_child_cannot_widen_handoffs():
 
 def test_child_cannot_drop_required_sequence_via_replace():
     """Child cannot drop required_sequence key under replace strategy — disables enforcement."""
-    with pytest.raises(PolicyValidationError, match="clears required_sequence"):
+    with pytest.raises(PolicyValidationError, match="required_sequence"):
         load_policy("tests/test_policies/composition_p4_drop_required_sequence_replace.yaml")
 
 

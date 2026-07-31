@@ -51,9 +51,6 @@ def _make_forged_token(
     Used to verify that post-call rejects such tokens (Finding #1 path) or
     that corrupted-bytes tokens produce typed errors (Finding #2 path).
     """
-    from aegis._internal.policy_loader import load_policy
-
-    policy = load_policy(GOLDEN_POLICY)
     inv_snapshot = {
         "policy_file": GOLDEN_POLICY,
         "model_provider": "anthropic",
@@ -65,7 +62,6 @@ def _make_forged_token(
     }
 
     token = PreCallResult(
-        effective_policy=policy,
         resolved_guards=(),
         resolved_conditions={},
         phase_a_metadata={"gates_evaluated": [], "pre_call_timestamp": 0},
@@ -77,7 +73,6 @@ def _make_forged_token(
     )
     # Stamp _origin — the same bypass reproduced in the audit.
     object.__setattr__(token, "_origin", _ENFORCEMENT_TOKEN)
-    object.__setattr__(token, "_frozen_effective_policy", dict(policy))
     object.__setattr__(token, "_frozen_invocation_snapshot", dict(inv_snapshot))
     object.__setattr__(token, "_frozen_phase_a_metadata", {})
 
@@ -94,9 +89,6 @@ def _make_forged_token(
             sort_keys=True,
         ).encode()
     object.__setattr__(token, "_frozen_evidence_bytes", evidence_bytes)
-
-    policy_bytes = json.dumps(policy, sort_keys=True).encode()
-    object.__setattr__(token, "_frozen_policy_bytes", policy_bytes)
 
     # Set HMAC: None means leave default b"" (HMAC check will fail).
     # Caller can pass _token_sign(evidence_bytes) to make HMAC pass.

@@ -1,0 +1,494 @@
+# Task 5 Report — Route enforcement and lint through compiled policies
+
+Date: 2026-07-30
+
+## Result
+
+All policy-load enforcement boundaries now compile immediately with
+`allow_legacy=False`. Unified, split, async, instance, adapter/session, dynamic
+tool, risk, guard, precondition, postcondition, output, and workflow paths
+consume `CompiledPolicy` fields. `load_policy()` retains its public dictionary
+return outside authorization.
+
+Split Phase A stores the exact in-memory compiled authority for Phase B.
+Pickle/deepcopy compatibility uses a canonical typed compiled DTO, reconstructs
+the compiled value objects without `compile_policy()`, and authenticates the
+effective `policy_digest`. No raw/full policy snapshot is stored on
+`CompiledPolicy`.
+
+Workflow/policy lint invokes the shared compiler and preserves stable compiler
+codes and `details.path`.
+
+## Controller ruling applied
+
+The controller ruled that `CompiledPolicy` must not retain a raw/full policy
+snapshot, even frozen or audit-only. Audit and custom-gate projections therefore
+derive only from compiled metadata and normalized authority values. Serialized
+split transfer uses a compiled DTO rather than a policy-shaped input that would
+be recompiled or reinterpreted.
+
+## TDD evidence
+
+Initial RED:
+
+```text
+.venv/bin/pytest tests/test_enforcement_compiled_policy_boundary.py \
+  tests/test_architecture_security_boundaries.py -v
+
+8 failed
+```
+
+The failures demonstrated all intended breaks:
+
+- unified, split, instance, async, and session paths accepted a loader-valid
+  legacy precondition instead of strict compilation
+- `_run_phase_a` / `_run_phase_b` read raw policy mappings
+- enforcement called `load_policy()` outside the immediate compile helper
+- tool validation retained an authorization-time raw mapping branch
+
+Risk-scoring RED:
+
+```text
+.venv/bin/pytest \
+  tests/test_architecture_security_boundaries.py::test_authorization_functions_do_not_read_raw_policy_mappings -v
+
+1 failed (four raw risk-policy reads)
+```
+
+Lint RED:
+
+```text
+.venv/bin/pytest \
+  tests/test_workflow_lint.py::TestLintPolicy::test_duplicate_allowed_tool_returns_finding \
+  tests/test_workflow_lint.py::TestLintPolicy::test_compiler_error_preserves_stable_code_and_path -v
+
+2 failed
+```
+
+Final architecture GREEN:
+
+```text
+.venv/bin/pytest tests/test_enforcement_compiled_policy_boundary.py \
+  tests/test_architecture_security_boundaries.py -v
+
+8 passed
+```
+
+## Final verification
+
+Exact broad Task 5 suite:
+
+```text
+.venv/bin/pytest tests/test_policy_compiler.py \
+  tests/test_adversarial_preconditions.py \
+  tests/test_safe_pattern_compiler.py \
+  tests/test_safe_output_schema.py \
+  tests/test_risk_compiler_security.py \
+  tests/test_restriction_registry.py \
+  tests/test_enforcement_compiled_policy_boundary.py \
+  tests/test_policy_loader.py \
+  tests/test_enforcement_pipeline.py \
+  tests/test_async_enforcement.py \
+  tests/test_workflow_lint.py -v
+
+260 passed
+```
+
+A1 completion gate:
+
+```text
+.venv/bin/pytest tests/test_policy_compiler.py \
+  tests/test_adversarial_preconditions.py \
+  tests/test_safe_pattern_compiler.py \
+  tests/test_safe_output_schema.py \
+  tests/test_risk_compiler_security.py \
+  tests/test_restriction_registry.py \
+  tests/test_architecture_security_boundaries.py -v
+
+142 passed
+```
+
+Full suite:
+
+```text
+.venv/bin/pytest -q
+
+3339 passed, 1 skipped, 13 warnings
+```
+
+Lint and repository checks:
+
+```text
+.venv/bin/flake8 aegis <all Task 5 changed tests>
+# exit 0
+
+.venv/bin/python scripts/check_doc_parity.py
+# PASSED: all documentation parity checks OK
+
+.venv/bin/python scripts/check_brand_and_version_parity.py
+# PASS
+
+.venv/bin/python scripts/check_public_docs_no_internal_imports.py
+# PASS
+
+git diff --check
+# exit 0
+```
+
+Whole-tree `flake8 aegis tests` still reports unrelated pre-existing lint debt
+across legacy test files. Production code and every test changed by Task 5 are
+clean.
+
+## Compatibility migrations
+
+- Legacy bare-string preconditions now fail at the compiler boundary with
+  `LEGACY_PRECONDITION_FORBIDDEN`; tests that previously expected non-strict
+  runtime acceptance were updated to the strict compiler contract.
+- YAML-native non-JSON schema values now fail earlier with
+  `POLICY_NON_JSON_VALUE` and a FAIL artifact instead of reaching token-freeze
+  compatibility handling.
+- A legacy widening `warn_only` instance risk override fixture was changed to a
+  tighten-compatible `strict` override, preserving the Task 4 invariant.
+- Public direct risk-scoring helpers retain raw-mapping compatibility outside
+  authorization by projecting only the risk facts they require.
+- A subprocess-only test now uses `sys.executable`, eliminating dependence on a
+  `python` alias absent from the test environment.
+
+## Concerns
+
+- Full-suite warnings are existing strict-mode/deprecation warnings; no new test
+  failures remain.
+- The canonical compiled DTO intentionally reconstructs RE2 patterns and the
+  non-retrieving output validator from already-compiled sources after
+  pickle/deepcopy. It never calls `compile_policy()` or admits new authority.
+
+## Fix round 1 — independent security review
+
+The review's one Critical and five Important findings were reproduced first as
+10 failing regressions. The fix makes every enforcement handoff typed,
+authenticated, and closed against raw-policy re-entry:
+
+- Split enforcement now authenticates a domain-separated SHA-256 digest of the
+  complete canonical compiled DTO inside the Phase A HMAC evidence. Phase B
+  verifies both the evidence and the reconstructed DTO content before use.
+- Guards compile their conditions and restriction overlays exactly once at the
+  policy compiler boundary. Runtime guard evaluation resolves only compiled
+  conditions and applies typed, cumulative overlays.
+- `AuthorityEnvelope` contains explicit immutable authority fields; the generic
+  `restriction_values` snapshot and its reconstruction path were removed.
+  `PreCallResult` likewise no longer carries an effective-policy mapping or
+  frozen-policy compatibility bytes.
+- `GovernanceSession` pins the exact `CompiledPolicy` opened by the session and
+  routes each step through the compiled-policy enforcement entrypoint. Policy
+  file changes after session creation cannot alter step authorization.
+- CLI and workflow lint now defer policy semantics to the compiler and preserve
+  stable compiler error codes and paths.
+- The architecture fitness suite now checks every enforcement-relevant module
+  for compile/load bypasses, raw compiled-policy indexing, policy-shaped
+  mappings, banned snapshots, and untyped compiled-policy boundaries. Synthetic
+  violations prove the checks detect the reviewed failure modes.
+
+Verification:
+
+```text
+.venv/bin/pytest tests/test_task5_fix_round1.py -q
+19 passed
+
+.venv/bin/pytest tests/test_architecture_security_boundaries.py -q
+5 passed
+
+.venv/bin/pytest tests/test_guards.py tests/test_restriction_registry.py -q
+62 passed
+
+.venv/bin/pytest tests/test_v0_3_2_audit_round2.py \
+  tests/test_v0_3_2_regressions.py \
+  tests/test_final_audit_2026_04_05.py \
+  tests/test_release_audit_2026_04_05.py \
+  tests/test_audit_round3_2026_04_05.py \
+  tests/test_deep_review_2026_04_05.py -q
+117 passed
+
+# Focused architecture, security, enforcement, compiler, session, CLI, and
+# historical audit aggregate:
+591 passed
+```
+
+Changed-scope `flake8`, documentation parity, brand/version parity, public-doc
+boundary checks, and `git diff --check` all pass. Per the round instruction, the
+full repository suite was not rerun.
+
+Compatibility migrations in this round:
+
+- Tests constructing raw `CompiledGuard(when=..., then=...)` values now enter
+  through the compiler boundary and assert typed compiled overlays.
+- Historical token tests no longer construct or assert the removed generic
+  restriction map and frozen effective-policy fields.
+- Invalid lint-time risk numbers now report the compiler's stable
+  `RISK_NUMBER_INVALID` diagnostic.
+- The public raw-mapping risk helper remains available outside authorization;
+  compiled enforcement uses the typed risk scorer exclusively.
+
+Residual considerations:
+
+- Custom gates receive a transient, derived policy-shaped projection solely for
+  their longstanding public callback contract. It is never stored and cannot
+  re-enter authorization.
+- Cross-process DTO reconstruction rebuilds validators from authenticated
+  compiled sources only after the content digest verifies. No policy compiler,
+  loader, or raw restriction interpreter is reachable from that path.
+- No known security blocker remains from this review.
+
+## Fix round 2 — session validation and semantic fitness
+
+The two remaining Important findings were reproduced before implementation:
+both pinned-session validation tests failed, and four isolated analyzer fixtures
+each demonstrated one independent false negative.
+
+Session enforcement now routes ordinary and pinned compiled pre-calls through
+one `_prepare_pre_call_policy()` boundary. It validates the split invocation and
+strict-policy invariants exactly once, then attaches and emits the same typed
+pre-pipeline FAIL artifact on either entrypoint. The ordinary path supplies no
+policy and therefore loads through the existing cache/compiler boundary; the
+session path supplies its exact pinned `CompiledPolicy`, so it performs no
+reload or recompilation. Pre-call invocations containing `output` are rejected
+with `INVOCATION_VALIDATION_ERROR`, and strict pinned sessions reject policies
+without required preconditions with the existing
+`POLICY_SCHEMA_VALIDATION_ERROR` details.
+
+The architecture analyzer now:
+
+- resolves imported and local aliases for compile, load, and reload-capable
+  entrypoints;
+- distinguishes a public reload in a pinned-policy branch from the legitimate
+  unpinned fallback branch;
+- propagates `CompiledPolicy` identity from guaranteed annotations, typed
+  attributes, typed returns, and assignments before checking `.get()` and
+  subscript access;
+- rejects retained `Mapping[str, Any]` authority fields structurally, regardless
+  of their name, while allowing the explicit `PreCallResult` invocation/evidence
+  mappings and `Mapping[str, JsonValue]` typed DTO fields; and
+- scans the enforcement, compiler/loader, conditions, guards/gates, restriction,
+  schema, session, tool, validator, provenance, risk, retry, lint, and CLI
+  authorization modules.
+
+Verification:
+
+```text
+.venv/bin/pytest tests/test_task5_fix_round2.py -q
+2 passed
+
+.venv/bin/pytest tests/test_architecture_security_boundaries.py -q
+11 passed
+
+# Session, strict mode, invocation validation, and split-entrypoint suites:
+120 passed
+
+# Focused Task 5, architecture, security, enforcement, compiler, session, CLI,
+# and historical audit aggregate:
+657 passed
+```
+
+Changed-scope `flake8`, documentation parity, brand/version parity, public-doc
+boundary checks, and `git diff --check` pass. Per the round instruction, the
+full repository suite was not rerun.
+
+Residual considerations:
+
+- The analyzer intentionally treats only annotations that guarantee a
+  `CompiledPolicy` as compiled authority. Public compatibility helpers whose
+  union types also admit raw mappings remain outside authorization and do not
+  produce false positives.
+- Reload-entrypoint analysis is control-flow aware for the session's pinned
+  `is None` / `is not None` branches; a reload not proven to be on the unpinned
+  branch fails closed.
+- No known production blocker remains from this review.
+
+## Fix round 3 — pre-call producer migration and final full-suite verification
+
+The first full-suite run after fix round 2 reproduced 84 failures:
+
+```text
+.venv/bin/pytest -q --tb=no
+84 failed, 3284 passed, 1 skipped
+```
+
+All failures belonged to four migration categories; no fifth category was
+found:
+
+- Bedrock and OpenAI Agents adapters copied a broad host invocation, including
+  `output`, into strict Phase A. A2A used the same pattern and was migrated
+  proactively.
+- Starter templates and migration examples still embedded placeholder output
+  values in direct pre-call payloads.
+- Direct `enforce_pre_call()` and session fixtures still used the obsolete
+  unified invocation shape.
+- Deep-review forged-token fixtures passed the removed `effective_policy`
+  constructor field.
+
+Four adapter regressions failed before the production change and passed
+afterward. The three protocol adapters now share one compatibility boundary
+that validates an optional host-envelope `output` as a JSON-serializable object,
+preserves the caller's mapping, and builds a detached output-free Phase A
+projection. Actual output still enters only through `complete_step()`. The core
+`_validate_pre_call_invocation` contract remains strict: direct pre-call and
+session boundaries reject `output`; there is no silent stripping in core
+enforcement.
+
+Starter templates, migration examples, and direct-boundary fixtures now use the
+split invocation shape. Provenance tests use an explicit output-free Phase A
+fixture rather than accidentally catching the wrong validation error.
+Deep-review tests continue to forge tokens manually, but only with the current
+map-free DTO fields, preserving the security assertion that Phase B rejects a
+token not issued by `enforce_pre_call()`.
+
+Verification:
+
+```text
+# Every file that failed in the initial full-suite run:
+235 passed, 5 warnings
+
+# Exact A1 completion gate:
+150 passed
+
+.venv/bin/pytest -q
+3369 passed, 1 skipped, 13 warnings
+```
+
+Changed production modules and added adapter regression code pass `flake8`;
+pre-existing unrelated lint findings remain in several legacy test files whose
+only round-3 change is fixture-field removal. Documentation parity,
+brand/version parity, the public-doc internal-import boundary, and
+`git diff --check` all pass.
+
+Residual considerations:
+
+- Protocol adapters intentionally retain compatibility with a broader host
+  envelope. They validate optional `output` before omission, and tests prove
+  both caller immutability and an output-free Phase A token snapshot.
+- Direct enforcement APIs remain fail-closed and do not accept `output`.
+- The 13 full-suite warnings are existing precondition and deprecation warnings;
+  no test failure or known security blocker remains.
+
+## Fix round 4 — bounded adapter-envelope output validation
+
+The final Important review finding was reproduced before implementation:
+the shared adapter helper fully serialized a 5 MiB compatibility `output` and
+allowed it through, while a depth-10,000 value escaped as raw
+`RecursionError`. The focused RED run produced 15 expected failures across
+limit enforcement, JSON semantics, exception translation, and real-adapter
+adversarial probes.
+
+No authoritative equivalent limits exist elsewhere in the project, so the
+adapter compatibility boundary now names and documents three conservative
+limits:
+
+- 1 MiB of compact UTF-8 encoded JSON;
+- 10,000 value nodes; and
+- nesting depth 64.
+
+Object keys must be strings and count toward the byte limit. The root plus
+object values and array elements count as nodes, and root depth is one.
+
+Validation is iterative and uses constant traversal-stack growth. It accounts
+for exact compact UTF-8 JSON bytes without first serializing strings, rejects an
+oversized string from its length lower bound, consumes container iterators one
+item at a time, and stops as soon as the byte, node, or depth limit is exceeded.
+Only after the complete preflight succeeds does the helper perform bounded
+serialization. `RecursionError`, `OverflowError`, `TypeError`, and `ValueError`
+are translated to stable `InvocationValidationError`.
+
+Tests cover the exact limit and one past it for every dimension; string-key
+object semantics; booleans, finite numbers, null, arrays, and objects;
+non-string keys; NaN and both infinities; every required serialization
+exception; and 5 MiB/depth-10,000 probes through both the shared helper and the
+real Bedrock adapter. Rejections preserve the caller's output object identity.
+Direct core and session pre-call rejection of `output` remains unchanged.
+
+Verification:
+
+```text
+# Shared helper and Bedrock RED:
+15 failed, 45 passed
+
+# Shared helper and Bedrock GREEN:
+60 passed
+
+# All protocol adapter suites:
+297 passed
+
+# Strict session and deep-review suites:
+91 passed, 1 skipped
+
+# Exact A1 completion gate:
+150 passed
+
+.venv/bin/pytest -q
+3388 passed, 1 skipped, 13 warnings
+```
+
+Changed-scope `flake8`, documentation parity, brand/version parity, the
+public-doc internal-import boundary, and `git diff --check` all pass.
+
+Residual considerations:
+
+- The limits apply only to the adapters' discarded compatibility `output`;
+  they do not weaken or alter direct Phase A/session invocation validation.
+- Successful compatibility values incur one final serialization only after
+  their traversal and maximum resource use are bounded.
+- The 13 full-suite warnings are existing precondition and deprecation
+  warnings. No known security blocker remains from this review.
+
+## Fix round 5 — allocation-safe negative integer preflight
+
+The remaining Important finding was reproduced with a deterministic
+implementation guard. Python's `abs()` returns a distinct positive bigint for a
+negative bigint, so the integer byte preflight duplicated attacker-controlled
+magnitude before it could enforce the encoded-size limit. With the module's
+`abs` lookup guarded to fail on use, the focused RED run failed exactly at that
+call:
+
+```text
+1 failed, 21 passed
+```
+
+The minimal fix uses `value.bit_length()` directly. `int.bit_length()` is
+sign-independent and inspects the existing bigint without constructing its
+absolute-value copy. The adversarial regression builds an 8,388,608-bit
+negative integer, keeps the `abs` guard armed, and proves it reaches the stable
+encoded-byte `InvocationValidationError` while preserving the caller's output
+object.
+
+Signed boundary characterizations temporarily reduce the encoded-byte limit to
+nine bytes and exercise the real shared helper:
+
+- `{"x":999}` and `{"x":-99}` are accepted at exactly nine bytes;
+- `{"x":1000}` and `{"x":-100}` are rejected at ten bytes.
+
+This preserves sign accounting, boolean handling, and every byte/node/depth and
+JSON-semantics limit from round 4.
+
+Verification:
+
+```text
+# Focused helper GREEN:
+22 passed
+
+# Shared helper and all protocol adapter suites:
+302 passed
+
+# Exact A1 completion gate:
+150 passed
+
+.venv/bin/pytest -q
+3393 passed, 1 skipped, 13 warnings
+```
+
+Changed-scope `flake8`, documentation parity, brand/version parity, the
+public-doc internal-import boundary, and `git diff --check` all pass.
+
+Residual considerations:
+
+- Large positive and negative integers now share the same allocation-safe bit
+  length preflight; the sign contributes one encoded byte only for negatives.
+- The 13 full-suite warnings are existing precondition and deprecation
+  warnings. No known security blocker remains from the five review rounds.

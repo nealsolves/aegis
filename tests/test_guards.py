@@ -1,8 +1,187 @@
 """Tests for guard evaluation engine."""
 
 import pytest
-from aegis._internal.guards import evaluate_guards, _merge_policy_blocks, _evaluate_condition_expression
-from aegis._internal.errors import GuardEvaluationError, ConditionResolutionError
+from aegis._internal.guards import (
+    _evaluate_condition_expression,
+    _merge_policy_blocks,
+    evaluate_compiled_guards,
+    evaluate_guards,
+)
+from aegis._internal.errors import (
+    ConditionResolutionError,
+    GuardEvaluationError,
+    PolicyValidationError,
+)
+from aegis._internal.policy_compiler import compile_policy
+
+
+def test_two_matching_guard_effects_cannot_widen_cumulatively():
+    raw = {
+        "policy_version": "2.0",
+        "roles": ["planner", "reviewer"],
+        "conditions": {
+            "always": {"type": "boolean", "default": True},
+        },
+        "tools": {
+            "allowed_tools": [
+                {"name": "search", "max_calls": 2},
+            ],
+        },
+    }
+    raw["guards"] = [
+        {
+            "when": {"condition": "always"},
+            "then": {"roles": ["reviewer"]},
+        },
+        {
+            "when": {"condition": "always"},
+            "then": {
+                "tools": {
+                    "allowed_tools": [
+                        {"name": "shell", "max_calls": 1},
+                    ],
+                },
+            },
+        },
+    ]
+
+    with pytest.raises(PolicyValidationError) as exc:
+        compile_policy(raw, source="loaded")
+
+    assert exc.value.code == "POLICY_WIDENING"
+    assert exc.value.details["phase"] == "guard_overlay"
+    assert exc.value.details["path"] == "tools.allowed_tools"
+
+
+def test_guard_effect_can_lower_compiled_tool_limit():
+    raw = {
+        "policy_version": "2.0",
+        "roles": ["planner"],
+        "conditions": {
+            "always": {"type": "boolean", "default": True},
+        },
+        "tools": {
+            "allowed_tools": [
+                {"name": "search", "max_calls": 2},
+            ],
+        },
+        "guards": [
+            {
+                "when": {"condition": "always"},
+                "then": {
+                    "tools": {
+                        "allowed_tools": [
+                            {"name": "search", "max_calls": 1},
+                        ],
+                    },
+                },
+            },
+        ],
+    }
+    compiled = compile_policy(raw, source="loaded")
+
+    effective, _, _ = evaluate_compiled_guards(
+        compiled,
+        compiled.guards,
+        {},
+    )
+
+    assert [(item.name, item.max_calls) for item in effective.tools] == [
+        ("search", 1),
+    ]
+
+
+@pytest.mark.parametrize("restricted_field", ["roles", "protocols"])
+@pytest.mark.parametrize("erasure", ["missing", "empty"])
+def test_guard_effect_cannot_erase_participant_restrictions(
+    restricted_field,
+    erasure,
+):
+    participant = {
+        "id": "agent-1",
+        "roles": ["planner"],
+        "protocols": ["local"],
+    }
+    raw = {
+        "policy_version": "2.0",
+        "roles": ["planner"],
+        "conditions": {
+            "always": {"type": "boolean", "default": True},
+        },
+        "workflow": {"participants": [participant]},
+    }
+    replacement = dict(participant)
+    if erasure == "missing":
+        replacement.pop(restricted_field)
+    else:
+        replacement[restricted_field] = []
+    raw["guards"] = [{
+        "when": {"condition": "always"},
+        "then": {"workflow": {"participants": [replacement]}},
+    }]
+
+    with pytest.raises(PolicyValidationError) as exc:
+        compile_policy(raw, source="loaded")
+
+    assert exc.value.code == "POLICY_WIDENING"
+    assert exc.value.details["phase"] == "guard_overlay"
+    assert exc.value.details["path"] == "workflow"
+
+
+def test_guard_candidate_rejects_duplicate_participant_ids():
+    participant = {
+        "id": "agent-1",
+        "roles": ["planner"],
+        "protocols": ["local"],
+    }
+    raw = {
+        "policy_version": "2.0",
+        "roles": ["planner"],
+        "conditions": {
+            "always": {"type": "boolean", "default": True},
+        },
+        "workflow": {"participants": [participant]},
+    }
+    raw["guards"] = [{
+        "when": {"condition": "always"},
+        "then": {
+            "workflow": {
+                "participants": [participant, participant],
+            },
+        },
+    }]
+
+    with pytest.raises(PolicyValidationError) as exc:
+        compile_policy(raw, source="loaded")
+
+    assert exc.value.code == "WORKFLOW_PARTICIPANT_AMBIGUOUS"
+
+
+def test_guard_cannot_enable_default_disabled_protocol_capability():
+    raw = {
+        "policy_version": "2.0",
+        "roles": ["planner"],
+        "conditions": {
+            "always": {"type": "boolean", "default": True},
+        },
+        "workflow": {},
+    }
+    raw["guards"] = [{
+        "when": {"condition": "always"},
+        "then": {
+            "workflow": {
+                "protocol_constraints": {
+                    "openai_agents": {"allow_hosted_tools": True},
+                },
+            },
+        },
+    }]
+
+    with pytest.raises(PolicyValidationError) as exc:
+        compile_policy(raw, source="loaded")
+
+    assert exc.value.code == "POLICY_WIDENING"
+    assert exc.value.details["path"] == "workflow"
 
 
 def test_guard_matches_boolean_condition():
@@ -245,7 +424,7 @@ def test_multiple_guards_accumulate():
 
 
 def test_guard_order_matters():
-    """Guards processed in declaration order."""
+    """Unknown guard-effect fields fail closed instead of becoming policy."""
     policy = {
         "policy_version": "1.0",
         "roles": ["planner"],
@@ -266,12 +445,11 @@ def test_guard_order_matters():
     context = {}
     invocation = {"role": "planner"}
 
-    effective_policy, guards_evaluated, conditions_resolved = evaluate_guards(
-        policy, context, invocation
-    )
+    with pytest.raises(PolicyValidationError) as exc:
+        evaluate_guards(policy, context, invocation)
 
-    # Second guard's scalar replaces first guard's scalar
-    assert effective_policy["priority"] == 2
+    assert exc.value.code == "RESTRICTION_SEMANTICS_MISSING"
+    assert exc.value.details["path"] == "priority"
 
 
 def test_guard_unknown_condition():
@@ -369,14 +547,14 @@ def test_guard_with_required_condition_missing():
     assert exc_info.value.code == "CONDITION_RESOLUTION_ERROR"
 
 
-def test_merge_policy_blocks_appends_arrays():
-    """_merge_policy_blocks appends arrays."""
+def test_merge_policy_blocks_replaces_authorization_roles():
+    """_merge_policy_blocks applies a restrictive role subset."""
     base = {"roles": ["planner"]}
     overlay = {"roles": ["verifier"]}
 
     _merge_policy_blocks(base, overlay)
 
-    assert base["roles"] == ["planner", "verifier"]
+    assert base["roles"] == ["verifier"]
 
 
 def test_merge_policy_blocks_replaces_scalars():

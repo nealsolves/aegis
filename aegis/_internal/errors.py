@@ -87,10 +87,16 @@ class PolicyLoadError(GovernanceViolationError):
 class PolicyValidationError(GovernanceViolationError):
     """Raised when policy schema validation fails."""
 
-    def __init__(self, message: str, *, details: dict | None = None):
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "POLICY_SCHEMA_VALIDATION_ERROR",
+        details: dict | None = None,
+    ) -> None:
         super().__init__(
             message,
-            code="POLICY_SCHEMA_VALIDATION_ERROR",
+            code=code,
             details=details,
         )
 
@@ -98,10 +104,16 @@ class PolicyValidationError(GovernanceViolationError):
 class SchemaValidationError(AIGCError):
     """Raised on JSON schema validation failure."""
 
-    def __init__(self, message: str, *, details: dict | None = None):
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "OUTPUT_SCHEMA_VALIDATION_ERROR",
+        details: dict | None = None,
+    ) -> None:
         super().__init__(
             message,
-            code="OUTPUT_SCHEMA_VALIDATION_ERROR",
+            code=code,
             details=details,
         )
 
@@ -109,10 +121,16 @@ class SchemaValidationError(AIGCError):
 class PreconditionError(AIGCError):
     """Raised when a precondition fails."""
 
-    def __init__(self, message: str, *, details: dict | None = None):
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "PRECONDITION_FAILED",
+        details: dict | None = None,
+    ) -> None:
         super().__init__(
             message,
-            code="PRECONDITION_FAILED",
+            code=code,
             details=details,
         )
 

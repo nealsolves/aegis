@@ -60,7 +60,6 @@ class TestF01ProvenanceCheck:
         with pytest.raises(InvocationValidationError) as exc_info:
             enforce_post_call(
                 PreCallResult(
-                    effective_policy={},
                     resolved_guards=(),
                     resolved_conditions={},
                     phase_a_metadata={},
@@ -80,7 +79,6 @@ class TestF01ProvenanceCheck:
         with pytest.raises(InvocationValidationError) as exc_info:
             engine.enforce_post_call(
                 PreCallResult(
-                    effective_policy={},
                     resolved_guards=(),
                     resolved_conditions={},
                     phase_a_metadata={},

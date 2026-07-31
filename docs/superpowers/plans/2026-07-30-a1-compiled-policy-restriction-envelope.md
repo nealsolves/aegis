@@ -41,7 +41,7 @@
 
 **Interfaces:**
 - Produces: `compile_policy(raw_policy: Mapping[str, Any], *, source: str, allow_legacy: bool = False) -> CompiledPolicy`
-- Produces: `CompiledPolicy.policy_digest`, `.roles`, `.tools`, `.risk`, `.guards`, `.preconditions`, `.output_validator`, `.authority`, `.canonicalization_profile`
+- Produces: `CompiledPolicy.policy_digest`, `.policy_contract_version`, `.roles`, `.tools`, `.risk`, `.guards`, `.preconditions`, `.output_validator`, `.authority`, `.canonicalization_profile`
 - Consumes later: A2 outcome normalization, A3 operation handles, B1 canonicalization profile.
 
 - [ ] **Step 1: Write failing immutability and dependency tests**
@@ -57,7 +57,7 @@ def test_compile_policy_returns_detached_immutable_snapshot(valid_policy):
 
 def test_compiled_policy_records_closed_profiles(valid_policy):
     compiled = compile_policy(valid_policy, source="test")
-    assert compiled.policy_schema_version == "2.0"
+    assert compiled.policy_contract_version == "2.0"
     assert compiled.pattern_engine == "google-re2"
     assert compiled.canonicalization_profile == "aegis-json-v2"
 ```
@@ -94,7 +94,7 @@ class CompiledToolLimit:
 @dataclass(frozen=True, slots=True)
 class CompiledPolicy:
     policy_digest: str
-    policy_schema_version: str
+    policy_contract_version: str
     pattern_engine: str
     canonicalization_profile: str
     roles: tuple[str, ...]

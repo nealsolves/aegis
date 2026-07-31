@@ -521,10 +521,18 @@ roles:
 
 Strategies:
 
-- **default** (no strategy): arrays append, dicts recurse, scalars replace
-- **`union`**: arrays are combined and deduplicated, dicts recurse, scalars replace
-- **`intersect`**: arrays keep only shared elements, dicts recurse, scalars replace
+- **default** (no strategy): ordinary arrays append, dicts recurse, scalars replace
+- **`union`**: ordinary arrays are combined and deduplicated, dicts recurse, scalars replace
+- **`intersect`**: ordinary arrays keep only shared elements, dicts recurse, scalars replace
 - **`replace`**: overlay completely replaces base for all specified keys
+
+Security fields do not inherit the generic array behavior. Child `roles`,
+`tools.allowed_tools`, and workflow participants are complete replacements
+that must remain subsets of parent authority. Once inherited,
+`workflow.required_sequence` is exact and cannot be shortened, reordered, or
+otherwise replaced. Tool presence is also authoritative: an omitted
+`tools.allowed_tools` block is unconfigured, while an explicit empty list
+denies every tool.
 
 Load the child policy directly — resolution happens at load time:
 

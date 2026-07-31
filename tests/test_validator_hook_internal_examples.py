@@ -133,7 +133,6 @@ def _passing_invocation(policy_file: str | None = None) -> dict:
         "role": "analyst",
         "protocol": "local",
         "input": {"claim": "fixture"},
-        "output": {},
         "context": {
             "caller_id": "validator-hook-test",
             "source_required": True,
