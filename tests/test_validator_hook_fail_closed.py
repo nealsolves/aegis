@@ -70,3 +70,40 @@ def test_hook_runner_converts_malformed_return_before_field_access():
     outcome = normalize_hook_result(result)
     assert outcome.terminal is TerminalClass.INVALID_RESULT
     assert outcome.reason_code == "HOOK_INVALID_RESULT"
+
+
+def test_hook_runner_converts_exact_result_with_missing_field():
+    class CorruptResultHook(ValidatorHook):
+        hook_id = "corrupt-result-hook"
+        hook_version = "1.0"
+
+        def evaluate(self, envelope):
+            result = ValidatorHookResult(
+                decision="allow",
+                reason_code=None,
+                explanation=None,
+                hook_id=self.hook_id,
+                hook_version=self.hook_version,
+                attempt=1,
+                latency_ms=1,
+                observed_at=envelope.observed_at,
+            )
+            object.__delattr__(result, "decision")
+            return result
+
+    result = _call_hook_once(
+        CorruptResultHook(),
+        ValidatorHookEnvelope(
+            hook_schema_version="1.0",
+            session_id="s-1",
+            step_id="step-1",
+            participant_id=None,
+            invocation={},
+            deadline_ms=1000,
+            observed_at=1_722_000_000_000,
+        ),
+        attempt=1,
+    )
+    outcome = normalize_hook_result(result)
+    assert outcome.terminal is TerminalClass.INVALID_RESULT
+    assert outcome.reason_code == "HOOK_INVALID_RESULT"

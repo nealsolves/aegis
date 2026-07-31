@@ -225,18 +225,21 @@ def _valid_hook_result_shape(result: object) -> bool:
     """Validate exact field types before stale/retry logic dereferences them."""
     if type(result) is not ValidatorHookResult:
         return False
-    return (
-        type(result.decision) is str
-        and (result.reason_code is None or type(result.reason_code) is str)
-        and (result.explanation is None or type(result.explanation) is str)
-        and type(result.hook_id) is str
-        and type(result.hook_version) is str
-        and type(result.attempt) is int
-        and type(result.latency_ms) is int
-        and type(result.observed_at) is int
-        and type(result.stale_result) is bool
-        and (result.provenance is None or type(result.provenance) is str)
-    )
+    try:
+        return (
+            type(result.decision) is str
+            and (result.reason_code is None or type(result.reason_code) is str)
+            and (result.explanation is None or type(result.explanation) is str)
+            and type(result.hook_id) is str
+            and type(result.hook_version) is str
+            and type(result.attempt) is int
+            and type(result.latency_ms) is int
+            and type(result.observed_at) is int
+            and type(result.stale_result) is bool
+            and (result.provenance is None or type(result.provenance) is str)
+        )
+    except Exception:  # noqa: BLE001 - untrusted result fields
+        return False
 
 
 def _invalid_hook_result(

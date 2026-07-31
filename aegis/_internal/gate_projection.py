@@ -144,6 +144,6 @@ class GateProjectionFactory:
     def context(source: Mapping[str, Any]) -> dict[str, JsonValue]:
         """Return a detached mutable context with frozen nested values."""
         return {
-            str(key): detached_json_projection(value)
+            _detached_mapping_key(key): detached_json_projection(value)
             for key, value in source.items()
         }
