@@ -105,6 +105,15 @@ def _normalize_gate_failures(
     return tuple(normalized)
 
 
+def _plain_json_value(value: Any) -> Any:
+    """Thaw a detached outcome value for the public JSON audit artifact."""
+    if isinstance(value, Mapping):
+        return {key: _plain_json_value(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return [_plain_json_value(item) for item in value]
+    return value
+
+
 def normalize_gate_result(gate_id: str, result: object) -> NormalizedOutcome:
     """Map one untrusted custom-gate return value to a closed outcome."""
     if not isinstance(result, GateResult):
@@ -340,7 +349,7 @@ def run_gates_normalized(
             for failure in outcome.failures
         )
         if outcome.metadata:
-            merged_metadata.update(outcome.metadata)
+            merged_metadata.update(_plain_json_value(outcome.metadata))
         if aggregate.allows_continuation and not outcome.allows_continuation:
             aggregate = outcome
 
