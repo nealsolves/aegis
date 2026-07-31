@@ -388,3 +388,72 @@ classification, after which all documentation parity checks passed.
 
 No residual correctness or security concern was found. The unrelated legacy
 whole-file test lint debt recorded above remains unchanged.
+
+## Final compiled-pattern trust-root correction
+
+This human-authorized correction started from commit
+`6691c6df1e90569bc6b398c59e219f3504278d66`. It closes the remaining case in
+which evaluation could derive a new trust root from coordinated mutations to
+caller-reachable `CompiledPattern` metadata.
+
+`CompiledPattern` now has stable identity semantics and a cross-version weak
+reference slot. A lock-coordinated `WeakKeyDictionary` binds each live pattern
+object to an immutable expected metadata snapshot and a strong reference to
+the exact internally compiled RE2 handle, its complete option fingerprint,
+and its program fingerprint. Weak-key cleanup releases attestations when
+patterns are collected without evicting live patterns during unrelated cache
+churn.
+
+Evaluation resolves this identity-bound attestation under the runtime lock,
+reads caller-visible pattern fields exactly once into a local immutable
+snapshot, compares exact types and values with the trusted snapshot, validates
+the attested handle, and evaluates only through the captured trusted handle.
+It can repair a bounded runtime-cache entry from that already trusted state,
+but it cannot create or replace an attestation. Missing identity trust and any
+metadata mismatch fail with `PATTERN_PROGRAM_INTEGRITY_ERROR`.
+
+Only `compile_pattern` and authenticated compiled-policy DTO reconstruction
+register pattern identity. DTO restoration first checks canonical metadata,
+fixed resource bounds, the source byte limit, and the program digest, then
+compiles and registers the restored object. Output-schema patterns continue to
+enter through `compile_pattern`, so they use the same trust boundary.
+
+The initial residual RED matrix was:
+
+```text
+9 failed, 1 passed, 68 deselected
+```
+
+The failures covered coordinated source/digest mutation, cross-pattern trust
+borrowing, cache and attestation removal, direct construction, the former
+pre-lock/locked-read race, live-object cache churn, weak-reference lifecycle,
+output-schema trust removal, and pinned-session metadata switching. The valid
+authenticated pickle restore case remained green. A subsequent compatibility
+RED confirmed that a `None` candidate must retain the established non-string
+false-result behavior rather than collide with the internal no-candidate
+sentinel.
+
+Final focused verification:
+
+```text
+residual matrix:                         10 passed
+pattern/output/session/DTO/final wave:  151 passed, 1 skipped
+expanded A1 security gate:              285 passed
+```
+
+Final full-suite verification:
+
+```text
+3494 passed, 1 skipped, 13 warnings in 48.61s
+```
+
+Whole-production plus changed-test flake8, compileall, documentation parity,
+brand/version parity, public-document import isolation, policy schema byte
+parity, and `git diff --check` all passed. The local environment does not
+provide a Python 3.10 interpreter; the implementation deliberately avoids the
+3.11-only `weakref_slot` dataclass option by inheriting a manual `__weakref__`
+slot, while the repository security-boundary CI matrix covers Python
+3.10–3.14.
+
+No residual correctness or security concern was found. The previously
+documented unrelated legacy whole-file test lint debt remains unchanged.

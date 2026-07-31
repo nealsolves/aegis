@@ -4,6 +4,8 @@ from types import MappingProxyType
 
 import pytest
 
+import aegis._internal.patterns as pattern_module
+import aegis._internal.schema_compiler as schema_module
 from aegis._internal.errors import PolicyValidationError, SchemaValidationError
 from aegis._internal.schema_compiler import compile_output_schema
 from aegis._internal.validator import validate_schema
@@ -274,3 +276,29 @@ def test_validate_schema_consumes_precompiled_validator():
     validate_schema({"result": "ok"}, validator)
     with pytest.raises(SchemaValidationError):
         validate_schema({"result": 42}, validator)
+
+
+def test_output_pattern_missing_identity_trust_fails_program_integrity():
+    validator = compile_output_schema(
+        {"type": "string", "pattern": "^ok$"},
+    )
+    runtime = schema_module._RUNTIME_CACHE[validator.program_digest]
+    pattern = runtime.patterns["^ok$"]
+    identity_registry = getattr(
+        pattern_module,
+        "_PATTERN_ATTESTATIONS",
+        None,
+    )
+    if identity_registry is None:
+        pattern_module._ATTESTED_PROGRAMS.pop(
+            pattern.program_digest,
+            None,
+        )
+    else:
+        identity_registry.pop(pattern, None)
+    pattern_module._RUNTIME_CACHE.pop(pattern.program_digest, None)
+
+    with pytest.raises(SchemaValidationError) as exc:
+        validator.validate("ok")
+
+    assert exc.value.code == "OUTPUT_SCHEMA_PROGRAM_INTEGRITY_ERROR"

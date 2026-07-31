@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pickle
 from pathlib import Path
 from textwrap import dedent
 
@@ -472,6 +473,65 @@ def test_same_source_options_replacement_cannot_weaken_pinned_session(
                 _pre_invocation(policy_file, code="OK"),
             )
         session.cancel()
+
+
+def test_pattern_metadata_switch_cannot_weaken_pinned_session(
+    tmp_path: Path,
+):
+    policy_file = tmp_path / "pattern-identity.yaml"
+    _precondition_policy(policy_file)
+    governance = AEGIS()
+
+    with governance.open_session(policy_file=str(policy_file)) as session:
+        pattern = session._compiled_policy.preconditions[0].pattern
+        assert pattern is not None
+        permissive = pattern_module.compile_pattern(
+            ".*",
+            path=pattern.path,
+        )
+        for field_name in (
+            "source",
+            "path",
+            "program_digest",
+            "source_max_bytes",
+            "input_max_bytes",
+        ):
+            object.__setattr__(
+                pattern,
+                field_name,
+                getattr(permissive, field_name),
+            )
+
+        with pytest.raises(pattern_module.PatternProgramIntegrityError):
+            session.enforce_step_pre_call(
+                _pre_invocation(policy_file, code="not-ok"),
+            )
+        session.cancel()
+
+
+def test_authenticated_pickle_restore_registers_fresh_pattern_identity(
+    tmp_path: Path,
+):
+    policy_file = tmp_path / "pattern-restore.yaml"
+    _precondition_policy(policy_file)
+    issued = enforce_pre_call(_pre_invocation(policy_file, code="ok"))
+    payload = pickle.dumps(issued)
+    identity_registry = getattr(
+        pattern_module,
+        "_PATTERN_ATTESTATIONS",
+        None,
+    )
+    if identity_registry is None:
+        pattern_module._ATTESTED_PROGRAMS.clear()
+    else:
+        identity_registry.clear()
+    pattern_module._RUNTIME_CACHE.clear()
+
+    restored = pickle.loads(payload)
+    restored_pattern = restored._compiled_policy.preconditions[0].pattern
+    assert restored_pattern is not None
+    assert restored_pattern.fullmatch("ok") is True
+    assert restored_pattern.fullmatch("not-ok") is False
 
 
 def test_pattern_dto_reconstructs_from_authenticated_program_metadata(

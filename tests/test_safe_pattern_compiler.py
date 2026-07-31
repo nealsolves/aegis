@@ -1,5 +1,7 @@
 """Tests for the bounded google-re2 pattern compiler."""
 
+import gc
+import weakref
 from threading import Event, Thread
 
 import pytest
@@ -8,6 +10,7 @@ import re2
 import aegis._internal.patterns as pattern_module
 from aegis._internal.errors import PolicyValidationError
 from aegis._internal.patterns import (
+    CompiledPattern,
     PatternInputTooLargeError,
     PatternProgramIntegrityError,
     compile_pattern,
@@ -40,9 +43,10 @@ def test_non_string_pattern_source_is_invalid():
     assert exc.value.code == "PATTERN_INVALID"
 
 
-def test_non_string_pattern_candidate_fails_closed():
+@pytest.mark.parametrize("candidate", [42, None])
+def test_non_string_pattern_candidate_fails_closed(candidate):
     pattern = compile_pattern("^x+$", path=PATTERN_PATH)
-    assert pattern.fullmatch(42) is False
+    assert pattern.fullmatch(candidate) is False
 
 
 def test_exact_256_byte_pattern_source_is_accepted():
@@ -251,3 +255,166 @@ def test_concurrent_same_source_handle_replacement_cannot_change_decision():
     assert not corruptor.is_alive()
     assert not evaluator.is_alive()
     assert decisions == [False]
+
+
+def _copy_pattern_metadata(target, source):
+    for field_name in (
+        "source",
+        "path",
+        "program_digest",
+        "source_max_bytes",
+        "input_max_bytes",
+    ):
+        object.__setattr__(target, field_name, getattr(source, field_name))
+
+
+def _remove_pattern_trust(pattern):
+    identity_registry = getattr(
+        pattern_module,
+        "_PATTERN_ATTESTATIONS",
+        None,
+    )
+    if identity_registry is None:
+        pattern_module._ATTESTED_PROGRAMS.pop(
+            pattern.program_digest,
+            None,
+        )
+    else:
+        identity_registry.pop(pattern, None)
+
+
+def test_coordinated_metadata_mutation_cannot_self_attest_new_program():
+    pattern = compile_pattern("^ok$", path=PATTERN_PATH)
+    source = ".*"
+    program_bytes = pattern_module._program_bytes(
+        source=source,
+        path=PATTERN_PATH,
+        source_max_bytes=pattern_module.PATTERN_MAX_BYTES,
+        input_max_bytes=pattern_module.PATTERN_INPUT_MAX_BYTES,
+    )
+    object.__setattr__(pattern, "source", source)
+    object.__setattr__(
+        pattern,
+        "program_digest",
+        pattern_module._program_digest(program_bytes),
+    )
+
+    with pytest.raises(PatternProgramIntegrityError) as exc:
+        pattern.fullmatch("not-ok")
+
+    assert exc.value.code == "PATTERN_PROGRAM_INTEGRITY_ERROR"
+
+
+def test_pattern_cannot_borrow_another_registered_patterns_trust():
+    strict = compile_pattern("^ok$", path=PATTERN_PATH)
+    permissive = compile_pattern(".*", path=PATTERN_PATH)
+    _copy_pattern_metadata(strict, permissive)
+
+    with pytest.raises(PatternProgramIntegrityError) as exc:
+        strict.fullmatch("not-ok")
+
+    assert exc.value.code == "PATTERN_PROGRAM_INTEGRITY_ERROR"
+
+
+def test_missing_identity_attestation_fails_closed_without_recompiling():
+    pattern = compile_pattern("^ok$", path=PATTERN_PATH)
+    _remove_pattern_trust(pattern)
+    pattern_module._RUNTIME_CACHE.pop(pattern.program_digest, None)
+
+    with pytest.raises(PatternProgramIntegrityError) as exc:
+        pattern.fullmatch("ok")
+
+    assert exc.value.code == "PATTERN_PROGRAM_INTEGRITY_ERROR"
+
+
+def test_direct_construction_cannot_borrow_compiler_registration():
+    trusted = compile_pattern("^ok$", path=PATTERN_PATH)
+    direct = CompiledPattern(
+        source=trusted.source,
+        path=trusted.path,
+        program_digest=trusted.program_digest,
+        source_max_bytes=trusted.source_max_bytes,
+        input_max_bytes=trusted.input_max_bytes,
+    )
+
+    with pytest.raises(PatternProgramIntegrityError) as exc:
+        direct.fullmatch("ok")
+
+    assert exc.value.code == "PATTERN_PROGRAM_INTEGRITY_ERROR"
+
+
+def test_same_object_mutation_after_snapshot_cannot_change_decision(
+    monkeypatch,
+):
+    pattern = compile_pattern("^ok$", path=PATTERN_PATH)
+    permissive = compile_pattern(".*", path=PATTERN_PATH)
+    snapshot_read = Event()
+    release_snapshot = Event()
+    decisions = []
+    failures = []
+    hook_name = (
+        "_read_pattern_snapshot"
+        if hasattr(pattern_module, "_read_pattern_snapshot")
+        else "_authenticated_program_bytes"
+    )
+    original_hook = getattr(pattern_module, hook_name)
+
+    def pause_after_snapshot(current):
+        snapshot = original_hook(current)
+        snapshot_read.set()
+        release_snapshot.wait(timeout=2)
+        return snapshot
+
+    monkeypatch.setattr(pattern_module, hook_name, pause_after_snapshot)
+
+    def evaluate_pattern():
+        try:
+            decisions.append(pattern.fullmatch("not-ok"))
+        except Exception as exc:  # pragma: no cover - asserted below
+            failures.append(exc)
+
+    evaluator = Thread(target=evaluate_pattern)
+    evaluator.start()
+    assert snapshot_read.wait(timeout=2)
+    _copy_pattern_metadata(pattern, permissive)
+    release_snapshot.set()
+    evaluator.join(timeout=2)
+
+    assert not evaluator.is_alive()
+    assert failures == []
+    assert decisions == [False]
+
+
+def test_live_pattern_trust_survives_unrelated_runtime_cache_churn(
+    monkeypatch,
+):
+    pattern = compile_pattern("^ok$", path=PATTERN_PATH)
+    for index in range(pattern_module._RUNTIME_CACHE_MAX_ENTRIES + 1):
+        compile_pattern("^ok$", path=f"$.churn[{index}].pattern")
+
+    def unexpected_recompile(*args, **kwargs):
+        raise AssertionError("evaluation recompiled a caller-visible pattern")
+
+    monkeypatch.setattr(pattern_module.re2, "compile", unexpected_recompile)
+
+    assert pattern.fullmatch("ok") is True
+    assert pattern.fullmatch("not-ok") is False
+
+
+def test_pattern_identity_registration_is_released_after_gc():
+    pattern = compile_pattern("^ok$", path=PATTERN_PATH)
+    reference = weakref.ref(pattern)
+    identity_registry = getattr(
+        pattern_module,
+        "_PATTERN_ATTESTATIONS",
+        None,
+    )
+    assert identity_registry is not None
+    assert pattern in identity_registry
+    registered_count = len(identity_registry)
+
+    del pattern
+    gc.collect()
+
+    assert reference() is None
+    assert len(identity_registry) < registered_count

@@ -8,6 +8,7 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from threading import RLock
 from typing import Any
+from weakref import WeakKeyDictionary
 
 import re2
 
@@ -19,6 +20,7 @@ PATTERN_INPUT_MAX_BYTES = 16_384
 _PROGRAM_DIGEST_DOMAIN = b"aegis.pattern-program.v1\x00"
 _RUNTIME_CACHE_MAX_ENTRIES = 512
 _RE2_PATTERN_TYPE = type(re2.compile(""))
+_NO_CANDIDATE = object()
 
 
 class PatternInputTooLargeError(AIGCError):
@@ -56,17 +58,32 @@ class _PatternRuntime:
 
 
 @dataclass(frozen=True, slots=True)
-class _PatternAttestation:
-    """Strong-reference identity for one internally compiled RE2 program."""
+class _PatternSnapshot:
+    """Authenticated immutable metadata expected for one pattern object."""
 
+    source: str
+    path: str
+    program_digest: str
+    source_max_bytes: int
+    input_max_bytes: int
     program_bytes: bytes
+
+
+@dataclass(frozen=True, slots=True)
+class _PatternAttestation:
+    """Trusted metadata and strong RE2 identity for one pattern object."""
+
+    expected: _PatternSnapshot
     compiled: Any
     options_fingerprint: tuple[tuple[str, object], ...]
     program_fingerprint: tuple[object, ...]
 
 
 _RUNTIME_CACHE: OrderedDict[str, _PatternRuntime] = OrderedDict()
-_ATTESTED_PROGRAMS: OrderedDict[str, _PatternAttestation] = OrderedDict()
+_PATTERN_ATTESTATIONS: WeakKeyDictionary[
+    CompiledPattern,
+    _PatternAttestation,
+] = WeakKeyDictionary()
 _RUNTIME_CACHE_LOCK = RLock()
 
 
@@ -135,25 +152,13 @@ def _store_runtime(digest: str, runtime: _PatternRuntime) -> None:
             _RUNTIME_CACHE.popitem(last=False)
 
 
-def _store_attestation(
-    digest: str,
-    attestation: _PatternAttestation,
-) -> None:
-    with _RUNTIME_CACHE_LOCK:
-        _ATTESTED_PROGRAMS[digest] = attestation
-        _ATTESTED_PROGRAMS.move_to_end(digest)
-        while len(_ATTESTED_PROGRAMS) > _RUNTIME_CACHE_MAX_ENTRIES:
-            _ATTESTED_PROGRAMS.popitem(last=False)
-
-
 def _attestation_from_compiled(
-    source: str,
-    program_bytes: bytes,
+    expected: _PatternSnapshot,
     compiled: Any,
 ) -> _PatternAttestation:
     if (
         type(compiled) is not _RE2_PATTERN_TYPE
-        or compiled.pattern != source
+        or compiled.pattern != expected.source
         or _options_fingerprint(compiled.options)
         != _DEFAULT_OPTIONS_FINGERPRINT
     ):
@@ -161,32 +166,21 @@ def _attestation_from_compiled(
             "Internally compiled pattern identity is invalid",
         )
     return _PatternAttestation(
-        program_bytes=program_bytes,
+        expected=expected,
         compiled=compiled,
         options_fingerprint=_options_fingerprint(compiled.options),
         program_fingerprint=_program_fingerprint(compiled),
     )
 
 
-def _new_attestation(
-    source: str,
-    program_bytes: bytes,
-) -> _PatternAttestation:
-    try:
-        compiled = re2.compile(source)
-    except re2.error as exc:
-        raise PatternProgramIntegrityError(
-            "Authenticated pattern source no longer compiles",
-        ) from exc
-    return _attestation_from_compiled(
-        source,
-        program_bytes,
-        compiled,
-    )
+class _WeakPatternIdentity:
+    """Supply a cross-version weak-reference slot to slotted subclasses."""
+
+    __slots__ = ("__weakref__",)
 
 
-@dataclass(frozen=True, slots=True)
-class CompiledPattern:
+@dataclass(frozen=True, slots=True, eq=False)
+class CompiledPattern(_WeakPatternIdentity):
     """Immutable authenticated pattern metadata with no reachable RE2 handle."""
 
     source: str
@@ -195,193 +189,284 @@ class CompiledPattern:
     source_max_bytes: int = PATTERN_MAX_BYTES
     input_max_bytes: int = PATTERN_INPUT_MAX_BYTES
 
-    def _require_bounded_string(self, candidate: object) -> str | None:
-        if not isinstance(candidate, str):
-            return None
-        try:
-            encoded_length = len(candidate.encode("utf-8"))
-        except UnicodeEncodeError as exc:
-            raise PatternInputTooLargeError(
-                "Pattern candidate is not valid UTF-8",
-                details={"path": self.path},
-            ) from exc
-        if encoded_length > self.input_max_bytes:
-            raise PatternInputTooLargeError(
-                details={
-                    "path": self.path,
-                    "max_bytes": self.input_max_bytes,
-                }
-            )
-        return candidate
-
     def fullmatch(self, candidate: str) -> bool:
         """Return whether *candidate* fully matches, or fail closed on its bound."""
-        bounded = self._require_bounded_string(candidate)
-        if bounded is None:
-            return False
-        return _evaluate(self, bounded, operation="fullmatch")
+        return _evaluate(self, candidate, operation="fullmatch")
 
     def search(self, candidate: str) -> bool:
         """Apply JSON Schema search semantics with the same candidate bound."""
-        bounded = self._require_bounded_string(candidate)
-        if bounded is None:
-            return False
-        return _evaluate(self, bounded, operation="search")
+        return _evaluate(self, candidate, operation="search")
 
 
-def _authenticated_program_bytes(pattern: CompiledPattern) -> bytes:
+def _read_pattern_snapshot(pattern: CompiledPattern) -> _PatternSnapshot:
+    """Read caller-visible fields once; callers must hold the runtime lock."""
+    try:
+        source = pattern.source
+        path = pattern.path
+        program_digest = pattern.program_digest
+        source_max_bytes = pattern.source_max_bytes
+        input_max_bytes = pattern.input_max_bytes
+    except (AttributeError, TypeError) as exc:
+        raise PatternProgramIntegrityError() from exc
     try:
         program_bytes = _program_bytes(
-            source=pattern.source,
-            path=pattern.path,
-            source_max_bytes=pattern.source_max_bytes,
-            input_max_bytes=pattern.input_max_bytes,
+            source=source,
+            path=path,
+            source_max_bytes=source_max_bytes,
+            input_max_bytes=input_max_bytes,
         )
     except (TypeError, UnicodeEncodeError, ValueError) as exc:
-        raise PatternProgramIntegrityError(
-            details={"path": pattern.path},
-        ) from exc
+        raise PatternProgramIntegrityError() from exc
+    return _PatternSnapshot(
+        source=source,
+        path=path,
+        program_digest=program_digest,
+        source_max_bytes=source_max_bytes,
+        input_max_bytes=input_max_bytes,
+        program_bytes=program_bytes,
+    )
+
+
+def _snapshot_intact(snapshot: object) -> bool:
     if (
-        pattern.source_max_bytes != PATTERN_MAX_BYTES
-        or pattern.input_max_bytes != PATTERN_INPUT_MAX_BYTES
-        or _program_digest(program_bytes) != pattern.program_digest
+        type(snapshot) is not _PatternSnapshot
+        or type(snapshot.source) is not str
+        or type(snapshot.path) is not str
+        or type(snapshot.program_digest) is not str
+        or type(snapshot.source_max_bytes) is not int
+        or type(snapshot.input_max_bytes) is not int
+        or type(snapshot.program_bytes) is not bytes
+        or snapshot.source_max_bytes != PATTERN_MAX_BYTES
+        or snapshot.input_max_bytes != PATTERN_INPUT_MAX_BYTES
     ):
-        raise PatternProgramIntegrityError(
-            details={"path": pattern.path},
+        return False
+    try:
+        source_length = len(snapshot.source.encode("utf-8"))
+        expected_bytes = _program_bytes(
+            source=snapshot.source,
+            path=snapshot.path,
+            source_max_bytes=snapshot.source_max_bytes,
+            input_max_bytes=snapshot.input_max_bytes,
         )
-    return program_bytes
+    except (TypeError, UnicodeEncodeError, ValueError):
+        return False
+    return (
+        source_length <= snapshot.source_max_bytes
+        and expected_bytes == snapshot.program_bytes
+        and _program_digest(expected_bytes) == snapshot.program_digest
+    )
+
+
+def _snapshot_matches(
+    current: _PatternSnapshot,
+    expected: _PatternSnapshot,
+) -> bool:
+    return (
+        type(current.source) is str
+        and current.source == expected.source
+        and type(current.path) is str
+        and current.path == expected.path
+        and type(current.program_digest) is str
+        and current.program_digest == expected.program_digest
+        and type(current.source_max_bytes) is int
+        and current.source_max_bytes == expected.source_max_bytes
+        and type(current.input_max_bytes) is int
+        and current.input_max_bytes == expected.input_max_bytes
+        and type(current.program_bytes) is bytes
+        and current.program_bytes == expected.program_bytes
+    )
+
+
+def _bounded_candidate(
+    candidate: object,
+    expected: _PatternSnapshot,
+) -> str | None:
+    if not isinstance(candidate, str):
+        return None
+    try:
+        encoded_length = len(candidate.encode("utf-8"))
+    except UnicodeEncodeError as exc:
+        raise PatternInputTooLargeError(
+            "Pattern candidate is not valid UTF-8",
+            details={"path": expected.path},
+        ) from exc
+    if encoded_length > expected.input_max_bytes:
+        raise PatternInputTooLargeError(
+            details={
+                "path": expected.path,
+                "max_bytes": expected.input_max_bytes,
+            }
+        )
+    return candidate
 
 
 def _runtime_intact(
     runtime: object,
     *,
-    attestation: _PatternAttestation,
+    compiled: Any,
     program_bytes: bytes,
 ) -> bool:
     return (
         type(runtime) is _PatternRuntime
         and runtime.program_bytes == program_bytes
-        and runtime.compiled is attestation.compiled
+        and runtime.compiled is compiled
     )
 
 
 def _attestation_intact(
     attestation: object,
-    *,
-    program_bytes: bytes,
-    source: str,
+    expected: _PatternSnapshot,
+    compiled: Any,
+    options_fingerprint: tuple[tuple[str, object], ...],
+    program_fingerprint: tuple[object, ...],
 ) -> bool:
     if (
         type(attestation) is not _PatternAttestation
-        or attestation.program_bytes != program_bytes
-        or type(attestation.compiled) is not _RE2_PATTERN_TYPE
-        or attestation.compiled.pattern != source
-        or attestation.options_fingerprint
-        != _DEFAULT_OPTIONS_FINGERPRINT
+        or not _snapshot_intact(expected)
+        or type(compiled) is not _RE2_PATTERN_TYPE
+        or compiled.pattern != expected.source
+        or options_fingerprint != _DEFAULT_OPTIONS_FINGERPRINT
     ):
         return False
     try:
         return (
-            _options_fingerprint(attestation.compiled.options)
-            == attestation.options_fingerprint
-            and _program_fingerprint(attestation.compiled)
-            == attestation.program_fingerprint
+            _options_fingerprint(compiled.options) == options_fingerprint
+            and _program_fingerprint(compiled) == program_fingerprint
         )
     except (AttributeError, TypeError, ValueError):
         return False
 
 
+def _register_trusted_pattern(
+    pattern: CompiledPattern,
+    expected: _PatternSnapshot,
+    compiled: Any,
+) -> None:
+    """Register compiler-authenticated identity without caller-field trust."""
+    if type(pattern) is not CompiledPattern or not _snapshot_intact(expected):
+        raise PatternProgramIntegrityError()
+    attestation = _attestation_from_compiled(expected, compiled)
+    with _RUNTIME_CACHE_LOCK:
+        current = _read_pattern_snapshot(pattern)
+        if not _snapshot_matches(current, expected):
+            raise PatternProgramIntegrityError(
+                details={"path": expected.path},
+            )
+        _PATTERN_ATTESTATIONS[pattern] = attestation
+        _store_runtime(
+            expected.program_digest,
+            _PatternRuntime(
+                program_bytes=expected.program_bytes,
+                compiled=compiled,
+            ),
+        )
+
+
 def _use_verified_runtime_locked(
     pattern: CompiledPattern,
-    program_bytes: bytes,
     *,
-    candidate: str | None = None,
+    candidate: object = _NO_CANDIDATE,
     operation: str | None = None,
 ) -> bool | None:
     """Verify, optionally evaluate, and never return the cached RE2 handle."""
-    attestation = _ATTESTED_PROGRAMS.get(pattern.program_digest)
-    if attestation is not None:
-        _ATTESTED_PROGRAMS.move_to_end(pattern.program_digest)
+    if type(pattern) is not CompiledPattern:
+        raise PatternProgramIntegrityError()
+    attestation = _PATTERN_ATTESTATIONS.get(pattern)
+    if type(attestation) is not _PatternAttestation:
+        raise PatternProgramIntegrityError()
+
+    expected = attestation.expected
+    compiled = attestation.compiled
+    options_fingerprint = attestation.options_fingerprint
+    program_fingerprint = attestation.program_fingerprint
+    current = _read_pattern_snapshot(pattern)
+    if not _snapshot_matches(current, expected):
+        raise PatternProgramIntegrityError(
+            details={"path": expected.path},
+        )
     if not _attestation_intact(
         attestation,
-        program_bytes=program_bytes,
-        source=pattern.source,
-    ):
-        attestation = _new_attestation(pattern.source, program_bytes)
-        _store_attestation(pattern.program_digest, attestation)
-
-    runtime = _RUNTIME_CACHE.get(pattern.program_digest)
-    if runtime is not None:
-        _RUNTIME_CACHE.move_to_end(pattern.program_digest)
-
-    if not _runtime_intact(
-        runtime,
-        attestation=attestation,
-        program_bytes=program_bytes,
-    ):
-        runtime = _PatternRuntime(
-            program_bytes=program_bytes,
-            compiled=attestation.compiled,
-        )
-        _store_runtime(pattern.program_digest, runtime)
-
-    if not _runtime_intact(
-        runtime,
-        attestation=attestation,
-        program_bytes=program_bytes,
-    ) or not _attestation_intact(
-        attestation,
-        program_bytes=program_bytes,
-        source=pattern.source,
+        expected,
+        compiled,
+        options_fingerprint,
+        program_fingerprint,
     ):
         raise PatternProgramIntegrityError(
-            details={"path": pattern.path},
+            details={"path": expected.path},
+        )
+
+    runtime = _RUNTIME_CACHE.get(expected.program_digest)
+    if runtime is not None:
+        _RUNTIME_CACHE.move_to_end(expected.program_digest)
+
+    if not _runtime_intact(
+        runtime,
+        compiled=compiled,
+        program_bytes=expected.program_bytes,
+    ):
+        runtime = _PatternRuntime(
+            program_bytes=expected.program_bytes,
+            compiled=compiled,
+        )
+        _store_runtime(expected.program_digest, runtime)
+
+    if not _runtime_intact(
+        runtime,
+        compiled=compiled,
+        program_bytes=expected.program_bytes,
+    ) or not _attestation_intact(
+        attestation,
+        expected,
+        compiled,
+        options_fingerprint,
+        program_fingerprint,
+    ):
+        raise PatternProgramIntegrityError(
+            details={"path": expected.path},
         )
     if operation is None:
         return None
-    if candidate is None:
+    if candidate is _NO_CANDIDATE:
         raise PatternProgramIntegrityError(
             "Pattern evaluation candidate is missing",
-            details={"path": pattern.path},
+            details={"path": expected.path},
         )
-    compiled = runtime.compiled
+    bounded = _bounded_candidate(candidate, expected)
+    if bounded is None:
+        return False
     if operation == "fullmatch":
-        return compiled.fullmatch(candidate) is not None
+        return compiled.fullmatch(bounded) is not None
     if operation == "search":
-        return compiled.search(candidate) is not None
+        return compiled.search(bounded) is not None
     raise PatternProgramIntegrityError(
         "Unknown pattern evaluation operation",
-        details={"path": pattern.path, "operation": operation},
+        details={"path": expected.path, "operation": operation},
     )
 
 
 def _evaluate(
     pattern: CompiledPattern,
-    candidate: str,
+    candidate: object,
     *,
     operation: str,
 ) -> bool:
-    program_bytes = _authenticated_program_bytes(pattern)
     with _RUNTIME_CACHE_LOCK:
         result = _use_verified_runtime_locked(
             pattern,
-            program_bytes,
             candidate=candidate,
             operation=operation,
         )
     if result is None:
         raise PatternProgramIntegrityError(
             "Pattern evaluation did not produce a decision",
-            details={"path": pattern.path},
         )
     return result
 
 
 def verify_pattern_runtime(pattern: CompiledPattern) -> None:
     """Verify or safely rebuild one private runtime without exposing it."""
-    program_bytes = _authenticated_program_bytes(pattern)
     with _RUNTIME_CACHE_LOCK:
-        _use_verified_runtime_locked(pattern, program_bytes)
+        _use_verified_runtime_locked(pattern)
 
 
 def compile_pattern(source: str, *, path: str) -> CompiledPattern:
@@ -421,25 +506,21 @@ def compile_pattern(source: str, *, path: str) -> CompiledPattern:
         input_max_bytes=PATTERN_INPUT_MAX_BYTES,
     )
     digest = _program_digest(program_bytes)
-    attestation = _attestation_from_compiled(
+    expected = _PatternSnapshot(
         source,
+        path,
+        digest,
+        PATTERN_MAX_BYTES,
+        PATTERN_INPUT_MAX_BYTES,
         program_bytes,
-        compiled,
     )
-    with _RUNTIME_CACHE_LOCK:
-        _store_attestation(digest, attestation)
-        _store_runtime(
-            digest,
-            _PatternRuntime(
-                program_bytes=program_bytes,
-                compiled=attestation.compiled,
-            ),
-        )
-    return CompiledPattern(
+    pattern = CompiledPattern(
         source=source,
         path=path,
         program_digest=digest,
     )
+    _register_trusted_pattern(pattern, expected, compiled)
+    return pattern
 
 
 def restore_compiled_pattern(
@@ -450,7 +531,7 @@ def restore_compiled_pattern(
     source_max_bytes: object,
     input_max_bytes: object,
 ) -> CompiledPattern:
-    """Restore authenticated compiled metadata without reopening raw policy."""
+    """Register metadata after its enclosing DTO has been authenticated."""
     if (
         type(source) is not str
         or type(path) is not str
@@ -461,6 +542,38 @@ def restore_compiled_pattern(
         raise PatternProgramIntegrityError(
             "Pattern program metadata has invalid types",
         )
+    try:
+        program_bytes = _program_bytes(
+            source=source,
+            path=path,
+            source_max_bytes=source_max_bytes,
+            input_max_bytes=input_max_bytes,
+        )
+        source_length = len(source.encode("utf-8"))
+    except (TypeError, UnicodeEncodeError, ValueError) as exc:
+        raise PatternProgramIntegrityError(
+            "Pattern program metadata is not canonical",
+        ) from exc
+    expected = _PatternSnapshot(
+        source=source,
+        path=path,
+        program_digest=program_digest,
+        source_max_bytes=source_max_bytes,
+        input_max_bytes=input_max_bytes,
+        program_bytes=program_bytes,
+    )
+    if source_length > source_max_bytes or not _snapshot_intact(expected):
+        raise PatternProgramIntegrityError(
+            "Pattern program metadata failed content verification",
+            details={"path": path},
+        )
+    try:
+        compiled = re2.compile(expected.source)
+    except re2.error as exc:
+        raise PatternProgramIntegrityError(
+            "Authenticated pattern source no longer compiles",
+            details={"path": expected.path},
+        ) from exc
     pattern = CompiledPattern(
         source=source,
         path=path,
@@ -468,5 +581,5 @@ def restore_compiled_pattern(
         source_max_bytes=source_max_bytes,
         input_max_bytes=input_max_bytes,
     )
-    verify_pattern_runtime(pattern)
+    _register_trusted_pattern(pattern, expected, compiled)
     return pattern
