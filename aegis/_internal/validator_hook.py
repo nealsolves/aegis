@@ -12,6 +12,8 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
+from aegis._internal.outcomes import NormalizedOutcome, OutcomeNormalizer
+
 # ---------------------------------------------------------------------------
 # Decision constants
 # ---------------------------------------------------------------------------
@@ -23,7 +25,6 @@ VALIDATOR_REVIEW_REQUIRED = "review_required"
 VALIDATOR_EXECUTION_FAILURE = "execution_failure"
 VALIDATOR_TIMEOUT = "timeout"
 
-_FAIL_CLOSED_DECISIONS = {VALIDATOR_DENY, VALIDATOR_TIMEOUT, VALIDATOR_REVIEW_REQUIRED}
 _RETRY_ELIGIBLE_DECISIONS = {VALIDATOR_EXECUTION_FAILURE}
 
 # ---------------------------------------------------------------------------
@@ -60,6 +61,26 @@ class ValidatorHookResult:
     observed_at: int  # unix milliseconds
     stale_result: bool = False
     provenance: str | None = None
+
+
+def normalize_hook_result(result: object) -> NormalizedOutcome:
+    """Convert a final validator-hook result to a closed terminal class."""
+    if not isinstance(result, ValidatorHookResult):
+        return OutcomeNormalizer.invalid("HOOK_INVALID_RESULT")
+    reason_code = result.reason_code
+    if result.decision == VALIDATOR_ALLOW:
+        return OutcomeNormalizer.allow(reason_code or "HOOK_ALLOWED")
+    if result.decision == VALIDATOR_WARN:
+        return OutcomeNormalizer.warn(reason_code or "HOOK_WARNING")
+    if result.decision in {VALIDATOR_DENY, VALIDATOR_REVIEW_REQUIRED}:
+        return OutcomeNormalizer.deny(reason_code or "HOOK_DENIED")
+    if result.decision == VALIDATOR_TIMEOUT:
+        return OutcomeNormalizer.timeout(reason_code or "HOOK_TIMEOUT")
+    if result.decision == VALIDATOR_EXECUTION_FAILURE:
+        return OutcomeNormalizer.execution_failure(
+            reason_code or "HOOK_EXECUTION_FAILURE"
+        )
+    return OutcomeNormalizer.invalid("HOOK_INVALID_DECISION")
 
 
 # ---------------------------------------------------------------------------
@@ -181,26 +202,6 @@ def _call_hook_once(
             latency_ms=elapsed_ms,
             observed_at=int(time.time() * 1000),
             stale_result=True,
-        )
-
-    _KNOWN_DECISIONS = {
-        VALIDATOR_ALLOW,
-        VALIDATOR_DENY,
-        VALIDATOR_WARN,
-        VALIDATOR_REVIEW_REQUIRED,
-        VALIDATOR_EXECUTION_FAILURE,
-        VALIDATOR_TIMEOUT,
-    }
-    if result.decision not in _KNOWN_DECISIONS:
-        return ValidatorHookResult(
-            decision=VALIDATOR_DENY,
-            reason_code="HOOK_INVALID_DECISION",
-            explanation=f"Unrecognized decision: {result.decision!r}",
-            hook_id=result.hook_id,
-            hook_version=result.hook_version,
-            attempt=attempt,
-            latency_ms=elapsed_ms,
-            observed_at=int(time.time() * 1000),
         )
 
     return result

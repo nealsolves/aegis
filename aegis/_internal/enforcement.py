@@ -77,8 +77,7 @@ from aegis._internal.tools import validate_tool_constraints
 from aegis._internal.sinks import emit_to_sink
 from aegis._internal.risk_scoring import (
     compute_compiled_risk_score,
-    RISK_MODE_STRICT,
-    RISK_MODE_WARN_ONLY,
+    normalize_risk_result,
     RiskScore,
 )
 from aegis._internal.signing import ArtifactSigner, sign_artifact
@@ -1704,21 +1703,23 @@ def _run_phase_b(
                 details={"score": risk_result.score},
             )
 
-            if risk_result.exceeded:
-                if risk_result.mode == RISK_MODE_STRICT:
-                    raise RiskThresholdError(
-                        f"Risk score {risk_result.score:.3f} exceeds "
-                        f"threshold {risk_result.threshold:.3f} "
-                        f"in strict mode",
-                        details=risk_result.to_dict(),
-                    )
-                elif risk_result.mode == RISK_MODE_WARN_ONLY:
-                    logger.warning(
-                        "Risk score %.3f exceeds threshold %.3f "
-                        "(warn_only mode -- not blocking)",
-                        risk_result.score,
-                        risk_result.threshold,
-                    )
+            risk_outcome = normalize_risk_result(risk_result)
+            if not risk_outcome.allows_continuation:
+                raise RiskThresholdError(
+                    f"Risk authorization denied: {risk_outcome.reason_code}",
+                    details={
+                        **risk_result.to_dict(),
+                        "reason_code": risk_outcome.reason_code,
+                        "terminal": risk_outcome.terminal.value,
+                    },
+                )
+            if risk_outcome.terminal.value == "warn":
+                logger.warning(
+                    "Risk score %.3f reached threshold %.3f (%s)",
+                    risk_result.score,
+                    risk_result.threshold,
+                    risk_outcome.reason_code,
+                )
 
         # Merge custom metadata from Phase A and Phase B
         merged_custom_metadata = dict(all_custom_metadata)

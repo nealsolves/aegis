@@ -409,17 +409,31 @@ def test_flaky_hook_with_sufficient_retries_succeeds():
     assert session.workflow_artifact["status"] == "COMPLETED"
 
 
+def test_exhausted_hook_execution_failure_blocks_session_step():
+    """Removing the closed execution-failure branch must fail this test."""
+    from aegis._internal.enforcement import AIGC
+    from aegis._internal.errors import WorkflowHookDeniedError
+
+    session = _make_session(AIGC(), [_make_flaky_hook(fail_times=10)])
+    with pytest.raises(WorkflowHookDeniedError) as exc_info:
+        with session:
+            session.enforce_step_pre_call(dict(_BASE_INV))
+
+    assert exc_info.value.details["terminal"] == "execution_failure"
+    assert exc_info.value.details["reason_code"] == "TRANSIENT_ERROR"
+
+
 # ---------------------------------------------------------------------------
 # Fail-closed: unknown decision normalization (Bug 2 fix)
 # ---------------------------------------------------------------------------
 
-def test_unknown_decision_normalized_to_deny():
-    """_call_hook_once must normalize an unrecognized decision to DENY."""
+def test_unknown_decision_is_normalized_only_at_closed_boundary():
+    """The runner preserves evidence; the normalizer closes authorization."""
     from aegis._internal.validator_hook import (
         ValidatorHook, ValidatorHookResult, ValidatorHookEnvelope,
-        _call_hook_once,
-        VALIDATOR_DENY,
+        _call_hook_once, normalize_hook_result,
     )
+    from aegis._internal.outcomes import TerminalClass
     import time as _time
 
     class BananaHook(ValidatorHook):
@@ -449,8 +463,10 @@ def test_unknown_decision_normalized_to_deny():
         observed_at=int(_time.time() * 1000),
     )
     result = _call_hook_once(hook, env, attempt=1)
-    assert result.decision == VALIDATOR_DENY
-    assert result.reason_code == "HOOK_INVALID_DECISION"
+    assert result.decision == "banana"
+    outcome = normalize_hook_result(result)
+    assert outcome.terminal is TerminalClass.INVALID_RESULT
+    assert outcome.reason_code == "HOOK_INVALID_DECISION"
 
 
 def test_unknown_decision_in_session_fails_closed():

@@ -22,6 +22,7 @@ from aegis._internal.compiled_policy import (
     CompiledRiskPolicy,
 )
 from aegis._internal.errors import PolicyValidationError
+from aegis._internal.outcomes import NormalizedOutcome, OutcomeNormalizer
 from aegis._internal.policy_compiler import (
     CRITICAL_RISK_CEILING,
     compile_risk_policy,
@@ -89,10 +90,7 @@ class RiskScore:
         self.mode = mode
         self.basis = basis
         self._critical_ceiling = critical_ceiling
-        self.exceeded = (
-            score >= threshold
-            or score >= critical_ceiling
-        )
+        self.exceeded = score >= threshold
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dict for audit artifact metadata."""
@@ -103,6 +101,21 @@ class RiskScore:
             "basis": self.basis,
             "exceeded": self.exceeded,
         }
+
+
+def normalize_risk_result(score: RiskScore) -> NormalizedOutcome:
+    """Convert a risk score to the sole authorization decision for risk."""
+    if not isinstance(score, RiskScore):
+        return OutcomeNormalizer.invalid("RISK_INVALID_RESULT")
+    if score.score >= CRITICAL_RISK_CEILING:
+        return OutcomeNormalizer.deny("RISK_CRITICAL_CEILING")
+    if score.mode not in VALID_RISK_MODES:
+        return OutcomeNormalizer.invalid("RISK_INVALID_MODE")
+    if score.mode == RISK_MODE_STRICT and score.exceeded:
+        return OutcomeNormalizer.deny("RISK_THRESHOLD_EXCEEDED")
+    if score.exceeded:
+        return OutcomeNormalizer.warn("RISK_THRESHOLD_WARNING")
+    return OutcomeNormalizer.allow("RISK_ACCEPTED")
 
 
 def _compute_factor_score(
