@@ -151,6 +151,24 @@ def test_m2_audit_chain_exports():
     assert callable(verify_chain)
 
 
+def test_typed_chain_verification_exports():
+    from aegis import (
+        ChainContinuity,
+        ChainVerificationReport,
+        Completeness,
+        ContentIntegrity,
+        VerificationError,
+        verify_chain_detailed,
+    )
+
+    assert callable(verify_chain_detailed)
+    assert ChainVerificationReport is not None
+    assert VerificationError is not None
+    assert ContentIntegrity.VALID.value == "valid"
+    assert ChainContinuity.UNCHAINED.value == "unchained"
+    assert Completeness.UNPROVEN.value == "unproven"
+
+
 def test_audit_lineage_exports():
     """AuditLineage is importable from the top-level aegis package."""
     from aegis import AuditLineage

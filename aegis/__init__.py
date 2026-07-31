@@ -94,7 +94,21 @@ from aegis.gates import (
     INSERTION_PRE_OUTPUT,
     INSERTION_POST_OUTPUT,
 )
-from aegis.audit_chain import AuditChain, verify_chain
+from aegis.audit_chain import (
+    AuditChain,
+    ChainContinuity,
+    ChainVerificationReport,
+    Completeness,
+    ContentIntegrity,
+    VerificationError,
+    verify_chain,
+    verify_chain_detailed,
+)
+from aegis._internal.evidence_profiles import (
+    EvidenceProfileError,
+    build_content_checksum_v2,
+    verify_content_checksum_v2,
+)
 from aegis.lineage import AuditLineage
 from aegis.provenance_gate import ProvenanceGate
 from aegis.risk_history import (
@@ -147,6 +161,8 @@ __all__ = [
     "ArtifactSigningError",
     "ArtifactVerificationResult",
     "AuditChain",
+    "ChainContinuity",
+    "ChainVerificationReport",
     "AuditLineage",
     "AuditSink",
     "AuditSinkError",
@@ -156,9 +172,12 @@ __all__ = [
     "CallbackAuditSink",
     "CANONICALIZATION_VERSION",
     "ConditionResolutionError",
+    "Completeness",
+    "ContentIntegrity",
     "CustomGateViolationError",
     "EnforcementGate",
     "EvidenceType",
+    "EvidenceProfileError",
     "ExternalArtifactSigner",
     "ExternalArtifactVerifier",
     "ExternalVerificationOutcome",
@@ -202,6 +221,7 @@ __all__ = [
     "SigningContractError",
     "SigningReceipt",
     "VerificationContractError",
+    "VerificationError",
     "VerificationReasonCode",
     "WorkflowApprovalRequiredError",
     "WorkflowHandoffDeniedError",
@@ -228,6 +248,7 @@ __all__ = [
     "enforce_pre_call",
     "enforce_pre_call_async",
     "expect_fail",
+    "build_content_checksum_v2",
     "expect_pass",
     "get_audit_sink",
     "get_sink_failure_mode",
@@ -242,5 +263,7 @@ __all__ = [
     "verify_artifact",
     "verify_artifact_detailed",
     "verify_chain",
+    "verify_chain_detailed",
+    "verify_content_checksum_v2",
     "with_retry",
 ]

@@ -1,5 +1,5 @@
 import json
-from itertools import combinations
+from fractions import Fraction
 
 import pytest
 
@@ -85,24 +85,52 @@ def test_strings_are_not_unicode_normalized():
     assert composed.data != decomposed.data
 
 
-def test_distinct_accepted_normalized_values_have_distinct_bytes():
-    values = [
+def _json_identity(value):
+    """Independent type-aware JSON equality key for generated test values."""
+    if value is None:
+        return ("null",)
+    if type(value) is bool:
+        return ("boolean", value)
+    if type(value) in {int, float}:
+        return ("number", Fraction(value))
+    if type(value) is str:
+        return ("string", value)
+    if type(value) is list:
+        return ("array", tuple(_json_identity(item) for item in value))
+    return (
+        "object",
+        tuple(sorted((key, _json_identity(item)) for key, item in value.items())),
+    )
+
+
+def test_generated_distinct_normalized_values_have_distinct_bytes():
+    scalars = [
         None,
         False,
         True,
-        0,
-        1,
-        -1,
-        1.5,
+        *range(-40, 41),
+        *(number + 0.5 for number in range(-40, 41)),
         "",
         "0",
-        [],
-        [0],
-        {},
-        {"0": 0},
-        {"a": 1},
-        {"b": 1},
+        "false",
+        "é",
+        "e\u0301",
+        "€",
+        "😀",
     ]
-    canonicalized = [canonicalize_v2(value) for value in values]
-    for left, right in combinations(canonicalized, 2):
-        assert left.data != right.data
+    generated = list(scalars)
+    for index, value in enumerate(scalars):
+        generated.extend(
+            ([value], [value, None], {"value": value}, {"i": index, "value": value})
+        )
+    generated.extend(
+        [
+            {"a": [left, {"b": right}]}
+            for left in scalars[::17]
+            for right in scalars[8::19]
+        ]
+    )
+    distinct = {_json_identity(value): value for value in generated}
+    assert len(distinct) >= 800
+    canonical_bytes = {canonicalize_v2(value).data for value in distinct.values()}
+    assert len(canonical_bytes) == len(distinct)

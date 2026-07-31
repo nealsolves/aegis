@@ -193,8 +193,14 @@ def test_chain_verify_intact():
     a2 = r2.json()["artifact"]
 
     r3 = client.post("/api/chain/verify", json={"artifacts": [a1, a2]})
-    assert r3.json()["valid"] is True
-    assert r3.json()["errors"] == []
+    report = r3.json()
+    assert report["valid"] is True
+    assert report["content_integrity"] == "valid"
+    assert report["chain_continuity"] == "valid"
+    assert report["signature_status"] == "unsigned"
+    assert report["anchor_status"] == "not_evaluated"
+    assert report["completeness"] == "unproven"
+    assert report["errors"] == []
 
 
 def test_chain_tamper_breaks_verify():

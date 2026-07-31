@@ -8,11 +8,13 @@ from __future__ import annotations
 
 import json
 
+import pytest
 from jsonschema import validate as jsonschema_validate
 
 from aegis._internal.audit import generate_audit_artifact
 from aegis._internal.audit_chain import AuditChain
 from aegis._internal.cli import main
+from aegis._internal.evidence_profiles import EvidenceProfileError
 from aegis._internal.policy_loader import SCHEMAS_DIR
 
 # ---------------------------------------------------------------------------
@@ -60,8 +62,8 @@ def test_chained_artifact_passes_audit_schema():
     jsonschema_validate(instance=chained, schema=schema)
 
 
-def test_chained_metadata_aware_artifact_passes_audit_schema():
-    """Chain fields remain compatible with a strict metadata-aware signature."""
+def test_signed_artifact_cannot_be_moved_into_a_chain_after_finalization():
+    """Chain coordinates must be attached before checksum and signature."""
     artifact = _make_base_artifact()
     artifact["signature"] = "aabb"
     artifact["signature_metadata"] = {
@@ -76,9 +78,9 @@ def test_chained_metadata_aware_artifact_passes_audit_schema():
         "signed_at": 1_721_600_000,
     }
 
-    chained = AuditChain().append(artifact)
-
-    jsonschema_validate(instance=chained, schema=_audit_schema())
+    with pytest.raises(EvidenceProfileError) as exc:
+        AuditChain().append(artifact)
+    assert exc.value.code == "EVIDENCE_FINALIZATION_FIELDS_PRESENT"
 
 
 def test_multiple_chained_artifacts_all_pass_schema():
