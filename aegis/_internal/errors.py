@@ -6,6 +6,10 @@ Custom error types for governance enforcement.
 from __future__ import annotations
 
 
+class OutcomeContractError(ValueError):
+    """Raised when a closed authorization outcome violates its contract."""
+
+
 class AIGCError(Exception):
     """
     Base error for governance failures.
