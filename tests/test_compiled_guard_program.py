@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import dataclasses
+import math
 import pickle
+import sys
 from pathlib import Path
 
 import pytest
@@ -13,11 +15,19 @@ from aegis._internal.enforcement import (
     enforce_pre_call,
 )
 from aegis._internal.errors import (
+    GuardEvaluationError,
     InvocationValidationError,
     PolicyValidationError,
 )
-from aegis._internal.guards import evaluate_compiled_guards
+from aegis._internal.guards import (
+    _evaluate_condition_expression,
+    evaluate_compiled_guards,
+)
 from aegis._internal.policy_compiler import compile_policy
+
+
+_HUGE_DECIMAL = ("9" * 400) + ".0"
+_MAX_FINITE_DECIMAL = "17976931348623157" + ("0" * 292) + ".0"
 
 
 def _policy_with_guard(
@@ -104,6 +114,170 @@ def test_ordered_guard_comparison_requires_numeric_literal():
 
     assert exc.value.code == "GUARD_EXPRESSION_INVALID"
     assert exc.value.details["path"] == "$.guards[0].when.condition"
+
+
+def test_finite_numeric_literal_is_supported_for_membership():
+    compiled = compile_policy(
+        _policy_with_guard(
+            "3.5 in allowed_numbers",
+            preconditions={"allowed_numbers": {"type": "array"}},
+        ),
+        source="numeric-membership",
+    )
+
+    _, evaluated, _ = evaluate_compiled_guards(
+        compiled,
+        compiled.guards,
+        {"allowed_numbers": [2.0, 3.5]},
+        invocation={
+            "role": "planner",
+            "context": {"allowed_numbers": [2.0, 3.5]},
+        },
+    )
+
+    assert evaluated[0]["matched"] is True
+
+
+@pytest.mark.parametrize("numeric_literal", [_HUGE_DECIMAL, f"-{_HUGE_DECIMAL}"])
+@pytest.mark.parametrize(
+    ("expression_template", "preconditions"),
+    [
+        ("score == {literal}", {"score": {"type": "number"}}),
+        ("score < {literal}", {"score": {"type": "number"}}),
+        (
+            "{literal} in allowed_numbers",
+            {"allowed_numbers": {"type": "array"}},
+        ),
+    ],
+)
+def test_non_finite_decimal_literal_fails_compilation(
+    numeric_literal,
+    expression_template,
+    preconditions,
+):
+    expression = expression_template.format(literal=numeric_literal)
+
+    with pytest.raises(PolicyValidationError) as exc:
+        compile_policy(
+            _policy_with_guard(
+                expression,
+                preconditions=preconditions,
+            ),
+            source="non-finite-guard-literal",
+        )
+
+    assert exc.value.code == "GUARD_EXPRESSION_INVALID"
+    assert exc.value.details["path"] == "$.guards[0].when.condition"
+
+
+@pytest.mark.parametrize("numeric_literal", [_HUGE_DECIMAL, f"-{_HUGE_DECIMAL}"])
+@pytest.mark.parametrize(
+    "expression_template",
+    [
+        "score == {literal}",
+        "score < {literal}",
+        "{literal} in allowed_numbers",
+    ],
+)
+def test_raw_guard_api_rejects_non_finite_decimal_literal(
+    numeric_literal,
+    expression_template,
+):
+    expression = expression_template.format(literal=numeric_literal)
+
+    with pytest.raises(GuardEvaluationError):
+        _evaluate_condition_expression(
+            expression,
+            {},
+            {
+                "role": "planner",
+                "context": {
+                    "score": 1.0,
+                    "allowed_numbers": [1.0],
+                },
+            },
+        )
+
+
+def test_maximum_finite_decimal_literal_compiles_and_matches_exactly():
+    compiled = compile_policy(
+        _policy_with_guard(
+            f"score == {_MAX_FINITE_DECIMAL}",
+            preconditions={"score": {"type": "number"}},
+        ),
+        source="max-finite-guard-literal",
+    )
+
+    _, evaluated, _ = evaluate_compiled_guards(
+        compiled,
+        compiled.guards,
+        {"score": sys.float_info.max},
+        invocation={
+            "role": "planner",
+            "context": {"score": sys.float_info.max},
+        },
+    )
+
+    assert math.isfinite(compiled.guards[0].program.root.right.value)
+    assert evaluated[0]["matched"] is True
+
+
+def test_large_integer_guard_literal_remains_exact():
+    integer_literal = "9" * 300
+    expected = int(integer_literal)
+    compiled = compile_policy(
+        _policy_with_guard(
+            f"score == {integer_literal}",
+            preconditions={"score": {"type": "integer"}},
+        ),
+        source="exact-integer-guard-literal",
+    )
+
+    _, evaluated, _ = evaluate_compiled_guards(
+        compiled,
+        compiled.guards,
+        {"score": expected},
+        invocation={
+            "role": "planner",
+            "context": {"score": expected},
+        },
+    )
+
+    assert compiled.guards[0].program.root.right.value == expected
+    assert type(compiled.guards[0].program.root.right.value) is int
+    assert evaluated[0]["matched"] is True
+
+
+@pytest.mark.parametrize(
+    ("expression", "context_value"),
+    [
+        ("score == true", 1),
+        ('score == "3.5"', 3.5),
+    ],
+)
+def test_compiled_numeric_equality_does_not_coerce_boolean_or_string(
+    expression,
+    context_value,
+):
+    compiled = compile_policy(
+        _policy_with_guard(
+            expression,
+            preconditions={"score": {"type": "number"}},
+        ),
+        source="noncoercing-guard-literal",
+    )
+
+    _, evaluated, _ = evaluate_compiled_guards(
+        compiled,
+        compiled.guards,
+        {"score": context_value},
+        invocation={
+            "role": "planner",
+            "context": {"score": context_value},
+        },
+    )
+
+    assert evaluated[0]["matched"] is False
 
 
 @pytest.mark.parametrize(

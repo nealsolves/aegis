@@ -209,7 +209,7 @@ class _Parser:
         not_expr -> 'not' not_expr | primary
         primary  -> '(' expr ')' | comparison | in_expr | bool_lookup
         comparison -> IDENT OP (IDENT | STRING | NUMBER)
-        in_expr  -> (STRING | IDENT) 'in' IDENT
+        in_expr  -> (STRING | NUMBER | IDENT) 'in' IDENT
         bool_lookup -> IDENT
     """
 
@@ -316,8 +316,8 @@ class _Parser:
                 self.parenthesis_depth -= 1
             return node
 
-        # String literal followed by 'in' -> in-expression
-        if tok[0] == "STRING":
+        # Scalar literal followed by 'in' -> in-expression
+        if tok[0] in {"STRING", "NUMBER"}:
             next_pos = self.pos + 1
             if (next_pos < len(self.tokens)
                     and self.tokens[next_pos] == ("KEYWORD", "in")):
@@ -329,9 +329,9 @@ class _Parser:
                     field_tok[1],
                     val_tok[0],
                 )
-            # Standalone string not supported
+            # Standalone scalar literal not supported
             raise GuardEvaluationError(
-                f"Unexpected string literal in guard expression: '{self.expr}'",
+                f"Unexpected scalar literal in guard expression: '{self.expr}'",
                 details={"expression": self.expr},
             )
 
@@ -390,6 +390,19 @@ class _Parser:
 # ---------------------------------------------------------------------------
 # Compilation: expression string -> AST
 # ---------------------------------------------------------------------------
+
+def _normalize_numeric_literal(raw: str) -> int | float:
+    """Convert a numeric token without admitting non-finite decimal values."""
+    if "." not in raw:
+        return int(raw)
+    value = float(raw)
+    if not math.isfinite(value):
+        raise GuardEvaluationError(
+            "Guard numeric literal must be finite",
+            details={"literal_type": "NUMBER"},
+        )
+    return value
+
 
 def _ast_metrics(root: _ASTNode) -> tuple[int, int]:
     """Return node count and maximum node depth without recursive traversal."""
@@ -456,6 +469,9 @@ def _compile_guard_expression_with_metrics(
                 "metric": "tokens",
             },
         )
+    for kind, value in tokens:
+        if kind == "NUMBER":
+            _normalize_numeric_literal(value)
     parser = _Parser(tokens, normalized)
     root = parser.parse()
     node_count, max_depth = _ast_metrics(root)
@@ -495,7 +511,7 @@ def _guard_literal(kind: str, raw: str) -> CompiledGuardLiteral:
     if kind == "STRING":
         value: Any = raw
     elif kind == "NUMBER":
-        value = float(raw) if "." in raw else int(raw)
+        value = _normalize_numeric_literal(raw)
     elif kind == "IDENT" and raw == "true":
         value = True
     elif kind == "IDENT" and raw == "false":
