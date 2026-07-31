@@ -1,5 +1,6 @@
 {
-  "audit_schema_version": "1.4",
+  "audit_schema_version": "2.0",
+  "canonicalization_profile": "aegis-json-v2",
   "model_provider": "openai",
   "model_identifier": "gpt-test-model",
   "role": "planner",
