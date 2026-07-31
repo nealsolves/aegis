@@ -6,6 +6,8 @@ import ast
 from pathlib import Path
 import re
 
+import pytest
+
 
 _ROOT = Path(__file__).resolve().parents[1]
 _ENFORCEMENT = _ROOT / "aegis" / "_internal" / "enforcement.py"
@@ -158,6 +160,10 @@ _LOAD_ALLOWLIST = {
     ("retry", "with_retry"),
     ("cli", "_validate_policy"),
 }
+_DIAGNOSTIC_LOAD_COMPILE_ALLOWLIST = {
+    ("workflow_lint", "lint_policy"),
+    ("cli", "_lint_policy"),
+}
 _BANNED_SNAPSHOT_FIELDS = {
     "raw",
     "raw_policy",
@@ -306,6 +312,89 @@ def _semantic_call_kind(call: ast.Call, aliases: dict[str, str]) -> str | None:
     if isinstance(call.func, ast.Attribute):
         return _SEMANTIC_CALL_KINDS.get(call.func.attr)
     return None
+
+
+def _diagnostic_load_flows_directly_to_compile(
+    load_call: ast.Call,
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    *,
+    aliases: dict[str, str],
+    parents: dict[ast.AST, ast.AST],
+) -> bool:
+    """Prove a diagnostic load assignment is consumed by the next compiler."""
+    assignment = parents.get(load_call)
+    if (
+        not isinstance(assignment, (ast.Assign, ast.AnnAssign))
+        or assignment.value is not load_call
+    ):
+        return False
+    assigned_names = _assigned_names(assignment)
+    if len(assigned_names) != 1:
+        return False
+    loaded_name = assigned_names[0]
+
+    later_semantic_calls = sorted(
+        (
+            candidate
+            for candidate in ast.walk(function)
+            if (
+                isinstance(candidate, ast.Call)
+                and candidate.lineno > load_call.lineno
+                and _semantic_call_kind(candidate, aliases)
+                in {"load_policy", "compile_policy"}
+            )
+        ),
+        key=lambda candidate: (candidate.lineno, candidate.col_offset),
+    )
+    if not later_semantic_calls:
+        return False
+    compile_call = later_semantic_calls[0]
+    if _semantic_call_kind(compile_call, aliases) != "compile_policy":
+        return False
+    if not any(
+        isinstance(argument, ast.Name)
+        and argument.id == loaded_name
+        for argument in compile_call.args
+    ):
+        return False
+
+    load_position = (load_call.lineno, load_call.col_offset)
+    compile_position = (compile_call.lineno, compile_call.col_offset)
+    for candidate in ast.walk(function):
+        if (
+            isinstance(candidate, ast.Name)
+            and isinstance(candidate.ctx, ast.Load)
+            and candidate.id == loaded_name
+            and load_position
+            < (candidate.lineno, candidate.col_offset)
+            < compile_position
+        ):
+            return False
+
+    for candidate in ast.walk(function):
+        if (
+            isinstance(
+                candidate,
+                (ast.Return, ast.Raise, ast.Break, ast.Continue),
+            )
+            and load_call.lineno
+            < candidate.lineno
+            < compile_call.lineno
+        ):
+            return False
+        if (
+            not isinstance(candidate, (ast.Assign, ast.AnnAssign))
+            or candidate is assignment
+            or not (
+                load_call.lineno
+                < candidate.lineno
+                < compile_call.lineno
+            )
+        ):
+            continue
+        if loaded_name in _assigned_names(candidate):
+            return False
+    return True
 
 
 def _compiled_attributes(tree: ast.AST) -> set[str]:
@@ -553,6 +642,16 @@ def _fitness_violations(
                     called == "load_policy"
                     and (module_name, function_name) not in _LOAD_ALLOWLIST
                     and (module_name, "*") not in _LOAD_ALLOWLIST
+                    and not (
+                        (module_name, function_name)
+                        in _DIAGNOSTIC_LOAD_COMPILE_ALLOWLIST
+                        and _diagnostic_load_flows_directly_to_compile(
+                            call,
+                            node,
+                            aliases=aliases,
+                            parents=parents,
+                        )
+                    )
                 ):
                     violations.append(
                         f"{module_name}:{call.lineno}:{function_name}:load_policy"
@@ -732,6 +831,72 @@ def authorize(raw):
 
     assert len(violations) == 1
     assert violations[0].endswith(":authorize:compile_policy")
+
+
+def test_fitness_analyzer_rejects_diagnostic_load_without_compile() -> None:
+    """The lint exception must not admit a loaded raw policy by itself."""
+    source = """
+def _lint_policy(path):
+    policy = load_policy(path)
+    return policy
+"""
+
+    violations = _fitness_violations(source, module_name="cli")
+
+    assert len(violations) == 1
+    assert violations[0].endswith(":_lint_policy:load_policy")
+
+
+@pytest.mark.parametrize(
+    "intervening",
+    [
+        "authorize_from_raw(policy)",
+        "_ = policy.roles",
+        '_ = policy["roles"]',
+        '_ = policy.get("roles")',
+        "alias = policy",
+        "if should_skip:\n        return []",
+    ],
+    ids=[
+        "authorization-call",
+        "attribute-read",
+        "subscript-read",
+        "get-read",
+        "alias-assignment",
+        "branch-early-return",
+    ],
+)
+def test_fitness_analyzer_rejects_intervening_raw_policy_consumer(
+    intervening: str,
+) -> None:
+    """A lint load may flow only to compilation, never another consumer."""
+    source = f"""
+def _lint_policy(path):
+    policy = load_policy(path)
+    {intervening}
+    return compile_policy(policy, source=str(path))
+"""
+
+    violations = _fitness_violations(source, module_name="cli")
+
+    assert any(
+        item.endswith(":_lint_policy:load_policy")
+        for item in violations
+    )
+
+
+def test_fitness_analyzer_rejects_load_compile_flow_in_enforcement() -> None:
+    """The diagnostic exception must never authorize a production load path."""
+    source = """
+def authorize(path):
+    policy = load_policy(path)
+    return compile_policy(policy, source=str(path))
+"""
+
+    violations = _fitness_violations(source, module_name="enforcement")
+
+    assert any(item.endswith(":authorize:load_policy") for item in violations)
+    assert any(item.endswith(":authorize:compile_policy") for item in violations)
 
 
 def test_fitness_analyzer_propagates_compiled_attribute_identity() -> None:

@@ -13,6 +13,7 @@ from aegis._internal.compiled_policy import (
     CompiledPolicy,
     CompiledPrecondition,
     CompiledToolLimit,
+    CompiledToolPolicy,
 )
 from aegis._internal.errors import PolicyValidationError
 
@@ -317,9 +318,16 @@ class SetSubsetRule:
 class ToolSubsetRule:
     """Tool names must be a subset and every call limit must not increase."""
 
+    def _configured(self, value: Any) -> bool:
+        if isinstance(value, CompiledToolPolicy):
+            return value.configured
+        return value not in (_MISSING, None)
+
     def _limits(self, value: Any) -> dict[str, int]:
         if value in (_MISSING, None):
             return {}
+        if isinstance(value, CompiledToolPolicy):
+            value = value.allowed_tools
         limits: dict[str, int] = {}
         for item in value:
             if isinstance(item, CompiledToolLimit):
@@ -340,9 +348,9 @@ class ToolSubsetRule:
     ) -> None:
         if candidate is _MISSING and phase.endswith("overlay"):
             return
-        if parent in (_MISSING, None):
+        if not self._configured(parent):
             return
-        if candidate in (_MISSING, None):
+        if not self._configured(candidate):
             _raise_widening(
                 path=path,
                 phase=phase,
@@ -932,7 +940,12 @@ def merge_policy_effect(
         if key not in base:
             base[key] = _plain(value)
         elif (
-            key in {"allowed_tools", "participants"}
+            key in {
+                "allowed_tools",
+                "participants",
+                "required_sequence",
+                "roles",
+            }
             and isinstance(base[key], list)
             and isinstance(value, (list, tuple))
         ):

@@ -1,15 +1,18 @@
 """Tests for tool constraint validation."""
 
 import pytest
-from aegis._internal.compiled_policy import CompiledToolLimit
+from aegis._internal.compiled_policy import CompiledToolLimit, CompiledToolPolicy
 from aegis._internal.tools import validate_tool_constraints
 from aegis._internal.errors import ToolConstraintViolationError
 
 
-def _tools(*limits: tuple[str, int]) -> tuple[CompiledToolLimit, ...]:
-    return tuple(
-        CompiledToolLimit(name=name, max_calls=max_calls)
-        for name, max_calls in limits
+def _tools(*limits: tuple[str, int]) -> CompiledToolPolicy:
+    return CompiledToolPolicy(
+        configured=True,
+        allowed_tools=tuple(
+            CompiledToolLimit(name=name, max_calls=max_calls)
+            for name, max_calls in limits
+        ),
     )
 
 
@@ -85,7 +88,7 @@ def test_multiple_tools_all_valid():
 
 def test_no_tools_in_policy_skips_validation():
     """No tools block in policy skips validation."""
-    policy = ()
+    policy = CompiledToolPolicy(configured=False, allowed_tools=())
     invocation = {
         "tool_calls": [
             {"name": "search", "call_id": "tc-1"}

@@ -21,11 +21,16 @@ from aegis._internal.compiled_policy import (
     CompiledOutputValidator,
     freeze,
 )
-from aegis._internal.errors import PolicyValidationError, SchemaValidationError
+from aegis._internal.errors import (
+    AIGCError,
+    PolicyValidationError,
+    SchemaValidationError,
+)
 from aegis._internal.patterns import (
     CompiledPattern,
     PatternInputTooLargeError,
     compile_pattern,
+    verify_pattern_runtime,
 )
 
 
@@ -409,11 +414,14 @@ def _runtime_for(
         runtime_schema_bytes = _program_bytes(runtime.validator.schema)
     except (TypeError, ValueError):
         runtime_schema_bytes = b""
-    patterns_intact = all(
-        pattern.source == source
-        and getattr(pattern._compiled, "pattern", None) == source
-        for source, pattern in runtime.patterns.items()
-    )
+    try:
+        for source, pattern in runtime.patterns.items():
+            if pattern.source != source:
+                raise ValueError("pattern source key mismatch")
+            verify_pattern_runtime(pattern)
+        patterns_intact = True
+    except (AIGCError, TypeError, ValueError):
+        patterns_intact = False
     if (
         runtime.program_bytes != program_bytes
         or runtime_schema_bytes != program_bytes

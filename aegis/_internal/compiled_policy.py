@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Mapping, TypeAlias
+from typing import TYPE_CHECKING, Any, Iterator, Mapping, TypeAlias
 
 from aegis._internal.errors import PreconditionError
 
@@ -81,6 +81,28 @@ class CompiledToolLimit:
 
 
 @dataclass(frozen=True, slots=True)
+class CompiledToolPolicy:
+    """Presence-aware compiled tool authority.
+
+    An unconfigured tool policy preserves the documented compatibility
+    behavior of not applying a tool allowlist. A configured empty policy is a
+    deny-all allowlist and is therefore intentionally distinct.
+    """
+
+    configured: bool
+    allowed_tools: tuple[CompiledToolLimit, ...] = ()
+
+    def __iter__(self) -> Iterator[CompiledToolLimit]:
+        return iter(self.allowed_tools)
+
+    def __len__(self) -> int:
+        return len(self.allowed_tools)
+
+    def __getitem__(self, index: int) -> CompiledToolLimit:
+        return self.allowed_tools[index]
+
+
+@dataclass(frozen=True, slots=True)
 class CompiledRiskFactor:
     """One validated risk contribution with a declared condition."""
 
@@ -122,7 +144,7 @@ class CompiledPolicyOverlay:
 
     roles: tuple[str, ...] | None = None
     conditions: Mapping[str, JsonValue] | None = None
-    tools: tuple[CompiledToolLimit, ...] | None = None
+    tools: CompiledToolPolicy | None = None
     retry_max_retries: int | None = None
     retry_backoff_ms: int | None = None
     risk: CompiledRiskOverlay | None = None
@@ -322,7 +344,7 @@ class AuthorityEnvelope:
 
     roles: frozenset[str]
     conditions: Mapping[str, JsonValue]
-    tools: tuple[CompiledToolLimit, ...]
+    tools: CompiledToolPolicy
     retry: CompiledRetryPolicy | None
     risk: CompiledRiskPolicy
     preconditions: tuple[CompiledPrecondition, ...]
@@ -343,7 +365,7 @@ class CompiledPolicy:
     pattern_engine: str
     canonicalization_profile: str
     roles: tuple[str, ...]
-    tools: tuple[CompiledToolLimit, ...]
+    tools: CompiledToolPolicy
     risk: CompiledRiskPolicy
     retry: CompiledRetryPolicy | None
     conditions: Mapping[str, JsonValue]

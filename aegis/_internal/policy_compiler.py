@@ -25,6 +25,7 @@ from aegis._internal.compiled_policy import (
     CompiledRiskOverlay,
     CompiledRiskPolicy,
     CompiledToolLimit,
+    CompiledToolPolicy,
     freeze,
 )
 from aegis._internal.errors import PolicyLoadError, PolicyValidationError
@@ -586,7 +587,16 @@ def _compile_validated_policy(
                 "participant_ids": duplicate_participant_ids,
             },
         )
-    tool_items = (policy.get("tools") or {}).get("allowed_tools", ())
+    raw_tools = policy.get("tools")
+    tools_configured = (
+        isinstance(raw_tools, Mapping)
+        and "allowed_tools" in raw_tools
+    )
+    tool_items = (
+        raw_tools["allowed_tools"]
+        if tools_configured
+        else ()
+    )
     tool_name_counts = Counter(item["name"] for item in tool_items)
     duplicate_tool_names = sorted(
         name for name, count in tool_name_counts.items() if count > 1
@@ -600,9 +610,15 @@ def _compile_validated_policy(
                 "tool_names": duplicate_tool_names,
             },
         )
-    tools = tuple(
-        CompiledToolLimit(name=item["name"], max_calls=item["max_calls"])
-        for item in tool_items
+    tools = CompiledToolPolicy(
+        configured=tools_configured,
+        allowed_tools=tuple(
+            CompiledToolLimit(
+                name=item["name"],
+                max_calls=item["max_calls"],
+            )
+            for item in tool_items
+        ),
     )
 
     raw_risk = policy.get("risk") or {}

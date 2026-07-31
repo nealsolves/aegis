@@ -1026,10 +1026,11 @@ def evaluate_compiled_guard_program(
 
 def _merge_policy_blocks(base: dict[str, Any], overlay: Mapping[str, Any]) -> None:
     """
-    Merge overlay into base dict (in-place, additive semantics).
+    Merge overlay into base dict with field-specific list semantics.
 
     Rules:
-    - Arrays: append overlay items to base array
+    - Ordinary arrays: append overlay items to base array
+    - Authorization arrays: replace with the restrictive declaration
     - Dicts: recursive merge
     - Scalars: overlay replaces base
 
@@ -1121,7 +1122,7 @@ def _merge_typed_workflow(
     }
     for key, value in overlay.items():
         if (
-            key == "participants"
+            key in {"participants", "required_sequence"}
             and isinstance(value, (list, tuple))
         ):
             result[key] = copy.deepcopy(value)

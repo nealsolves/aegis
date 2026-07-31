@@ -64,6 +64,8 @@ def _lint_policy(path: Path) -> list[str]:
         return ["Policy must be a YAML mapping (dict)"]
 
     try:
+        if policy.get("extends"):
+            policy = load_policy(str(path))
         compile_policy(policy, source=str(path), allow_legacy=False)
     except (PolicyLoadError, PolicyValidationError) as exc:
         details = exc.details if isinstance(exc.details, dict) else {}
@@ -82,8 +84,8 @@ def _validate_policy(path: Path) -> list[str]:
     errors: list[str] = []
 
     try:
-        raw = load_policy(str(path))
-        compile_policy(raw, source=str(path), allow_legacy=False)
+        policy = load_policy(str(path))
+        compile_policy(policy, source=str(path), allow_legacy=False)
     except (PolicyLoadError, PolicyValidationError) as e:
         details = e.details if isinstance(e.details, dict) else {}
         errors.append(f"[{e.code}] {details.get('path', '$')}: {e}")

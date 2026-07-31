@@ -7,13 +7,11 @@ from aegis._internal.policy_loader import compile_composed_policy, load_policy
 from aegis._internal.errors import PolicyLoadError, PolicyValidationError
 
 
-def test_extends_merges_arrays():
-    """Child policy appends to base roles array."""
+def test_extends_replaces_authorization_roles_with_child_subset():
+    """A child role subset replaces rather than appends to the parent roles."""
     policy = load_policy("tests/golden_replays/policy_child_extends_base.yaml")
 
-    # Both base and child roles present
-    assert "planner" in policy["roles"]
-    assert "verifier" in policy["roles"]
+    assert policy["roles"] == ["verifier"]
 
 
 def test_extends_replaces_scalars():
@@ -101,8 +99,7 @@ def test_multi_level_extends_chain():
 
     # Should successfully merge without cycle errors
     assert "roles" in policy
-    assert "planner" in policy["roles"]  # from base
-    assert "verifier" in policy["roles"]  # from child
+    assert policy["roles"] == ["verifier"]
 
 
 def test_tool_limit_cannot_increase():

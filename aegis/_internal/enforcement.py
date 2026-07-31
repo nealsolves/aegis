@@ -62,9 +62,10 @@ from aegis._internal.compiled_policy import (
     CompiledRiskOverlay,
     CompiledRiskPolicy,
     CompiledToolLimit,
+    CompiledToolPolicy,
     freeze,
 )
-from aegis._internal.patterns import compile_pattern
+from aegis._internal.patterns import restore_compiled_pattern
 from aegis._internal.schema_compiler import compile_output_schema
 from aegis._internal.policy_compiler import (
     compile_policy,
@@ -170,6 +171,7 @@ def _compiled_gate_projection(policy: CompiledPolicy) -> dict[str, Any]:
         "roles": list(policy.roles),
         "conditions": _plain_compiled_value(policy.conditions),
         "tools": {
+            "configured": policy.tools.configured,
             "allowed_tools": [
                 {"name": item.name, "max_calls": item.max_calls}
                 for item in policy.tools
@@ -243,7 +245,17 @@ def _compiled_precondition_to_dto(
     return {
         "name": item.name,
         "declared_type": item.declared_type,
-        "pattern": item.pattern.source if item.pattern else None,
+        "pattern": (
+            {
+                "source": item.pattern.source,
+                "path": item.pattern.path,
+                "program_digest": item.pattern.program_digest,
+                "source_max_bytes": item.pattern.source_max_bytes,
+                "input_max_bytes": item.pattern.input_max_bytes,
+            }
+            if item.pattern is not None
+            else None
+        ),
         "enum": _plain_compiled_value(item.enum),
         "min_length": item.min_length,
         "max_length": item.max_length,
@@ -671,6 +683,11 @@ def _compiled_overlay_to_dto(
             if overlay.tools is not None
             else None
         ),
+        "tools_configured": (
+            overlay.tools.configured
+            if overlay.tools is not None
+            else None
+        ),
         "retry_max_retries": overlay.retry_max_retries,
         "retry_backoff_ms": overlay.retry_backoff_ms,
         "risk": (
@@ -717,6 +734,7 @@ def _compiled_policy_to_dto(policy: CompiledPolicy) -> dict[str, Any]:
         "pattern_engine": policy.pattern_engine,
         "canonicalization_profile": policy.canonicalization_profile,
         "roles": list(policy.roles),
+        "tools_configured": policy.tools.configured,
         "tools": [
             {"name": item.name, "max_calls": item.max_calls}
             for item in policy.tools
@@ -779,39 +797,68 @@ def _compiled_policy_content_digest(policy: CompiledPolicy) -> str:
 def _compiled_preconditions_from_dto(
     items: Sequence[Mapping[str, Any]],
 ) -> tuple[CompiledPrecondition, ...]:
-    return tuple(
-        CompiledPrecondition(
-            name=item["name"],
-            declared_type=item["declared_type"],
-            pattern=(
-                compile_pattern(
-                    item["pattern"],
-                    path=(
-                        "$.pre_conditions.required."
-                        f"{item['name']}.pattern"
-                    ),
+    result: list[CompiledPrecondition] = []
+    for item in items:
+        pattern_data = item["pattern"]
+        pattern = None
+        if pattern_data is not None:
+            expected_fields = {
+                "source",
+                "path",
+                "program_digest",
+                "source_max_bytes",
+                "input_max_bytes",
+            }
+            if (
+                type(pattern_data) is not dict
+                or set(pattern_data) != expected_fields
+            ):
+                raise InvocationValidationError(
+                    "Authenticated compiled pattern DTO is invalid",
+                    details={"field": "preconditions.pattern"},
                 )
-                if item["pattern"] is not None
-                else None
-            ),
-            enum=(
-                tuple(freeze(item["enum"]))
-                if item["enum"] is not None
-                else None
-            ),
-            min_length=item["min_length"],
-            max_length=item["max_length"],
-            minimum=item["minimum"],
-            maximum=item["maximum"],
-            legacy=item["legacy"],
+            try:
+                pattern = restore_compiled_pattern(**pattern_data)
+            except AIGCError as exc:
+                raise InvocationValidationError(
+                    "Authenticated compiled pattern DTO failed integrity "
+                    "verification",
+                    details={"field": "preconditions.pattern"},
+                ) from exc
+        result.append(
+            CompiledPrecondition(
+                name=item["name"],
+                declared_type=item["declared_type"],
+                pattern=pattern,
+                enum=(
+                    tuple(freeze(item["enum"]))
+                    if item["enum"] is not None
+                    else None
+                ),
+                min_length=item["min_length"],
+                max_length=item["max_length"],
+                minimum=item["minimum"],
+                maximum=item["maximum"],
+                legacy=item["legacy"],
+            )
         )
-        for item in items
-    )
+    return tuple(result)
 
 
 def _compiled_overlay_from_dto(
     dto: Mapping[str, Any],
 ) -> CompiledPolicyOverlay:
+    if (
+        dto["tools"] is None
+        and dto["tools_configured"] is not None
+    ) or (
+        dto["tools"] is not None
+        and dto["tools_configured"] is not True
+    ):
+        raise InvocationValidationError(
+            "Authenticated compiled tool overlay presence is invalid",
+            details={"field": "tools_configured"},
+        )
     risk_data = dto["risk"]
     risk = (
         CompiledRiskOverlay(
@@ -839,12 +886,15 @@ def _compiled_overlay_from_dto(
             else None
         ),
         tools=(
-            tuple(
-                CompiledToolLimit(
-                    name=item["name"],
-                    max_calls=item["max_calls"],
+            CompiledToolPolicy(
+                configured=dto["tools_configured"],
+                allowed_tools=tuple(
+                    CompiledToolLimit(
+                        name=item["name"],
+                        max_calls=item["max_calls"],
+                    )
+                    for item in dto["tools"]
                 )
-                for item in dto["tools"]
             )
             if dto["tools"] is not None
             else None
@@ -869,9 +919,20 @@ def _compiled_overlay_from_dto(
 
 def _compiled_policy_from_dto(dto: Mapping[str, Any]) -> CompiledPolicy:
     """Restore authenticated compiled value objects without policy compilation."""
-    tools = tuple(
-        CompiledToolLimit(name=item["name"], max_calls=item["max_calls"])
-        for item in dto["tools"]
+    if type(dto["tools_configured"]) is not bool:
+        raise InvocationValidationError(
+            "Authenticated compiled tool policy presence is invalid",
+            details={"field": "tools_configured"},
+        )
+    tools = CompiledToolPolicy(
+        configured=dto["tools_configured"],
+        allowed_tools=tuple(
+            CompiledToolLimit(
+                name=item["name"],
+                max_calls=item["max_calls"],
+            )
+            for item in dto["tools"]
+        ),
     )
     risk_data = dto["risk"]
     risk = CompiledRiskPolicy(

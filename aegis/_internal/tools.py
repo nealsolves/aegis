@@ -7,15 +7,15 @@ Enforces allowlists and per-tool call limits from policy.
 from __future__ import annotations
 
 from collections import Counter
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping
 
-from aegis._internal.compiled_policy import CompiledToolLimit
+from aegis._internal.compiled_policy import CompiledToolPolicy
 from aegis._internal.errors import ToolConstraintViolationError
 
 
 def validate_tool_constraints(
     invocation: Mapping[str, Any],
-    tools: Sequence[CompiledToolLimit],
+    tools: CompiledToolPolicy,
 ) -> dict[str, Any]:
     """
     Validate tool usage against policy constraints.
@@ -40,11 +40,18 @@ def validate_tool_constraints(
     if not tool_calls:
         return {"tools_checked": [], "violations": []}
 
-    # Skip if either not present
-    if not tools:
+    if not isinstance(tools, CompiledToolPolicy):
+        raise TypeError("tools must be a CompiledToolPolicy")
+
+    # An absent tools declaration preserves the documented unconfigured
+    # behavior. A configured empty declaration is a deny-all allowlist.
+    if not tools.configured:
         return {"tools_checked": [], "violations": []}
 
-    tool_limits = {tool.name: tool.max_calls for tool in tools}
+    tool_limits = {
+        tool.name: tool.max_calls
+        for tool in tools.allowed_tools
+    }
 
     # Count actual calls per tool
     call_counts = Counter(tc["name"] for tc in tool_calls)

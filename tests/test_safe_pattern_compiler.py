@@ -1,10 +1,15 @@
 """Tests for the bounded google-re2 pattern compiler."""
 
-import pytest
+from threading import Event, Thread
 
+import pytest
+import re2
+
+import aegis._internal.patterns as pattern_module
 from aegis._internal.errors import PolicyValidationError
 from aegis._internal.patterns import (
     PatternInputTooLargeError,
+    PatternProgramIntegrityError,
     compile_pattern,
 )
 
@@ -88,3 +93,88 @@ def test_unencodable_pattern_candidate_fails_closed():
     pattern = compile_pattern("^x+$", path=PATTERN_PATH)
     with pytest.raises(PatternInputTooLargeError):
         pattern.fullmatch("\ud800")
+
+
+@pytest.mark.parametrize("tamper", ["program_bytes", "compiled"])
+def test_private_runtime_cache_tamper_is_safely_rebuilt(tamper):
+    pattern = compile_pattern("^ok$", path=PATTERN_PATH)
+    stale_runtime = pattern_module._RUNTIME_CACHE[pattern.program_digest]
+    if tamper == "program_bytes":
+        object.__setattr__(stale_runtime, "program_bytes", b"tampered")
+    else:
+        object.__setattr__(stale_runtime, "compiled", re2.compile(".*"))
+
+    assert pattern.fullmatch("not-ok") is False
+    assert pattern.fullmatch("ok") is True
+    assert pattern_module._RUNTIME_CACHE[pattern.program_digest] is not (
+        stale_runtime
+    )
+
+
+def test_authenticated_pattern_metadata_tamper_fails_closed():
+    pattern = compile_pattern("^ok$", path=PATTERN_PATH)
+    object.__setattr__(pattern, "source", ".*")
+
+    with pytest.raises(PatternProgramIntegrityError) as exc:
+        pattern.fullmatch("not-ok")
+
+    assert exc.value.code == "PATTERN_PROGRAM_INTEGRITY_ERROR"
+
+
+class _ForgedPatternHandle:
+    pattern = "^ok$"
+
+    def fullmatch(self, candidate):
+        return object()
+
+    def search(self, candidate):
+        return object()
+
+
+def test_forged_cached_pattern_handle_is_rejected_and_rebuilt():
+    pattern = compile_pattern("^ok$", path=PATTERN_PATH)
+    stale_runtime = pattern_module._RUNTIME_CACHE[pattern.program_digest]
+    object.__setattr__(
+        stale_runtime,
+        "compiled",
+        _ForgedPatternHandle(),
+    )
+
+    assert pattern.fullmatch("not-ok") is False
+    assert pattern_module._RUNTIME_CACHE[pattern.program_digest] is not (
+        stale_runtime
+    )
+
+
+def test_concurrent_cache_corruption_cannot_weaken_evaluation():
+    pattern = compile_pattern("^ok$", path=PATTERN_PATH)
+    stale_runtime = pattern_module._RUNTIME_CACHE[pattern.program_digest]
+    corrupted = Event()
+    release_cache_lock = Event()
+    decisions = []
+
+    def corrupt_cache():
+        with pattern_module._RUNTIME_CACHE_LOCK:
+            object.__setattr__(
+                stale_runtime,
+                "compiled",
+                _ForgedPatternHandle(),
+            )
+            corrupted.set()
+            release_cache_lock.wait(timeout=2)
+
+    def evaluate_pattern():
+        decisions.append(pattern.fullmatch("not-ok"))
+
+    corruptor = Thread(target=corrupt_cache)
+    corruptor.start()
+    assert corrupted.wait(timeout=2)
+    evaluator = Thread(target=evaluate_pattern)
+    evaluator.start()
+    release_cache_lock.set()
+    corruptor.join(timeout=2)
+    evaluator.join(timeout=2)
+
+    assert not corruptor.is_alive()
+    assert not evaluator.is_alive()
+    assert decisions == [False]

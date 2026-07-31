@@ -232,13 +232,18 @@ def _merge_policies(
         if key not in merged:
             merged[key] = copy.deepcopy(value)
         elif (
-            key in {"allowed_tools", "participants"}
+            key in {
+                "allowed_tools",
+                "participants",
+                "required_sequence",
+                "roles",
+            }
             and isinstance(merged[key], list)
             and isinstance(value, list)
         ):
-            # This is a complete name/limit restriction declaration, not an
-            # additive generic list. The registry separately proves subset
-            # and limit monotonicity against the parent.
+            # Authorization-bearing allowlists and the inherited workflow
+            # sequence are complete declarations, not additive generic lists.
+            # The registry separately proves subset/exact monotonicity.
             merged[key] = copy.deepcopy(value)
         elif isinstance(merged[key], list) and isinstance(value, list):
             if composition_strategy == COMPOSITION_INTERSECT:
@@ -418,35 +423,30 @@ def _validate_composition_restriction(
                 },
             )
 
-    # required_sequence must only narrow (check child overlay vs base)
-    base_seq = base_wf.get("required_sequence") or []
-    child_seq = child_wf.get("required_sequence") or []
-    merged_seq = merged_wf.get("required_sequence") or []
-    base_seq_set = set(base_seq)
-    child_seq_set = set(child_seq)
-    if base_seq and not merged_seq:
-        raise PolicyValidationError(
-            "Composition escalation: child policy clears required_sequence declared in base, "
-            "disabling sequence enforcement",
-            details={"base_required_sequence": list(base_seq)},
-        )
-    if base_seq and (added := sorted(child_seq_set - base_seq_set)):
-        raise PolicyValidationError(
-            f"Composition escalation: child adds required_sequence steps not in base: {added}",
-            details={"base_required_sequence": base_seq, "added_steps": added},
-        )
-    if base_seq and child_seq:
-        base_iter = iter(base_seq)
-        if not all(
-            any(base_step == child_step for base_step in base_iter)
-            for child_step in child_seq
-        ):
+    # Until a formal narrowing prover exists, an inherited required sequence
+    # is exact authority. Omission inherits it; every explicit change,
+    # including shortening, reordering, replacement, or clearing, widens.
+    if "required_sequence" in base_wf:
+        base_seq = base_wf.get("required_sequence")
+        child_declares_sequence = "required_sequence" in child_wf
+        child_seq = child_wf.get("required_sequence")
+        merged_seq = merged_wf.get("required_sequence")
+        if child_declares_sequence and child_seq != base_seq:
             raise PolicyValidationError(
-                "Composition escalation: child reorders required_sequence relative "
-                "to the base policy",
+                "Composition escalation: child changes inherited "
+                "required_sequence",
                 details={
                     "base_required_sequence": base_seq,
                     "child_required_sequence": child_seq,
+                },
+            )
+        if merged_seq != base_seq:
+            raise PolicyValidationError(
+                "Composition escalation: effective policy changes inherited "
+                "required_sequence",
+                details={
+                    "base_required_sequence": base_seq,
+                    "merged_required_sequence": merged_seq,
                 },
             )
 

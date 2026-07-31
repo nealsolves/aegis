@@ -231,9 +231,16 @@ Policies compose via `extends` inheritance with recursive merge.
 
 Current merge rules:
 
-* arrays append
+* ordinary arrays use the configured append, union, intersect, or replace
+  strategy
 * dicts recurse
 * scalars replace
+* authorization-bearing `roles`, `tools.allowed_tools`, and workflow
+  participants use complete replacement plus subset validation
+* an inherited `workflow.required_sequence` is exact across composition and
+  guard overlays
+* absent tool configuration and explicit empty `allowed_tools` remain distinct;
+  the latter denies all tool calls
 
 Circular dependency chains are detected and rejected at load time.
 
@@ -400,7 +407,8 @@ The following rules are invariant:
   ceiling remains fixed at `0.90`
 * policy-backed sessions pin the open-time compiled policy; steps and dynamic
   tool calls consume that authority without reload or recompile
-* lint reports the shared compiler's stable error code and path
+* lint reports the shared compiler's stable error code and path, resolving
+  source-relative `extends` chains before compiling composed files
 * architecture fitness tests cover compiler/load calls, compiled-policy alias
   data flow, generic policy-shaped snapshots, session reloads, and compiled
   parameter contracts across guards, enforcement, sessions, tools, risk,

@@ -547,14 +547,14 @@ def test_guard_with_required_condition_missing():
     assert exc_info.value.code == "CONDITION_RESOLUTION_ERROR"
 
 
-def test_merge_policy_blocks_appends_arrays():
-    """_merge_policy_blocks appends arrays."""
+def test_merge_policy_blocks_replaces_authorization_roles():
+    """_merge_policy_blocks applies a restrictive role subset."""
     base = {"roles": ["planner"]}
     overlay = {"roles": ["verifier"]}
 
     _merge_policy_blocks(base, overlay)
 
-    assert base["roles"] == ["planner", "verifier"]
+    assert base["roles"] == ["verifier"]
 
 
 def test_merge_policy_blocks_replaces_scalars():

@@ -29,7 +29,7 @@ from typing import Any
 import yaml
 from jsonschema import Draft7Validator
 
-from aegis._internal.policy_loader import SCHEMAS_DIR
+from aegis._internal.policy_loader import SCHEMAS_DIR, load_policy
 from aegis._internal.errors import PolicyLoadError, PolicyValidationError
 from aegis._internal.policy_compiler import compile_policy
 
@@ -540,9 +540,12 @@ def lint_policy(path: str, *, target_kind: str = "policy") -> list[dict]:
         ))
         return findings
 
-    # 4. Shared compiler semantics. Lint surfaces the compiler's stable code
-    # and path rather than maintaining a second authorization interpretation.
+    # 4. Preserve the compiler's stable diagnostics for standalone policies.
+    # Composed files must first resolve their source-relative extends chain so
+    # lint sees the same effective policy and widening decisions as runtime.
     try:
+        if policy.get("extends"):
+            policy = load_policy(str(p))
         compile_policy(policy, source=str(p), allow_legacy=False)
     except (PolicyLoadError, PolicyValidationError) as exc:
         details = (
