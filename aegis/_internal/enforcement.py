@@ -20,6 +20,7 @@ import hashlib
 import hmac as _hmac_mod
 import json
 import logging
+import math
 import os
 import re
 import time as _time
@@ -42,6 +43,16 @@ from aegis._internal.policy_loader import (
 from aegis._internal.compiled_policy import (
     AuthorityEnvelope,
     CompiledGuard,
+    CompiledGuardAnd,
+    CompiledGuardComparison,
+    CompiledGuardCondition,
+    CompiledGuardLiteral,
+    CompiledGuardMembership,
+    CompiledGuardNode,
+    CompiledGuardNot,
+    CompiledGuardOr,
+    CompiledGuardProgram,
+    CompiledGuardReference,
     CompiledOutputValidator,
     CompiledPolicy,
     CompiledPolicyOverlay,
@@ -291,6 +302,357 @@ def _compiled_output_program_from_dto(
     return compiled
 
 
+def _compiled_guard_node_to_dto(
+    node: CompiledGuardNode | CompiledGuardLiteral | CompiledGuardReference,
+) -> dict[str, Any]:
+    if isinstance(node, CompiledGuardCondition):
+        return {"op": "condition", "name": node.name}
+    if isinstance(node, CompiledGuardLiteral):
+        return {"op": "literal", "value": node.value}
+    if isinstance(node, CompiledGuardReference):
+        return {
+            "op": "reference",
+            "source": node.source,
+            "name": node.name,
+            "declared_type": node.declared_type,
+        }
+    if isinstance(node, CompiledGuardNot):
+        return {
+            "op": "not",
+            "operand": _compiled_guard_node_to_dto(node.operand),
+        }
+    if isinstance(node, CompiledGuardAnd):
+        return {
+            "op": "and",
+            "left": _compiled_guard_node_to_dto(node.left),
+            "right": _compiled_guard_node_to_dto(node.right),
+        }
+    if isinstance(node, CompiledGuardOr):
+        return {
+            "op": "or",
+            "left": _compiled_guard_node_to_dto(node.left),
+            "right": _compiled_guard_node_to_dto(node.right),
+        }
+    if isinstance(node, CompiledGuardComparison):
+        return {
+            "op": "compare",
+            "operator": node.operator,
+            "left": _compiled_guard_node_to_dto(node.left),
+            "right": _compiled_guard_node_to_dto(node.right),
+        }
+    if isinstance(node, CompiledGuardMembership):
+        return {
+            "op": "membership",
+            "value": _compiled_guard_node_to_dto(node.value),
+            "container": _compiled_guard_node_to_dto(node.container),
+        }
+    raise InvocationValidationError(
+        "Compiled guard program contains an unsupported node",
+        details={"field": "guards.program"},
+    )
+
+
+def _compiled_guard_program_to_dto(
+    program: CompiledGuardProgram,
+) -> dict[str, Any]:
+    return {
+        "root": _compiled_guard_node_to_dto(program.root),
+        "expression_bytes": program.expression_bytes,
+        "token_count": program.token_count,
+        "node_count": program.node_count,
+        "max_depth": program.max_depth,
+    }
+
+
+def _compiled_guard_node_from_dto(
+    dto: Mapping[str, Any],
+    *,
+    depth: int = 1,
+) -> CompiledGuardNode | CompiledGuardLiteral | CompiledGuardReference:
+    from aegis._internal.guards import GUARD_EXPRESSION_MAX_DEPTH
+
+    if depth > GUARD_EXPRESSION_MAX_DEPTH:
+        raise InvocationValidationError(
+            "Authenticated compiled guard program exceeds its depth bound",
+            details={"field": "guards.program"},
+        )
+    if type(dto) is not dict or type(dto.get("op")) is not str:
+        raise InvocationValidationError(
+            "Authenticated compiled guard program node is invalid",
+            details={"field": "guards.program"},
+        )
+    op = dto["op"]
+    if op == "condition":
+        if set(dto) != {"op", "name"} or type(dto["name"]) is not str:
+            raise InvocationValidationError(
+                "Authenticated compiled guard condition is invalid",
+                details={"field": "guards.program"},
+            )
+        return CompiledGuardCondition(name=dto["name"])
+    if op == "literal":
+        value = dto.get("value")
+        if (
+            set(dto) != {"op", "value"}
+            or type(value) not in {type(None), bool, int, float, str}
+            or (
+                type(value) is float
+                and not math.isfinite(value)
+            )
+        ):
+            raise InvocationValidationError(
+                "Authenticated compiled guard literal is invalid",
+                details={"field": "guards.program"},
+            )
+        return CompiledGuardLiteral(value=value)
+    if op == "reference":
+        if (
+            set(dto) != {"op", "source", "name", "declared_type"}
+            or dto.get("source") not in {"role", "condition", "context"}
+            or type(dto.get("name")) is not str
+            or dto.get("declared_type")
+            not in {
+                "string",
+                "number",
+                "integer",
+                "boolean",
+                "array",
+                "null",
+            }
+        ):
+            raise InvocationValidationError(
+                "Authenticated compiled guard reference is invalid",
+                details={"field": "guards.program"},
+            )
+        if (
+            dto["source"] == "role"
+            and (
+                dto["name"] != "role"
+                or dto["declared_type"] != "string"
+            )
+        ) or (
+            dto["source"] == "condition"
+            and dto["declared_type"] != "boolean"
+        ):
+            raise InvocationValidationError(
+                "Authenticated compiled guard reference contract is invalid",
+                details={"field": "guards.program"},
+            )
+        return CompiledGuardReference(
+            source=dto["source"],
+            name=dto["name"],
+            declared_type=dto["declared_type"],
+        )
+    if op == "not":
+        if set(dto) != {"op", "operand"}:
+            raise InvocationValidationError(
+                "Authenticated compiled guard negation is invalid",
+                details={"field": "guards.program"},
+            )
+        operand = _compiled_guard_node_from_dto(
+            dto["operand"],
+            depth=depth + 1,
+        )
+        if isinstance(
+            operand,
+            (CompiledGuardLiteral, CompiledGuardReference),
+        ):
+            raise InvocationValidationError(
+                "Authenticated compiled guard negation operand is invalid",
+                details={"field": "guards.program"},
+            )
+        return CompiledGuardNot(operand=operand)
+    if op in {"and", "or"}:
+        if set(dto) != {"op", "left", "right"}:
+            raise InvocationValidationError(
+                "Authenticated compiled guard logical node is invalid",
+                details={"field": "guards.program"},
+            )
+        left = _compiled_guard_node_from_dto(
+            dto["left"],
+            depth=depth + 1,
+        )
+        right = _compiled_guard_node_from_dto(
+            dto["right"],
+            depth=depth + 1,
+        )
+        if isinstance(
+            left,
+            (CompiledGuardLiteral, CompiledGuardReference),
+        ) or isinstance(
+            right,
+            (CompiledGuardLiteral, CompiledGuardReference),
+        ):
+            raise InvocationValidationError(
+                "Authenticated compiled guard logical operand is invalid",
+                details={"field": "guards.program"},
+            )
+        logical_type = CompiledGuardAnd if op == "and" else CompiledGuardOr
+        return logical_type(left=left, right=right)
+    if op == "compare":
+        if (
+            set(dto) != {"op", "operator", "left", "right"}
+            or dto.get("operator") not in {"==", "!=", "<", ">", "<=", ">="}
+        ):
+            raise InvocationValidationError(
+                "Authenticated compiled guard comparison is invalid",
+                details={"field": "guards.program"},
+            )
+        left = _compiled_guard_node_from_dto(
+            dto["left"],
+            depth=depth + 1,
+        )
+        right = _compiled_guard_node_from_dto(
+            dto["right"],
+            depth=depth + 1,
+        )
+        if not isinstance(left, CompiledGuardReference) or not isinstance(
+            right,
+            CompiledGuardLiteral,
+        ):
+            raise InvocationValidationError(
+                "Authenticated compiled guard comparison operands are invalid",
+                details={"field": "guards.program"},
+            )
+        return CompiledGuardComparison(
+            left=left,
+            operator=dto["operator"],
+            right=right,
+        )
+    if op == "membership":
+        if set(dto) != {"op", "value", "container"}:
+            raise InvocationValidationError(
+                "Authenticated compiled guard membership is invalid",
+                details={"field": "guards.program"},
+            )
+        value = _compiled_guard_node_from_dto(
+            dto["value"],
+            depth=depth + 1,
+        )
+        container = _compiled_guard_node_from_dto(
+            dto["container"],
+            depth=depth + 1,
+        )
+        if not isinstance(
+            value,
+            (CompiledGuardLiteral, CompiledGuardReference),
+        ) or not isinstance(container, CompiledGuardReference):
+            raise InvocationValidationError(
+                "Authenticated compiled guard membership operands are invalid",
+                details={"field": "guards.program"},
+            )
+        if (
+            container.source != "context"
+            or container.declared_type not in {"array", "string"}
+        ):
+            raise InvocationValidationError(
+                "Authenticated compiled guard membership contract is invalid",
+                details={"field": "guards.program"},
+            )
+        return CompiledGuardMembership(
+            value=value,
+            container=container,
+        )
+    raise InvocationValidationError(
+        "Authenticated compiled guard program opcode is invalid",
+        details={"field": "guards.program", "opcode": op},
+    )
+
+
+def _compiled_guard_program_from_dto(
+    dto: Mapping[str, Any],
+) -> CompiledGuardProgram:
+    from aegis._internal.guards import (
+        GUARD_EXPRESSION_MAX_BYTES,
+        GUARD_EXPRESSION_MAX_DEPTH,
+        GUARD_EXPRESSION_MAX_NODES,
+        GUARD_EXPRESSION_MAX_TOKENS,
+    )
+
+    expected_fields = {
+        "root",
+        "expression_bytes",
+        "token_count",
+        "node_count",
+        "max_depth",
+    }
+    if type(dto) is not dict or set(dto) != expected_fields:
+        raise InvocationValidationError(
+            "Authenticated compiled guard program is invalid",
+            details={"field": "guards.program"},
+        )
+    metrics = {
+        name: dto[name]
+        for name in expected_fields - {"root"}
+    }
+    if any(type(value) is not int for value in metrics.values()):
+        raise InvocationValidationError(
+            "Authenticated compiled guard program metrics are invalid",
+            details={"field": "guards.program"},
+        )
+    if (
+        not 0 < metrics["expression_bytes"] <= GUARD_EXPRESSION_MAX_BYTES
+        or not 0 < metrics["token_count"] <= GUARD_EXPRESSION_MAX_TOKENS
+        or not 0 < metrics["node_count"] <= GUARD_EXPRESSION_MAX_NODES
+        or not 0 < metrics["max_depth"] <= GUARD_EXPRESSION_MAX_DEPTH
+    ):
+        raise InvocationValidationError(
+            "Authenticated compiled guard program metrics exceed bounds",
+            details={"field": "guards.program"},
+        )
+    root = _compiled_guard_node_from_dto(dto["root"])
+    if isinstance(root, (CompiledGuardLiteral, CompiledGuardReference)):
+        raise InvocationValidationError(
+            "Authenticated compiled guard root is invalid",
+            details={"field": "guards.program"},
+        )
+    pending = [(root, 1)]
+    node_count = 0
+    max_depth = 0
+    while pending:
+        node, depth = pending.pop()
+        node_count += 1
+        max_depth = max(max_depth, depth)
+        if isinstance(node, CompiledGuardNot):
+            pending.append((node.operand, depth + 1))
+        elif isinstance(node, (CompiledGuardAnd, CompiledGuardOr)):
+            pending.append((node.left, depth + 1))
+            pending.append((node.right, depth + 1))
+    if (
+        node_count != metrics["node_count"]
+        or max_depth != metrics["max_depth"]
+    ):
+        raise InvocationValidationError(
+            "Authenticated compiled guard program metrics do not match",
+            details={"field": "guards.program"},
+        )
+    return CompiledGuardProgram(root=root, **metrics)
+
+
+def _compiled_guard_to_dto(guard: CompiledGuard) -> dict[str, Any]:
+    return {
+        "condition": guard.condition,
+        "program": _compiled_guard_program_to_dto(guard.program),
+        "effect": _compiled_overlay_to_dto(guard.effect),
+    }
+
+
+def _compiled_guard_from_dto(dto: Mapping[str, Any]) -> CompiledGuard:
+    if type(dto) is not dict or set(dto) != {
+        "condition",
+        "program",
+        "effect",
+    }:
+        raise InvocationValidationError(
+            "Authenticated compiled guard DTO is invalid",
+            details={"field": "guards"},
+        )
+    return CompiledGuard(
+        condition=dto["condition"],
+        program=_compiled_guard_program_from_dto(dto["program"]),
+        effect=_compiled_overlay_from_dto(dto["effect"]),
+    )
+
+
 def _compiled_overlay_to_dto(
     overlay: CompiledPolicyOverlay,
 ) -> dict[str, Any]:
@@ -334,10 +696,7 @@ def _compiled_overlay_to_dto(
         "postconditions": list(overlay.postconditions),
         **_compiled_output_program_to_dto(overlay.output_validator),
         "guards": [
-            {
-                "condition": item.condition,
-                "effect": _compiled_overlay_to_dto(item.effect),
-            }
+            _compiled_guard_to_dto(item)
             for item in overlay.guards
         ],
         "workflow": (
@@ -385,10 +744,7 @@ def _compiled_policy_to_dto(policy: CompiledPolicy) -> dict[str, Any]:
         ),
         "conditions": _plain_compiled_value(policy.conditions),
         "guards": [
-            {
-                "condition": item.condition,
-                "effect": _compiled_overlay_to_dto(item.effect),
-            }
+            _compiled_guard_to_dto(item)
             for item in policy.guards
         ],
         "preconditions": [
@@ -500,10 +856,7 @@ def _compiled_overlay_from_dto(
         postconditions=tuple(dto["postconditions"]),
         output_validator=_compiled_output_program_from_dto(dto),
         guards=tuple(
-            CompiledGuard(
-                condition=item["condition"],
-                effect=_compiled_overlay_from_dto(item["effect"]),
-            )
+            _compiled_guard_from_dto(item)
             for item in dto["guards"]
         ),
         workflow=(
@@ -544,10 +897,7 @@ def _compiled_policy_from_dto(dto: Mapping[str, Any]) -> CompiledPolicy:
         else None
     )
     guards = tuple(
-        CompiledGuard(
-            condition=item["condition"],
-            effect=_compiled_overlay_from_dto(item["effect"]),
-        )
+        _compiled_guard_from_dto(item)
         for item in dto["guards"]
     )
     preconditions = _compiled_preconditions_from_dto(dto["preconditions"])

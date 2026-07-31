@@ -28,6 +28,7 @@ from aegis._internal.compiled_policy import (
     freeze,
 )
 from aegis._internal.errors import PolicyLoadError, PolicyValidationError
+from aegis._internal.guards import compile_guard_program
 from aegis._internal.patterns import compile_pattern
 from aegis._internal.restrictions import (
     RestrictionComparator,
@@ -679,10 +680,18 @@ def _compile_guard_overlay(
     base: CompiledPolicy,
     raw_guard: Mapping[str, Any],
     *,
+    path: str,
     source: str,
     allow_legacy: bool,
 ) -> CompiledGuard:
     """Compile and prove one raw guard effect at the policy load boundary."""
+    condition = raw_guard["when"]["condition"]
+    program = compile_guard_program(
+        condition,
+        conditions=base.conditions,
+        preconditions=base.preconditions,
+        path=f"{path}.when.condition",
+    )
     raw_effect = raw_guard["then"]
     candidate_raw = copy.deepcopy(dict(base_raw))
     candidate_raw.pop("guards", None)
@@ -766,7 +775,8 @@ def _compile_guard_overlay(
         else ()
     )
     return CompiledGuard(
-        condition=raw_guard["when"]["condition"],
+        condition=condition,
+        program=program,
         effect=CompiledPolicyOverlay(
             roles=(
                 candidate.roles if "roles" in raw_effect else None
@@ -813,6 +823,20 @@ def _compile_policy(
     _validate_security_numbers(detached)
     _validate_json_value(detached)
     _validate_policy_schema(detached, allow_legacy=allow_legacy)
+    for index, raw_guard in enumerate(detached.get("guards", ())):
+        expression = raw_guard["when"]["condition"]
+        try:
+            expression.encode("utf-8")
+        except UnicodeEncodeError as exc:
+            path = f"$.guards[{index}].when.condition"
+            raise PolicyValidationError(
+                f"Invalid guard expression at {path}",
+                code="GUARD_EXPRESSION_INVALID",
+                details={
+                    "path": path,
+                    "reason": "guard expression is not valid UTF-8",
+                },
+            ) from exc
     compiled = _compile_validated_policy(
         detached,
         source=source,
@@ -824,6 +848,7 @@ def _compile_policy(
                 detached,
                 compiled,
                 raw_guard,
+                path=f"$.guards[{index}]",
                 source=f"{source}#guard[{index}]",
                 allow_legacy=allow_legacy,
             )

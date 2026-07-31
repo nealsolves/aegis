@@ -134,10 +134,95 @@ class CompiledPolicyOverlay:
 
 
 @dataclass(frozen=True, slots=True)
+class CompiledGuardLiteral:
+    """One compiler-normalized scalar literal."""
+
+    value: JsonScalar
+
+
+@dataclass(frozen=True, slots=True)
+class CompiledGuardReference:
+    """A closed reference to a compiler-approved runtime value."""
+
+    source: str
+    name: str
+    declared_type: str
+
+
+@dataclass(frozen=True, slots=True)
+class CompiledGuardCondition:
+    """A declared boolean condition lookup."""
+
+    name: str
+
+
+@dataclass(frozen=True, slots=True)
+class CompiledGuardNot:
+    """Logical negation."""
+
+    operand: "CompiledGuardNode"
+
+
+@dataclass(frozen=True, slots=True)
+class CompiledGuardAnd:
+    """Short-circuit logical conjunction."""
+
+    left: "CompiledGuardNode"
+    right: "CompiledGuardNode"
+
+
+@dataclass(frozen=True, slots=True)
+class CompiledGuardOr:
+    """Short-circuit logical disjunction."""
+
+    left: "CompiledGuardNode"
+    right: "CompiledGuardNode"
+
+
+@dataclass(frozen=True, slots=True)
+class CompiledGuardComparison:
+    """A comparison over one closed reference and scalar literal."""
+
+    left: CompiledGuardReference
+    operator: str
+    right: CompiledGuardLiteral
+
+
+@dataclass(frozen=True, slots=True)
+class CompiledGuardMembership:
+    """A scalar/reference membership test against a closed container."""
+
+    value: CompiledGuardLiteral | CompiledGuardReference
+    container: CompiledGuardReference
+
+
+CompiledGuardNode: TypeAlias = (
+    CompiledGuardCondition
+    | CompiledGuardNot
+    | CompiledGuardAnd
+    | CompiledGuardOr
+    | CompiledGuardComparison
+    | CompiledGuardMembership
+)
+
+
+@dataclass(frozen=True, slots=True)
+class CompiledGuardProgram:
+    """Bounded immutable guard expression consumed by authorization."""
+
+    root: CompiledGuardNode
+    expression_bytes: int
+    token_count: int
+    node_count: int
+    max_depth: int
+
+
+@dataclass(frozen=True, slots=True)
 class CompiledGuard:
     """A guard condition paired with its compiler-validated typed effect."""
 
     condition: str
+    program: CompiledGuardProgram
     effect: CompiledPolicyOverlay
 
 

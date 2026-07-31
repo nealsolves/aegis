@@ -11,6 +11,7 @@ comparison operators (==, !=, <, >, <=, >=), and the 'in' operator.
 from __future__ import annotations
 
 import copy
+import math
 import re
 from dataclasses import replace
 from typing import Any, Mapping, Sequence
@@ -18,7 +19,18 @@ from typing import Any, Mapping, Sequence
 from aegis._internal.compiled_policy import (
     AuthorityEnvelope,
     CompiledGuard,
+    CompiledGuardAnd,
+    CompiledGuardComparison,
+    CompiledGuardCondition,
+    CompiledGuardLiteral,
+    CompiledGuardMembership,
+    CompiledGuardNode,
+    CompiledGuardNot,
+    CompiledGuardOr,
+    CompiledGuardProgram,
+    CompiledGuardReference,
     CompiledPolicy,
+    CompiledPrecondition,
     CompiledRetryPolicy,
     CompiledRiskPolicy,
     freeze,
@@ -38,6 +50,12 @@ from aegis._internal.restrictions import (
 # ---------------------------------------------------------------------------
 # AST node types for guard condition expressions
 # ---------------------------------------------------------------------------
+
+GUARD_EXPRESSION_MAX_BYTES = 4096
+GUARD_EXPRESSION_MAX_TOKENS = 256
+GUARD_EXPRESSION_MAX_NODES = 128
+GUARD_EXPRESSION_MAX_DEPTH = 32
+
 
 class _ASTNode:
     """Base class for AST nodes."""
@@ -80,21 +98,29 @@ class _OrExpr(_ASTNode):
 
 class _CompareExpr(_ASTNode):
     """Comparison expression (==, !=, <, >, <=, >=)."""
-    __slots__ = ("left", "op", "right")
+    __slots__ = ("left", "op", "right", "right_kind")
 
-    def __init__(self, left: str, op: str, right: str):
+    def __init__(
+        self,
+        left: str,
+        op: str,
+        right: str,
+        right_kind: str,
+    ):
         self.left = left
         self.op = op
         self.right = right
+        self.right_kind = right_kind
 
 
 class _InExpr(_ASTNode):
     """Membership test: value in field."""
-    __slots__ = ("value", "field")
+    __slots__ = ("value", "field", "value_kind")
 
-    def __init__(self, value: str, field: str):
+    def __init__(self, value: str, field: str, value_kind: str):
         self.value = value
         self.field = field
+        self.value_kind = value_kind
 
 
 # ---------------------------------------------------------------------------
@@ -191,6 +217,7 @@ class _Parser:
         self.tokens = tokens
         self.pos = 0
         self.expr = expr
+        self.parenthesis_depth = 0
 
     def _peek(self) -> tuple[str, str] | None:
         if self.pos < len(self.tokens):
@@ -244,11 +271,20 @@ class _Parser:
             left = _AndExpr(left, right)
         return left
 
-    def _parse_not(self) -> _ASTNode:
+    def _parse_not(self, depth: int = 1) -> _ASTNode:
+        if depth > GUARD_EXPRESSION_MAX_DEPTH:
+            raise GuardEvaluationError(
+                "Guard expression exceeds the maximum depth",
+                details={
+                    "expression": self.expr,
+                    "limit": GUARD_EXPRESSION_MAX_DEPTH,
+                    "metric": "depth",
+                },
+            )
         tok = self._peek()
         if tok and tok == ("KEYWORD", "not"):
             self._advance()
-            operand = self._parse_not()
+            operand = self._parse_not(depth + 1)
             return _NotExpr(operand)
         return self._parse_primary()
 
@@ -263,8 +299,21 @@ class _Parser:
         # Parenthesized expression
         if tok == ("PAREN", "("):
             self._advance()
-            node = self._parse_or()
-            self._expect("PAREN", ")")
+            self.parenthesis_depth += 1
+            if self.parenthesis_depth > GUARD_EXPRESSION_MAX_DEPTH:
+                raise GuardEvaluationError(
+                    "Guard expression exceeds the maximum depth",
+                    details={
+                        "expression": self.expr,
+                        "limit": GUARD_EXPRESSION_MAX_DEPTH,
+                        "metric": "depth",
+                    },
+                )
+            try:
+                node = self._parse_or()
+                self._expect("PAREN", ")")
+            finally:
+                self.parenthesis_depth -= 1
             return node
 
         # String literal followed by 'in' -> in-expression
@@ -275,7 +324,11 @@ class _Parser:
                 val_tok = self._advance()
                 self._advance()  # consume 'in'
                 field_tok = self._expect("IDENT")
-                return _InExpr(val_tok[1], field_tok[1])
+                return _InExpr(
+                    val_tok[1],
+                    field_tok[1],
+                    val_tok[0],
+                )
             # Standalone string not supported
             raise GuardEvaluationError(
                 f"Unexpected string literal in guard expression: '{self.expr}'",
@@ -299,9 +352,18 @@ class _Parser:
                             f"Expected value after operator in: '{self.expr}'",
                             details={"expression": self.expr},
                         )
+                    if val_tok[0] not in {"IDENT", "STRING", "NUMBER"}:
+                        raise GuardEvaluationError(
+                            f"Expected scalar value after operator in: "
+                            f"'{self.expr}'",
+                            details={"expression": self.expr},
+                        )
                     self._advance()
                     return _CompareExpr(
-                        ident_tok[1], op_tok[1], val_tok[1]
+                        ident_tok[1],
+                        op_tok[1],
+                        val_tok[1],
+                        val_tok[0],
                     )
 
                 # ident 'in' ident -> in-expression
@@ -309,7 +371,11 @@ class _Parser:
                     val_tok = self._advance()
                     self._advance()  # consume 'in'
                     field_tok = self._expect("IDENT")
-                    return _InExpr(val_tok[1], field_tok[1])
+                    return _InExpr(
+                        val_tok[1],
+                        field_tok[1],
+                        val_tok[0],
+                    )
 
             # Simple boolean lookup
             ident_tok = self._advance()
@@ -324,6 +390,83 @@ class _Parser:
 # ---------------------------------------------------------------------------
 # Compilation: expression string -> AST
 # ---------------------------------------------------------------------------
+
+def _ast_metrics(root: _ASTNode) -> tuple[int, int]:
+    """Return node count and maximum node depth without recursive traversal."""
+    node_count = 0
+    max_depth = 0
+    pending = [(root, 1)]
+    while pending:
+        node, depth = pending.pop()
+        node_count += 1
+        max_depth = max(max_depth, depth)
+        if node_count > GUARD_EXPRESSION_MAX_NODES:
+            raise GuardEvaluationError(
+                "Guard expression exceeds the maximum node count",
+                details={
+                    "limit": GUARD_EXPRESSION_MAX_NODES,
+                    "metric": "nodes",
+                },
+            )
+        if max_depth > GUARD_EXPRESSION_MAX_DEPTH:
+            raise GuardEvaluationError(
+                "Guard expression exceeds the maximum depth",
+                details={
+                    "limit": GUARD_EXPRESSION_MAX_DEPTH,
+                    "metric": "depth",
+                },
+            )
+        if isinstance(node, _NotExpr):
+            pending.append((node.operand, depth + 1))
+        elif isinstance(node, (_AndExpr, _OrExpr)):
+            pending.append((node.right, depth + 1))
+            pending.append((node.left, depth + 1))
+    return node_count, max_depth
+
+
+def _compile_guard_expression_with_metrics(
+    expr: str,
+) -> tuple[_ASTNode, int, int, int, int]:
+    if not isinstance(expr, str):
+        raise GuardEvaluationError(
+            "Guard condition expression must be a string",
+            details={"expression_type": type(expr).__name__},
+        )
+    expression_bytes = len(expr.encode("utf-8"))
+    if expression_bytes > GUARD_EXPRESSION_MAX_BYTES:
+        raise GuardEvaluationError(
+            "Guard expression exceeds the maximum byte length",
+            details={
+                "limit": GUARD_EXPRESSION_MAX_BYTES,
+                "metric": "bytes",
+            },
+        )
+    normalized = expr.strip()
+    if not normalized:
+        raise GuardEvaluationError(
+            "Empty guard condition expression",
+            details={"expression": normalized},
+        )
+    tokens = _tokenize(normalized)
+    if len(tokens) > GUARD_EXPRESSION_MAX_TOKENS:
+        raise GuardEvaluationError(
+            "Guard expression exceeds the maximum token count",
+            details={
+                "limit": GUARD_EXPRESSION_MAX_TOKENS,
+                "metric": "tokens",
+            },
+        )
+    parser = _Parser(tokens, normalized)
+    root = parser.parse()
+    node_count, max_depth = _ast_metrics(root)
+    return (
+        root,
+        expression_bytes,
+        len(tokens),
+        node_count,
+        max_depth,
+    )
+
 
 def compile_guard_expression(expr: str) -> _ASTNode:
     """
@@ -344,15 +487,205 @@ def compile_guard_expression(expr: str) -> _ASTNode:
     :return: Compiled AST node
     :raises GuardEvaluationError: On syntax errors
     """
-    expr = expr.strip()
-    if not expr:
+    root, _, _, _, _ = _compile_guard_expression_with_metrics(expr)
+    return root
+
+
+def _guard_literal(kind: str, raw: str) -> CompiledGuardLiteral:
+    if kind == "STRING":
+        value: Any = raw
+    elif kind == "NUMBER":
+        value = float(raw) if "." in raw else int(raw)
+    elif kind == "IDENT" and raw == "true":
+        value = True
+    elif kind == "IDENT" and raw == "false":
+        value = False
+    elif kind == "IDENT":
+        value = raw
+    else:
         raise GuardEvaluationError(
-            "Empty guard condition expression",
-            details={"expression": expr},
+            "Guard expression contains an unsupported literal",
+            details={"literal_type": kind},
         )
-    tokens = _tokenize(expr)
-    parser = _Parser(tokens, expr)
-    return parser.parse()
+    return CompiledGuardLiteral(value=value)
+
+
+def _guard_reference(
+    name: str,
+    *,
+    condition_names: frozenset[str],
+    context_types: Mapping[str, str],
+) -> CompiledGuardReference:
+    if name == "role":
+        return CompiledGuardReference(
+            source="role",
+            name="role",
+            declared_type="string",
+        )
+    if name in condition_names:
+        return CompiledGuardReference(
+            source="condition",
+            name=name,
+            declared_type="boolean",
+        )
+    declared_type = context_types.get(name)
+    if declared_type is not None:
+        return CompiledGuardReference(
+            source="context",
+            name=name,
+            declared_type=declared_type,
+        )
+    raise GuardEvaluationError(
+        f"Unknown guard identifier: {name}",
+        details={"identifier": name},
+    )
+
+
+def compile_guard_program(
+    expression: str,
+    *,
+    conditions: Mapping[str, Any],
+    preconditions: Sequence[CompiledPrecondition],
+    path: str,
+) -> CompiledGuardProgram:
+    """Compile one expression into a closed immutable authorization program."""
+    try:
+        (
+            ast,
+            expression_bytes,
+            token_count,
+            node_count,
+            max_depth,
+        ) = _compile_guard_expression_with_metrics(expression)
+        condition_names = frozenset(conditions)
+        context_types = {
+            item.name: item.declared_type
+            for item in preconditions
+            if not item.legacy and item.declared_type is not None
+        }
+
+        def convert(node: _ASTNode) -> CompiledGuardNode:
+            if isinstance(node, _BoolLookup):
+                if node.name not in condition_names:
+                    raise GuardEvaluationError(
+                        f"Unknown guard condition: {node.name}",
+                        details={"identifier": node.name},
+                    )
+                return CompiledGuardCondition(name=node.name)
+            if isinstance(node, _NotExpr):
+                return CompiledGuardNot(operand=convert(node.operand))
+            if isinstance(node, _AndExpr):
+                return CompiledGuardAnd(
+                    left=convert(node.left),
+                    right=convert(node.right),
+                )
+            if isinstance(node, _OrExpr):
+                return CompiledGuardOr(
+                    left=convert(node.left),
+                    right=convert(node.right),
+                )
+            if isinstance(node, _CompareExpr):
+                left = _guard_reference(
+                    node.left,
+                    condition_names=condition_names,
+                    context_types=context_types,
+                )
+                if left.declared_type not in {
+                    "string",
+                    "number",
+                    "integer",
+                    "boolean",
+                    "null",
+                }:
+                    raise GuardEvaluationError(
+                        "Guard comparisons require a scalar reference",
+                        details={"identifier": node.left},
+                    )
+                if (
+                    node.op in {"<", ">", "<=", ">="}
+                    and left.declared_type not in {"number", "integer"}
+                ):
+                    raise GuardEvaluationError(
+                        "Ordered guard comparisons require a numeric reference",
+                        details={"identifier": node.left},
+                    )
+                right = _guard_literal(node.right_kind, node.right)
+                if (
+                    node.op in {"<", ">", "<=", ">="}
+                    and type(right.value) not in {int, float}
+                ):
+                    raise GuardEvaluationError(
+                        "Ordered guard comparisons require a numeric literal",
+                        details={"literal": node.right},
+                    )
+                return CompiledGuardComparison(
+                    left=left,
+                    operator=node.op,
+                    right=right,
+                )
+            if isinstance(node, _InExpr):
+                container = _guard_reference(
+                    node.field,
+                    condition_names=condition_names,
+                    context_types=context_types,
+                )
+                if (
+                    container.source != "context"
+                    or container.declared_type not in {"array", "string"}
+                ):
+                    raise GuardEvaluationError(
+                        "Guard membership requires a declared array or string "
+                        "context field",
+                        details={"identifier": node.field},
+                    )
+                if node.value_kind == "IDENT" and node.value not in {
+                    "true",
+                    "false",
+                }:
+                    value: Any = _guard_reference(
+                        node.value,
+                        condition_names=condition_names,
+                        context_types=context_types,
+                    )
+                    if value.declared_type not in {
+                        "string",
+                        "number",
+                        "integer",
+                        "boolean",
+                        "null",
+                    }:
+                        raise GuardEvaluationError(
+                            "Guard membership values must be scalar",
+                            details={"identifier": node.value},
+                        )
+                else:
+                    value = _guard_literal(node.value_kind, node.value)
+                return CompiledGuardMembership(
+                    value=value,
+                    container=container,
+                )
+            raise GuardEvaluationError(
+                "Guard expression contains an unsupported node",
+                details={"node_type": type(node).__name__},
+            )
+
+        root = convert(ast)
+    except (GuardEvaluationError, RecursionError) as exc:
+        raise PolicyValidationError(
+            f"Invalid guard expression at {path}",
+            code="GUARD_EXPRESSION_INVALID",
+            details={
+                "path": path,
+                "reason": str(exc),
+            },
+        ) from exc
+    return CompiledGuardProgram(
+        root=root,
+        expression_bytes=expression_bytes,
+        token_count=token_count,
+        node_count=node_count,
+        max_depth=max_depth,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -488,6 +821,189 @@ def evaluate_ast(
     )
 
 
+def _resolve_compiled_guard_reference(
+    reference: CompiledGuardReference,
+    resolved_conditions: Mapping[str, bool],
+    invocation: Mapping[str, Any],
+) -> Any:
+    """Resolve only compiler-approved built-in values without object access."""
+    if reference.source == "role":
+        value = invocation.get("role")
+    elif reference.source == "condition":
+        if reference.name not in resolved_conditions:
+            raise GuardEvaluationError(
+                f"Declared condition is unresolved: {reference.name}",
+                details={"condition": reference.name},
+            )
+        value = resolved_conditions[reference.name]
+    elif reference.source == "context":
+        context = invocation.get("context")
+        if type(context) is not dict or reference.name not in context:
+            raise GuardEvaluationError(
+                f"Declared guard context field is missing: {reference.name}",
+                details={"field": reference.name},
+            )
+        value = context[reference.name]
+    else:
+        raise GuardEvaluationError(
+            "Compiled guard reference has an invalid source",
+            details={"source": reference.source},
+        )
+
+    declared_type = reference.declared_type
+    finite_number = (
+        type(value) is int
+        or (
+            type(value) is float
+            and math.isfinite(value)
+        )
+    )
+    valid = (
+        (declared_type == "string" and type(value) is str)
+        or (declared_type == "boolean" and type(value) is bool)
+        or (
+            declared_type == "integer"
+            and type(value) is int
+        )
+        or (
+            declared_type == "number"
+            and finite_number
+        )
+        or (declared_type == "array" and type(value) is list)
+        or (declared_type == "null" and value is None)
+    )
+    if not valid:
+        raise GuardEvaluationError(
+            "Compiled guard reference does not match its declared JSON type",
+            details={
+                "field": reference.name,
+                "declared_type": declared_type,
+                "value_type": type(value).__name__,
+            },
+        )
+    return value
+
+
+def _guard_scalar_equal(left: Any, right: Any) -> bool:
+    """Compare compiler-bounded JSON scalars without Python bool/int aliasing."""
+    if type(left) is not type(right):
+        if (
+            type(left) in {int, float}
+            and type(right) in {int, float}
+        ):
+            return left == right
+        return False
+    return left == right
+
+
+def evaluate_compiled_guard_program(
+    program: CompiledGuardProgram,
+    resolved_conditions: Mapping[str, bool],
+    invocation: Mapping[str, Any],
+) -> bool:
+    """Evaluate a frozen typed program without tokenizing or parsing text."""
+
+    def evaluate(node: CompiledGuardNode, depth: int = 1) -> bool:
+        if depth > GUARD_EXPRESSION_MAX_DEPTH:
+            raise GuardEvaluationError(
+                "Compiled guard program exceeds the maximum depth",
+            )
+        if isinstance(node, CompiledGuardCondition):
+            if node.name not in resolved_conditions:
+                raise GuardEvaluationError(
+                    f"Declared condition is unresolved: {node.name}",
+                    details={"condition": node.name},
+                )
+            value = resolved_conditions[node.name]
+            if type(value) is not bool:
+                raise GuardEvaluationError(
+                    "Resolved guard condition must be boolean",
+                    details={"condition": node.name},
+                )
+            return value
+        if isinstance(node, CompiledGuardNot):
+            return not evaluate(node.operand, depth + 1)
+        if isinstance(node, CompiledGuardAnd):
+            return evaluate(node.left, depth + 1) and evaluate(
+                node.right,
+                depth + 1,
+            )
+        if isinstance(node, CompiledGuardOr):
+            return evaluate(node.left, depth + 1) or evaluate(
+                node.right,
+                depth + 1,
+            )
+        if isinstance(node, CompiledGuardComparison):
+            left = _resolve_compiled_guard_reference(
+                node.left,
+                resolved_conditions,
+                invocation,
+            )
+            right = node.right.value
+            if node.operator == "==":
+                return _guard_scalar_equal(left, right)
+            if node.operator == "!=":
+                return not _guard_scalar_equal(left, right)
+            if (
+                type(left) not in {int, float}
+                or type(right) not in {int, float}
+                or (
+                    type(left) is float
+                    and not math.isfinite(left)
+                )
+                or (
+                    type(right) is float
+                    and not math.isfinite(right)
+                )
+            ):
+                raise GuardEvaluationError(
+                    "Ordered guard comparison requires finite numbers",
+                )
+            if node.operator == "<":
+                return left < right
+            if node.operator == ">":
+                return left > right
+            if node.operator == "<=":
+                return left <= right
+            if node.operator == ">=":
+                return left >= right
+            raise GuardEvaluationError(
+                "Compiled guard comparison has an invalid operator",
+                details={"operator": node.operator},
+            )
+        if isinstance(node, CompiledGuardMembership):
+            if isinstance(node.value, CompiledGuardReference):
+                value = _resolve_compiled_guard_reference(
+                    node.value,
+                    resolved_conditions,
+                    invocation,
+                )
+            else:
+                value = node.value.value
+            container = _resolve_compiled_guard_reference(
+                node.container,
+                resolved_conditions,
+                invocation,
+            )
+            if type(container) is str:
+                return type(value) is str and value in container
+            if type(container) is list:
+                return any(
+                    type(item) in {type(None), bool, int, float, str}
+                    and _guard_scalar_equal(value, item)
+                    for item in container
+                )
+            raise GuardEvaluationError(
+                "Compiled guard membership container is not supported",
+            )
+        raise GuardEvaluationError(
+            "Compiled guard program has an invalid node",
+            details={"node_type": type(node).__name__},
+        )
+
+    return evaluate(program.root)
+
+
 # ---------------------------------------------------------------------------
 # Public API (backward-compatible)
 # ---------------------------------------------------------------------------
@@ -559,8 +1075,8 @@ def evaluate_compiled_guards(
 
     for guard in guards:
         condition_expr = guard.condition
-        matched = _evaluate_condition_expression(
-            condition_expr,
+        matched = evaluate_compiled_guard_program(
+            guard.program,
             resolved_conditions,
             effective_invocation,
         )
