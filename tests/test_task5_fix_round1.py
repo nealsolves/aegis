@@ -116,6 +116,8 @@ def test_split_dto_schema_tampering_cannot_bypass_phase_b(tmp_path: Path) -> Non
         lambda dto: dto.update(policy_contract_version="forged"),
         lambda dto: dto.update(pattern_engine="forged"),
         lambda dto: dto.update(canonicalization_profile="forged"),
+        lambda dto: dto.update(output_schema_program_digest="0" * 64),
+        lambda dto: dto["output_schema_pattern_sources"].append(".*"),
     ],
 )
 def test_every_compiled_dto_field_is_bound_to_authenticated_content(

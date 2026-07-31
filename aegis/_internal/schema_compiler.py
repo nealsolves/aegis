@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 import copy
+import hashlib
+import json
+from collections import OrderedDict
 from contextvars import ContextVar
+from dataclasses import dataclass
 from types import MappingProxyType
+from threading import RLock
 from typing import Any, Iterator, Mapping
 from urllib.parse import unquote
 
@@ -41,11 +46,28 @@ _SCHEMA_ARRAY_KEYWORDS = frozenset({"allOf", "anyOf", "oneOf"})
 _SCHEMA_MAPPING_KEYWORDS = frozenset(
     {"definitions", "dependencies", "patternProperties", "properties"}
 )
+_PROGRAM_DIGEST_DOMAIN = b"aegis.output-validation-program.v1\x00"
+_RUNTIME_CACHE_MAX_ENTRIES = 256
 _UNRESOLVED_POINTER = object()
 _ACTIVE_PATTERNS: ContextVar[Mapping[str, CompiledPattern] | None] = ContextVar(
     "aegis_output_schema_patterns",
     default=None,
 )
+
+
+@dataclass(slots=True)
+class _ValidationRuntime:
+    """Private mutable runtime derived from one immutable program."""
+
+    program_bytes: bytes
+    validator: Any
+    registry: Registry
+    patterns: Mapping[str, CompiledPattern]
+    pattern_sources: tuple[str, ...]
+
+
+_RUNTIME_CACHE: OrderedDict[str, _ValidationRuntime] = OrderedDict()
+_RUNTIME_CACHE_LOCK = RLock()
 
 
 def _active_pattern(source: str) -> CompiledPattern:
@@ -140,6 +162,33 @@ _RE2_DRAFT_7_VALIDATOR = validators.extend(
 
 def _child_path(path: str, part: object) -> str:
     return f"{path}.{part}"
+
+
+def _plain_schema(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {
+            key: _plain_schema(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, tuple):
+        return [_plain_schema(item) for item in value]
+    return value
+
+
+def _program_bytes(schema: Mapping[str, Any]) -> bytes:
+    return json.dumps(
+        _plain_schema(schema),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+
+
+def _program_digest(program_bytes: bytes) -> str:
+    return hashlib.sha256(
+        _PROGRAM_DIGEST_DOMAIN + program_bytes,
+    ).hexdigest()
 
 
 def _resolve_local_pointer(
@@ -300,6 +349,88 @@ def _inspect_schema(
                 )
 
 
+def _new_runtime(
+    detached: Mapping[str, Any],
+    patterns: Mapping[str, CompiledPattern],
+    program_bytes: bytes,
+) -> _ValidationRuntime:
+    registry = Registry()
+    return _ValidationRuntime(
+        program_bytes=program_bytes,
+        validator=_RE2_DRAFT_7_VALIDATOR(
+            detached,
+            registry=registry,
+        ),
+        registry=registry,
+        patterns=MappingProxyType(dict(patterns)),
+        pattern_sources=tuple(sorted(patterns)),
+    )
+
+
+def _store_runtime(
+    digest: str,
+    runtime: _ValidationRuntime,
+) -> None:
+    with _RUNTIME_CACHE_LOCK:
+        _RUNTIME_CACHE[digest] = runtime
+        _RUNTIME_CACHE.move_to_end(digest)
+        while len(_RUNTIME_CACHE) > _RUNTIME_CACHE_MAX_ENTRIES:
+            _RUNTIME_CACHE.popitem(last=False)
+
+
+def _rebuild_runtime(program_bytes: bytes) -> _ValidationRuntime:
+    detached = json.loads(program_bytes)
+    patterns: dict[str, CompiledPattern] = {}
+    _inspect_schema(
+        detached,
+        path="$",
+        patterns=patterns,
+        root=detached,
+        active_targets=frozenset(),
+    )
+    Draft7Validator.check_schema(detached)
+    return _new_runtime(detached, patterns, program_bytes)
+
+
+def _runtime_for(
+    compiled: CompiledOutputValidator,
+    program_bytes: bytes,
+) -> _ValidationRuntime:
+    with _RUNTIME_CACHE_LOCK:
+        runtime = _RUNTIME_CACHE.get(compiled.program_digest)
+        if runtime is not None:
+            _RUNTIME_CACHE.move_to_end(compiled.program_digest)
+
+    if runtime is None:
+        runtime = _rebuild_runtime(program_bytes)
+        _store_runtime(compiled.program_digest, runtime)
+
+    try:
+        runtime_schema_bytes = _program_bytes(runtime.validator.schema)
+    except (TypeError, ValueError):
+        runtime_schema_bytes = b""
+    patterns_intact = all(
+        pattern.source == source
+        and getattr(pattern._compiled, "pattern", None) == source
+        for source, pattern in runtime.patterns.items()
+    )
+    if (
+        runtime.program_bytes != program_bytes
+        or runtime_schema_bytes != program_bytes
+        or runtime.pattern_sources != compiled.pattern_sources
+        or tuple(sorted(runtime.patterns)) != compiled.pattern_sources
+        or not patterns_intact
+        or type(runtime.validator) is not _RE2_DRAFT_7_VALIDATOR
+        or runtime.validator._registry is not runtime.registry
+        or runtime.registry != Registry()
+    ):
+        raise SchemaValidationError(
+            "Output validation program runtime integrity check failed",
+            code="OUTPUT_SCHEMA_PROGRAM_INTEGRITY_ERROR",
+        )
+    return runtime
+
+
 def compile_output_schema(
     schema: Mapping[str, Any],
 ) -> CompiledOutputValidator:
@@ -330,11 +461,20 @@ def compile_output_schema(
             },
         ) from exc
 
-    validator = _RE2_DRAFT_7_VALIDATOR(detached, registry=Registry())
+    try:
+        program_bytes = _program_bytes(detached)
+    except (TypeError, ValueError) as exc:
+        raise PolicyValidationError(
+            "Output schema is not canonical JSON",
+            code="OUTPUT_SCHEMA_INVALID",
+        ) from exc
+    digest = _program_digest(program_bytes)
+    runtime = _new_runtime(detached, patterns, program_bytes)
+    _store_runtime(digest, runtime)
     return CompiledOutputValidator(
         schema=freeze(detached),
-        validator=validator,
-        patterns=MappingProxyType(dict(patterns)),
+        program_digest=digest,
+        pattern_sources=runtime.pattern_sources,
     )
 
 
@@ -359,11 +499,24 @@ def validate_compiled_output(
     value: Any,
 ) -> None:
     """Run a compiled validator and map its first deterministic failure."""
-    token = _ACTIVE_PATTERNS.set(compiled.patterns)
+    try:
+        program_bytes = _program_bytes(compiled.schema)
+    except (TypeError, ValueError) as exc:
+        raise SchemaValidationError(
+            "Output validation program is not canonical JSON",
+            code="OUTPUT_SCHEMA_PROGRAM_INTEGRITY_ERROR",
+        ) from exc
+    if _program_digest(program_bytes) != compiled.program_digest:
+        raise SchemaValidationError(
+            "Output validation program digest mismatch",
+            code="OUTPUT_SCHEMA_PROGRAM_INTEGRITY_ERROR",
+        )
+    runtime = _runtime_for(compiled, program_bytes)
+    token = _ACTIVE_PATTERNS.set(runtime.patterns)
     try:
         try:
             errors = sorted(
-                compiled.validator.iter_errors(value),
+                runtime.validator.iter_errors(value),
                 key=_error_sort_key,
             )
         except PatternInputTooLargeError as exc:

@@ -42,6 +42,7 @@ from aegis._internal.policy_loader import (
 from aegis._internal.compiled_policy import (
     AuthorityEnvelope,
     CompiledGuard,
+    CompiledOutputValidator,
     CompiledPolicy,
     CompiledPolicyOverlay,
     CompiledPrecondition,
@@ -241,6 +242,55 @@ def _compiled_precondition_to_dto(
     }
 
 
+def _compiled_output_program_to_dto(
+    program: CompiledOutputValidator | None,
+) -> dict[str, Any]:
+    return {
+        "output_schema": (
+            _plain_compiled_value(program.schema)
+            if program is not None
+            else None
+        ),
+        "output_schema_program_digest": (
+            program.program_digest
+            if program is not None
+            else None
+        ),
+        "output_schema_pattern_sources": (
+            list(program.pattern_sources)
+            if program is not None
+            else None
+        ),
+    }
+
+
+def _compiled_output_program_from_dto(
+    dto: Mapping[str, Any],
+) -> CompiledOutputValidator | None:
+    schema = dto["output_schema"]
+    expected_digest = dto["output_schema_program_digest"]
+    expected_sources = dto["output_schema_pattern_sources"]
+    if schema is None:
+        if expected_digest is not None or expected_sources is not None:
+            raise InvocationValidationError(
+                "Authenticated compiled output program metadata is invalid",
+                details={"field": "output_schema"},
+            )
+        return None
+
+    compiled = compile_output_schema(schema)
+    if (
+        compiled.program_digest != expected_digest
+        or list(compiled.pattern_sources) != expected_sources
+    ):
+        raise InvocationValidationError(
+            "Authenticated compiled output program metadata does not match "
+            "its schema",
+            details={"field": "output_schema"},
+        )
+    return compiled
+
+
 def _compiled_overlay_to_dto(
     overlay: CompiledPolicyOverlay,
 ) -> dict[str, Any]:
@@ -282,11 +332,7 @@ def _compiled_overlay_to_dto(
             for item in overlay.preconditions
         ],
         "postconditions": list(overlay.postconditions),
-        "output_schema": (
-            _plain_compiled_value(overlay.output_validator.schema)
-            if overlay.output_validator is not None
-            else None
-        ),
+        **_compiled_output_program_to_dto(overlay.output_validator),
         "guards": [
             {
                 "condition": item.condition,
@@ -350,11 +396,7 @@ def _compiled_policy_to_dto(policy: CompiledPolicy) -> dict[str, Any]:
             for item in policy.preconditions
         ],
         "postconditions": list(policy.postconditions),
-        "output_schema": (
-            _plain_compiled_value(policy.output_validator.schema)
-            if policy.output_validator is not None
-            else None
-        ),
+        **_compiled_output_program_to_dto(policy.output_validator),
         "workflow": _plain_compiled_value(policy.workflow),
     }
 
@@ -456,11 +498,7 @@ def _compiled_overlay_from_dto(
         risk=risk,
         preconditions=_compiled_preconditions_from_dto(dto["preconditions"]),
         postconditions=tuple(dto["postconditions"]),
-        output_validator=(
-            compile_output_schema(dto["output_schema"])
-            if dto["output_schema"] is not None
-            else None
-        ),
+        output_validator=_compiled_output_program_from_dto(dto),
         guards=tuple(
             CompiledGuard(
                 condition=item["condition"],
@@ -513,11 +551,7 @@ def _compiled_policy_from_dto(dto: Mapping[str, Any]) -> CompiledPolicy:
         for item in dto["guards"]
     )
     preconditions = _compiled_preconditions_from_dto(dto["preconditions"])
-    output_validator = (
-        compile_output_schema(dto["output_schema"])
-        if dto["output_schema"] is not None
-        else None
-    )
+    output_validator = _compiled_output_program_from_dto(dto)
     authority = AuthorityEnvelope(
         roles=frozenset(dto["roles"]),
         conditions=freeze(dto["conditions"]),

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import copy
-from dataclasses import dataclass, field as dataclass_field
+from dataclasses import dataclass
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Mapping, TypeAlias
 
@@ -218,17 +218,14 @@ class CompiledPrecondition:
 
 @dataclass(frozen=True, slots=True)
 class CompiledOutputValidator:
-    """Detached output schema and its reusable non-retrieving validator."""
+    """Immutable output-validation program with no reachable runtime handles."""
 
     schema: Mapping[str, JsonValue]
-    validator: Any = dataclass_field(repr=False, compare=False)
-    patterns: Mapping[str, CompiledPattern] = dataclass_field(
-        repr=False,
-        compare=False,
-    )
+    program_digest: str
+    pattern_sources: tuple[str, ...]
 
     def validate(self, value: Any) -> None:
-        """Validate using the stored schema snapshot and compiled RE2 programs."""
+        """Validate through the private runtime for this immutable program."""
         from aegis._internal.schema_compiler import validate_compiled_output
 
         validate_compiled_output(self, value)

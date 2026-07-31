@@ -146,7 +146,7 @@ def test_recursive_same_document_ref_compiles_reachable_pattern_once():
         }
     )
 
-    assert tuple(validator.patterns) == ("^ok$",)
+    assert validator.pattern_sources == ("^ok$",)
     validator.validate({"value": "ok", "child": {"value": "ok"}})
     with pytest.raises(SchemaValidationError):
         validator.validate({"value": "ok", "child": {"value": "not-ok"}})
