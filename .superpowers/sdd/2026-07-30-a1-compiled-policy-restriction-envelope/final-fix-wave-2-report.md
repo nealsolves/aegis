@@ -324,3 +324,67 @@ No open correctness or security concern remains for the five authorized
 findings. The only observed non-green static output is the pre-existing lint
 debt in two legacy test files described above; it is unrelated to modified
 lines and was not expanded into this security fix wave.
+
+## Residual hardening wave
+
+This human-authorized residual wave started from commit
+`3e6cc04ac6dfd283727d20197f1018a4c4774312` and closed two additional
+defense-in-depth gaps.
+
+Diagnostic policy entrypoints now use the shared, source-aware
+`load_resolve_compile_policy` boundary helper. It returns only a typed
+`CompiledPolicy` or typed diagnostics; lint and CLI consumers no longer retain
+or inspect a raw policy loaded from disk. The architecture fitness control
+flow is correspondingly simpler and stricter: production diagnostic
+entrypoints cannot directly call both load and compile, and the shared helper
+is restricted to the loader boundary plus the two authorized diagnostic
+consumers. Regression cases cover unrelated calls, attribute/subscript/get
+access, aliases, divergent conditional compilation, early return, exceptions,
+and authorization consumers.
+
+Pattern runtime authentication now uses a private, bounded, strong-reference
+attestation registry. An attestation binds the source digest to the exact RE2
+program object, every exposed RE2 option, and program metadata. Cache
+verification requires the cached handle to be the attested handle by identity.
+Lookup, attestation, repair, and evaluation remain inside the same lock-managed
+helper, so no compiled handle escapes and a pinned decision cannot be weakened
+by concurrent replacement.
+
+The initial RED evidence was:
+
+```text
+diagnostic architecture: 3 failed, 7 passed, 13 deselected
+pattern runtime:          3 failed, 18 deselected
+combined residual cases: 2 failed, 16 deselected
+```
+
+Focused GREEN across the affected architecture, lint, CLI, pattern, and final
+wave suites:
+
+```text
+148 passed in 1.63s
+```
+
+Additional affected-suite verification:
+
+```text
+authority and composition:                 181 passed in 2.18s
+lint and final-wave regressions:            104 passed in 1.47s
+pattern, session, DTO, and output safety:   187 passed in 2.81s
+expanded A1 security gate:                  274 passed in 3.23s
+```
+
+Final full-suite verification:
+
+```text
+3483 passed, 1 skipped, 13 warnings in 49.15s
+```
+
+Changed-scope flake8, brand/version parity, public-document import isolation,
+policy schema byte parity, compileall, and `git diff --check` all passed. The
+documentation parity gate initially identified this already tracked report as
+unclassified; adding it to the historical-artifact manifest resolved the
+classification, after which all documentation parity checks passed.
+
+No residual correctness or security concern was found. The unrelated legacy
+whole-file test lint debt recorded above remains unchanged.

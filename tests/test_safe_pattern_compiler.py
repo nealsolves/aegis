@@ -178,3 +178,76 @@ def test_concurrent_cache_corruption_cannot_weaken_evaluation():
     assert not corruptor.is_alive()
     assert not evaluator.is_alive()
     assert decisions == [False]
+
+
+def _case_insensitive_handle():
+    options = re2.Options()
+    options.case_sensitive = False
+    return re2.compile("^ok$", options=options)
+
+
+def test_same_source_altered_options_handle_is_replaced_before_use():
+    pattern = compile_pattern("^ok$", path=PATTERN_PATH)
+    stale_runtime = pattern_module._RUNTIME_CACHE[pattern.program_digest]
+    altered = _case_insensitive_handle()
+    assert type(altered) is type(stale_runtime.compiled)
+    assert altered.pattern == stale_runtime.compiled.pattern
+    object.__setattr__(stale_runtime, "compiled", altered)
+
+    assert pattern.fullmatch("OK") is False
+    assert pattern_module._RUNTIME_CACHE[pattern.program_digest] is not (
+        stale_runtime
+    )
+
+
+def test_whole_cache_entry_replacement_cannot_replace_attested_handle():
+    pattern = compile_pattern("^ok$", path=PATTERN_PATH)
+    original = pattern_module._RUNTIME_CACHE[pattern.program_digest]
+    re2.purge()
+    replacement_handle = re2.compile("^ok$")
+    assert replacement_handle is not original.compiled
+    replacement = pattern_module._PatternRuntime(
+        program_bytes=original.program_bytes,
+        compiled=replacement_handle,
+    )
+    pattern_module._RUNTIME_CACHE[pattern.program_digest] = replacement
+
+    assert pattern.fullmatch("ok") is True
+    assert pattern_module._RUNTIME_CACHE[pattern.program_digest] is not (
+        replacement
+    )
+
+
+def test_concurrent_same_source_handle_replacement_cannot_change_decision():
+    pattern = compile_pattern("^ok$", path=PATTERN_PATH)
+    original = pattern_module._RUNTIME_CACHE[pattern.program_digest]
+    corrupted = Event()
+    release_cache_lock = Event()
+    decisions = []
+
+    def replace_cache_entry():
+        with pattern_module._RUNTIME_CACHE_LOCK:
+            pattern_module._RUNTIME_CACHE[pattern.program_digest] = (
+                pattern_module._PatternRuntime(
+                    program_bytes=original.program_bytes,
+                    compiled=_case_insensitive_handle(),
+                )
+            )
+            corrupted.set()
+            release_cache_lock.wait(timeout=2)
+
+    def evaluate_pattern():
+        decisions.append(pattern.fullmatch("OK"))
+
+    corruptor = Thread(target=replace_cache_entry)
+    corruptor.start()
+    assert corrupted.wait(timeout=2)
+    evaluator = Thread(target=evaluate_pattern)
+    evaluator.start()
+    release_cache_lock.set()
+    corruptor.join(timeout=2)
+    evaluator.join(timeout=2)
+
+    assert not corruptor.is_alive()
+    assert not evaluator.is_alive()
+    assert decisions == [False]

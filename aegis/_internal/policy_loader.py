@@ -26,6 +26,7 @@ from typing import Any, Callable
 from jsonschema import Draft7Validator
 
 from aegis._internal.errors import PolicyLoadError, PolicyValidationError
+from aegis._internal.compiled_policy import CompiledPolicy
 from aegis._internal.policy_compiler import compile_policy
 from aegis._internal.restrictions import (
     RestrictionComparator,
@@ -904,6 +905,31 @@ def load_policy(
         policy.get("policy_version"),
     )
     return policy
+
+
+def load_resolve_compile_policy(
+    policy_file: str,
+    *,
+    parsed_policy: dict[str, Any] | None = None,
+    allow_legacy: bool = False,
+) -> CompiledPolicy:
+    """Return typed diagnostics authority without exposing a loaded mapping.
+
+    A caller that already parsed a standalone file may supply that mapping to
+    preserve compiler-first diagnostic normalization. Any declared
+    ``extends`` chain is resolved and composition-checked by ``load_policy``
+    before compilation. The resolved raw mapping never crosses this boundary.
+    """
+    policy = (
+        parsed_policy
+        if parsed_policy is not None and "extends" not in parsed_policy
+        else load_policy(policy_file)
+    )
+    return compile_policy(
+        policy,
+        source=policy_file,
+        allow_legacy=allow_legacy,
+    )
 
 
 async def load_policy_async(

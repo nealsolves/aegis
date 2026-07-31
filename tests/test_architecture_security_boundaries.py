@@ -149,20 +149,18 @@ _COMPILE_ALLOWLIST = {
     ("enforcement", "_load_compiled_policy"),
     ("enforcement", "_compile_cached_policy"),
     ("policy_loader", "_compile_and_compare_composition"),
+    ("policy_loader", "load_resolve_compile_policy"),
     ("retry", "with_retry"),
-    ("workflow_lint", "lint_policy"),
-    ("cli", "_lint_policy"),
-    ("cli", "_validate_policy"),
 }
 _LOAD_ALLOWLIST = {
     ("enforcement", "_load_compiled_policy"),
     ("policy_loader", "*"),
     ("retry", "with_retry"),
-    ("cli", "_validate_policy"),
 }
-_DIAGNOSTIC_LOAD_COMPILE_ALLOWLIST = {
+_DIAGNOSTIC_HELPER_ALLOWLIST = {
     ("workflow_lint", "lint_policy"),
     ("cli", "_lint_policy"),
+    ("cli", "_validate_policy"),
 }
 _BANNED_SNAPSHOT_FIELDS = {
     "raw",
@@ -203,6 +201,7 @@ _COMPILED_BOUNDARIES = {
 _SEMANTIC_CALL_KINDS = {
     "compile_policy": "compile_policy",
     "load_policy": "load_policy",
+    "load_resolve_compile_policy": "load_resolve_compile_policy",
     "enforce": "reload-capable-entrypoint",
     "enforce_invocation": "reload-capable-entrypoint",
     "enforce_invocation_async": "reload-capable-entrypoint",
@@ -314,89 +313,6 @@ def _semantic_call_kind(call: ast.Call, aliases: dict[str, str]) -> str | None:
     return None
 
 
-def _diagnostic_load_flows_directly_to_compile(
-    load_call: ast.Call,
-    function: ast.FunctionDef | ast.AsyncFunctionDef,
-    *,
-    aliases: dict[str, str],
-    parents: dict[ast.AST, ast.AST],
-) -> bool:
-    """Prove a diagnostic load assignment is consumed by the next compiler."""
-    assignment = parents.get(load_call)
-    if (
-        not isinstance(assignment, (ast.Assign, ast.AnnAssign))
-        or assignment.value is not load_call
-    ):
-        return False
-    assigned_names = _assigned_names(assignment)
-    if len(assigned_names) != 1:
-        return False
-    loaded_name = assigned_names[0]
-
-    later_semantic_calls = sorted(
-        (
-            candidate
-            for candidate in ast.walk(function)
-            if (
-                isinstance(candidate, ast.Call)
-                and candidate.lineno > load_call.lineno
-                and _semantic_call_kind(candidate, aliases)
-                in {"load_policy", "compile_policy"}
-            )
-        ),
-        key=lambda candidate: (candidate.lineno, candidate.col_offset),
-    )
-    if not later_semantic_calls:
-        return False
-    compile_call = later_semantic_calls[0]
-    if _semantic_call_kind(compile_call, aliases) != "compile_policy":
-        return False
-    if not any(
-        isinstance(argument, ast.Name)
-        and argument.id == loaded_name
-        for argument in compile_call.args
-    ):
-        return False
-
-    load_position = (load_call.lineno, load_call.col_offset)
-    compile_position = (compile_call.lineno, compile_call.col_offset)
-    for candidate in ast.walk(function):
-        if (
-            isinstance(candidate, ast.Name)
-            and isinstance(candidate.ctx, ast.Load)
-            and candidate.id == loaded_name
-            and load_position
-            < (candidate.lineno, candidate.col_offset)
-            < compile_position
-        ):
-            return False
-
-    for candidate in ast.walk(function):
-        if (
-            isinstance(
-                candidate,
-                (ast.Return, ast.Raise, ast.Break, ast.Continue),
-            )
-            and load_call.lineno
-            < candidate.lineno
-            < compile_call.lineno
-        ):
-            return False
-        if (
-            not isinstance(candidate, (ast.Assign, ast.AnnAssign))
-            or candidate is assignment
-            or not (
-                load_call.lineno
-                < candidate.lineno
-                < compile_call.lineno
-            )
-        ):
-            continue
-        if loaded_name in _assigned_names(candidate):
-            return False
-    return True
-
-
 def _compiled_attributes(tree: ast.AST) -> set[str]:
     attributes: set[str] = set()
     for node in ast.walk(tree):
@@ -462,7 +378,11 @@ def _compiled_return_names(tree: ast.AST) -> set[str]:
         for node in ast.walk(tree)
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         and _annotation_guarantees_compiled_policy(node.returns)
-    } | {"CompiledPolicy", "compile_policy"}
+    } | {
+        "CompiledPolicy",
+        "compile_policy",
+        "load_resolve_compile_policy",
+    }
 
 
 def _compiled_local_names(
@@ -642,19 +562,19 @@ def _fitness_violations(
                     called == "load_policy"
                     and (module_name, function_name) not in _LOAD_ALLOWLIST
                     and (module_name, "*") not in _LOAD_ALLOWLIST
-                    and not (
-                        (module_name, function_name)
-                        in _DIAGNOSTIC_LOAD_COMPILE_ALLOWLIST
-                        and _diagnostic_load_flows_directly_to_compile(
-                            call,
-                            node,
-                            aliases=aliases,
-                            parents=parents,
-                        )
-                    )
                 ):
                     violations.append(
                         f"{module_name}:{call.lineno}:{function_name}:load_policy"
+                    )
+                if (
+                    called == "load_resolve_compile_policy"
+                    and (module_name, function_name)
+                    not in _DIAGNOSTIC_HELPER_ALLOWLIST
+                    and module_name != "policy_loader"
+                ):
+                    violations.append(
+                        f"{module_name}:{call.lineno}:{function_name}:"
+                        "load_resolve_compile_policy"
                     )
                 if (
                     called == "reload-capable-entrypoint"
@@ -851,19 +771,23 @@ def _lint_policy(path):
     "intervening",
     [
         "authorize_from_raw(policy)",
+        "emit_metric()",
         "_ = policy.roles",
         '_ = policy["roles"]',
         '_ = policy.get("roles")',
         "alias = policy",
         "if should_skip:\n        return []",
+        "if invalid:\n        raise ValueError('invalid')",
     ],
     ids=[
         "authorization-call",
+        "unrelated-call",
         "attribute-read",
         "subscript-read",
         "get-read",
         "alias-assignment",
         "branch-early-return",
+        "branch-exception",
     ],
 )
 def test_fitness_analyzer_rejects_intervening_raw_policy_consumer(
@@ -883,6 +807,54 @@ def _lint_policy(path):
         item.endswith(":_lint_policy:load_policy")
         for item in violations
     )
+
+
+def test_fitness_analyzer_rejects_divergent_conditional_compile() -> None:
+    """Every path from a raw load must compile that exact loaded value."""
+    source = """
+def _lint_policy(path, use_resolved):
+    policy = load_policy(path)
+    if use_resolved:
+        return compile_policy(policy, source=str(path))
+    return compile_policy({}, source=str(path))
+"""
+
+    violations = _fitness_violations(source, module_name="cli")
+
+    assert any(
+        item.endswith(":_lint_policy:load_policy")
+        for item in violations
+    )
+
+
+def test_production_diagnostic_entrypoints_do_not_load_raw_policies() -> None:
+    """Lint/CLI must call one typed source-aware diagnostic boundary."""
+    entrypoints = {
+        "workflow_lint": ("lint_policy",),
+        "cli": ("_lint_policy", "_validate_policy"),
+    }
+    violations = []
+    for module_name, function_names in entrypoints.items():
+        tree = ast.parse(
+            _MODULES[module_name].read_text(encoding="utf-8"),
+        )
+        for function in (
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name in function_names
+        ):
+            for call in (
+                node
+                for node in ast.walk(function)
+                if isinstance(node, ast.Call)
+            ):
+                if _call_name(call) in {"load_policy", "compile_policy"}:
+                    violations.append(
+                        f"{module_name}:{function.name}:{_call_name(call)}"
+                    )
+
+    assert violations == []
 
 
 def test_fitness_analyzer_rejects_load_compile_flow_in_enforcement() -> None:

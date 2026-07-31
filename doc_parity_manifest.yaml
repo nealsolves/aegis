@@ -103,6 +103,7 @@ documentation_inventory:
     - .superpowers/sdd/2026-07-29-issue-45-aws-google-kms-adapters/task-9-report.md
     - .superpowers/sdd/2026-07-29-issue-45-aws-google-kms-adapters/final-fix-wave-report.md
     - .superpowers/sdd/2026-07-30-a1-compiled-policy-restriction-envelope/task-5-report.md
+    - .superpowers/sdd/2026-07-30-a1-compiled-policy-restriction-envelope/final-fix-wave-2-report.md
   instruction_system:
     - CLAUDE.md
     - .claude/**

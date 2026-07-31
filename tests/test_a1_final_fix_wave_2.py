@@ -8,7 +8,10 @@ from textwrap import dedent
 import pytest
 import re2
 
+import aegis._internal.patterns as pattern_module
+import aegis._internal.policy_loader as policy_loader_module
 from aegis._internal.cli import _lint_policy
+from aegis._internal.compiled_policy import CompiledPolicy
 from aegis._internal.enforcement import (
     AEGIS,
     _compiled_policy_to_dto,
@@ -364,6 +367,39 @@ def test_file_lint_surfaces_extends_load_failures(
     assert cli_errors[0].startswith("[POLICY_LOAD_ERROR]")
 
 
+def test_source_aware_diagnostic_boundary_returns_typed_compiled_policy(
+    tmp_path: Path,
+):
+    parent = tmp_path / "parent.yaml"
+    child = tmp_path / "nested" / "child.yaml"
+    _write_policy(
+        parent,
+        """
+        policy_version: "2.0"
+        roles: [planner, reviewer]
+        """,
+    )
+    _write_policy(
+        child,
+        """
+        extends: "../parent.yaml"
+        policy_version: "2.0"
+        roles: [reviewer]
+        """,
+    )
+
+    helper = getattr(
+        policy_loader_module,
+        "load_resolve_compile_policy",
+        None,
+    )
+    assert callable(helper)
+    compiled = helper(str(child), allow_legacy=False)
+
+    assert isinstance(compiled, CompiledPolicy)
+    assert compiled.roles == ("reviewer",)
+
+
 def test_compiled_pattern_exposes_only_authenticated_immutable_metadata():
     compiled = compile_policy(
         {
@@ -408,6 +444,32 @@ def test_pattern_runtime_mutation_cannot_weaken_pinned_session(
         with pytest.raises(PreconditionError):
             session.enforce_step_pre_call(
                 _pre_invocation(policy_file, code="not-ok"),
+            )
+        session.cancel()
+
+
+def test_same_source_options_replacement_cannot_weaken_pinned_session(
+    tmp_path: Path,
+):
+    policy_file = tmp_path / "pattern-options.yaml"
+    _precondition_policy(policy_file)
+    governance = AEGIS()
+
+    with governance.open_session(policy_file=str(policy_file)) as session:
+        pattern = session._compiled_policy.preconditions[0].pattern
+        assert pattern is not None
+        runtime = pattern_module._RUNTIME_CACHE[pattern.program_digest]
+        options = re2.Options()
+        options.case_sensitive = False
+        object.__setattr__(
+            runtime,
+            "compiled",
+            re2.compile("^ok$", options=options),
+        )
+
+        with pytest.raises(PreconditionError):
+            session.enforce_step_pre_call(
+                _pre_invocation(policy_file, code="OK"),
             )
         session.cancel()
 

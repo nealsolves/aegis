@@ -55,7 +55,18 @@ class _PatternRuntime:
     compiled: Any
 
 
+@dataclass(frozen=True, slots=True)
+class _PatternAttestation:
+    """Strong-reference identity for one internally compiled RE2 program."""
+
+    program_bytes: bytes
+    compiled: Any
+    options_fingerprint: tuple[tuple[str, object], ...]
+    program_fingerprint: tuple[object, ...]
+
+
 _RUNTIME_CACHE: OrderedDict[str, _PatternRuntime] = OrderedDict()
+_ATTESTED_PROGRAMS: OrderedDict[str, _PatternAttestation] = OrderedDict()
 _RUNTIME_CACHE_LOCK = RLock()
 
 
@@ -86,6 +97,36 @@ def _program_digest(program_bytes: bytes) -> str:
     ).hexdigest()
 
 
+def _option_value(value: object) -> object:
+    if value is None or type(value) in {bool, int, str}:
+        return value
+    name = getattr(value, "name", None)
+    if isinstance(name, str):
+        return name
+    return repr(value)
+
+
+def _options_fingerprint(options: object) -> tuple[tuple[str, object], ...]:
+    return tuple(
+        (name, _option_value(getattr(options, name)))
+        for name in re2.Options.NAMES
+    )
+
+
+_DEFAULT_OPTIONS_FINGERPRINT = _options_fingerprint(re2.Options())
+
+
+def _program_fingerprint(compiled: Any) -> tuple[object, ...]:
+    return (
+        compiled.programsize,
+        tuple(compiled.programfanout),
+        compiled.reverseprogramsize,
+        tuple(compiled.reverseprogramfanout),
+        compiled.groups,
+        tuple(sorted(compiled.groupindex.items())),
+    )
+
+
 def _store_runtime(digest: str, runtime: _PatternRuntime) -> None:
     with _RUNTIME_CACHE_LOCK:
         _RUNTIME_CACHE[digest] = runtime
@@ -94,16 +135,53 @@ def _store_runtime(digest: str, runtime: _PatternRuntime) -> None:
             _RUNTIME_CACHE.popitem(last=False)
 
 
-def _new_runtime(source: str, program_bytes: bytes) -> _PatternRuntime:
+def _store_attestation(
+    digest: str,
+    attestation: _PatternAttestation,
+) -> None:
+    with _RUNTIME_CACHE_LOCK:
+        _ATTESTED_PROGRAMS[digest] = attestation
+        _ATTESTED_PROGRAMS.move_to_end(digest)
+        while len(_ATTESTED_PROGRAMS) > _RUNTIME_CACHE_MAX_ENTRIES:
+            _ATTESTED_PROGRAMS.popitem(last=False)
+
+
+def _attestation_from_compiled(
+    source: str,
+    program_bytes: bytes,
+    compiled: Any,
+) -> _PatternAttestation:
+    if (
+        type(compiled) is not _RE2_PATTERN_TYPE
+        or compiled.pattern != source
+        or _options_fingerprint(compiled.options)
+        != _DEFAULT_OPTIONS_FINGERPRINT
+    ):
+        raise PatternProgramIntegrityError(
+            "Internally compiled pattern identity is invalid",
+        )
+    return _PatternAttestation(
+        program_bytes=program_bytes,
+        compiled=compiled,
+        options_fingerprint=_options_fingerprint(compiled.options),
+        program_fingerprint=_program_fingerprint(compiled),
+    )
+
+
+def _new_attestation(
+    source: str,
+    program_bytes: bytes,
+) -> _PatternAttestation:
     try:
         compiled = re2.compile(source)
     except re2.error as exc:
         raise PatternProgramIntegrityError(
             "Authenticated pattern source no longer compiles",
         ) from exc
-    return _PatternRuntime(
-        program_bytes=program_bytes,
-        compiled=compiled,
+    return _attestation_from_compiled(
+        source,
+        program_bytes,
+        compiled,
     )
 
 
@@ -177,15 +255,40 @@ def _authenticated_program_bytes(pattern: CompiledPattern) -> bytes:
 def _runtime_intact(
     runtime: object,
     *,
+    attestation: _PatternAttestation,
     program_bytes: bytes,
-    source: str,
 ) -> bool:
     return (
         type(runtime) is _PatternRuntime
         and runtime.program_bytes == program_bytes
-        and type(runtime.compiled) is _RE2_PATTERN_TYPE
-        and runtime.compiled.pattern == source
+        and runtime.compiled is attestation.compiled
     )
+
+
+def _attestation_intact(
+    attestation: object,
+    *,
+    program_bytes: bytes,
+    source: str,
+) -> bool:
+    if (
+        type(attestation) is not _PatternAttestation
+        or attestation.program_bytes != program_bytes
+        or type(attestation.compiled) is not _RE2_PATTERN_TYPE
+        or attestation.compiled.pattern != source
+        or attestation.options_fingerprint
+        != _DEFAULT_OPTIONS_FINGERPRINT
+    ):
+        return False
+    try:
+        return (
+            _options_fingerprint(attestation.compiled.options)
+            == attestation.options_fingerprint
+            and _program_fingerprint(attestation.compiled)
+            == attestation.program_fingerprint
+        )
+    except (AttributeError, TypeError, ValueError):
+        return False
 
 
 def _use_verified_runtime_locked(
@@ -196,20 +299,38 @@ def _use_verified_runtime_locked(
     operation: str | None = None,
 ) -> bool | None:
     """Verify, optionally evaluate, and never return the cached RE2 handle."""
+    attestation = _ATTESTED_PROGRAMS.get(pattern.program_digest)
+    if attestation is not None:
+        _ATTESTED_PROGRAMS.move_to_end(pattern.program_digest)
+    if not _attestation_intact(
+        attestation,
+        program_bytes=program_bytes,
+        source=pattern.source,
+    ):
+        attestation = _new_attestation(pattern.source, program_bytes)
+        _store_attestation(pattern.program_digest, attestation)
+
     runtime = _RUNTIME_CACHE.get(pattern.program_digest)
     if runtime is not None:
         _RUNTIME_CACHE.move_to_end(pattern.program_digest)
 
     if not _runtime_intact(
         runtime,
+        attestation=attestation,
         program_bytes=program_bytes,
-        source=pattern.source,
     ):
-        runtime = _new_runtime(pattern.source, program_bytes)
+        runtime = _PatternRuntime(
+            program_bytes=program_bytes,
+            compiled=attestation.compiled,
+        )
         _store_runtime(pattern.program_digest, runtime)
 
     if not _runtime_intact(
         runtime,
+        attestation=attestation,
+        program_bytes=program_bytes,
+    ) or not _attestation_intact(
+        attestation,
         program_bytes=program_bytes,
         source=pattern.source,
     ):
@@ -300,13 +421,20 @@ def compile_pattern(source: str, *, path: str) -> CompiledPattern:
         input_max_bytes=PATTERN_INPUT_MAX_BYTES,
     )
     digest = _program_digest(program_bytes)
-    _store_runtime(
-        digest,
-        _PatternRuntime(
-            program_bytes=program_bytes,
-            compiled=compiled,
-        ),
+    attestation = _attestation_from_compiled(
+        source,
+        program_bytes,
+        compiled,
     )
+    with _RUNTIME_CACHE_LOCK:
+        _store_attestation(digest, attestation)
+        _store_runtime(
+            digest,
+            _PatternRuntime(
+                program_bytes=program_bytes,
+                compiled=attestation.compiled,
+            ),
+        )
     return CompiledPattern(
         source=source,
         path=path,

@@ -23,15 +23,18 @@ from __future__ import annotations
 import ast
 import json
 import re
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
 import yaml
 from jsonschema import Draft7Validator
 
-from aegis._internal.policy_loader import SCHEMAS_DIR, load_policy
+from aegis._internal.policy_loader import (
+    SCHEMAS_DIR,
+    load_resolve_compile_policy,
+)
 from aegis._internal.errors import PolicyLoadError, PolicyValidationError
-from aegis._internal.policy_compiler import compile_policy
 
 
 # ---------------------------------------------------------------------------
@@ -67,6 +70,18 @@ def _audit_schema() -> dict:
 def _json_safe(value: Any) -> Any:
     """Return a JSON-serializable copy of deterministic lint evidence."""
     return json.loads(json.dumps(value, default=str))
+
+
+def _plain_compiled_value(value: Any) -> Any:
+    """Detach a compiled JSON value for non-authorizing diagnostics."""
+    if isinstance(value, Mapping):
+        return {
+            key: _plain_compiled_value(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, tuple):
+        return [_plain_compiled_value(item) for item in value]
+    return value
 
 
 def _event_dict(event: Any) -> dict[str, Any]:
@@ -540,13 +555,15 @@ def lint_policy(path: str, *, target_kind: str = "policy") -> list[dict]:
         ))
         return findings
 
-    # 4. Preserve the compiler's stable diagnostics for standalone policies.
-    # Composed files must first resolve their source-relative extends chain so
-    # lint sees the same effective policy and widening decisions as runtime.
+    # 4. The loader/compiler boundary owns source-aware inheritance and returns
+    # only typed compiled output. Standalone parsed input retains the existing
+    # compiler-first diagnostic normalization.
     try:
-        if policy.get("extends"):
-            policy = load_policy(str(p))
-        compile_policy(policy, source=str(p), allow_legacy=False)
+        compiled = load_resolve_compile_policy(
+            str(p),
+            parsed_policy=policy,
+            allow_legacy=False,
+        )
     except (PolicyLoadError, PolicyValidationError) as exc:
         details = (
             dict(exc.details)
@@ -565,7 +582,7 @@ def lint_policy(path: str, *, target_kind: str = "policy") -> list[dict]:
     # 6. Date consistency
     eff = policy.get("effective_date")
     exp = policy.get("expiration_date")
-    if eff and exp and eff > exp:
+    if "extends" not in policy and eff and exp and eff > exp:
         findings.append(_finding(
             "POLICY_LOAD_ERROR",
             f"effective_date ({eff}) is after expiration_date ({exp}); "
@@ -574,20 +591,7 @@ def lint_policy(path: str, *, target_kind: str = "policy") -> list[dict]:
             str(p),
         ))
 
-    # 7. output_schema well-formedness
-    output_schema = policy.get("output_schema")
-    if output_schema is not None and isinstance(output_schema, dict):
-        try:
-            Draft7Validator.check_schema(output_schema)
-        except Exception as exc:
-            findings.append(_finding(
-                "POLICY_SCHEMA_VALIDATION_ERROR",
-                f"output_schema is not a valid JSON Schema Draft 7: {exc}",
-                target_kind,
-                str(p),
-            ))
-
-    workflow = policy.get("workflow") or {}
+    workflow = _plain_compiled_value(compiled.workflow)
     if isinstance(workflow, dict):
         required_sequence = workflow.get("required_sequence") or []
         if (
