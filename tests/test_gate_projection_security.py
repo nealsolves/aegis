@@ -42,6 +42,27 @@ def test_gate_cannot_reach_live_policy_backing_mapping():
         assert value is not live["roles"]
 
 
+def test_scalar_subclass_cannot_carry_live_reference_into_projection():
+    """A JSON scalar subclass must be normalized to its exact base type."""
+
+    class LeakyString(str):
+        __slots__ = ("ref",)
+
+        def __new__(cls, value, ref):
+            instance = super().__new__(cls, value)
+            instance.ref = ref
+            return instance
+
+    live = ["authorization-basis"]
+    projection = GateProjectionFactory.policy_from_mapping(
+        {"role": LeakyString("verifier", live)}
+    )
+
+    assert type(projection["role"]) is str
+    for value in _walk_objects(projection):
+        assert value is not live
+
+
 class _ObjectGraphMutatingGate(EnforcementGate):
     @property
     def name(self) -> str:

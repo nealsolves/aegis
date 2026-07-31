@@ -62,6 +62,15 @@ class NormalizedOutcome:
             raise OutcomeContractError("Outcome failures must be a frozen tuple")
         if type(self.metadata) is not MappingProxyType:
             raise OutcomeContractError("Outcome metadata must be immutable")
+        try:
+            detached_metadata = detached_json_projection(self.metadata)
+        except TypeError as exc:
+            raise OutcomeContractError(
+                "Outcome metadata must contain only JSON values"
+            ) from exc
+        if not isinstance(detached_metadata, Mapping):  # pragma: no cover
+            raise OutcomeContractError("Outcome metadata must be a mapping")
+        object.__setattr__(self, "metadata", detached_metadata)
 
     @property
     def allows_continuation(self) -> bool:

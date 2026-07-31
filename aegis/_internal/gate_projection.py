@@ -11,8 +11,16 @@ from aegis._internal.compiled_policy import CompiledPolicy, JsonValue
 
 def detached_json_projection(value: object) -> JsonValue:
     """Copy JSON-shaped data into a recursively immutable representation."""
-    if value is None or isinstance(value, (str, bool, int, float)):
+    if value is None:
         return value
+    if isinstance(value, str):
+        return str.__str__(value)
+    if isinstance(value, bool):
+        return bool(value)
+    if isinstance(value, int):
+        return int.__int__(value)
+    if isinstance(value, float):
+        return float.__float__(value)
     if isinstance(value, Mapping):
         copied = {
             str(key): detached_json_projection(item)

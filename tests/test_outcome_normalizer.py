@@ -59,3 +59,16 @@ def test_frozen_outcome_cannot_be_reassigned():
     outcome = NormalizedOutcome(TerminalClass.ALLOW, "OK")
     with pytest.raises((AttributeError, TypeError)):
         outcome.reason_code = "CHANGED"
+
+
+def test_mapping_proxy_metadata_is_detached_from_mutable_backing_data():
+    backing = {"nested": {"items": [1]}}
+    outcome = NormalizedOutcome(
+        TerminalClass.ALLOW,
+        "OK",
+        metadata=MappingProxyType(backing),
+    )
+
+    backing["nested"]["items"].append(2)
+    assert outcome.metadata["nested"]["items"] == (1,)
+    assert isinstance(outcome.metadata["nested"], MappingProxyType)
