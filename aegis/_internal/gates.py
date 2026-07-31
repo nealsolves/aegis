@@ -18,7 +18,13 @@ import abc
 import logging
 from typing import Any, Mapping
 
+from aegis._internal.errors import OutcomeContractError
 from aegis._internal.gate_projection import GateProjectionFactory
+from aegis._internal.outcomes import (
+    FailureRecord,
+    NormalizedOutcome,
+    OutcomeNormalizer,
+)
 
 logger = logging.getLogger("aegis.gates")
 
@@ -57,6 +63,107 @@ class GateResult:
         self.passed = passed
         self.failures = failures or []
         self.metadata = metadata or {}
+
+
+def _synthetic_failure(
+    gate_id: str,
+    code: str,
+    message: str,
+) -> FailureRecord:
+    return FailureRecord(code=code, message=f"Gate '{gate_id}' {message}")
+
+
+def _normalize_gate_failures(
+    failures: object,
+) -> tuple[FailureRecord, ...]:
+    if not isinstance(failures, (list, tuple)):
+        return (
+            FailureRecord(
+                code="CUSTOM_GATE_MALFORMED_FAILURE",
+                message="Custom gate returned a malformed failures collection",
+            ),
+        )
+    normalized: list[FailureRecord] = []
+    for item in failures:
+        if not isinstance(item, Mapping):
+            normalized.append(
+                FailureRecord(
+                    code="CUSTOM_GATE_MALFORMED_FAILURE",
+                    message=str(item)[:1024],
+                )
+            )
+            continue
+        try:
+            normalized.append(OutcomeNormalizer._failure(item))
+        except OutcomeContractError:
+            normalized.append(
+                FailureRecord(
+                    code="CUSTOM_GATE_MALFORMED_FAILURE",
+                    message="Custom gate returned a malformed failure record",
+                )
+            )
+    return tuple(normalized)
+
+
+def normalize_gate_result(gate_id: str, result: object) -> NormalizedOutcome:
+    """Map one untrusted custom-gate return value to a closed outcome."""
+    if not isinstance(result, GateResult):
+        return OutcomeNormalizer.execution_failure(
+            "CUSTOM_GATE_INVALID_RETURN",
+            failures=(
+                _synthetic_failure(
+                    gate_id,
+                    "CUSTOM_GATE_INVALID_RETURN",
+                    "returned an unsupported result",
+                ),
+            ),
+        )
+    failures = _normalize_gate_failures(result.failures)
+    if type(result.passed) is not bool:
+        return OutcomeNormalizer.invalid(
+            "CUSTOM_GATE_INVALID_RESULT",
+            failures=failures
+            or (
+                _synthetic_failure(
+                    gate_id,
+                    "CUSTOM_GATE_INVALID_RESULT",
+                    "returned a non-boolean passed value",
+                ),
+            ),
+        )
+    if result.passed is False:
+        return OutcomeNormalizer.deny(
+            "CUSTOM_GATE_DENIED",
+            failures=failures
+            or (
+                _synthetic_failure(
+                    gate_id,
+                    "CUSTOM_GATE_DENIED",
+                    "denied authorization",
+                ),
+            ),
+        )
+    if failures:
+        return OutcomeNormalizer.invalid(
+            "CUSTOM_GATE_INCONSISTENT_RESULT",
+            failures=failures,
+        )
+    try:
+        return OutcomeNormalizer.allow(
+            "CUSTOM_GATE_ALLOWED",
+            metadata=result.metadata,
+        )
+    except (OutcomeContractError, TypeError):
+        return OutcomeNormalizer.invalid(
+            "CUSTOM_GATE_INVALID_METADATA",
+            failures=(
+                _synthetic_failure(
+                    gate_id,
+                    "CUSTOM_GATE_INVALID_METADATA",
+                    "returned unsupported metadata",
+                ),
+            ),
+        )
 
 
 class EnforcementGate(abc.ABC):
@@ -155,6 +262,26 @@ def run_gates(
     gates_evaluated: list[str],
     prior_failures: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Compatibility wrapper returning normalized failures and metadata."""
+    failures, metadata, _ = run_gates_normalized(
+        gates,
+        invocation,
+        policy,
+        pipeline_context,
+        gates_evaluated,
+        prior_failures,
+    )
+    return failures, metadata
+
+
+def run_gates_normalized(
+    gates: list[EnforcementGate],
+    invocation: Mapping[str, Any],
+    policy: Mapping[str, Any],
+    pipeline_context: dict[str, Any],
+    gates_evaluated: list[str],
+    prior_failures: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], dict[str, Any], NormalizedOutcome]:
     """Run a list of custom gates and collect results.
 
     Failures are append-only: prior_failures are preserved.
@@ -176,72 +303,52 @@ def run_gates(
     projected_policy = GateProjectionFactory.policy_from_mapping(policy)
     projected_context = GateProjectionFactory.context(pipeline_context)
 
+    aggregate = OutcomeNormalizer.allow("CUSTOM_GATES_ALLOWED")
     for gate in gates:
         gate_id = f"custom:{gate.name}"
         try:
             result = gate.evaluate(
                 projected_invocation, projected_policy, projected_context,
             )
-        except TypeError as exc:
-            if "read-only" in str(exc):
-                # Gate tried to mutate — convert to failure
-                logger.error(
-                    "Custom gate '%s' attempted mutation: %s",
-                    gate.name,
-                    exc,
-                )
-                result = GateResult(
-                    passed=False,
-                    failures=[{
-                        "code": "CUSTOM_GATE_MUTATION",
-                        "message": (
-                            f"Gate '{gate.name}' attempted to mutate "
-                            f"read-only data: {exc}"
-                        ),
-                        "field": None,
-                    }],
-                )
-            else:
-                # Non-mutation TypeError from gate code — convert to
-                # failure so FAIL artifact is always emitted (fail-closed).
-                logger.error(
-                    "Custom gate '%s' raised TypeError: %s",
-                    gate.name,
-                    exc,
-                )
-                result = GateResult(
-                    passed=False,
-                    failures=[{
-                        "code": "CUSTOM_GATE_ERROR",
-                        "message": (
-                            f"Gate '{gate.name}' raised TypeError: {exc}"
-                        ),
-                        "field": None,
-                    }],
-                )
         except Exception as exc:  # noqa: BLE001
-            logger.error("Custom gate '%s' raised: %s", gate.name, exc)
-            result = GateResult(
-                passed=False,
-                failures=[{
-                    "code": "CUSTOM_GATE_ERROR",
-                    "message": f"Gate '{gate.name}' raised: {exc}",
-                    "field": None,
-                }],
+            logger.error(
+                "Custom gate '%s' execution failed (%s)",
+                gate.name,
+                type(exc).__name__,
             )
+            outcome = OutcomeNormalizer.execution_failure(
+                "CUSTOM_GATE_EXECUTION_FAILURE",
+                failures=(
+                    _synthetic_failure(
+                        gate.name,
+                        "CUSTOM_GATE_ERROR",
+                        "failed during execution",
+                    ),
+                ),
+            )
+        else:
+            outcome = normalize_gate_result(gate.name, result)
 
         gates_evaluated.append(gate_id)
 
-        if result.failures:
-            accumulated_failures.extend(result.failures)
-        if result.metadata:
-            merged_metadata.update(result.metadata)
+        accumulated_failures.extend(
+            {
+                "code": failure.code,
+                "message": failure.message,
+                "field": failure.field,
+            }
+            for failure in outcome.failures
+        )
+        if outcome.metadata:
+            merged_metadata.update(outcome.metadata)
+        if aggregate.allows_continuation and not outcome.allows_continuation:
+            aggregate = outcome
 
         logger.debug(
-            "Custom gate '%s' completed: passed=%s, failures=%d",
+            "Custom gate '%s' completed: terminal=%s, failures=%d",
             gate.name,
-            result.passed,
-            len(result.failures),
+            outcome.terminal.value,
+            len(outcome.failures),
         )
 
-    return accumulated_failures, merged_metadata
+    return accumulated_failures, merged_metadata, aggregate

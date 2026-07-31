@@ -1,12 +1,8 @@
 """
 Regression tests for custom gate exception → FAIL artifact guarantee.
 
-Proves that:
-- A custom gate raising a non-read-only TypeError produces a FAIL artifact
-  and raises a typed AIGCError (CustomGateViolationError).
-- A custom gate raising a read-only TypeError (mutation attempt) still
-  produces the existing CUSTOM_GATE_MUTATION failure code.
-- The failure_gate in the artifact is deterministic.
+Proves that every gate exception produces a stable, sanitized closed failure
+outcome and a deterministic FAIL artifact.
 
 These tests close audit finding C1.
 """
@@ -333,9 +329,8 @@ class TestMalformedGateFailuresNormalized:
         artifact = exc_info.value.audit_artifact
         assert artifact is not None
         assert artifact["enforcement_result"] == "FAIL"
-        # The Phase A exception message must surface the raw string value, not
-        # crash — confirm the string was coerced and forwarded.
-        assert "pre-auth string failure" in str(exc_info.value)
+        assert exc_info.value.details["reason_code"] == "CUSTOM_GATE_DENIED"
+        assert exc_info.value.details["terminal"] == "deny"
 
     def test_malformed_failure_message_is_sanitized(self, base_invocation):
         # P1 regression: str(gf) must pass through sanitize_failure_message

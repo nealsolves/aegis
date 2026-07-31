@@ -111,6 +111,16 @@ class TestCustomGateViolationErrorType:
         with pytest.raises(CustomGateViolationError):
             aegis.enforce(VALID_INVOCATION)
 
+    def test_exception_exposes_closed_denial_outcome(self):
+        gate = _FailingGate("blocker", INSERTION_POST_AUTHORIZATION)
+        aegis = AIGC(custom_gates=[gate])
+
+        with pytest.raises(CustomGateViolationError) as exc_info:
+            aegis.enforce(VALID_INVOCATION)
+
+        assert exc_info.value.details["terminal"] == "deny"
+        assert exc_info.value.details["reason_code"] == "CUSTOM_GATE_DENIED"
+
     def test_does_not_raise_plain_governance_violation(self):
         """The exception type is specifically CustomGateViolationError."""
         gate = _FailingGate("blocker", INSERTION_POST_AUTHORIZATION)
