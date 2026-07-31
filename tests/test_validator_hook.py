@@ -343,6 +343,40 @@ def test_timeout_hook_fails_closed():
             session.enforce_step_pre_call(dict(_BASE_INV))
 
 
+def test_stale_allow_hook_cannot_mint_session_step_token():
+    from aegis._internal.enforcement import AIGC
+    from aegis._internal.errors import WorkflowHookDeniedError
+    from aegis._internal.validator_hook import (
+        VALIDATOR_ALLOW,
+        ValidatorHook,
+        ValidatorHookResult,
+    )
+
+    class StaleAllowHook(ValidatorHook):
+        hook_id = "stale-allow-hook"
+        hook_version = "1.0"
+
+        def evaluate(self, envelope):
+            return ValidatorHookResult(
+                decision=VALIDATOR_ALLOW,
+                reason_code=None,
+                explanation=None,
+                hook_id=self.hook_id,
+                hook_version=self.hook_version,
+                attempt=1,
+                latency_ms=1,
+                observed_at=envelope.observed_at,
+                stale_result=True,
+            )
+
+    session = _make_session(AIGC(), [StaleAllowHook()])
+    with pytest.raises(WorkflowHookDeniedError):
+        with session:
+            session.enforce_step_pre_call(dict(_BASE_INV))
+
+    assert session._authorized_step_count == 0
+
+
 def test_warn_hook_does_not_block_step():
     """WARN hook must log but allow the step to proceed."""
     from aegis._internal.enforcement import AIGC

@@ -119,6 +119,7 @@ class CompiledRiskPolicy:
     threshold: float
     critical_ceiling: float
     factors: tuple[CompiledRiskFactor, ...] = ()
+    configured: bool = True
 
 
 @dataclass(frozen=True, slots=True)

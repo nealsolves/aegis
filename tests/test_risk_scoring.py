@@ -136,6 +136,26 @@ def test_exact_threshold_is_exceeded():
     assert result.exceeded
 
 
+def test_decimal_factor_sum_cannot_fall_below_declared_boundary():
+    """Binary float accumulation must not turn declared 0.3 + 0.6 below 0.9."""
+    config = {
+        "mode": "strict",
+        "threshold": 0.9,
+        "factors": [
+            {"name": "f1", "weight": 0.3, "condition": "no_output_schema"},
+            {"name": "f2", "weight": 0.6, "condition": "missing_guards"},
+        ],
+    }
+
+    result = compute_risk_score(
+        _base_invocation(), _base_policy(), risk_config=config,
+    )
+
+    assert result.score == 0.9
+    assert result.exceeded is True
+    assert normalize_risk_result(result).terminal is TerminalClass.DENY
+
+
 def test_fixed_critical_ceiling_is_inclusive():
     """A score at 0.90 must deny even below a higher policy threshold."""
     risk = compile_risk_policy(

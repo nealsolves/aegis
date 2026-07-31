@@ -72,3 +72,9 @@ def test_mapping_proxy_metadata_is_detached_from_mutable_backing_data():
     backing["nested"]["items"].append(2)
     assert outcome.metadata["nested"]["items"] == (1,)
     assert isinstance(outcome.metadata["nested"], MappingProxyType)
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+def test_non_finite_metadata_is_not_a_json_outcome(value):
+    with pytest.raises(OutcomeContractError):
+        OutcomeNormalizer.allow("OK", metadata={"score": value})

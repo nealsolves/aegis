@@ -2,6 +2,7 @@
 
 from aegis._internal.outcomes import TerminalClass
 from aegis._internal.validator_hook import (
+    VALIDATOR_ALLOW,
     VALIDATOR_EXECUTION_FAILURE,
     ValidatorHookResult,
     ValidatorHook,
@@ -107,3 +108,60 @@ def test_hook_runner_converts_exact_result_with_missing_field():
     outcome = normalize_hook_result(result)
     assert outcome.terminal is TerminalClass.INVALID_RESULT
     assert outcome.reason_code == "HOOK_INVALID_RESULT"
+
+
+def test_stale_allow_result_never_normalizes_to_continuation():
+    result = ValidatorHookResult(
+        decision=VALIDATOR_ALLOW,
+        reason_code=None,
+        explanation=None,
+        hook_id="stale-hook",
+        hook_version="1.0",
+        attempt=1,
+        latency_ms=1,
+        observed_at=1_722_000_000_000,
+        stale_result=True,
+    )
+
+    outcome = normalize_hook_result(result)
+
+    assert outcome.terminal is TerminalClass.TIMEOUT
+    assert outcome.reason_code == "HOOK_STALE_RESULT"
+    assert outcome.allows_continuation is False
+
+
+def test_hook_runner_converts_explicit_stale_allow_to_timeout():
+    class StaleAllowHook(ValidatorHook):
+        hook_id = "stale-hook"
+        hook_version = "1.0"
+
+        def evaluate(self, envelope):
+            return ValidatorHookResult(
+                decision=VALIDATOR_ALLOW,
+                reason_code=None,
+                explanation=None,
+                hook_id=self.hook_id,
+                hook_version=self.hook_version,
+                attempt=1,
+                latency_ms=1,
+                observed_at=envelope.observed_at,
+                stale_result=True,
+            )
+
+    result = _call_hook_once(
+        StaleAllowHook(),
+        ValidatorHookEnvelope(
+            hook_schema_version="1.0",
+            session_id="s-1",
+            step_id="step-1",
+            participant_id=None,
+            invocation={},
+            deadline_ms=1000,
+            observed_at=1_722_000_000_000,
+        ),
+        attempt=1,
+    )
+
+    assert result.decision == "timeout"
+    assert result.reason_code == "HOOK_STALE_RESULT"
+    assert normalize_hook_result(result).allows_continuation is False

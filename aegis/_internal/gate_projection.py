@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
 from types import MappingProxyType
 from typing import Any, cast
@@ -35,7 +36,10 @@ def detached_json_projection(value: object) -> JsonValue:
     if isinstance(value, int):
         return int.__int__(value)
     if isinstance(value, float):
-        return float.__float__(value)
+        detached = float.__float__(value)
+        if not math.isfinite(detached):
+            raise TypeError("Gate projection floats must be finite")
+        return detached
     if isinstance(value, Mapping):
         copied = {
             _detached_mapping_key(key): detached_json_projection(item)

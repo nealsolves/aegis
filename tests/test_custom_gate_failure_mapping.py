@@ -98,6 +98,26 @@ class _PassingGate(EnforcementGate):
         return GateResult(passed=True)
 
 
+class _HostileFailureString(str):
+    def __str__(self):
+        raise RuntimeError("secret-from-hostile-string")
+
+    def __len__(self):
+        raise RuntimeError("secret-from-hostile-length")
+
+
+class _HostileFailureGate(EnforcementGate):
+    name = "hostile-failure"
+    insertion_point = INSERTION_POST_OUTPUT
+
+    def evaluate(self, invocation, policy, context):
+        hostile = _HostileFailureString("safe public failure")
+        return GateResult(
+            passed=False,
+            failures=[{"code": hostile, "message": hostile, "field": hostile}],
+        )
+
+
 # ── Test: correct exception type ──────────────────────────────────
 
 
@@ -211,6 +231,31 @@ class TestArtifactSchemaValidity:
         assert artifact["failure_reason"] is not None
         assert isinstance(artifact["failures"], list)
         assert len(artifact["failures"]) >= 1
+
+    def test_hostile_failure_strings_produce_typed_denial_and_fail_artifact(self):
+        emitted = []
+        from aegis._internal.sinks import CallbackAuditSink
+
+        aegis = AIGC(
+            custom_gates=[_HostileFailureGate()],
+            sink=CallbackAuditSink(emitted.append),
+        )
+        with pytest.raises(CustomGateViolationError) as exc_info:
+            aegis.enforce(VALID_INVOCATION)
+
+        artifact = exc_info.value.audit_artifact
+        assert artifact["enforcement_result"] == "FAIL"
+        assert artifact["failure_gate"] == "custom_gate_violation"
+        assert len(emitted) == 1
+        assert type(artifact["failures"][0]["code"]) is str
+        assert type(artifact["failures"][0]["message"]) is str
+        assert type(artifact["failures"][0]["field"]) is str
+        assert artifact["failures"][0] == {
+            "code": "safe public failure",
+            "message": "safe public failure",
+            "field": "safe public failure",
+        }
+        validate(artifact, AUDIT_SCHEMA)
 
 
 # ── Tests per insertion point ─────────────────────────────────────

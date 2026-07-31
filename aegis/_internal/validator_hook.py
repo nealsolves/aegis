@@ -66,17 +66,12 @@ class ValidatorHookResult:
 
 def normalize_hook_result(result: object) -> NormalizedOutcome:
     """Convert a final validator-hook result to a closed terminal class."""
-    if not isinstance(result, ValidatorHookResult):
+    if not _valid_hook_result_shape(result):
         return OutcomeNormalizer.invalid("HOOK_INVALID_RESULT")
-    try:
-        decision = result.decision
-        reason_code = result.reason_code
-        if type(decision) is not str:
-            return OutcomeNormalizer.invalid("HOOK_INVALID_RESULT")
-        if reason_code is not None and type(reason_code) is not str:
-            return OutcomeNormalizer.invalid("HOOK_INVALID_RESULT")
-    except Exception:  # noqa: BLE001 - untrusted result fields
-        return OutcomeNormalizer.invalid("HOOK_INVALID_RESULT")
+    if result.stale_result:
+        return OutcomeNormalizer.timeout("HOOK_STALE_RESULT")
+    decision = result.decision
+    reason_code = result.reason_code
     if decision == VALIDATOR_ALLOW:
         return OutcomeNormalizer.allow(reason_code or "HOOK_ALLOWED")
     if decision == VALIDATOR_WARN:
@@ -201,7 +196,11 @@ def _call_hook_once(
     # Use TIMEOUT (not EXECUTION_FAILURE) so stale results fail closed — they
     # are not transient errors that warrant retry.
     _absolute_deadline = envelope.observed_at + envelope.deadline_ms
-    if result.observed_at > _absolute_deadline or result.attempt != attempt:
+    if (
+        result.stale_result
+        or result.observed_at > _absolute_deadline
+        or result.attempt != attempt
+    ):
         return ValidatorHookResult(
             decision=VALIDATOR_TIMEOUT,
             reason_code="HOOK_STALE_RESULT",

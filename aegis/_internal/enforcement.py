@@ -677,6 +677,7 @@ def _compiled_policy_to_dto(policy: CompiledPolicy) -> dict[str, Any]:
             for item in policy.tools
         ],
         "risk": {
+            "configured": policy.risk.configured,
             "mode": policy.risk.mode,
             "threshold": policy.risk.threshold,
             "critical_ceiling": policy.risk.critical_ceiling,
@@ -884,6 +885,7 @@ def _compiled_policy_from_dto(dto: Mapping[str, Any]) -> CompiledPolicy:
             )
             for item in risk_data["factors"]
         ),
+        configured=risk_data["configured"],
     )
     retry_data = dto["retry"]
     retry = (
@@ -1692,7 +1694,7 @@ def _run_phase_b(
             effective_policy.risk,
             risk_config,
         )
-        if effective_risk_config.factors:
+        if effective_risk_config.configured:
             risk_result = compute_compiled_risk_score(
                 invocation, effective_policy,
                 risk_config=effective_risk_config,

@@ -182,7 +182,11 @@ def _require_risk_mapping(value: object, *, path: str) -> Mapping[str, Any]:
     return value
 
 
-def compile_risk_policy(raw: Mapping[str, Any]) -> CompiledRiskPolicy:
+def compile_risk_policy(
+    raw: Mapping[str, Any],
+    *,
+    configured: bool = True,
+) -> CompiledRiskPolicy:
     """Compile one detached, finite risk policy from the closed condition set."""
     detached = copy.deepcopy(dict(raw))
     unknown_fields = sorted(
@@ -278,6 +282,7 @@ def compile_risk_policy(raw: Mapping[str, Any]) -> CompiledRiskPolicy:
         threshold=threshold,
         critical_ceiling=CRITICAL_RISK_CEILING,
         factors=tuple(factors),
+        configured=configured,
     )
 
 
@@ -621,8 +626,12 @@ def _compile_validated_policy(
         ),
     )
 
-    raw_risk = policy.get("risk") or {}
-    risk = compile_risk_policy(raw_risk)
+    declared_risk = policy.get("risk")
+    raw_risk = declared_risk or {}
+    risk = compile_risk_policy(
+        raw_risk,
+        configured=declared_risk is not None,
+    )
     retry = _compile_retry_policy(policy.get("retry_policy"))
 
     guards: tuple[CompiledGuard, ...] = ()

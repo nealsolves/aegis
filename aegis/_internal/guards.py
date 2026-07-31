@@ -1184,6 +1184,7 @@ def _apply_compiled_overlay(
             ),
             critical_ceiling=risk.critical_ceiling,
             factors=(*risk.factors, *effect.risk.factors),
+            configured=True,
         )
 
     preconditions_by_name = {

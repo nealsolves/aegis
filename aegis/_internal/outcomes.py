@@ -30,14 +30,22 @@ class FailureRecord:
     field: str | None = None
 
     def __post_init__(self) -> None:
-        if not isinstance(self.code, str) or not self.code:
+        if not isinstance(self.code, str):
             raise OutcomeContractError("Failure code must be a non-empty string")
         if not isinstance(self.message, str):
             raise OutcomeContractError("Failure message must be a string")
-        if len(self.message) > MAX_PUBLIC_FAILURE_MESSAGE_LENGTH:
-            raise OutcomeContractError("Failure message exceeds the public bound")
         if self.field is not None and not isinstance(self.field, str):
             raise OutcomeContractError("Failure field must be a string or None")
+        code = str.__str__(self.code)
+        message = str.__str__(self.message)
+        field = str.__str__(self.field) if self.field is not None else None
+        if not code:
+            raise OutcomeContractError("Failure code must be a non-empty string")
+        if len(message) > MAX_PUBLIC_FAILURE_MESSAGE_LENGTH:
+            raise OutcomeContractError("Failure message exceeds the public bound")
+        object.__setattr__(self, "code", code)
+        object.__setattr__(self, "message", message)
+        object.__setattr__(self, "field", field)
 
 
 def _empty_metadata() -> Mapping[str, JsonValue]:
@@ -94,7 +102,12 @@ class OutcomeNormalizer:
 
     @staticmethod
     def _metadata(value: Mapping[str, Any] | None) -> Mapping[str, JsonValue]:
-        projected = detached_json_projection(value or {})
+        try:
+            projected = detached_json_projection(value or {})
+        except TypeError as exc:
+            raise OutcomeContractError(
+                "Outcome metadata must contain only JSON values"
+            ) from exc
         if not isinstance(projected, Mapping):  # pragma: no cover - fixed input
             raise OutcomeContractError("Outcome metadata must be a mapping")
         return projected
