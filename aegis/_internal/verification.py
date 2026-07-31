@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import hashlib
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Iterable, Sequence
@@ -12,7 +13,9 @@ from aegis._internal.evidence_profiles import (
     verify_content_checksum_v2,
 )
 from aegis._internal.external_signing import verify_artifact_detailed
+from aegis._internal.legacy import LegacyFeature, is_legacy_authorized
 from aegis._internal.signature_models import AnchorStatus, SignatureStatus
+from aegis._internal.utils import canonical_json_bytes
 
 
 _HEX64_RE = re.compile(r"^[a-f0-9]{64}$")
@@ -97,7 +100,10 @@ def _chain_fields_state(artifact: dict[str, Any]) -> int:
 
 
 def _verify_continuity(
-    artifacts: Sequence[object], errors: list[VerificationError]
+    artifacts: Sequence[object],
+    errors: list[VerificationError],
+    *,
+    legacy_mode: bool = False,
 ) -> ChainContinuity:
     if not artifacts:
         return ChainContinuity.NOT_EVALUATED
@@ -186,7 +192,12 @@ def _verify_continuity(
             )
             continuity = ChainContinuity.INVALID
         if offset:
-            expected_previous = typed_artifacts[offset - 1].get("checksum")
+            previous = typed_artifacts[offset - 1]
+            expected_previous = previous.get("checksum")
+            if legacy_mode and not expected_previous:
+                expected_previous = hashlib.sha256(
+                    canonical_json_bytes(previous)
+                ).hexdigest()
             if artifact["previous_audit_checksum"] != expected_previous:
                 errors.append(
                     _error(
@@ -197,6 +208,38 @@ def _verify_continuity(
                 )
                 continuity = ChainContinuity.INVALID
     return continuity
+
+
+def _legacy_evidence_kind(artifacts: Sequence[object]) -> LegacyFeature | None:
+    """Return the exact legacy schema feature for a homogeneous 1.x set."""
+    if not artifacts or any(type(artifact) is not dict for artifact in artifacts):
+        return None
+    kinds: set[LegacyFeature] = set()
+    for artifact in artifacts:
+        assert isinstance(artifact, dict)
+        audit_version = artifact.get("audit_schema_version")
+        workflow_version = artifact.get("workflow_schema_version")
+        if (
+            isinstance(audit_version, str)
+            and audit_version.startswith("1.")
+            and "workflow_schema_version" not in artifact
+        ):
+            kinds.add(LegacyFeature.AUDIT_SCHEMA_1X_VERIFICATION)
+        elif (
+            isinstance(workflow_version, str)
+            and workflow_version.startswith("1.")
+            and "audit_schema_version" not in artifact
+        ):
+            kinds.add(LegacyFeature.WORKFLOW_SCHEMA_1X_VERIFICATION)
+        else:
+            return None
+        checksum = artifact.get("checksum")
+        if checksum is not None and checksum != "":
+            return None
+        profile = artifact.get("canonicalization_profile")
+        if profile is not None and profile != "aegis-canonical-json-v1":
+            return None
+    return next(iter(kinds)) if len(kinds) == 1 else None
 
 
 _SIGNATURE_PRIORITY = {
@@ -280,7 +323,6 @@ def verify_chain_detailed(
     legacy_authorization: object | None = None,
 ) -> ChainVerificationReport:
     """Verify supplied evidence without conflating integrity and completeness."""
-    del legacy_authorization  # Task 4 supplies the host-only compatibility path.
     errors: list[VerificationError] = []
     if type(artifacts) is not list:
         supplied: Sequence[object] = [artifacts]
@@ -290,8 +332,25 @@ def verify_chain_detailed(
     else:
         supplied = artifacts
 
-    content = _verify_content(supplied, errors)
-    continuity = _verify_continuity(supplied, errors)
+    legacy_kind = _legacy_evidence_kind(supplied)
+    legacy_mode = (
+        legacy_kind is not None
+        and is_legacy_authorized(
+            legacy_authorization,
+            LegacyFeature.CHECKSUM_FREE_CHAIN_VERIFICATION,
+        )
+        and is_legacy_authorized(legacy_authorization, legacy_kind)
+    )
+    content = (
+        ContentIntegrity.LEGACY
+        if legacy_mode
+        else _verify_content(supplied, errors)
+    )
+    continuity = _verify_continuity(
+        supplied,
+        errors,
+        legacy_mode=legacy_mode,
+    )
     signature_status, anchor_status = _verify_signatures(
         supplied, signature_verifier, errors
     )

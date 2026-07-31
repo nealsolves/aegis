@@ -109,6 +109,11 @@ from aegis._internal.evidence_profiles import (
     build_content_checksum_v2,
     verify_content_checksum_v2,
 )
+from aegis._internal.legacy import (
+    LegacyAuthorization,
+    LegacyFeature,
+    create_legacy_authorization,
+)
 from aegis.lineage import AuditLineage
 from aegis.provenance_gate import ProvenanceGate
 from aegis.risk_history import (
@@ -194,6 +199,8 @@ __all__ = [
     "InvocationBuilder",
     "InvocationValidationError",
     "JsonFileAuditSink",
+    "LegacyAuthorization",
+    "LegacyFeature",
     "PolicyLoadError",
     "PolicyLoaderBase",
     "PolicyTestCase",
@@ -241,6 +248,7 @@ __all__ = [
     "TRAJECTORY_IMPROVING",
     "TRAJECTORY_STABLE",
     "compute_risk_score",
+    "create_legacy_authorization",
     "enforce_invocation",
     "enforce_invocation_async",
     "enforce_post_call",

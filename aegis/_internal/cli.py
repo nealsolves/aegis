@@ -27,6 +27,11 @@ from jsonschema import validate, ValidationError
 from aegis._internal.policy_loader import load_resolve_compile_policy
 from aegis._internal.errors import PolicyLoadError, PolicyValidationError
 from aegis._internal.lineage import AuditLineage
+from aegis._internal.legacy import (
+    LegacyAuthorization,
+    LegacyFeature,
+    create_legacy_authorization,
+)
 from aegis._internal.policy_init import _cmd_policy_init
 from aegis._internal.workflow_init import _cmd_workflow_init
 from aegis._internal.workflow_lint import lint_target
@@ -40,7 +45,11 @@ def _load_audit_schema() -> dict:
     return json.loads(audit_path.read_text())
 
 
-def _lint_policy(path: Path) -> list[str]:
+def _lint_policy(
+    path: Path,
+    *,
+    legacy_authorization: LegacyAuthorization | None = None,
+) -> list[str]:
     """
     Lint a single policy file for syntax and schema errors.
 
@@ -67,6 +76,7 @@ def _lint_policy(path: Path) -> list[str]:
             str(path),
             parsed_policy=policy,
             allow_legacy=False,
+            legacy_authorization=legacy_authorization,
         )
     except (PolicyLoadError, PolicyValidationError) as exc:
         details = exc.details if isinstance(exc.details, dict) else {}
@@ -76,7 +86,11 @@ def _lint_policy(path: Path) -> list[str]:
     return errors
 
 
-def _validate_policy(path: Path) -> list[str]:
+def _validate_policy(
+    path: Path,
+    *,
+    legacy_authorization: LegacyAuthorization | None = None,
+) -> list[str]:
     """
     Validate a policy file with full semantic checks (load + extends).
 
@@ -85,7 +99,11 @@ def _validate_policy(path: Path) -> list[str]:
     errors: list[str] = []
 
     try:
-        load_resolve_compile_policy(str(path), allow_legacy=False)
+        load_resolve_compile_policy(
+            str(path),
+            allow_legacy=False,
+            legacy_authorization=legacy_authorization,
+        )
     except (PolicyLoadError, PolicyValidationError) as e:
         details = e.details if isinstance(e.details, dict) else {}
         errors.append(f"[{e.code}] {details.get('path', '$')}: {e}")
@@ -98,6 +116,11 @@ def _validate_policy(path: Path) -> list[str]:
 def _cmd_lint(args: argparse.Namespace) -> int:
     """Run the lint subcommand."""
     exit_code = 0
+    legacy_authorization = (
+        create_legacy_authorization(LegacyFeature.BARE_STRING_PRECONDITIONS)
+        if getattr(args, "allow_legacy_preconditions", False)
+        else None
+    )
     for filepath in args.files:
         path = Path(filepath)
         if not path.exists():
@@ -105,7 +128,7 @@ def _cmd_lint(args: argparse.Namespace) -> int:
             exit_code = 1
             continue
 
-        errors = _lint_policy(path)
+        errors = _lint_policy(path, legacy_authorization=legacy_authorization)
         if errors:
             print(f"FAIL  {filepath}")
             for err in errors:
@@ -120,6 +143,11 @@ def _cmd_lint(args: argparse.Namespace) -> int:
 def _cmd_validate(args: argparse.Namespace) -> int:
     """Run the validate subcommand."""
     exit_code = 0
+    legacy_authorization = (
+        create_legacy_authorization(LegacyFeature.BARE_STRING_PRECONDITIONS)
+        if getattr(args, "allow_legacy_preconditions", False)
+        else None
+    )
     for filepath in args.files:
         path = Path(filepath)
         if not path.exists():
@@ -128,7 +156,9 @@ def _cmd_validate(args: argparse.Namespace) -> int:
             continue
 
         # Lint first (syntax + schema)
-        lint_errors = _lint_policy(path)
+        lint_errors = _lint_policy(
+            path, legacy_authorization=legacy_authorization
+        )
         if lint_errors:
             print(f"FAIL  {filepath} (lint)")
             for err in lint_errors:
@@ -137,7 +167,9 @@ def _cmd_validate(args: argparse.Namespace) -> int:
             continue
 
         # Then full semantic validation
-        validate_errors = _validate_policy(path)
+        validate_errors = _validate_policy(
+            path, legacy_authorization=legacy_authorization
+        )
         if validate_errors:
             print(f"FAIL  {filepath} (validate)")
             for err in validate_errors:
@@ -501,6 +533,11 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="+",
         help="Policy YAML files to lint",
     )
+    lint_parser.add_argument(
+        "--allow-legacy-preconditions",
+        action="store_true",
+        help="Host-authorize legacy bare-string preconditions for this command",
+    )
     lint_parser.set_defaults(func=_cmd_lint)
 
     # aegis policy validate <files...>
@@ -515,6 +552,11 @@ def build_parser() -> argparse.ArgumentParser:
         "files",
         nargs="+",
         help="Policy YAML files to validate",
+    )
+    validate_parser.add_argument(
+        "--allow-legacy-preconditions",
+        action="store_true",
+        help="Host-authorize legacy bare-string preconditions for this command",
     )
     validate_parser.set_defaults(func=_cmd_validate)
 
