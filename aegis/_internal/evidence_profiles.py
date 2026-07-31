@@ -55,6 +55,7 @@ def _require_v2_declaration(artifact: object) -> dict[str, object]:
     )
     if (
         not exact_discriminators
+        or "schema_version" in artifact
         or artifact.get("canonicalization_profile")
         != CANONICALIZATION_PROFILE_V2
     ):

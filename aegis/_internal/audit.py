@@ -21,7 +21,11 @@ from aegis._internal.canonicalization import (
     CANONICALIZATION_PROFILE_V2,
     canonicalize_v2,
 )
-from aegis._internal.evidence_profiles import build_content_checksum_v2
+from aegis._internal.evidence_profiles import (
+    ContentIntegrity,
+    build_content_checksum_v2,
+    verify_content_checksum_v2,
+)
 
 logger = logging.getLogger("aegis.audit")
 
@@ -71,11 +75,22 @@ def sanitize_failure_message(
 
 def checksum(obj: Mapping[str, Any]) -> str:
     """
-    Generate checksum from canonical JSON bytes.
+    Generate a v2 checksum for a JSON mapping.
+
+    Finalized v2 evidence is addressed by its stored content checksum. Other
+    mappings (including invocation inputs and outputs) are hashed directly.
 
     :param obj: JSON-serializable mapping representing input or output
     """
-    data = canonicalize_v2(dict(obj)).data
+    value = dict(obj)
+    if (
+        value.get("canonicalization_profile") == CANONICALIZATION_PROFILE_V2
+        and verify_content_checksum_v2(value) is ContentIntegrity.VALID
+    ):
+        stored = value["checksum"]
+        assert isinstance(stored, str)
+        return stored
+    data = canonicalize_v2(value).data
     return hashlib.sha256(data).hexdigest()
 
 

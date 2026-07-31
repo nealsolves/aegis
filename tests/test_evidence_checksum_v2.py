@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from jsonschema import Draft7Validator
 
+from aegis import AEGIS
 from aegis._internal.evidence_profiles import (
     ContentIntegrity,
     EvidenceProfileError,
@@ -83,6 +84,11 @@ def test_checksum_builder_rejects_caller_supplied_finalization_fields(field):
         {"workflow_schema_version": "1.0"},
         {"audit_schema_version": "2.0", "workflow_schema_version": "2.0"},
         {"audit_schema_version": "2.0", "canonicalization_profile": "legacy"},
+        {
+            "audit_schema_version": "2.0",
+            "canonicalization_profile": "aegis-json-v2",
+            "schema_version": "2.0",
+        },
     ],
 )
 def test_checksum_builder_requires_one_exact_v2_declaration(declarations):
@@ -130,3 +136,14 @@ def test_root_and_packaged_schema_pairs_are_byte_identical():
     assert (ROOT / "schemas/workflow_artifact.schema.json").read_bytes() == (
         ROOT / "aegis/schemas/workflow_artifact.schema.json"
     ).read_bytes()
+
+
+def test_real_workflow_finalization_emits_schema_valid_v2_checksum_profile():
+    session = AEGIS().open_session()
+    artifact = session.finalize()
+    schema = json.loads((ROOT / "schemas/workflow_artifact.schema.json").read_text())
+
+    assert artifact["workflow_schema_version"] == "2.0"
+    assert artifact["canonicalization_profile"] == "aegis-json-v2"
+    assert verify_content_checksum_v2(artifact) is ContentIntegrity.VALID
+    assert list(Draft7Validator(schema).iter_errors(artifact)) == []
