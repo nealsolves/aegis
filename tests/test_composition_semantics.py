@@ -11,14 +11,25 @@ from aegis._internal.policy_loader import (
 from aegis._internal.errors import PolicyValidationError
 
 
-# ── Default merge (backward compatible) ──────────────────────────
+# ── Default merge for ordinary lists (backward compatible) ───────
 
 
 def test_default_merge_arrays_append():
-    base = {"roles": ["a", "b"]}
-    overlay = {"roles": ["c"]}
+    base = {"labels": ["a", "b"]}
+    overlay = {"labels": ["c"]}
     merged = _merge_policies(base, overlay)
-    assert merged["roles"] == ["a", "b", "c"]
+    assert merged["labels"] == ["a", "b", "c"]
+
+
+@pytest.mark.parametrize(
+    "strategy",
+    [None, COMPOSITION_INTERSECT, COMPOSITION_UNION, COMPOSITION_REPLACE],
+)
+def test_roles_use_complete_replacement_for_every_strategy(strategy):
+    base = {"roles": ["a", "b"]}
+    overlay = {"roles": ["b"]}
+    merged = _merge_policies(base, overlay, strategy)
+    assert merged["roles"] == ["b"]
 
 
 def test_default_merge_dicts_recursive():
@@ -40,24 +51,24 @@ def test_default_merge_scalars_replace():
 
 
 def test_intersect_arrays():
-    base = {"roles": ["a", "b", "c"]}
-    overlay = {"roles": ["b", "c", "d"]}
+    base = {"labels": ["a", "b", "c"]}
+    overlay = {"labels": ["b", "c", "d"]}
     merged = _merge_policies(base, overlay, COMPOSITION_INTERSECT)
-    assert merged["roles"] == ["b", "c"]
+    assert merged["labels"] == ["b", "c"]
 
 
 def test_intersect_preserves_base_order():
-    base = {"roles": ["c", "b", "a"]}
-    overlay = {"roles": ["a", "c"]}
+    base = {"labels": ["c", "b", "a"]}
+    overlay = {"labels": ["a", "c"]}
     merged = _merge_policies(base, overlay, COMPOSITION_INTERSECT)
-    assert merged["roles"] == ["c", "a"]
+    assert merged["labels"] == ["c", "a"]
 
 
 def test_intersect_empty_result():
-    base = {"roles": ["a"]}
-    overlay = {"roles": ["b"]}
+    base = {"labels": ["a"]}
+    overlay = {"labels": ["b"]}
     merged = _merge_policies(base, overlay, COMPOSITION_INTERSECT)
-    assert merged["roles"] == []
+    assert merged["labels"] == []
 
 
 def test_intersect_dicts_recursive():
@@ -72,17 +83,17 @@ def test_intersect_dicts_recursive():
 
 
 def test_union_arrays_deduplicated():
-    base = {"roles": ["a", "b"]}
-    overlay = {"roles": ["b", "c"]}
+    base = {"labels": ["a", "b"]}
+    overlay = {"labels": ["b", "c"]}
     merged = _merge_policies(base, overlay, COMPOSITION_UNION)
-    assert merged["roles"] == ["a", "b", "c"]
+    assert merged["labels"] == ["a", "b", "c"]
 
 
 def test_union_preserves_order():
-    base = {"roles": ["c", "a"]}
-    overlay = {"roles": ["b", "a"]}
+    base = {"labels": ["c", "a"]}
+    overlay = {"labels": ["b", "a"]}
     merged = _merge_policies(base, overlay, COMPOSITION_UNION)
-    assert merged["roles"] == ["c", "a", "b"]
+    assert merged["labels"] == ["c", "a", "b"]
 
 
 def test_union_empty_base():
@@ -131,7 +142,7 @@ def test_extends_not_in_merged():
 # ── Integration with extends ────────────────────────────────────
 
 
-def test_load_policy_union(tmp_path):
+def test_load_policy_union_keeps_restrictive_role_replacement(tmp_path):
     base = tmp_path / "base.yaml"
     base.write_text(
         "policy_version: '1.0'\nroles:\n  - planner\n  - verifier\n  - reviewer\n"
@@ -144,11 +155,7 @@ def test_load_policy_union(tmp_path):
         "roles:\n  - planner\n  - reviewer\n"
     )
     policy = load_policy(str(child))
-    assert "planner" in policy["roles"]
-    assert "verifier" in policy["roles"]
-    assert "reviewer" in policy["roles"]
-    # Union deduplicates
-    assert len(policy["roles"]) == len(set(policy["roles"]))
+    assert policy["roles"] == ["planner", "reviewer"]
 
 
 def test_load_policy_intersect(tmp_path):

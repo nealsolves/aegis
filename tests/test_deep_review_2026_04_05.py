@@ -18,7 +18,10 @@ from aegis._internal.enforcement import (
     enforce_pre_call,
     enforce_pre_call_async,
 )
-from aegis._internal.errors import InvocationValidationError
+from aegis._internal.errors import (
+    InvocationValidationError,
+    PolicyValidationError,
+)
 from aegis._internal.sinks import (
     CallbackAuditSink,
     get_audit_sink,
@@ -57,7 +60,7 @@ def _full_inv(output, **overrides):
 class TestF01PolicyFreezeCrash:
     """F-01: YAML-native date in output_schema must not produce a raw
     TypeError.  All four split pre-call entry points must produce a
-    typed InvocationValidationError with an attached FAIL artifact.
+    typed compiler error with an attached FAIL artifact.
     """
 
     @pytest.fixture()
@@ -81,17 +84,17 @@ class TestF01PolicyFreezeCrash:
         return str(p)
 
     def test_module_sync_raises_typed_error(self, date_policy_file):
-        """enforce_pre_call raises InvocationValidationError, not TypeError."""
+        """enforce_pre_call raises a typed compiler error, not TypeError."""
         inv = _pre_call_inv(policy_file=date_policy_file)
-        with pytest.raises(InvocationValidationError) as exc_info:
+        with pytest.raises(PolicyValidationError) as exc_info:
             enforce_pre_call(inv)
 
-        assert "non-json-serializable" in str(exc_info.value).lower()
+        assert exc_info.value.code == "POLICY_NON_JSON_VALUE"
 
     def test_module_sync_attaches_artifact(self, date_policy_file):
         """enforce_pre_call attaches a FAIL artifact to the exception."""
         inv = _pre_call_inv(policy_file=date_policy_file)
-        with pytest.raises(InvocationValidationError) as exc_info:
+        with pytest.raises(PolicyValidationError) as exc_info:
             enforce_pre_call(inv)
 
         artifact = exc_info.value.audit_artifact
@@ -101,18 +104,18 @@ class TestF01PolicyFreezeCrash:
 
     @pytest.mark.asyncio
     async def test_module_async_raises_typed_error(self, date_policy_file):
-        """enforce_pre_call_async raises InvocationValidationError."""
+        """enforce_pre_call_async raises a typed compiler error."""
         inv = _pre_call_inv(policy_file=date_policy_file)
-        with pytest.raises(InvocationValidationError) as exc_info:
+        with pytest.raises(PolicyValidationError) as exc_info:
             await enforce_pre_call_async(inv)
 
-        assert "non-json-serializable" in str(exc_info.value).lower()
+        assert exc_info.value.code == "POLICY_NON_JSON_VALUE"
 
     @pytest.mark.asyncio
     async def test_module_async_attaches_artifact(self, date_policy_file):
         """enforce_pre_call_async attaches a FAIL artifact."""
         inv = _pre_call_inv(policy_file=date_policy_file)
-        with pytest.raises(InvocationValidationError) as exc_info:
+        with pytest.raises(PolicyValidationError) as exc_info:
             await enforce_pre_call_async(inv)
 
         artifact = exc_info.value.audit_artifact
@@ -120,19 +123,19 @@ class TestF01PolicyFreezeCrash:
         assert artifact["enforcement_result"] == "FAIL"
 
     def test_aigc_sync_raises_typed_error(self, date_policy_file):
-        """AIGC.enforce_pre_call raises InvocationValidationError."""
+        """AIGC.enforce_pre_call raises a typed compiler error."""
         engine = AIGC()
         inv = _pre_call_inv(policy_file=date_policy_file)
-        with pytest.raises(InvocationValidationError) as exc_info:
+        with pytest.raises(PolicyValidationError) as exc_info:
             engine.enforce_pre_call(inv)
 
-        assert "non-json-serializable" in str(exc_info.value).lower()
+        assert exc_info.value.code == "POLICY_NON_JSON_VALUE"
 
     def test_aigc_sync_attaches_artifact(self, date_policy_file):
         """AIGC.enforce_pre_call attaches a FAIL artifact."""
         engine = AIGC()
         inv = _pre_call_inv(policy_file=date_policy_file)
-        with pytest.raises(InvocationValidationError) as exc_info:
+        with pytest.raises(PolicyValidationError) as exc_info:
             engine.enforce_pre_call(inv)
 
         artifact = exc_info.value.audit_artifact
@@ -142,20 +145,20 @@ class TestF01PolicyFreezeCrash:
 
     @pytest.mark.asyncio
     async def test_aigc_async_raises_typed_error(self, date_policy_file):
-        """AIGC.enforce_pre_call_async raises InvocationValidationError."""
+        """AIGC.enforce_pre_call_async raises a typed compiler error."""
         engine = AIGC()
         inv = _pre_call_inv(policy_file=date_policy_file)
-        with pytest.raises(InvocationValidationError) as exc_info:
+        with pytest.raises(PolicyValidationError) as exc_info:
             await engine.enforce_pre_call_async(inv)
 
-        assert "non-json-serializable" in str(exc_info.value).lower()
+        assert exc_info.value.code == "POLICY_NON_JSON_VALUE"
 
     @pytest.mark.asyncio
     async def test_aigc_async_attaches_artifact(self, date_policy_file):
         """AIGC.enforce_pre_call_async attaches a FAIL artifact."""
         engine = AIGC()
         inv = _pre_call_inv(policy_file=date_policy_file)
-        with pytest.raises(InvocationValidationError) as exc_info:
+        with pytest.raises(PolicyValidationError) as exc_info:
             await engine.enforce_pre_call_async(inv)
 
         artifact = exc_info.value.audit_artifact

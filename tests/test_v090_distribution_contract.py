@@ -149,9 +149,14 @@ def test_candidate_version_is_consistent_in_metadata_and_runtime():
 def test_distribution_rename_does_not_change_runtime_dependencies():
     assert PYPROJECT_DATA["project"]["dependencies"] == [
         "PyYAML>=6.0",
-        "jsonschema>=4.0",
+        "jsonschema>=4.18,<5",
+        "google-re2>=1.1.20251105",
     ]
-    assert _runtime_dependencies() == {"PyYAML>=6.0", "jsonschema>=4.0"}
+    assert _runtime_dependencies() == {
+        "PyYAML>=6.0",
+        "jsonschema>=4.18,<5",
+        "google-re2>=1.1.20251105",
+    }
 
 
 def test_kms_optional_extras_have_exact_unbounded_lower_bounds():
@@ -176,9 +181,14 @@ def test_wheel_metadata_exposes_one_distribution_with_conditional_kms_extras(
     assert {"aws-kms", "gcp-kms"}.issubset(
         set(metadata.get_all("Provides-Extra", []))
     )
-    _, extra_requirements = validator._partition_requirements(
+    runtime_requirements, extra_requirements = validator._partition_requirements(
         metadata.get_all("Requires-Dist", [])
     )
+    assert runtime_requirements == {
+        ("pyyaml", (), ">=6.0", None, None),
+        ("jsonschema", (), "<5,>=4.18", None, None),
+        ("google-re2", (), ">=1.1.20251105", None, None),
+    }
     assert {
         requirement for requirement in extra_requirements
         if requirement[0] in {

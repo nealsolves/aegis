@@ -80,7 +80,7 @@ def test_risk_via_aigc_class():
     """Risk scoring works through AIGC class with config override."""
     aegis = AIGC(
         risk_config={
-            "mode": "warn_only",
+            "mode": "strict",
             "threshold": 0.1,
             "factors": [
                 {"name": "f1", "weight": 0.5, "condition": "no_output_schema"},

@@ -140,7 +140,9 @@ audit = enforce_invocation(invocation)
 ```
 
 The policy's `tools.allowed_tools` and `max_calls` constraints are
-enforced automatically.
+enforced automatically. Omitting `tools.allowed_tools` leaves tool authority
+unconfigured; declaring `tools.allowed_tools: []` is an explicit deny-all
+allowlist.
 
 ---
 
@@ -171,7 +173,11 @@ pre_conditions:
     - planning_context_present
 ```
 
-Merge semantics: arrays append, dicts recurse, scalars replace.
+Merge semantics for ordinary arrays follow the selected composition strategy,
+dicts recurse, and scalars replace. Authorization-bearing arrays have stricter
+field rules: child `roles`, `tools.allowed_tools`, and workflow participants
+replace inherited values and must remain within parent authority; an inherited
+`workflow.required_sequence` must remain exactly unchanged.
 Circular `extends` chains are detected and rejected at load time.
 
 ---

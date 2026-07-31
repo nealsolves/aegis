@@ -72,7 +72,8 @@ def test_wheel_build_and_fresh_venv_import_smoke(tmp_path):
         assert metadata["Version"] == EXPECTED_VERSION
         assert set(metadata.get_all("Requires-Dist", [])) >= {
             "PyYAML>=6.0",
-            "jsonschema>=4.0",
+            "jsonschema<5,>=4.18",
+            "google-re2>=1.1.20251105",
         }
         assert "aegis/__init__.py" in archive.namelist()
 

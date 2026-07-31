@@ -96,7 +96,7 @@ def test_merge_policies_key_only_in_overlay():
     overlay = {"new_key": "new_value", "roles": ["verifier"]}
     merged = _merge_policies(base, overlay)
     assert merged["new_key"] == "new_value"
-    assert merged["roles"] == ["planner", "verifier"]
+    assert merged["roles"] == ["verifier"]
     assert merged["policy_version"] == "1.0"
 
 

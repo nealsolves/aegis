@@ -184,8 +184,28 @@ class TestLintPolicy:
         )
         p = _write(tmp_path, "dup_tool.yaml", content)
         findings = lint_policy(p)
-        assert any(f["code"] == "TOOL_CONSTRAINT_VIOLATION" for f in findings)
-        assert any("search" in f["message"] for f in findings)
+        finding = next(
+            f for f in findings
+            if f["code"] == "TOOL_CONSTRAINT_AMBIGUOUS"
+        )
+        assert finding["details"]["path"] == "$.tools.allowed_tools"
+        assert finding["details"]["tool_names"] == ["search"]
+
+    def test_compiler_error_preserves_stable_code_and_path(self, tmp_path):
+        content = (
+            MINIMAL_VALID_POLICY
+            + "pre_conditions:\n"
+            + "  required: [approved]\n"
+        )
+        p = _write(tmp_path, "legacy-precondition.yaml", content)
+
+        findings = lint_policy(p)
+
+        finding = next(
+            f for f in findings
+            if f["code"] == "LEGACY_PRECONDITION_FORBIDDEN"
+        )
+        assert finding["details"]["path"] == "$.pre_conditions.required"
 
     def test_invalid_output_schema_returns_finding(self, tmp_path):
         content = (
@@ -195,11 +215,13 @@ class TestLintPolicy:
         )
         p = _write(tmp_path, "bad_schema.yaml", content)
         findings = lint_policy(p)
-        assert any(f["code"] == "POLICY_SCHEMA_VALIDATION_ERROR" for f in findings)
+        finding = next(
+            f for f in findings if f["code"] == "OUTPUT_SCHEMA_INVALID"
+        )
+        assert finding["details"]["path"] == "$.type"
 
     def test_zero_max_calls_returns_schema_error(self, tmp_path):
-        # max_calls has minimum: 1 in the DSL schema — zero surfaces as a schema error,
-        # not TOOL_CONSTRAINT_VIOLATION, because the linter returns early on schema errors.
+        # The shared compiler owns the first and authoritative diagnostic.
         content = (
             MINIMAL_VALID_POLICY
             + "tools:\n"
@@ -209,7 +231,10 @@ class TestLintPolicy:
         )
         p = _write(tmp_path, "zero_max.yaml", content)
         findings = lint_policy(p)
-        assert any(f["code"] == "POLICY_SCHEMA_VALIDATION_ERROR" for f in findings)
+        assert findings[0]["code"] == "RISK_NUMBER_INVALID"
+        assert findings[0]["details"]["path"] == (
+            "$.tools.allowed_tools.0.max_calls"
+        )
 
     def test_required_sequence_longer_than_max_steps_returns_budget_finding(self, tmp_path):
         content = (

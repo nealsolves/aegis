@@ -31,6 +31,9 @@ from aegis import (
     WorkflowProtocolViolationError,
     WorkflowUnsupportedBindingError,
 )
+from aegis._internal.adapter_invocation import (
+    project_adapter_pre_call_invocation,
+)
 
 if TYPE_CHECKING:
     from aegis._internal.session import GovernanceSession
@@ -172,7 +175,10 @@ class BedrockTraceAdapter:
         :param invocation: AEGIS invocation dict. If the host supplies
             ``context.protocol_evidence.bedrock.alias_backed``, it must not be
             ``False``; the adapter stamps ``alias_backed=True`` on the enriched
-            invocation passed to pre-call enforcement.
+            invocation passed to pre-call enforcement. A validated optional
+            ``output`` belongs to the broad host envelope only; the adapter
+            omits it from the detached Phase A projection. Supply actual output
+            only to ``complete_step()``.
         :param binding: Participant binding for the collaborator.
         :param step_id: Optional step ID; auto-generated when absent.
         :return: ``BedrockPreparedStep`` — pass to ``complete_step()``.
@@ -271,7 +277,7 @@ class BedrockTraceAdapter:
         adapter_step_key = str(uuid.uuid4())
 
         # --- Enrich invocation with normalized evidence ---
-        enriched = dict(invocation)
+        enriched = project_adapter_pre_call_invocation(invocation)
         enriched_ctx = dict(ctx)
         enriched_proto = dict(proto_evidence)
         enriched_bedrock_ev: dict[str, Any] = {

@@ -22,6 +22,7 @@ from aegis._internal.tools import validate_tool_constraints
 from aegis._internal.utils import canonical_json_bytes
 
 if TYPE_CHECKING:
+    from aegis._internal.compiled_policy import CompiledPolicy
     from aegis._internal.enforcement import AEGIS
 
 logger = logging.getLogger(__name__)
@@ -501,17 +502,22 @@ class GovernanceSession:
         self._handoffs: list[dict] | None = None
         self._escalation: dict | None = None
         self._protocol_constraints: dict | None = None
+        self._compiled_policy: "CompiledPolicy | None" = None
         self._sequence_position: int = 0
         self._last_completed_step_id: str | None = None
         self._last_completed_participant_id: str | None = None
 
         if policy_file is not None:
+            from aegis._internal.enforcement import _compile_cached_policy
+
+            _policy = _compile_cached_policy(
+                policy_file,
+                cache=self._aigc._policy_cache,
+                loader=self._aigc._policy_loader,
+            )
+            self._compiled_policy = _policy
+            _wf = _policy.workflow
             try:
-                _policy = self._aigc._policy_cache.get_or_load(
-                    policy_file,
-                    loader=self._aigc._policy_loader,
-                )
-                _wf = _policy.get("workflow") or {}
                 self._max_steps = _wf.get("max_steps")
                 self._max_total_tool_calls = _wf.get("max_total_tool_calls")
                 self._participants = _wf.get("participants")
@@ -524,8 +530,10 @@ class GovernanceSession:
                 self._handoffs = _wf.get("handoffs")
                 self._escalation = _wf.get("escalation")
                 self._protocol_constraints = _wf.get("protocol_constraints")
-            except Exception:  # noqa: BLE001
-                pass  # Policy load failure surfaces at step enforcement time
+            except (AttributeError, KeyError, TypeError):
+                # The compiler owns structural validation; this protects only
+                # against an internally inconsistent compiled workflow value.
+                raise
 
         # Budget counters
         self._authorized_step_count: int = 0
@@ -953,13 +961,18 @@ class GovernanceSession:
         observed_tool_calls = list(adapter_state.get("dynamic_tool_calls") or [])
         projected_call = {"name": tool_name, "id": tool_call_id}
         inner = entry.get("inner")
-        effective_policy = getattr(inner, "_frozen_effective_policy", None)
+        effective_policy = getattr(inner, "_compiled_policy", None)
         if effective_policy is None:
-            effective_policy = getattr(inner, "effective_policy", {})
+            effective_policy = self._compiled_policy
+        if effective_policy is None:
+            raise InvocationValidationError(
+                "Pending step is missing compiled policy authority",
+                details={"token_id": session_result._token_id},
+            )
 
         validate_tool_constraints(
             {"tool_calls": [*observed_tool_calls, projected_call]},
-            effective_policy,
+            effective_policy.tools,
         )
 
         # Enforce session-level tool-call budget (real-time)
@@ -1406,7 +1419,13 @@ class GovernanceSession:
                 },
             )
 
-        inner_result = self._aigc.enforce_pre_call(enriched)
+        if self._compiled_policy is not None:
+            inner_result = self._aigc._enforce_pre_call_compiled(
+                enriched,
+                self._compiled_policy,
+            )
+        else:
+            inner_result = self._aigc.enforce_pre_call(enriched)
 
         # Run validator hooks after invocation-level governance passes
         # (Fix 3: hooks are wired internally — validator_hooks is NOT a parameter of

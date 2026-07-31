@@ -1,8 +1,13 @@
 """Tests for the risk scoring engine (M2 feature)."""
 import pytest
+from aegis._internal.compiled_policy import (
+    CompiledRiskFactor,
+    CompiledRiskPolicy,
+)
+from aegis._internal.errors import PolicyValidationError
+from aegis._internal.policy_compiler import compile_risk_policy
 from aegis._internal.risk_scoring import (
     compute_risk_score,
-    RiskScore,
     RISK_MODE_STRICT,
     RISK_MODE_RISK_SCORED,
     RISK_MODE_WARN_ONLY,
@@ -116,8 +121,8 @@ def test_score_above_threshold_exceeded():
     assert result.score > result.threshold
 
 
-def test_exact_threshold_not_exceeded():
-    """Score equal to threshold is not exceeded (> not >=)."""
+def test_exact_threshold_is_exceeded():
+    """Removing the inclusive threshold boundary must fail this test."""
     config = {
         "mode": "strict",
         "threshold": 0.3,
@@ -126,7 +131,55 @@ def test_exact_threshold_not_exceeded():
         ],
     }
     result = compute_risk_score(_base_invocation(), _base_policy(), risk_config=config)
-    assert not result.exceeded
+    assert result.exceeded
+
+
+def test_fixed_critical_ceiling_is_inclusive():
+    """A score at 0.90 must exceed even a higher policy threshold."""
+    risk = compile_risk_policy(
+        {
+            "mode": "warn_only",
+            "threshold": 1.0,
+            "factors": [
+                {
+                    "name": "f1",
+                    "weight": 0.9,
+                    "condition": "no_output_schema",
+                }
+            ],
+        }
+    )
+
+    result = compute_risk_score(_base_invocation(), _base_policy(), risk_config=risk)
+
+    assert result.exceeded
+    assert result.threshold == 1.0
+
+
+def test_caller_constructed_compiled_policy_cannot_raise_critical_ceiling():
+    """The scoring boundary must own the fixed 0.90 critical ceiling."""
+    risk = CompiledRiskPolicy(
+        mode="warn_only",
+        threshold=1.0,
+        critical_ceiling=1.0,
+        factors=(
+            CompiledRiskFactor(
+                name="f1",
+                weight=0.9,
+                condition="no_output_schema",
+            ),
+        ),
+    )
+
+    result = compute_risk_score(
+        _base_invocation(),
+        _base_policy(),
+        risk_config=risk,
+    )
+
+    assert result.score == 0.9
+    assert result.threshold == 1.0
+    assert result.exceeded
 
 
 # ── Factor conditions ────────────────────────────────────────────
@@ -164,13 +217,37 @@ def test_external_model_condition():
     )
 
 
-def test_context_key_condition():
-    assert _evaluate_risk_condition(
-        "high_risk", {"context": {"high_risk": True}}, {}
+def test_context_key_is_not_an_implicit_risk_condition():
+    """Restoring arbitrary context lookup must fail this closed-set test."""
+    with pytest.raises(PolicyValidationError) as exc:
+        _evaluate_risk_condition(
+            "high_risk", {"context": {"high_risk": True}}, {}
+        )
+
+    assert exc.value.code == "RISK_CONDITION_UNKNOWN"
+
+
+def test_compute_risk_score_consumes_compiled_risk_policy():
+    """Removing the authoritative compiled input path must fail this test."""
+    risk = compile_risk_policy(
+        {
+            "mode": "risk_scored",
+            "threshold": 0.5,
+            "factors": [
+                {
+                    "name": "f1",
+                    "weight": 0.3,
+                    "condition": "no_output_schema",
+                }
+            ],
+        }
     )
-    assert not _evaluate_risk_condition(
-        "high_risk", {"context": {}}, {}
-    )
+
+    result = compute_risk_score(_base_invocation(), _base_policy(), risk_config=risk)
+
+    assert result.score == 0.3
+    assert result.threshold == 0.5
+    assert result.mode == "risk_scored"
 
 
 # ── Basis recording ─────────────────────────────────────────────

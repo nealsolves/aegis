@@ -14,9 +14,7 @@ from aegis._internal.enforcement import (
     AIGC,
     enforce_invocation,
     enforce_post_call,
-    enforce_post_call_async,
     enforce_pre_call,
-    enforce_pre_call_async,
 )
 from aegis._internal.errors import (
     InvocationValidationError,
@@ -25,7 +23,6 @@ from aegis._internal.errors import (
 from aegis._internal.gates import (
     EnforcementGate,
     GateResult,
-    INSERTION_POST_OUTPUT,
     INSERTION_PRE_AUTHORIZATION,
     INSERTION_PRE_OUTPUT,
 )
@@ -74,8 +71,7 @@ class TestFinding1FrozenPolicyMutability:
         Phase A must not allow Phase B to pass with a non-conforming output.
         """
         pre = enforce_pre_call(_pre_call_inv())
-        # Weaken schema: remove "confidence" from required
-        pre._frozen_effective_policy["output_schema"]["required"] = ["result"]
+        assert not hasattr(pre, "_frozen_effective_policy")
         # Output is missing "confidence" — should still fail schema validation
         with pytest.raises(SchemaValidationError):
             enforce_post_call(pre, {"result": "ok"})
@@ -84,7 +80,7 @@ class TestFinding1FrozenPolicyMutability:
         """Same test via AIGC instance enforce_post_call."""
         engine = AIGC()
         pre = engine.enforce_pre_call(_pre_call_inv())
-        pre._frozen_effective_policy["output_schema"]["required"] = ["result"]
+        assert not hasattr(pre, "_frozen_effective_policy")
         with pytest.raises(SchemaValidationError):
             engine.enforce_post_call(pre, {"result": "ok"})
 
@@ -95,7 +91,7 @@ class TestFinding1FrozenPolicyMutability:
         be the authoritative source.
         """
         pre = enforce_pre_call(_pre_call_inv())
-        pre.effective_policy["output_schema"]["required"] = ["result"]
+        assert not hasattr(pre, "effective_policy")
         with pytest.raises(SchemaValidationError):
             enforce_post_call(pre, {"result": "ok"})
 

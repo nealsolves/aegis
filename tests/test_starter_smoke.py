@@ -121,7 +121,6 @@ class TestRegulatedStarterSmoke:
                 invocation = {
                     "policy_file": str(tmp_path / "policy.yaml"),
                     "input": {"prompt": "missing source"},
-                    "output": {},
                     "context": {},  # No provenance.source_ids
                     "model_provider": "anthropic",
                     "model_identifier": "claude-sonnet-4-6",

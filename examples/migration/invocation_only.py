@@ -28,7 +28,6 @@ def run_with_invocation_only(policy_file: str = "policy.yaml") -> list[dict]:
         pre = governance.enforce_pre_call({
             "policy_file": policy_file,
             "input": {"prompt": prompt},
-            "output": {},
             "context": {},
             "model_provider": "anthropic",
             "model_identifier": "claude-sonnet-4-6",

@@ -38,7 +38,6 @@ def run_with_workflow_adoption(policy_file: str = "policy.yaml") -> dict:
             pre = session.enforce_step_pre_call({
                 "policy_file": policy_file,
                 "input": {"prompt": prompt},
-                "output": {},
                 "context": {},
                 "model_provider": "anthropic",
                 "model_identifier": "claude-sonnet-4-6",

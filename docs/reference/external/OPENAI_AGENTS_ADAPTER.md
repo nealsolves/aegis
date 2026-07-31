@@ -150,6 +150,19 @@ async def run():
 asyncio.run(run())
 ```
 
+`prepare_step(...)` accepts the broader host invocation shape shown above for
+adapter compatibility. If `output` is present, it must be a JSON-serializable
+object; the adapter validates it without mutating the caller's mapping, then
+constructs a detached Phase A projection with `output` omitted. Actual provider
+output enters governance only through `complete_step(...)` (Phase B). Direct
+`enforce_pre_call(...)` and `GovernanceSession.enforce_step_pre_call(...)`
+invocations must omit `output`.
+
+Compatibility `output` validation is bounded to 1 MiB of compact UTF-8 JSON,
+10,000 value nodes, and nesting depth 64. Object keys must be strings and count
+toward the byte limit; the root plus object values and array elements count as
+nodes, with the root at depth one.
+
 ## Protocol Constraints
 
 Add to your workflow policy under `workflow.protocol_constraints.openai_agents`:

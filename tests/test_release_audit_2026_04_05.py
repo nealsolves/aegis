@@ -10,7 +10,6 @@ F-3  — Clone replay: deepcopy/pickle of unconsumed token allows both to PASS
 from __future__ import annotations
 
 import copy
-import json
 import pickle
 import types
 
@@ -18,7 +17,6 @@ import pytest
 
 from aegis._internal.enforcement import (
     AIGC,
-    PreCallResult,
     enforce_invocation,
     enforce_post_call,
     enforce_pre_call,
@@ -227,9 +225,9 @@ class TestFinding1PolicyBytesTamperPrevention:
     """
 
     def test_corrupted_policy_bytes_do_not_crash_phase_b(self):
-        """After fix: _frozen_policy_bytes = garbage bytes -> Phase B still PASS."""
+        """The obsolete unauthenticated policy-byte copy no longer exists."""
         pre = enforce_pre_call(_pre_call_inv())
-        object.__setattr__(pre, "_frozen_policy_bytes", b"not valid json at all")
+        assert not hasattr(pre, "_frozen_policy_bytes")
         artifact = enforce_post_call(pre, _valid_output())
         assert artifact["enforcement_result"] == "PASS"
 
@@ -254,28 +252,17 @@ class TestFinding1PolicyBytesTamperPrevention:
         )
         inv = _pre_call_inv(policy_file=str(p))
         pre = enforce_pre_call(inv)
-        # Replace policy bytes with a schema-free policy
-        weak_policy = {
-            "policy_version": "1.0",
-            "roles": ["planner"],
-            "pre_conditions": {
-                "required": {"role_declared": {"type": "boolean"}},
-            },
-        }
-        object.__setattr__(
-            pre, "_frozen_policy_bytes",
-            json.dumps(weak_policy, sort_keys=True).encode(),
-        )
+        assert not hasattr(pre, "_frozen_policy_bytes")
         # Output missing 'required_field' must still FAIL (real policy used from evidence)
         from aegis._internal.errors import SchemaValidationError
         with pytest.raises(SchemaValidationError):
             enforce_post_call(pre, {"no_required_field": "x"})
 
     def test_aigc_corrupted_policy_bytes_do_not_crash_phase_b(self):
-        """AIGC instance: corrupted _frozen_policy_bytes -> Phase B still works."""
+        """AIGC instance tokens retain no unauthenticated policy bytes."""
         engine = AIGC()
         pre = engine.enforce_pre_call(_pre_call_inv())
-        object.__setattr__(pre, "_frozen_policy_bytes", b"not json")
+        assert not hasattr(pre, "_frozen_policy_bytes")
         artifact = engine.enforce_post_call(pre, _valid_output())
         assert artifact["enforcement_result"] == "PASS"
 

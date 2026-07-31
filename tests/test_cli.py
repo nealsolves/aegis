@@ -5,8 +5,6 @@ import os
 import tempfile
 from pathlib import Path
 
-import pytest
-
 from aegis._internal.cli import main, _lint_policy, _validate_policy
 
 
@@ -71,6 +69,24 @@ class TestValidatePolicy:
             GOLDEN_DIR / "policy_extends_nonexistent.yaml"
         )
         assert len(errors) > 0
+
+    def test_compiler_error_renders_stable_code_and_path(self, tmp_path):
+        policy = tmp_path / "legacy.yaml"
+        policy.write_text(
+            'policy_version: "1.0"\n'
+            "roles: [planner]\n"
+            "pre_conditions:\n"
+            "  required: [approved]\n",
+            encoding="utf-8",
+        )
+
+        errors = _validate_policy(policy)
+
+        assert errors == [
+            "[LEGACY_PRECONDITION_FORBIDDEN] "
+            "$.pre_conditions.required: "
+            "Bare-string preconditions require explicit legacy authority"
+        ]
 
 
 class TestCLIMain:

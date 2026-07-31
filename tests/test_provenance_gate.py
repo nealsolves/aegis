@@ -33,6 +33,13 @@ def _inv(provenance=_ABSENT):
     return {**_BASE, "context": ctx}
 
 
+def _pre_inv(provenance=_ABSENT):
+    """Build the output-free invocation required by split Phase A."""
+    invocation = _inv(provenance)
+    invocation.pop("output")
+    return invocation
+
+
 # ── Unit: construction ─────────────────────────────────────────────
 
 
@@ -202,12 +209,8 @@ def test_phase_a_split_fail_artifact_carries_provenance():
     """
     from aegis import enforce_pre_call
     from aegis._internal.errors import GovernanceViolationError
-    inv = {
-        **_BASE,
-        "role": "nonexistent_role_xyz",
-        "context": {"role_declared": True, "schema_exists": True,
-                    "provenance": {"source_ids": ["doc-a"]}},
-    }
+    inv = _pre_inv(provenance={"source_ids": ["doc-a"]})
+    inv["role"] = "nonexistent_role_xyz"
     with pytest.raises(GovernanceViolationError) as exc_info:
         enforce_pre_call(inv)
     artifact = exc_info.value.audit_artifact
@@ -245,7 +248,7 @@ def test_split_fn_fail_artifact_carries_provenance():
     """
     from aegis._internal.enforcement import emit_split_fn_failure_artifact
     from aegis import enforce_pre_call
-    inv = _inv(provenance={"source_ids": ["doc-a"]})
+    inv = _pre_inv(provenance={"source_ids": ["doc-a"]})
     pre = enforce_pre_call(inv)
     artifact = emit_split_fn_failure_artifact(pre, RuntimeError("wrapped fn failed"))
     assert artifact["provenance"] is not None
@@ -261,7 +264,7 @@ def test_phase_b_fail_artifact_carries_provenance():
     """
     from aegis import enforce_pre_call, enforce_post_call
     from aegis._internal.errors import SchemaValidationError
-    pre = enforce_pre_call(_inv(provenance={"source_ids": ["doc-a"]}))
+    pre = enforce_pre_call(_pre_inv(provenance={"source_ids": ["doc-a"]}))
     with pytest.raises(SchemaValidationError) as exc_info:
         enforce_post_call(pre, {"result": "ok"})  # missing required 'confidence'
     artifact = exc_info.value.audit_artifact

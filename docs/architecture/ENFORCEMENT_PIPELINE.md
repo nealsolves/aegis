@@ -33,7 +33,7 @@ Application
 │  ▼
 │  Phase A / enforce_pre_call
 │  ▼
-│  Policy Load -> pre_authorization -> Guard Evaluation -> Role Validation
+│  Policy Load -> Strict Compile -> pre_authorization -> Guard Evaluation -> Role Validation
 │  -> Precondition Validation -> Tool Constraint Validation -> post_authorization
 │  ▼
 │  Model Call Boundary
@@ -47,7 +47,7 @@ Application
 │  ▼
 │  AEGIS Enforcement Engine
 │  ▼
-│  Policy Load
+│  Policy Load + Strict Compile
 │  ▼
 │  pre_authorization custom gates
 │  ▼
@@ -80,22 +80,36 @@ Application
 
 ### 1. Policy Load
 
-The enforcement engine loads the policy file.
+The enforcement engine loads the policy file and immediately calls the shared
+policy compiler with legacy authority disabled. The resulting
+`CompiledPolicy` is the only authorization representation passed into the
+pipeline. Public `load_policy()` continues to return a dictionary for callers
+that use the loader outside enforcement.
 
 Policy validation includes:
 
 * YAML parsing
 * JSON Schema validation
 * policy composition
-* guard expansion
+* typed immutable guard-effect compilation and restriction validation
+* precompiled typed preconditions and RE2 patterns
+* precompiled output-schema validation
+* explicit immutable per-field tool, risk, workflow, and authority limits
 
 Invalid policies fail immediately.
+
+The policy is compiled once at each load boundary. Unified, split, async,
+instance, adapter, and session paths carry that compiled value forward; no
+authorization stage reopens or reinterprets the loaded dictionary.
 
 ---
 
 ### 2. Guard Evaluation
 
-Conditional guards expand the effective policy.
+Conditional guards select compiler-produced `CompiledPolicyOverlay` values.
+Runtime evaluation resolves conditions and applies matching typed effects
+cumulatively with immutable field operations. It never reconstructs a policy
+dictionary or calls the policy compiler.
 
 Example:
 
@@ -141,8 +155,10 @@ Examples:
 * tenant id presence
 * authorization tokens
 
-Typed validation is preferred. Legacy bare-string preconditions are still
-supported but deprecated; a `DeprecationWarning` is emitted at runtime.
+Authorization requires typed preconditions. Legacy bare-string preconditions
+remain available only to explicitly authorized compiler compatibility callers;
+enforcement and lint reject them with
+`LEGACY_PRECONDITION_FORBIDDEN` at `$.pre_conditions.required`.
 
 Key existence alone is insufficient for typed preconditions.
 
@@ -238,6 +254,22 @@ This proves enforcement occurred before action. In split mode, the Phase A list
 is the explicit proof that the authorization-side gates completed before the
 wrapped model call executed.
 
+The split token carries the exact in-memory `CompiledPolicy`. Pickle/deepcopy
+compatibility transfers a canonical typed compiled DTO, reconstructs compiled
+value objects without calling `compile_policy()`, and binds Phase B to both the
+source `policy_digest` and a domain-separated canonical compiled-DTO content
+digest inside HMAC-authenticated Phase A evidence. The digest is verified
+before DTO reconstruction and again before Phase B use. Tokens retain no
+generic effective-policy map or serialized raw-policy copy.
+
+A policy-backed workflow session pins the exact `CompiledPolicy` created when
+the session opens. Step authorization and dynamic tool checks use that pinned
+authority (or typed guard-derived restrictions from it), so policy-file changes
+cannot mix open-time workflow limits with later authorization rules.
+
+Policy lint uses the same compiler and reports its stable error code and
+`details.path`, so diagnostics cannot drift from enforcement semantics.
+
 ---
 
 ## Custom Enforcement Gates
@@ -258,8 +290,9 @@ Gates implement the `EnforcementGate` ABC and return `GateResult` objects.
 
 ### Gate Contract
 
-Gates receive immutable views of the policy and invocation. Any attempt to
-mutate these objects is converted into a gate failure.
+Gates receive immutable projections derived from compiled fields and an
+immutable view of the invocation. They do not receive the loaded raw policy.
+Any attempt to mutate these objects is converted into a gate failure.
 
 Custom gates may:
 

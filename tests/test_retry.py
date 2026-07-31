@@ -3,7 +3,13 @@
 import pytest
 from unittest.mock import MagicMock
 from aegis._internal.retry import with_retry, RetryExhaustedError
-from aegis._internal.errors import SchemaValidationError, PreconditionError, GovernanceViolationError
+from aegis._internal.errors import (
+    GovernanceViolationError,
+    PolicyValidationError,
+    PreconditionError,
+    SchemaValidationError,
+)
+from aegis._internal.policy_compiler import compile_policy
 
 
 def _base_invocation_with_retry():
@@ -106,6 +112,70 @@ def test_max_retries_zero_single_attempt():
     audit = with_retry(invocation, enforcement_fn=mock_enforce)
 
     assert audit["enforcement_result"] == "PASS"
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("max_retries", -1),
+        ("max_retries", 11),
+        ("max_retries", True),
+        ("max_retries", 1.0),
+        ("backoff_ms", -1),
+        ("backoff_ms", 60_001),
+        ("backoff_ms", True),
+        ("backoff_ms", 1.0),
+    ],
+)
+def test_retry_security_numbers_are_strict_and_bounded(field, value):
+    """Retry loops must never consume coerced or out-of-range bounds."""
+    retry = {"max_retries": 2, "backoff_ms": 100}
+    retry[field] = value
+    policy = {
+        "policy_version": "1.0",
+        "roles": ["planner"],
+        "retry_policy": retry,
+    }
+
+    with pytest.raises(PolicyValidationError) as exc:
+        compile_policy(policy, source="test")
+
+    assert exc.value.code == "RISK_NUMBER_INVALID"
+
+
+def test_compiled_policy_carries_retry_bounds():
+    """Dropping retry compilation must fail this authoritative-boundary test."""
+    compiled = compile_policy(
+        {
+            "policy_version": "1.0",
+            "roles": ["planner"],
+            "retry_policy": {"max_retries": 3, "backoff_ms": 250},
+        },
+        source="test",
+    )
+
+    assert compiled.retry is not None
+    assert compiled.retry.max_retries == 3
+    assert compiled.retry.backoff_ms == 250
+
+
+def test_with_retry_rejects_uncompiled_retry_numbers(monkeypatch):
+    """The compatibility wrapper must compile loaded retry authority first."""
+    monkeypatch.setattr(
+        "aegis._internal.policy_loader.load_policy",
+        lambda _path: {
+            "policy_version": "1.0",
+            "roles": ["planner"],
+            "retry_policy": {"max_retries": True, "backoff_ms": 0},
+        },
+    )
+    enforce = MagicMock(return_value={"enforcement_result": "PASS"})
+
+    with pytest.raises(PolicyValidationError) as exc:
+        with_retry(_base_invocation_with_retry(), enforcement_fn=enforce)
+
+    assert exc.value.code == "RISK_NUMBER_INVALID"
+    enforce.assert_not_called()
 
 
 def test_backoff_timing():

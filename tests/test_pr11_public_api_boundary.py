@@ -4,6 +4,7 @@ from __future__ import annotations
 import ast
 import importlib
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -112,7 +113,7 @@ def test_public_docs_examples_and_demos_do_not_import_internal_modules():
 
 def test_public_import_boundary_script_passes():
     result = subprocess.run(
-        ["python", "scripts/check_public_docs_no_internal_imports.py"],
+        [sys.executable, "scripts/check_public_docs_no_internal_imports.py"],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
