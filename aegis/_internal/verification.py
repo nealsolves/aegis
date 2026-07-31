@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Iterable, Sequence
 
+from aegis._internal.canonicalization import CANONICALIZATION_PROFILE_V2
 from aegis._internal.evidence_profiles import (
     ContentIntegrity,
     verify_content_checksum_v2,
@@ -277,6 +278,34 @@ def _verify_signatures(
             signature_statuses.append(SignatureStatus.INDETERMINATE)
             anchor_statuses.append(AnchorStatus.NOT_EVALUATED)
             continue
+        declares_v2 = (
+            artifact.get("canonicalization_profile")
+            == CANONICALIZATION_PROFILE_V2
+            or artifact.get("audit_schema_version") == "2.0"
+            or artifact.get("workflow_schema_version") == "2.0"
+        )
+        signature_metadata = artifact.get("signature_metadata")
+        signature_profile = (
+            signature_metadata.get("canonicalization_version")
+            if type(signature_metadata) is dict
+            else None
+        )
+        if (
+            declares_v2
+            and artifact.get("signature") is not None
+            and signature_profile != CANONICALIZATION_PROFILE_V2
+        ):
+            errors.append(
+                _error(
+                    "SIGNATURE_PROFILE_MISMATCH",
+                    f"Index {index}: v2 evidence signature does not declare "
+                    "the v2 canonicalization profile",
+                    index,
+                )
+            )
+            signature_statuses.append(SignatureStatus.INDETERMINATE)
+            anchor_statuses.append(AnchorStatus.NOT_EVALUATED)
+            continue
         try:
             result = verify_artifact_detailed(
                 artifact,
@@ -325,12 +354,18 @@ def verify_chain_detailed(
     """Verify supplied evidence without conflating integrity and completeness."""
     errors: list[VerificationError] = []
     if type(artifacts) is not list:
-        supplied: Sequence[object] = [artifacts]
-        errors.append(
-            _error("CHAIN_INPUT_INVALID", "Artifacts must be supplied as a list")
+        error = _error(
+            "CHAIN_INPUT_INVALID", "Artifacts must be supplied as a list"
         )
-    else:
-        supplied = artifacts
+        return ChainVerificationReport(
+            content_integrity=ContentIntegrity.INVALID,
+            chain_continuity=ChainContinuity.INVALID,
+            signature_status=SignatureStatus.INDETERMINATE,
+            anchor_status=AnchorStatus.NOT_EVALUATED,
+            completeness=Completeness.UNPROVEN,
+            errors=(error,),
+        )
+    supplied: Sequence[object] = artifacts
 
     legacy_kind = _legacy_evidence_kind(supplied)
     legacy_mode = (

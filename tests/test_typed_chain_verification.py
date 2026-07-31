@@ -4,6 +4,7 @@ import pytest
 
 from aegis._internal.canonicalization import canonicalize_v2
 from aegis._internal.evidence_profiles import build_content_checksum_v2
+from aegis._internal.external_signing import sign_artifact_with_metadata
 from aegis._internal.signature_models import AnchorStatus, SignatureStatus
 from aegis._internal.utils import canonical_json_bytes
 from aegis.audit_chain import (
@@ -12,6 +13,10 @@ from aegis.audit_chain import (
     ContentIntegrity,
     verify_chain,
     verify_chain_detailed,
+)
+from tests.support.external_signing import (
+    DeterministicExternalSigner,
+    DeterministicExternalVerifier,
 )
 
 
@@ -94,6 +99,37 @@ def test_malformed_entries_return_typed_invalid_report(entry):
     assert report.content_integrity is ContentIntegrity.INVALID
     assert report.chain_continuity is ChainContinuity.INVALID
     assert report.errors
+
+
+def test_non_list_outer_input_cannot_return_internal_success():
+    artifact = finalized_artifact()
+
+    report = verify_chain_detailed(artifact)
+    with pytest.warns(DeprecationWarning):
+        valid, errors = verify_chain(artifact)
+
+    assert report.content_integrity is ContentIntegrity.INVALID
+    assert report.chain_continuity is ChainContinuity.INVALID
+    assert report.internal_valid is False
+    assert any(error.code == "CHAIN_INPUT_INVALID" for error in report.errors)
+    assert valid is False
+    assert errors == ["Artifacts must be supplied as a list"]
+
+
+def test_v1_signature_profile_cannot_promote_v2_signature_assurance():
+    artifact = finalized_artifact()
+    signer = DeterministicExternalSigner()
+    verifier = DeterministicExternalVerifier()
+    sign_artifact_with_metadata(artifact, signer, signed_at=123)
+
+    assert artifact["signature_metadata"]["canonicalization_version"] == (
+        "aegis-canonical-json-v1"
+    )
+    report = verify_chain_detailed([artifact], signature_verifier=verifier)
+
+    assert report.content_integrity is ContentIntegrity.VALID
+    assert report.signature_status is SignatureStatus.INDETERMINATE
+    assert any(error.code == "SIGNATURE_PROFILE_MISMATCH" for error in report.errors)
 
 
 def test_verification_does_not_mutate_supplied_artifacts():
