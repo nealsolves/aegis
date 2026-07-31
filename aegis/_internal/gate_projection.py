@@ -9,6 +9,21 @@ from typing import Any, cast
 from aegis._internal.compiled_policy import CompiledPolicy, JsonValue
 
 
+def _detached_mapping_key(key: object) -> str:
+    """Normalize supported JSON-object keys without polymorphic conversion."""
+    if isinstance(key, str):
+        return str.__str__(key)
+    if isinstance(key, bool):
+        return str(bool(key))
+    if isinstance(key, int):
+        return str(int.__int__(key))
+    if isinstance(key, float):
+        return str(float.__float__(key))
+    raise TypeError(
+        f"Unsupported gate projection mapping key: {type(key).__name__}"
+    )
+
+
 def detached_json_projection(value: object) -> JsonValue:
     """Copy JSON-shaped data into a recursively immutable representation."""
     if value is None:
@@ -23,7 +38,7 @@ def detached_json_projection(value: object) -> JsonValue:
         return float.__float__(value)
     if isinstance(value, Mapping):
         copied = {
-            str(key): detached_json_projection(item)
+            _detached_mapping_key(key): detached_json_projection(item)
             for key, item in value.items()
         }
         return cast(JsonValue, MappingProxyType(copied))

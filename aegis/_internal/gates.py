@@ -114,8 +114,10 @@ def _plain_json_value(value: Any) -> Any:
     return value
 
 
-def normalize_gate_result(gate_id: str, result: object) -> NormalizedOutcome:
-    """Map one untrusted custom-gate return value to a closed outcome."""
+def _normalize_gate_result_unchecked(
+    gate_id: str,
+    result: object,
+) -> NormalizedOutcome:
     if not isinstance(result, GateResult):
         return OutcomeNormalizer.execution_failure(
             "CUSTOM_GATE_INVALID_RETURN",
@@ -170,6 +172,28 @@ def normalize_gate_result(gate_id: str, result: object) -> NormalizedOutcome:
                     gate_id,
                     "CUSTOM_GATE_INVALID_METADATA",
                     "returned unsupported metadata",
+                ),
+            ),
+        )
+
+
+def normalize_gate_result(gate_id: str, result: object) -> NormalizedOutcome:
+    """Map any untrusted custom-gate return value to a closed outcome."""
+    safe_gate_id = (
+        str.__str__(gate_id)
+        if isinstance(gate_id, str)
+        else "unknown-gate"
+    )
+    try:
+        return _normalize_gate_result_unchecked(safe_gate_id, result)
+    except Exception:  # noqa: BLE001 - untrusted result object graph
+        return OutcomeNormalizer.execution_failure(
+            "CUSTOM_GATE_MALFORMED_RESULT",
+            failures=(
+                _synthetic_failure(
+                    safe_gate_id,
+                    "CUSTOM_GATE_MALFORMED_RESULT",
+                    "returned a result that could not be inspected safely",
                 ),
             ),
         )

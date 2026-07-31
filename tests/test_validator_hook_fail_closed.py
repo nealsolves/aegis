@@ -4,6 +4,9 @@ from aegis._internal.outcomes import TerminalClass
 from aegis._internal.validator_hook import (
     VALIDATOR_EXECUTION_FAILURE,
     ValidatorHookResult,
+    ValidatorHook,
+    ValidatorHookEnvelope,
+    _call_hook_once,
     normalize_hook_result,
 )
 
@@ -41,3 +44,29 @@ def test_unknown_hook_decision_is_invalid():
         observed_at=1_722_000_000_000,
     )
     assert normalize_hook_result(result).terminal is TerminalClass.INVALID_RESULT
+
+
+def test_hook_runner_converts_malformed_return_before_field_access():
+    class MalformedHook(ValidatorHook):
+        hook_id = "malformed-hook"
+        hook_version = "1.0"
+
+        def evaluate(self, envelope):
+            return {"decision": "allow"}
+
+    result = _call_hook_once(
+        MalformedHook(),
+        ValidatorHookEnvelope(
+            hook_schema_version="1.0",
+            session_id="s-1",
+            step_id="step-1",
+            participant_id=None,
+            invocation={},
+            deadline_ms=1000,
+            observed_at=1_722_000_000_000,
+        ),
+        attempt=1,
+    )
+    outcome = normalize_hook_result(result)
+    assert outcome.terminal is TerminalClass.INVALID_RESULT
+    assert outcome.reason_code == "HOOK_INVALID_RESULT"

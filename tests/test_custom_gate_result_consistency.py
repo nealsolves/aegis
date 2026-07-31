@@ -37,3 +37,17 @@ def test_true_without_failures_allows():
     )
     assert outcome.terminal is TerminalClass.ALLOW
     assert outcome.metadata["checked"] is True
+
+
+def test_malformed_gate_result_internals_cannot_escape_normalization():
+    class ExplodingFailures(list):
+        def __iter__(self):
+            raise RuntimeError("secret-backend-state")
+
+    result = GateResult(passed=False)
+    result.failures = ExplodingFailures()
+
+    outcome = normalize_gate_result("evil", result)
+    assert outcome.terminal is TerminalClass.EXECUTION_FAILURE
+    assert outcome.reason_code == "CUSTOM_GATE_MALFORMED_RESULT"
+    assert "secret-backend-state" not in outcome.failures[0].message

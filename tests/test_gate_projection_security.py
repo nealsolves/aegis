@@ -63,6 +63,29 @@ def test_scalar_subclass_cannot_carry_live_reference_into_projection():
         assert value is not live
 
 
+def test_mapping_key_subclass_cannot_carry_live_reference_into_projection():
+    class LeakyKey(str):
+        __slots__ = ("ref",)
+
+        def __new__(cls, value, ref):
+            instance = super().__new__(cls, value)
+            instance.ref = ref
+            return instance
+
+        def __str__(self):
+            return self
+
+    live = ["authorization-basis"]
+    projection = GateProjectionFactory.policy_from_mapping(
+        {LeakyKey("role", live): "verifier"}
+    )
+    projected_key = next(iter(projection))
+
+    assert type(projected_key) is str
+    for value in _walk_objects(projection):
+        assert value is not live
+
+
 class _ObjectGraphMutatingGate(EnforcementGate):
     @property
     def name(self) -> str:
