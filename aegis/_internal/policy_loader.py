@@ -912,6 +912,7 @@ def load_resolve_compile_policy(
     *,
     parsed_policy: dict[str, Any] | None = None,
     allow_legacy: bool = False,
+    legacy_authorization: object | None = None,
 ) -> CompiledPolicy:
     """Return typed diagnostics authority without exposing a loaded mapping.
 
@@ -929,6 +930,7 @@ def load_resolve_compile_policy(
         policy,
         source=policy_file,
         allow_legacy=allow_legacy,
+        legacy_authorization=legacy_authorization,
     )
 
 

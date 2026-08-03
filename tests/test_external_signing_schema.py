@@ -19,7 +19,8 @@ def _schema() -> dict:
 
 def _artifact() -> dict:
     return {
-        "audit_schema_version": "1.4",
+        "audit_schema_version": "2.0",
+        "canonicalization_profile": "aegis-json-v2",
         "policy_file": "test.yaml",
         "policy_schema_version": "http://json-schema.org/draft-07/schema#",
         "policy_version": "1.0",
@@ -37,6 +38,7 @@ def _artifact() -> dict:
         "metadata": {},
         "risk_score": None,
         "signature": None,
+        "checksum": "c" * 64,
     }
 
 
@@ -70,7 +72,7 @@ def _validate_with_schema(schema_path: Path, artifact: dict) -> None:
     Draft7Validator(schema).validate(artifact)
 
 
-def test_historical_signed_artifact_without_metadata_remains_valid():
+def test_signature_without_metadata_remains_schema_valid():
     artifact = _artifact()
     artifact["signature"] = "legacy-signature"
 
@@ -82,7 +84,7 @@ def test_fully_signed_metadata_aware_artifact_is_valid():
 
     _validate(artifact)
 
-    assert artifact["audit_schema_version"] == "1.4"
+    assert artifact["audit_schema_version"] == "2.0"
 
 
 def test_signature_metadata_null_is_rejected():

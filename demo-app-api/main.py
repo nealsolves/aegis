@@ -1,5 +1,4 @@
 import copy
-import hashlib
 import json
 import secrets
 import uuid
@@ -11,7 +10,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from scenarios import SCENARIOS
 from aegis import (
-    AEGIS, AIGCError, HMACSigner, verify_artifact, verify_chain,
+    AEGIS, AIGCError, HMACSigner, build_content_checksum_v2,
+    verify_artifact, verify_chain_detailed,
     validate_policy_dates, PolicyTestCase, PolicyTestSuite,
     PolicyValidationError,
 )
@@ -193,33 +193,6 @@ def verify_signature(req: VerifySignatureRequest):
     return {"valid": valid}
 
 
-def _normalize_for_canonical_json(obj):
-    """Mirror the runtime checksum normalization without importing internals."""
-    if isinstance(obj, float):
-        if obj != obj:
-            return obj
-        if obj.is_integer():
-            return int(obj)
-        return obj
-    if isinstance(obj, dict):
-        return {k: _normalize_for_canonical_json(v) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple)):
-        return [_normalize_for_canonical_json(v) for v in obj]
-    return obj
-
-
-def _canonical_sha256(obj: dict) -> str:
-    """Replicates AuditChain._compute_artifact_checksum for stateless use."""
-    canonical = json.dumps(
-        _normalize_for_canonical_json(obj),
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-        allow_nan=False,
-    ).encode("utf-8")
-    return hashlib.sha256(canonical).hexdigest()
-
-
 class ChainAppendRequest(BaseModel):
     scenario_key: str
     chain_id: str | None = None
@@ -244,11 +217,16 @@ def chain_append(req: ChainAppendRequest):
             raise HTTPException(status_code=422, detail=str(exc))
 
     # Inject chain fields — mirrors AuditChain.append()
-    artifact["chain_id"] = chain_id
-    artifact["chain_index"] = req.chain_index
-    artifact["previous_audit_checksum"] = req.previous_checksum
-    artifact_copy = {k: v for k, v in artifact.items() if k != "checksum"}
-    artifact["checksum"] = _canonical_sha256(artifact_copy)
+    unsigned = {
+        key: value
+        for key, value in artifact.items()
+        if key not in {"checksum", "signature", "signature_metadata"}
+    }
+    unsigned["chain_id"] = chain_id
+    unsigned["chain_index"] = req.chain_index
+    unsigned["previous_audit_checksum"] = req.previous_checksum
+    artifact = build_content_checksum_v2(unsigned)
+    artifact["signature"] = None
 
     return {"artifact": artifact, "chain_id": chain_id}
 
@@ -259,8 +237,19 @@ class ChainVerifyRequest(BaseModel):
 
 @app.post("/api/chain/verify")
 def chain_verify(req: ChainVerifyRequest):
-    valid, errors = verify_chain(req.artifacts)
-    return {"valid": valid, "errors": errors}
+    report = verify_chain_detailed(req.artifacts)
+    return {
+        "valid": report.internal_valid,
+        "content_integrity": report.content_integrity.value,
+        "chain_continuity": report.chain_continuity.value,
+        "signature_status": report.signature_status.value,
+        "anchor_status": report.anchor_status.value,
+        "completeness": report.completeness.value,
+        "errors": [
+            {"code": error.code, "message": error.message, "index": error.index}
+            for error in report.errors
+        ],
+    }
 
 
 class ChainTamperRequest(BaseModel):

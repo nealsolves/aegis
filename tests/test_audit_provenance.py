@@ -149,14 +149,14 @@ def test_generate_artifact_degrades_gracefully_on_malformed_provenance():
     assert artifact["provenance"] is None
 
 
-def test_audit_schema_version_is_1_4():
-    """Artifact emits audit_schema_version 1.4."""
+def test_audit_schema_version_is_2_0():
+    """Artifact emits audit_schema_version 2.0."""
     artifact = _make_artifact()
-    assert artifact["audit_schema_version"] == "1.4"
+    assert artifact["audit_schema_version"] == "2.0"
 
 
 def test_artifact_with_full_provenance_validates(audit_schema: dict):
-    """Full provenance object validates against schema v1.4."""
+    """Full provenance object validates against schema v2.0."""
     from jsonschema import validate
     artifact = _make_artifact(provenance={
         "source_ids": ["step-1"],

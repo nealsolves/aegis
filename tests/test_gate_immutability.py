@@ -1,120 +1,81 @@
-"""Tests proving custom gates cannot mutate policy or invocation objects.
+"""Tests proving custom gates cannot mutate policy or invocation objects."""
 
-Validates that _ImmutableView blocks all mutation operations and that
-run_gates() converts mutation attempts into CUSTOM_GATE_MUTATION failures.
-"""
+from types import MappingProxyType
+
 import pytest
-from typing import Any, Mapping
 
+from aegis._internal.enforcement import AIGC
+from aegis._internal.errors import GovernanceViolationError
+from aegis._internal.gate_projection import detached_json_projection
 from aegis._internal.gates import (
     EnforcementGate,
     GateResult,
-    run_gates,
     INSERTION_POST_AUTHORIZATION,
-    _ImmutableView,
+    run_gates,
 )
-from aegis._internal.enforcement import AIGC
-from aegis._internal.errors import GovernanceViolationError
 
 
-# ── _ImmutableView unit tests ────────────────────────────────────
-
-
-class TestImmutableViewBlocksMutation:
-    """_ImmutableView must raise TypeError with 'read-only' on mutation."""
-
+class TestDetachedProjectionBlocksMutation:
     def setup_method(self):
-        self.view = _ImmutableView({"key": "value", "other": 42})
+        self.view = detached_json_projection({"key": "value", "other": 42})
 
     def test_setitem_blocked(self):
-        with pytest.raises(TypeError, match="read-only"):
+        with pytest.raises(TypeError):
             self.view["key"] = "new"
 
     def test_delitem_blocked(self):
-        with pytest.raises(TypeError, match="read-only"):
+        with pytest.raises(TypeError):
             del self.view["key"]
 
-    def test_pop_blocked(self):
-        with pytest.raises(TypeError, match="read-only"):
-            self.view.pop("key")
-
-    def test_update_blocked(self):
-        with pytest.raises(TypeError, match="read-only"):
-            self.view.update({"key": "new"})
-
-    def test_clear_blocked(self):
-        with pytest.raises(TypeError, match="read-only"):
-            self.view.clear()
+    @pytest.mark.parametrize("method", ["pop", "update", "clear"])
+    def test_mutating_mapping_methods_unavailable(self, method):
+        assert not hasattr(self.view, method)
 
     def test_read_access_works(self):
-        """Reads must succeed even though mutations are blocked."""
         assert self.view["key"] == "value"
         assert self.view["other"] == 42
         assert len(self.view) == 2
         assert "key" in self.view
 
 
-class TestImmutableViewRecursiveWrapping:
-    """Nested dicts must also be wrapped as _ImmutableView."""
-
+class TestDetachedProjectionRecursiveFreezing:
     def test_nested_dict_is_immutable(self):
-        view = _ImmutableView({"outer": {"inner": "val"}})
+        view = detached_json_projection({"outer": {"inner": "val"}})
         nested = view["outer"]
-        assert isinstance(nested, _ImmutableView)
+        assert isinstance(nested, MappingProxyType)
         assert nested["inner"] == "val"
-
-    def test_nested_dict_setitem_blocked(self):
-        view = _ImmutableView({"outer": {"inner": "val"}})
-        nested = view["outer"]
-        with pytest.raises(TypeError, match="read-only"):
+        with pytest.raises(TypeError):
             nested["inner"] = "mutated"
 
-    def test_nested_dict_delitem_blocked(self):
-        view = _ImmutableView({"outer": {"inner": "val"}})
-        nested = view["outer"]
-        with pytest.raises(TypeError, match="read-only"):
-            del nested["inner"]
-
     def test_deeply_nested_dict_is_immutable(self):
-        view = _ImmutableView({"a": {"b": {"c": "deep"}}})
+        view = detached_json_projection({"a": {"b": {"c": "deep"}}})
         deep = view["a"]["b"]
-        assert isinstance(deep, _ImmutableView)
+        assert isinstance(deep, MappingProxyType)
         assert deep["c"] == "deep"
-        with pytest.raises(TypeError, match="read-only"):
+        with pytest.raises(TypeError):
             deep["c"] = "mutated"
 
-
-class TestImmutableViewListConversion:
-    """Nested lists must be converted to tuples."""
-
     def test_list_becomes_tuple(self):
-        view = _ImmutableView({"items": [1, 2, 3]})
-        result = view["items"]
-        assert isinstance(result, tuple)
-        assert result == (1, 2, 3)
+        view = detached_json_projection({"items": [1, 2, 3]})
+        assert view["items"] == (1, 2, 3)
+        assert isinstance(view["items"], tuple)
 
-    def test_list_of_dicts_becomes_tuple_of_immutable_views(self):
-        view = _ImmutableView({"items": [{"a": 1}, {"b": 2}]})
+    def test_list_of_dicts_becomes_tuple_of_mapping_proxies(self):
+        view = detached_json_projection({"items": [{"a": 1}, {"b": 2}]})
         result = view["items"]
         assert isinstance(result, tuple)
-        assert isinstance(result[0], _ImmutableView)
-        assert result[0]["a"] == 1
-        with pytest.raises(TypeError, match="read-only"):
+        assert isinstance(result[0], MappingProxyType)
+        with pytest.raises(TypeError):
             result[0]["a"] = 99
 
-    def test_tuple_is_not_appendable(self):
-        view = _ImmutableView({"items": [1, 2]})
-        result = view["items"]
-        with pytest.raises(AttributeError):
-            result.append(3)
-
-
-# ── Mutating gate implementations ────────────────────────────────
+    def test_projection_is_detached_from_original_collections(self):
+        source = {"outer": {"items": [1, 2]}}
+        view = detached_json_projection(source)
+        source["outer"]["items"].append(3)
+        assert view["outer"]["items"] == (1, 2)
 
 
 class PolicyMutatingGate(EnforcementGate):
-    """Gate that attempts to mutate policy['roles']."""
-
     @property
     def name(self):
         return "policy_mutator"
@@ -129,8 +90,6 @@ class PolicyMutatingGate(EnforcementGate):
 
 
 class InvocationMutatingGate(EnforcementGate):
-    """Gate that attempts to mutate invocation['context']."""
-
     @property
     def name(self):
         return "invocation_mutator"
@@ -145,8 +104,6 @@ class InvocationMutatingGate(EnforcementGate):
 
 
 class NestedPolicyMutatingGate(EnforcementGate):
-    """Gate that attempts to mutate policy at a nested level."""
-
     @property
     def name(self):
         return "nested_policy_mutator"
@@ -156,79 +113,37 @@ class NestedPolicyMutatingGate(EnforcementGate):
         return INSERTION_POST_AUTHORIZATION
 
     def evaluate(self, invocation, policy, context):
-        nested = policy["preconditions"]
-        nested["injected_condition"] = True
+        policy["preconditions"]["injected_condition"] = True
         return GateResult(passed=True)
 
 
-# ── run_gates mutation detection ─────────────────────────────────
-
-
 class TestRunGatesMutationDetection:
-    """run_gates must convert mutation TypeError into CUSTOM_GATE_MUTATION."""
-
-    def test_policy_mutation_produces_failure(self):
-        gates_evaluated = []
-        failures, _ = run_gates(
-            [PolicyMutatingGate()],
-            {},
-            {"roles": ["planner"]},
-            {},
-            gates_evaluated,
-            [],
-        )
+    @pytest.mark.parametrize(
+        ("gate", "invocation", "policy"),
+        [
+            (PolicyMutatingGate(), {}, {"roles": ["planner"]}),
+            (InvocationMutatingGate(), {"context": {}}, {}),
+            (NestedPolicyMutatingGate(), {}, {"preconditions": {}}),
+        ],
+    )
+    def test_mutation_attempt_fails_closed(self, gate, invocation, policy):
+        failures, _ = run_gates([gate], invocation, policy, {}, [], [])
         assert len(failures) == 1
-        assert failures[0]["code"] == "CUSTOM_GATE_MUTATION"
-        assert "policy_mutator" in failures[0]["message"]
-        assert "custom:policy_mutator" in gates_evaluated
-
-    def test_invocation_mutation_produces_failure(self):
-        gates_evaluated = []
-        failures, _ = run_gates(
-            [InvocationMutatingGate()],
-            {"context": {"role_declared": True}},
-            {},
-            {},
-            gates_evaluated,
-            [],
-        )
-        assert len(failures) == 1
-        assert failures[0]["code"] == "CUSTOM_GATE_MUTATION"
-        assert "invocation_mutator" in failures[0]["message"]
-        assert "custom:invocation_mutator" in gates_evaluated
-
-    def test_nested_policy_mutation_produces_failure(self):
-        gates_evaluated = []
-        failures, _ = run_gates(
-            [NestedPolicyMutatingGate()],
-            {},
-            {"preconditions": {"role_declared": True}},
-            {},
-            gates_evaluated,
-            [],
-        )
-        assert len(failures) == 1
-        assert failures[0]["code"] == "CUSTOM_GATE_MUTATION"
-        assert "nested_policy_mutator" in failures[0]["message"]
+        assert failures[0]["code"] == "CUSTOM_GATE_ERROR"
 
     def test_original_data_unchanged_after_mutation_attempt(self):
-        """The underlying dicts must remain untouched after a gate tries
-        to mutate the immutable view."""
         original_policy = {"roles": ["planner"]}
         original_invocation = {"context": {"role_declared": True}}
         run_gates(
             [PolicyMutatingGate()],
-            dict(original_invocation),
-            dict(original_policy),
+            original_invocation,
+            original_policy,
             {},
             [],
             [],
         )
         assert original_policy == {"roles": ["planner"]}
         assert original_invocation == {"context": {"role_declared": True}}
-
-
-# ── Integration: AIGC with a mutating gate ───────────────────────
 
 
 VALID_INVOCATION = {
@@ -243,18 +158,13 @@ VALID_INVOCATION = {
 
 
 def test_aigc_mutating_gate_produces_governance_failure():
-    """AIGC with a mutating gate must produce a FAIL enforcement result."""
     aegis = AIGC(custom_gates=[PolicyMutatingGate()])
     with pytest.raises(GovernanceViolationError) as exc_info:
         aegis.enforce(VALID_INVOCATION)
-    exc = exc_info.value
-    artifact = exc.audit_artifact
+    artifact = exc_info.value.audit_artifact
     assert artifact is not None
     assert artifact["enforcement_result"] == "FAIL"
     assert artifact["failure_gate"] == "custom_gate_violation"
-    # The CUSTOM_GATE_MUTATION code is preserved in the exception details
-    assert "custom_gate_failures" in exc.details
-    detail_codes = [f["code"] for f in exc.details["custom_gate_failures"]]
-    assert "CUSTOM_GATE_MUTATION" in detail_codes
-    # The mutation message surfaces in the artifact failure message
-    assert "mutate read-only data" in artifact["failures"][0]["message"]
+    assert exc_info.value.details["custom_gate_failures"][0]["code"] == (
+        "CUSTOM_GATE_ERROR"
+    )

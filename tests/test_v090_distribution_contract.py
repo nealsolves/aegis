@@ -151,11 +151,13 @@ def test_distribution_rename_does_not_change_runtime_dependencies():
         "PyYAML>=6.0",
         "jsonschema>=4.18,<5",
         "google-re2>=1.1.20251105",
+        "rfc8785>=0.1.4,<0.2",
     ]
     assert _runtime_dependencies() == {
         "PyYAML>=6.0",
         "jsonschema>=4.18,<5",
         "google-re2>=1.1.20251105",
+        "rfc8785>=0.1.4,<0.2",
     }
 
 
@@ -188,6 +190,7 @@ def test_wheel_metadata_exposes_one_distribution_with_conditional_kms_extras(
         ("pyyaml", (), ">=6.0", None, None),
         ("jsonschema", (), "<5,>=4.18", None, None),
         ("google-re2", (), ">=1.1.20251105", None, None),
+        ("rfc8785", (), "<0.2,>=0.1.4", None, None),
     }
     assert {
         requirement for requirement in extra_requirements

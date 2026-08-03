@@ -8,6 +8,7 @@ import pytest
 from typing import Any, Mapping
 
 from aegis._internal.enforcement import AIGC
+from aegis._internal.errors import CustomGateViolationError
 from aegis._internal.gates import (
     EnforcementGate,
     GateResult,
@@ -16,6 +17,7 @@ from aegis._internal.gates import (
     INSERTION_PRE_OUTPUT,
     INSERTION_POST_OUTPUT,
 )
+from aegis._internal.signing import HMACSigner
 
 
 VALID_INVOCATION = {
@@ -132,6 +134,23 @@ class TestSingleGateMetadata:
         artifact = aegis.enforce(VALID_INVOCATION)
 
         assert artifact["metadata"]["custom_gate_metadata"]["final"] is True
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+@pytest.mark.parametrize("signed", [False, True])
+def test_non_finite_gate_metadata_fails_closed_before_pass_artifact(value, signed):
+    gate = _MetadataGate(
+        "non_finite", INSERTION_POST_OUTPUT, {"score": value},
+    )
+    signer = HMACSigner(key=b"test-key") if signed else None
+
+    with pytest.raises(CustomGateViolationError) as exc_info:
+        AIGC(custom_gates=[gate], signer=signer).enforce(VALID_INVOCATION)
+
+    artifact = exc_info.value.audit_artifact
+    assert artifact["enforcement_result"] == "FAIL"
+    assert artifact["failure_gate"] == "custom_gate_violation"
+    assert artifact["failures"][0]["code"] == "CUSTOM_GATE_INVALID_METADATA"
 
 
 class TestMultiGateMetadataMerge:

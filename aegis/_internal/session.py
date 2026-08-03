@@ -4,7 +4,6 @@ GovernanceSession and SessionPreCallResult — v0.9.0 workflow primitives.
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import time
 import unicodedata
@@ -17,9 +16,11 @@ from aegis._internal.errors import (
     InvocationValidationError,
     SessionStateError,
 )
+from aegis._internal.audit import checksum as _audit_checksum
+from aegis._internal.canonicalization import CANONICALIZATION_PROFILE_V2
+from aegis._internal.evidence_profiles import build_content_checksum_v2
 from aegis._internal.sinks import emit_to_sink
 from aegis._internal.tools import validate_tool_constraints
-from aegis._internal.utils import canonical_json_bytes
 
 if TYPE_CHECKING:
     from aegis._internal.compiled_policy import CompiledPolicy
@@ -99,8 +100,8 @@ class SessionPreCallResult:
 # ---------------------------------------------------------------------------
 
 def _checksum(artifact: dict) -> str:
-    """SHA-256 hex digest of canonical JSON (same canonicalization as audit.checksum)."""
-    return hashlib.sha256(canonical_json_bytes(artifact)).hexdigest()
+    """Return a v2 content checksum or hash a non-artifact JSON value with v2."""
+    return _audit_checksum(artifact)
 
 
 def _compute_policy_file(
@@ -875,8 +876,9 @@ class GovernanceSession:
             self._step_policy_files,
         )
 
-        artifact: dict[str, Any] = {
-            "workflow_schema_version": "0.9.0",
+        unsigned_artifact: dict[str, Any] = {
+            "workflow_schema_version": "2.0",
+            "canonicalization_profile": CANONICALIZATION_PROFILE_V2,
             "artifact_type": "workflow",
             "session_id": self._session_id,
             "policy_file": policy_file,
@@ -892,6 +894,7 @@ class GovernanceSession:
             "validator_hook_evidence": list(self._validator_hook_evidence),
             "metadata": self._metadata,
         }
+        artifact = build_content_checksum_v2(unsigned_artifact)
 
         self._workflow_artifact = artifact
         self._state = STATE_FINALIZED
@@ -1435,9 +1438,7 @@ class GovernanceSession:
             from aegis._internal.validator_hook import (
                 ValidatorHookEnvelope,
                 _invoke_hook,
-                VALIDATOR_DENY,
-                VALIDATOR_TIMEOUT,
-                VALIDATOR_REVIEW_REQUIRED,
+                normalize_hook_result,
             )
             from aegis._internal.errors import WorkflowHookDeniedError
             for _hook in self._validator_hooks:
@@ -1454,12 +1455,13 @@ class GovernanceSession:
                     invocation_checksum=_checksum(enriched),
                 )
                 _result = _invoke_hook(_hook, _envelope)
+                _outcome = normalize_hook_result(_result)
                 self._validator_hook_evidence.append({
                     "hook_id": _result.hook_id,
                     "hook_version": _result.hook_version,
                     "step_id": resolved_step_id,
                     "decision": _result.decision,
-                    "reason_code": _result.reason_code,
+                    "reason_code": _outcome.reason_code,
                     "explanation": _result.explanation,
                     "attempt": _result.attempt,
                     "latency_ms": _result.latency_ms,
@@ -1467,23 +1469,22 @@ class GovernanceSession:
                     "stale_result": _result.stale_result,
                     "provenance": _result.provenance,
                 })
-                if _result.decision in {
-                    VALIDATOR_DENY, VALIDATOR_TIMEOUT, VALIDATOR_REVIEW_REQUIRED
-                }:
+                if not _outcome.allows_continuation:
                     raise WorkflowHookDeniedError(
                         f"Validator hook {_result.hook_id!r} blocked step "
-                        f"{resolved_step_id!r}: decision={_result.decision!r}, "
-                        f"reason_code={_result.reason_code!r}",
+                        f"{resolved_step_id!r}: terminal="
+                        f"{_outcome.terminal.value!r}, "
+                        f"reason_code={_outcome.reason_code!r}",
                         details={
                             "session_id": self._session_id,
                             "step_id": resolved_step_id,
                             "hook_id": _result.hook_id,
                             "decision": _result.decision,
-                            "reason_code": _result.reason_code,
+                            "reason_code": _outcome.reason_code,
+                            "terminal": _outcome.terminal.value,
                         },
                     )
-                # After fail-closed raise above, only ALLOW/WARN/EXECUTION_FAILURE
-                # remain — all are safe to continue.
+                # Only the closed ALLOW/WARN terminal classes continue.
 
         self._pending_results[token_id] = {
             "inner": inner_result,

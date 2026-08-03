@@ -75,11 +75,11 @@ enforcement to complete. The enforcement pipeline itself is always fail-closed.
 The system must never degrade into permissive mode for governance gates.
 
 Core governance gates (role, precondition, tool, schema, postcondition) are
-always fail-closed. Risk scoring has two explicitly configured non-blocking
-modes: `risk_scored` (records exceedance in artifact, does not block) and
-`warn_only` (records without blocking). Only `strict` mode blocks on risk
-threshold exceedance. Sink failures are configurable and do not affect the
-governance decision.
+always fail-closed. Below the fixed critical ceiling, risk scoring has two
+explicitly configured non-blocking threshold modes: `risk_scored` and
+`warn_only`. Equality with a policy threshold is a breach. A score at or above
+`0.90` blocks in every mode. Sink failures are configurable and do not affect
+the governance decision.
 
 ---
 
@@ -120,7 +120,8 @@ The enforcement pipeline executes in a fixed order.
 8. schema validation
 9. postcondition validation
 10. custom gates (post_output)
-11. risk scoring (mode-dependent: strict blocks; risk_scored and warn_only record only)
+11. risk scoring (the `0.90` critical ceiling blocks in every mode; below it,
+    strict blocks threshold breaches while risk_scored and warn_only warn)
 12. audit artifact generation
 
 Tool validation must occur before schema validation.
@@ -413,6 +414,23 @@ The following rules are invariant:
   data flow, generic policy-shaped snapshots, session reloads, and compiled
   parameter contracts across guards, enforcement, sessions, tools, risk,
   retry, lint, and CLI modules
+
+---
+
+## 20. Closed Extension Outcomes and Detached Gate Inputs
+
+Custom gates receive detached, recursively immutable projections built from an
+explicit compiler-field allowlist. No supplied argument may expose a live
+policy, invocation, context backing collection, registry, signer, sink, or
+operation. This is not a Python sandbox claim; it is the enforceable guarantee
+that gate arguments provide no handle to AEGIS enforcement state.
+
+Custom gates, internal validator hooks, and risk scoring must authorize only
+through `NormalizedOutcome`. The only continuation classes are `ALLOW` and
+`WARN`. Denials, contradictory or malformed results, unknown decisions,
+timeouts, exceptions, and exhausted hook execution failures are closed
+non-continuation outcomes. No authorization consumer may independently branch
+on raw gate failures, hook decision strings, `RiskScore.exceeded`, or risk mode.
 
 ---
 

@@ -1,8 +1,8 @@
 """
-Tests for audit artifact v1.4 split-enforcement metadata fields.
+Tests for audit artifact v2.0 split-enforcement metadata fields.
 
 Verifies that:
-- AUDIT_SCHEMA_VERSION is "1.4"
+- AUDIT_SCHEMA_VERSION is "2.0"
 - The audit artifact JSON schema accepts the new optional split metadata
   properties (enforcement_mode, pre_call_gates_evaluated,
   post_call_gates_evaluated, pre_call_timestamp, post_call_timestamp)
@@ -62,11 +62,11 @@ def _make_artifact(metadata: dict | None = None) -> dict:
 # ── Tests ─────────────────────────────────────────────────────────────────────
 
 
-def test_schema_version_is_1_4() -> None:
-    """AUDIT_SCHEMA_VERSION constant and generated artifact must be '1.4'."""
-    assert AUDIT_SCHEMA_VERSION == "1.4"
+def test_schema_version_is_2_0() -> None:
+    """AUDIT_SCHEMA_VERSION constant and generated artifact must be '2.0'."""
+    assert AUDIT_SCHEMA_VERSION == "2.0"
     artifact = _make_artifact()
-    assert artifact["audit_schema_version"] == "1.4"
+    assert artifact["audit_schema_version"] == "2.0"
 
 
 def test_enforcement_mode_unified_valid(audit_schema: dict) -> None:

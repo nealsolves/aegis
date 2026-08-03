@@ -1,6 +1,7 @@
 import hashlib
 
 from aegis._internal.audit import checksum
+from aegis._internal.canonicalization import canonicalize_v2
 from aegis._internal.utils import canonical_json_bytes
 
 
@@ -21,3 +22,8 @@ def test_checksum_uses_sha256():
     payload = {"k": "v"}
     digest = checksum(payload)
     assert digest == hashlib.sha256(canonical_json_bytes(payload)).hexdigest()
+
+
+def test_plain_ascii_v1_and_v2_canonical_bytes_can_coincide():
+    artifact = {"audit_schema_version": "1.4", "value": "ascii"}
+    assert canonical_json_bytes(artifact) == canonicalize_v2(artifact).data

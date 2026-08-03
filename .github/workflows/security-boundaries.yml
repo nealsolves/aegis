@@ -24,3 +24,7 @@ jobs:
         run: python -c "import re2; assert re2.compile(r'^(APPROVED|REJECTED)-[0-9]{6}$').fullmatch('APPROVED-123456')"
       - name: Run RE2 platform smoke test
         run: python -m pytest tests/test_re2_platform_smoke.py -v
+      - name: gate-projection-boundary
+        run: python -m pytest tests/test_architecture_security_boundaries.py -v
+      - name: enforcement-boundaries
+        run: python -m pytest tests/test_custom_gate_result_consistency.py tests/test_validator_hook_fail_closed.py tests/test_critical_risk_ceiling.py -v

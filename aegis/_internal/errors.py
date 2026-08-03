@@ -5,6 +5,15 @@ Custom error types for governance enforcement.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from aegis._internal.outcomes import NormalizedOutcome
+
+
+class OutcomeContractError(ValueError):
+    """Raised when a closed authorization outcome violates its contract."""
+
 
 class AIGCError(Exception):
     """
@@ -231,6 +240,31 @@ class CustomGateViolationError(GovernanceViolationError):
             message,
             code="CUSTOM_GATE_VIOLATION",
             details=details,
+        )
+
+    @classmethod
+    def from_outcome(
+        cls,
+        outcome: NormalizedOutcome,
+        *,
+        details: dict | None = None,
+    ) -> CustomGateViolationError:
+        outcome_details = {
+            "reason_code": outcome.reason_code,
+            "terminal": outcome.terminal.value,
+            "custom_gate_failures": [
+                {
+                    "code": failure.code,
+                    "message": failure.message,
+                    "field": failure.field,
+                }
+                for failure in outcome.failures
+            ],
+            **(details or {}),
+        }
+        return cls(
+            f"Custom gate authorization denied: {outcome.reason_code}",
+            details=outcome_details,
         )
 
 

@@ -30,6 +30,7 @@ from aegis._internal.compiled_policy import (
 )
 from aegis._internal.errors import PolicyLoadError, PolicyValidationError
 from aegis._internal.guards import compile_guard_program
+from aegis._internal.legacy import LegacyFeature, is_legacy_authorized
 from aegis._internal.patterns import compile_pattern
 from aegis._internal.restrictions import (
     RestrictionComparator,
@@ -182,7 +183,11 @@ def _require_risk_mapping(value: object, *, path: str) -> Mapping[str, Any]:
     return value
 
 
-def compile_risk_policy(raw: Mapping[str, Any]) -> CompiledRiskPolicy:
+def compile_risk_policy(
+    raw: Mapping[str, Any],
+    *,
+    configured: bool = True,
+) -> CompiledRiskPolicy:
     """Compile one detached, finite risk policy from the closed condition set."""
     detached = copy.deepcopy(dict(raw))
     unknown_fields = sorted(
@@ -278,6 +283,7 @@ def compile_risk_policy(raw: Mapping[str, Any]) -> CompiledRiskPolicy:
         threshold=threshold,
         critical_ceiling=CRITICAL_RISK_CEILING,
         factors=tuple(factors),
+        configured=configured,
     )
 
 
@@ -621,8 +627,12 @@ def _compile_validated_policy(
         ),
     )
 
-    raw_risk = policy.get("risk") or {}
-    risk = compile_risk_policy(raw_risk)
+    declared_risk = policy.get("risk")
+    raw_risk = declared_risk or {}
+    risk = compile_risk_policy(
+        raw_risk,
+        configured=declared_risk is not None,
+    )
     retry = _compile_retry_policy(policy.get("retry_policy"))
 
     guards: tuple[CompiledGuard, ...] = ()
@@ -884,12 +894,22 @@ def compile_policy(
     *,
     source: str,
     allow_legacy: bool = False,
+    legacy_authorization: object | None = None,
 ) -> CompiledPolicy:
     """Validate and compile a caller-detached immutable policy snapshot."""
+    if allow_legacy is not False:
+        raise PolicyValidationError(
+            "Boolean legacy switches cannot grant compiler authority",
+            code="LEGACY_AUTHORIZATION_REQUIRED",
+            details={"feature": LegacyFeature.BARE_STRING_PRECONDITIONS.value},
+        )
     return _compile_policy(
         raw_policy,
         source=source,
-        allow_legacy=allow_legacy,
+        allow_legacy=is_legacy_authorized(
+            legacy_authorization,
+            LegacyFeature.BARE_STRING_PRECONDITIONS,
+        ),
         validate_guard_effects=True,
     )
 
