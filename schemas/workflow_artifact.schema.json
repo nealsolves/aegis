@@ -18,6 +18,7 @@
     "canonicalization_profile": {"type": "string", "const": "aegis-json-v2"},
     "checksum": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
     "signature": {"type": ["string", "null"]},
+    "signature_status": {"type": "string", "enum": ["signed", "unsigned"]},
     "signature_metadata": {"type": "object"},
     "artifact_type": {"type": "string", "const": "workflow"},
     "session_id": {"type": "string"},

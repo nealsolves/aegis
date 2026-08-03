@@ -26,7 +26,13 @@ from aegis._internal.signature_models import (
     validate_encoded_signature,
     validate_verification_outcome,
 )
-from aegis._internal.signing import ArtifactSigner, HMACSigner, _canonical_signing_payload
+from aegis._internal.signing import (
+    ArtifactSigner,
+    HMACSigner,
+    _canonical_signing_payload,
+    _finalizer_metadata,
+    _finalizer_signing_payload,
+)
 from aegis._internal.utils import canonical_json_bytes
 
 
@@ -87,6 +93,56 @@ class ExternalArtifactVerifier(Protocol):
         metadata: SignatureMetadata,
     ) -> ExternalVerificationOutcome:
         raise NotImplementedError
+
+
+class ExternalArtifactSignerAdapter:
+    """Adapt the provider-neutral signer to the v2 finalizer contract."""
+
+    def __init__(self, signer: ExternalArtifactSigner) -> None:
+        if not isinstance(signer, ExternalArtifactSigner):
+            raise TypeError("signer must satisfy ExternalArtifactSigner")
+        self._signer = signer
+
+    def sign(
+        self,
+        artifact: Mapping[str, Any],
+        *,
+        domain: str,
+        signed_at: int,
+    ) -> dict[str, Any]:
+        try:
+            identity = _normalize_identity(self._signer.signer_identity())
+        except Exception as exc:
+            raise ArtifactSigningError(
+                "External signer could not prepare identity"
+            ) from exc
+        metadata = _finalizer_metadata(
+            identity,
+            domain=domain,
+            signed_at=signed_at,
+        )
+        signed = dict(artifact)
+        signed["signature_status"] = "signed"
+        payload = _finalizer_signing_payload(signed, metadata, domain=domain)
+        try:
+            receipt = self._signer.sign(
+                payload,
+                SignerIdentity(
+                    identity.algorithm,
+                    identity.signature_encoding,
+                    identity.key_reference,
+                    identity.key_version,
+                ),
+            )
+        except Exception as exc:
+            raise ArtifactSigningError(
+                "External signer did not produce a signature"
+            ) from exc
+        _validate_receipt(receipt, identity)
+        signature = _normalized_signature(receipt)
+        validate_encoded_signature(signature, identity.signature_encoding)
+        signed.update(signature_metadata=metadata, signature=signature)
+        return signed
 
 
 def _metadata_from_identity(identity: SignerIdentity, signed_at: int) -> SignatureMetadata:

@@ -120,6 +120,10 @@
       "type": ["string", "null"],
       "description": "Cryptographic signature of the artifact"
     },
+    "signature_status": {
+      "type": "string",
+      "enum": ["signed", "unsigned"]
+    },
     "signature_metadata": {
       "type": "object",
       "additionalProperties": false,
@@ -138,6 +142,7 @@
         "schema_version": {"type": "string", "const": "1"},
         "signing_profile": {"type": "string", "const": "aegis-signature-v1"},
         "canonicalization_version": {"type": "string", "const": "aegis-canonical-json-v1"},
+        "canonicalization_profile": {"type": "string", "const": "aegis-json-v2"},
         "payload_type": {"type": "string", "const": "audit_artifact"},
         "algorithm": {
           "type": "string",

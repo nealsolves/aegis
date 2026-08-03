@@ -14,11 +14,44 @@ import abc
 import hashlib
 import hmac
 import logging
-from typing import Any
+import copy
+from typing import Any, Mapping, Protocol
 
+from aegis._internal.canonicalization import (
+    CANONICALIZATION_PROFILE_V2,
+    canonicalize_v2,
+)
+from aegis._internal.errors import SigningContractError
+from aegis._internal.signature_models import (
+    CANONICALIZATION_VERSION,
+    SIGNATURE_METADATA_SCHEMA_VERSION,
+    SIGNING_PROFILE,
+    SignatureEncoding,
+    SignerIdentity,
+    validate_encoded_signature,
+)
 from aegis._internal.utils import canonical_json_bytes
 
 logger = logging.getLogger("aegis.signing")
+
+FINALIZER_INVOCATION_DOMAIN = "aegis.invocation.v2"
+FINALIZER_WORKFLOW_DOMAIN = "aegis.workflow.v2"
+_FINALIZER_PAYLOAD_TYPES = {
+    FINALIZER_INVOCATION_DOMAIN: "audit_artifact",
+    FINALIZER_WORKFLOW_DOMAIN: "workflow_artifact",
+}
+
+
+class FinalizerSigner(Protocol):
+    """Internal signing boundary consumed by the evidence finalizer."""
+
+    def sign(
+        self,
+        artifact: Mapping[str, Any],
+        *,
+        domain: str,
+        signed_at: int,
+    ) -> dict[str, Any]: ...
 
 
 class ArtifactSigner(abc.ABC):
@@ -69,6 +102,110 @@ class HMACSigner(ArtifactSigner):
         """Verify HMAC-SHA256 signature using constant-time comparison."""
         expected = hmac.new(self._key, payload, hashlib.sha256).hexdigest()
         return hmac.compare_digest(expected, signature)
+
+
+def _finalizer_metadata(
+    identity: SignerIdentity,
+    *,
+    domain: str,
+    signed_at: int,
+) -> dict[str, Any]:
+    payload_type = _FINALIZER_PAYLOAD_TYPES.get(domain)
+    if payload_type is None:
+        raise SigningContractError("Finalizer signing domain is unsupported")
+    if isinstance(signed_at, bool) or not isinstance(signed_at, int) or signed_at < 0:
+        raise SigningContractError(
+            "signed_at is invalid", details={"field": "signed_at"}
+        )
+    return {
+        "schema_version": SIGNATURE_METADATA_SCHEMA_VERSION,
+        "signing_profile": SIGNING_PROFILE,
+        "canonicalization_version": CANONICALIZATION_VERSION,
+        "canonicalization_profile": CANONICALIZATION_PROFILE_V2,
+        "payload_type": payload_type,
+        "algorithm": identity.algorithm,
+        "signature_encoding": identity.signature_encoding.value,
+        "key_reference": identity.key_reference,
+        "key_version": identity.key_version,
+        "signed_at": signed_at,
+    }
+
+
+def _finalizer_signing_payload(
+    artifact: Mapping[str, Any],
+    metadata: Mapping[str, Any],
+    *,
+    domain: str,
+) -> bytes:
+    if domain not in _FINALIZER_PAYLOAD_TYPES:
+        raise SigningContractError("Finalizer signing domain is unsupported")
+    if artifact.get("canonicalization_profile") != CANONICALIZATION_PROFILE_V2:
+        raise SigningContractError("Artifact canonicalization profile is invalid")
+    if metadata.get("canonicalization_profile") != artifact.get(
+        "canonicalization_profile"
+    ):
+        raise SigningContractError("Signing metadata profile does not match evidence")
+    if metadata.get("payload_type") != _FINALIZER_PAYLOAD_TYPES[domain]:
+        raise SigningContractError("Signing metadata payload type is invalid")
+    signable = copy.deepcopy(dict(artifact))
+    signable.pop("signature", None)
+    signable["signature_metadata"] = copy.deepcopy(dict(metadata))
+    return domain.encode("ascii") + b"\x00" + canonicalize_v2(signable).data
+
+
+class ArtifactSignerAdapter:
+    """Adapt the legacy byte signer to the metadata-aware v2 finalizer."""
+
+    def __init__(self, signer: ArtifactSigner, identity: SignerIdentity) -> None:
+        if not isinstance(signer, ArtifactSigner):
+            raise TypeError("signer must be an ArtifactSigner")
+        if not isinstance(identity, SignerIdentity):
+            raise TypeError("identity must be a SignerIdentity")
+        self._signer = signer
+        self._identity = identity
+
+    def sign(
+        self,
+        artifact: Mapping[str, Any],
+        *,
+        domain: str,
+        signed_at: int,
+    ) -> dict[str, Any]:
+        metadata = _finalizer_metadata(
+            self._identity,
+            domain=domain,
+            signed_at=signed_at,
+        )
+        signed = copy.deepcopy(dict(artifact))
+        signed["signature_status"] = "signed"
+        payload = _finalizer_signing_payload(signed, metadata, domain=domain)
+        signature = self._signer.sign(payload)
+        validate_encoded_signature(signature, self._identity.signature_encoding)
+        signed.update(signature_metadata=metadata, signature=signature)
+        return signed
+
+
+def verify_finalized_artifact(
+    artifact: Mapping[str, Any],
+    signer: ArtifactSigner,
+    *,
+    domain: str,
+) -> bool:
+    """Verify a metadata-aware v2 artifact without mutating caller state."""
+    try:
+        if artifact.get("signature_status") != "signed":
+            return False
+        signature = artifact.get("signature")
+        metadata = artifact.get("signature_metadata")
+        if not isinstance(signature, str) or type(metadata) is not dict:
+            return False
+        encoding = SignatureEncoding(metadata.get("signature_encoding"))
+        validate_encoded_signature(signature, encoding)
+        payload = _finalizer_signing_payload(artifact, metadata, domain=domain)
+        verified = signer.verify(payload, signature)
+    except Exception:
+        return False
+    return type(verified) is bool and verified
 
 
 def _canonical_signing_payload(artifact: dict[str, Any]) -> bytes:
