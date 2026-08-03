@@ -19,7 +19,7 @@ acceptance criteria and require red-green TDD.
 ## Startup and baseline
 
 - Control-plane validation: `.venv/bin/python scripts/policy-engine.py validate --root .` returned `valid: true`.
-- Baseline: `python -m pytest -q` completed with 3,494 passed, one skipped, and zero failures after making the existing root frontend dependencies available to the isolated worktree.
+- Baseline after merging local `main` at `1409335`: `python -m pytest -q` completed with 3,646 passed, one skipped, and zero failures. This includes the 3,633-test merged A2/B1 baseline plus B2 Task 1 tests.
 - Initial worktree dependency failure was environmental: nine demo-copy tests could not import the TypeScript parser before the worktree could resolve the root `demo-app-react/node_modules`; all 13 demo-copy policy tests passed after setup.
 
 ## Scope and reversibility
