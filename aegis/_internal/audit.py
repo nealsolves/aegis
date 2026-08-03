@@ -23,9 +23,9 @@ from aegis._internal.canonicalization import (
 )
 from aegis._internal.evidence_profiles import (
     ContentIntegrity,
-    build_content_checksum_v2,
     verify_content_checksum_v2,
 )
+from aegis._internal.evidence_finalizer import finalize_legacy_invocation_artifact
 
 logger = logging.getLogger("aegis.audit")
 
@@ -238,7 +238,7 @@ def _normalize_provenance(
     return normalized
 
 
-def generate_audit_artifact(
+def build_audit_evidence_body(
     invocation: Mapping[str, Any],
     policy: Mapping[str, Any],
     *,
@@ -303,9 +303,7 @@ def generate_audit_artifact(
         )
         normalized_provenance = None
 
-    unsigned_artifact = {
-        "audit_schema_version": AUDIT_SCHEMA_VERSION,
-        "canonicalization_profile": CANONICALIZATION_PROFILE_V2,
+    return {
         "policy_file": invocation["policy_file"],
         "policy_schema_version": POLICY_SCHEMA_VERSION,
         "policy_version": policy.get("policy_version") or "unknown",
@@ -324,6 +322,45 @@ def generate_audit_artifact(
         "risk_score": risk_score,
         "provenance": normalized_provenance,
     }
-    artifact = build_content_checksum_v2(unsigned_artifact)
-    artifact["signature"] = None
-    return artifact
+
+
+def generate_audit_artifact(
+    invocation: Mapping[str, Any],
+    policy: Mapping[str, Any],
+    *,
+    enforcement_result: str = "PASS",
+    failures: Iterable[Mapping[str, Any]] | None = None,
+    failure_gate: str | None = None,
+    failure_reason: str | None = None,
+    metadata: Mapping[str, Any] | None = None,
+    timestamp: int | None = None,
+    risk_score: float | None = None,
+    provenance: Mapping[str, Any] | None = None,
+) -> Dict[str, Any]:
+    """Build and finalize detached audit evidence without external delivery.
+
+    Enforcement uses :func:`build_audit_evidence_body` so its configured sink
+    receives the artifact in the same and only finalization attempt.  This
+    compatibility factory remains useful to offline lineage and verification
+    tooling and therefore finalizes to an internal discard sink.
+    """
+    body = build_audit_evidence_body(
+        invocation,
+        policy,
+        enforcement_result=enforcement_result,
+        failures=failures,
+        failure_gate=failure_gate,
+        failure_reason=failure_reason,
+        metadata=metadata,
+        timestamp=timestamp,
+        risk_score=risk_score,
+        provenance=provenance,
+    )
+    return finalize_legacy_invocation_artifact(
+        body,
+        invocation=invocation,
+        entry_point="generate_audit_artifact",
+        mode="offline",
+        sink=None,
+        failure_mode="raise",
+    )

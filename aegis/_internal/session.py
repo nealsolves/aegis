@@ -17,9 +17,7 @@ from aegis._internal.errors import (
     SessionStateError,
 )
 from aegis._internal.audit import checksum as _audit_checksum
-from aegis._internal.canonicalization import CANONICALIZATION_PROFILE_V2
-from aegis._internal.evidence_profiles import build_content_checksum_v2
-from aegis._internal.sinks import emit_to_sink
+from aegis._internal.evidence_finalizer import finalize_legacy_workflow_artifact
 from aegis._internal.tools import validate_tool_constraints
 
 if TYPE_CHECKING:
@@ -868,6 +866,11 @@ class GovernanceSession:
 
     def _do_finalize(self) -> dict[str, Any]:
         """Internal finalization — emits artifact and transitions to FINALIZED."""
+        evidence_attempt = self._aigc._attempt_factory.allocate(
+            "GovernanceSession.finalize",
+            "workflow",
+            {"policy_file": self._policy_file},
+        )
         self._finalized_at = int(time.time())
 
         artifact_status = _ARTIFACT_STATUS_MAP.get(self._state, "INCOMPLETE")
@@ -876,9 +879,7 @@ class GovernanceSession:
             self._step_policy_files,
         )
 
-        unsigned_artifact: dict[str, Any] = {
-            "workflow_schema_version": "2.0",
-            "canonicalization_profile": CANONICALIZATION_PROFILE_V2,
+        artifact: dict[str, Any] = {
             "artifact_type": "workflow",
             "session_id": self._session_id,
             "policy_file": policy_file,
@@ -894,16 +895,18 @@ class GovernanceSession:
             "validator_hook_evidence": list(self._validator_hook_evidence),
             "metadata": self._metadata,
         }
-        artifact = build_content_checksum_v2(unsigned_artifact)
+
+        finalize_legacy_workflow_artifact(
+            artifact,
+            attempt=evidence_attempt,
+            diagnostics=self._aigc._evidence_diagnostics,
+            sink=self._aigc._sink,
+            failure_mode=self._aigc._on_sink_failure,
+            signer=self._aigc._signer,
+        )
 
         self._workflow_artifact = artifact
         self._state = STATE_FINALIZED
-
-        emit_to_sink(
-            artifact,
-            sink=self._aigc._sink,
-            failure_mode=self._aigc._on_sink_failure,
-        )
 
         return artifact
 

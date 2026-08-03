@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import functools
 import hashlib
 import hmac as _hmac_mod
 import json
@@ -34,6 +35,8 @@ if TYPE_CHECKING:
 import warnings
 
 from aegis._internal.audit import DEFAULT_REDACTION_PATTERNS
+from aegis._internal.attempts import AttemptFactory
+from aegis._internal.evidence_diagnostics import EvidenceDiagnostics
 
 from aegis._internal.policy_loader import (
     load_policy,
@@ -71,16 +74,20 @@ from aegis._internal.policy_compiler import (
     compile_policy,
     resolve_runtime_risk,
 )
-from aegis._internal.audit import generate_audit_artifact, sanitize_failure_message
+from aegis._internal.audit import build_audit_evidence_body, sanitize_failure_message
 from aegis._internal.guards import evaluate_compiled_guards
 from aegis._internal.tools import validate_tool_constraints
-from aegis._internal.sinks import emit_to_sink
+from aegis._internal.evidence_finalizer import (
+    _EvidenceAbort,
+    evidence_attempt,
+    finalize_legacy_invocation_artifact as emit_to_sink,
+)
 from aegis._internal.risk_scoring import (
     compute_compiled_risk_score,
     normalize_risk_result,
     RiskScore,
 )
-from aegis._internal.signing import ArtifactSigner, sign_artifact
+from aegis._internal.signing import ArtifactSigner
 from aegis._internal.gates import (
     EnforcementGate,
     run_gates_normalized,
@@ -102,6 +109,7 @@ from aegis._internal.errors import (
     AuditSinkError,
     ConditionResolutionError,
     CustomGateViolationError,
+    EvidenceConfigurationError,
     FeatureNotImplementedError,
     GovernanceViolationError,
     GuardEvaluationError,
@@ -113,8 +121,159 @@ from aegis._internal.errors import (
     SchemaValidationError,
     ToolConstraintViolationError,
 )
+from aegis._internal.sinks import AuditSink
 
 logger = logging.getLogger("aegis.enforcement")
+
+_MODULE_ATTEMPT_FACTORY = AttemptFactory()
+_MODULE_EVIDENCE_DIAGNOSTICS = EvidenceDiagnostics()
+
+
+class _ModuleEnforcementRuntime:
+    def __init__(self) -> None:
+        import threading
+
+        self._lock = threading.Lock()
+        self._sink: AuditSink | None = None
+        self._signer: ArtifactSigner | None = None
+        self._sealed = False
+
+    def configure(
+        self,
+        *,
+        sink: AuditSink,
+        signer: ArtifactSigner | None,
+    ) -> None:
+        if not isinstance(sink, AuditSink):
+            raise TypeError("sink must be an AuditSink")
+        with self._lock:
+            if self._sealed:
+                raise RuntimeError("module enforcement runtime is sealed")
+            self._sink = sink
+            self._signer = signer
+
+    def begin(self) -> tuple[AuditSink, ArtifactSigner | None]:
+        with self._lock:
+            self._sealed = True
+            if self._sink is None:
+                raise EvidenceConfigurationError()
+            return self._sink, self._signer
+
+    def reset_for_test(self) -> None:
+        with self._lock:
+            self._sink = None
+            self._signer = None
+            self._sealed = False
+
+
+_MODULE_RUNTIME = _ModuleEnforcementRuntime()
+
+
+def configure_module_enforcement(
+    *,
+    sink: AuditSink,
+    signer: ArtifactSigner | None = None,
+) -> None:
+    """Configure the private module runtime once, before governed traffic."""
+    _MODULE_RUNTIME.configure(sink=sink, signer=signer)
+
+
+def _reset_module_enforcement_for_test() -> None:
+    global _MODULE_EVIDENCE_DIAGNOSTICS
+
+    _MODULE_RUNTIME.reset_for_test()
+    _MODULE_EVIDENCE_DIAGNOSTICS = EvidenceDiagnostics()
+
+
+def _attempt_invocation(
+    function_name: str,
+    args: tuple[Any, ...],
+    instance_scoped: bool,
+) -> object:
+    index = 1 if instance_scoped else 0
+    candidate = args[index] if len(args) > index else object()
+    if "post_call" not in function_name:
+        return candidate
+    # Split handoff tokens are caller-owned objects until the wrapped function
+    # authenticates their frozen evidence. Allocate the minimum identity now;
+    # the trusted artifact body supplies identity after token verification.
+    return object()
+
+
+def _evidence_attempt_boundary(entry_point: str, mode: str):
+    """Allocate attempt identity before a public entry parses its arguments."""
+    def decorate(function):
+        if asyncio.iscoroutinefunction(function):
+            @functools.wraps(function)
+            async def async_boundary(*args, **kwargs):
+                owner = args[0] if args else None
+                factory = getattr(owner, "_attempt_factory", None)
+                instance_scoped = isinstance(factory, AttemptFactory)
+                factory = factory or _MODULE_ATTEMPT_FACTORY
+                attempt = factory.allocate(
+                    entry_point,
+                    mode,
+                    _attempt_invocation(function.__name__, args, instance_scoped),
+                )
+                if instance_scoped:
+                    runtime_sink = owner._sink
+                    runtime_signer = owner._signer
+                    runtime_failure_mode = owner._on_sink_failure
+                    runtime_diagnostics = owner._evidence_diagnostics
+                else:
+                    runtime_sink, runtime_signer = _MODULE_RUNTIME.begin()
+                    runtime_failure_mode = "raise"
+                    runtime_diagnostics = _MODULE_EVIDENCE_DIAGNOSTICS
+                try:
+                    with evidence_attempt(
+                        attempt,
+                        sink=runtime_sink,
+                        signer=runtime_signer,
+                        failure_mode=runtime_failure_mode,
+                        diagnostics=runtime_diagnostics,
+                    ):
+                        return await function(*args, **kwargs)
+                except _EvidenceAbort as abort:
+                    raise abort.error from abort
+
+            return async_boundary
+
+        @functools.wraps(function)
+        def boundary(*args, **kwargs):
+            owner = args[0] if args else None
+            factory = getattr(owner, "_attempt_factory", None)
+            instance_scoped = isinstance(factory, AttemptFactory)
+            factory = factory or _MODULE_ATTEMPT_FACTORY
+            attempt = factory.allocate(
+                entry_point,
+                mode,
+                _attempt_invocation(function.__name__, args, instance_scoped),
+            )
+            if instance_scoped:
+                runtime_sink = owner._sink
+                runtime_signer = owner._signer
+                runtime_failure_mode = owner._on_sink_failure
+                runtime_diagnostics = owner._evidence_diagnostics
+            else:
+                runtime_sink, runtime_signer = _MODULE_RUNTIME.begin()
+                runtime_failure_mode = "raise"
+                runtime_diagnostics = _MODULE_EVIDENCE_DIAGNOSTICS
+            try:
+                with evidence_attempt(
+                    attempt,
+                    sink=runtime_sink,
+                    signer=runtime_signer,
+                    failure_mode=runtime_failure_mode,
+                    diagnostics=runtime_diagnostics,
+                ):
+                    return function(*args, **kwargs)
+            except _EvidenceAbort as abort:
+                raise abort.error from abort
+
+        return boundary
+
+    return decorate
+
 
 # ── Canonical gate IDs (append-only; order matters) ──────────────
 GATE_GUARDS = "guard_evaluation"
@@ -1478,7 +1637,7 @@ def _build_phase_a_mid_pipeline_fail_artifact(
     _ctx_prov = (safe_inv.get("context") or {}).get("provenance")
     _provenance = _ctx_prov if isinstance(_ctx_prov, Mapping) else None
 
-    return generate_audit_artifact(
+    return build_audit_evidence_body(
         safe_inv,
         _compiled_audit_projection(policy),
         enforcement_result="FAIL",
@@ -1641,6 +1800,8 @@ def _run_phase_b(
         _sink_kw["sink"] = sink
     if sink_failure_mode is not None:
         _sink_kw["failure_mode"] = sink_failure_mode
+    if signer is not None:
+        _sink_kw["signer"] = signer
 
     if grouped_gates is None:
         grouped_gates = sort_gates([])
@@ -1781,7 +1942,7 @@ def _run_phase_b(
         _ctx_prov = (invocation.get("context") or {}).get("provenance")
         _provenance = _ctx_prov if isinstance(_ctx_prov, Mapping) else None
 
-        audit_record = generate_audit_artifact(
+        audit_record = build_audit_evidence_body(
             invocation,
             audit_policy,
             enforcement_result="PASS",
@@ -1791,10 +1952,6 @@ def _run_phase_b(
             ),
             provenance=_provenance,
         )
-
-        # Sign artifact if signer is configured
-        if signer is not None:
-            sign_artifact(audit_record, signer)
 
         emit_to_sink(audit_record, **_sink_kw)
         record_enforcement_result(
@@ -1911,7 +2068,7 @@ def _run_phase_b(
         _ctx_prov = (invocation.get("context") or {}).get("provenance")
         _provenance = _ctx_prov if isinstance(_ctx_prov, Mapping) else None
 
-        audit_record = generate_audit_artifact(
+        audit_record = build_audit_evidence_body(
             invocation,
             audit_policy,
             enforcement_result="FAIL",
@@ -1921,10 +2078,6 @@ def _run_phase_b(
             metadata=fail_metadata,
             provenance=_provenance,
         )
-
-        # Sign FAIL artifacts too
-        if signer is not None:
-            sign_artifact(audit_record, signer)
 
         exc.audit_artifact = audit_record
         try:
@@ -1992,6 +2145,8 @@ def _run_pipeline(
         _sink_kw["sink"] = sink
     if sink_failure_mode is not None:
         _sink_kw["failure_mode"] = sink_failure_mode
+    if signer is not None:
+        _sink_kw["signer"] = signer
 
     grouped_gates = sort_gates(custom_gates or [])
 
@@ -2062,7 +2217,7 @@ def _run_pipeline(
             _ctx_prov = (invocation.get("context") or {}).get("provenance")
             _provenance = _ctx_prov if isinstance(_ctx_prov, Mapping) else None
 
-            audit_record = generate_audit_artifact(
+            audit_record = build_audit_evidence_body(
                 invocation,
                 _compiled_audit_projection(policy),
                 enforcement_result="FAIL",
@@ -2072,8 +2227,6 @@ def _run_pipeline(
                 metadata=fail_metadata,
                 provenance=_provenance,
             )
-            if signer is not None:
-                sign_artifact(audit_record, signer)
             exc.audit_artifact = audit_record
             try:
                 emit_to_sink(audit_record, **_sink_kw)
@@ -2123,6 +2276,7 @@ def _run_pipeline(
         )
 
 
+@_evidence_attempt_boundary("enforce_invocation", "unified")
 def enforce_invocation(invocation: Mapping[str, Any]) -> dict[str, Any]:
     """
     Enforce all governance rules for a model invocation (synchronous).
@@ -2180,6 +2334,7 @@ def enforce_invocation(invocation: Mapping[str, Any]) -> dict[str, Any]:
     return _run_pipeline(policy, invocation)
 
 
+@_evidence_attempt_boundary("enforce_invocation_async", "unified")
 async def enforce_invocation_async(
     invocation: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -2239,6 +2394,7 @@ async def enforce_invocation_async(
     return _run_pipeline(policy, invocation)
 
 
+@_evidence_attempt_boundary("enforce_pre_call", "split_pre_call")
 def enforce_pre_call(
     invocation: Mapping[str, Any],
     *,
@@ -2479,6 +2635,7 @@ def enforce_pre_call(
         return token
 
 
+@_evidence_attempt_boundary("enforce_post_call", "split_post_call")
 def enforce_post_call(
     pre_call_result: PreCallResult,
     output: dict[str, Any],
@@ -2808,6 +2965,7 @@ def enforce_post_call(
         )
 
 
+@_evidence_attempt_boundary("enforce_pre_call_async", "split_pre_call")
 async def enforce_pre_call_async(
     invocation: Mapping[str, Any],
     *,
@@ -3026,6 +3184,7 @@ async def enforce_pre_call_async(
         return token
 
 
+@_evidence_attempt_boundary("enforce_post_call_async", "split_post_call")
 async def enforce_post_call_async(
     pre_call_result: PreCallResult,
     output: dict[str, Any],
@@ -3034,7 +3193,7 @@ async def enforce_post_call_async(
 
     enforce_post_call() is synchronous (CPU-bound); just call it directly.
     """
-    return enforce_post_call(pre_call_result, output)
+    return enforce_post_call.__wrapped__(pre_call_result, output)
 
 
 def _validate_policy_strict(
@@ -3130,7 +3289,7 @@ def _generate_pre_pipeline_fail_artifact(
         }
     ]
 
-    return generate_audit_artifact(
+    return build_audit_evidence_body(
         safe_invocation,
         {},  # no policy loaded yet
         enforcement_result="FAIL",
@@ -3146,6 +3305,7 @@ def _generate_pre_pipeline_fail_artifact(
     )
 
 
+@_evidence_attempt_boundary("governed.wrapped_function", "split_function")
 def emit_split_fn_failure_artifact(
     pre_call_result: "PreCallResult",
     exc: Exception,
@@ -3184,7 +3344,7 @@ def emit_split_fn_failure_artifact(
     _ctx_prov = (inv_snap.get("context") or {}).get("provenance")
     _provenance = _ctx_prov if isinstance(_ctx_prov, Mapping) else None
 
-    artifact = generate_audit_artifact(
+    artifact = build_audit_evidence_body(
         inv_snap,
         policy,
         enforcement_result="FAIL",
@@ -3230,7 +3390,7 @@ class AEGIS:
         self,
         *,
         sink: Any | None = None,
-        on_sink_failure: str = "log",
+        on_sink_failure: str = "raise",
         strict_mode: bool = False,
         redaction_patterns: list[tuple[str, re.Pattern[str]]] | None = None,
         signer: ArtifactSigner | None = None,
@@ -3240,7 +3400,7 @@ class AEGIS:
     ) -> None:
         """
         :param sink: AuditSink instance for artifact persistence
-        :param on_sink_failure: Failure mode: "raise" or "log"
+        :param on_sink_failure: V2 failure mode; only "raise" is accepted
         :param strict_mode: Enable strict governance validation
         :param redaction_patterns: Custom redaction patterns
         :param signer: Artifact signer for signing audit artifacts
@@ -3248,12 +3408,14 @@ class AEGIS:
         :param policy_loader: Custom policy loader implementation
         :param risk_config: Risk scoring configuration override
         """
-        if on_sink_failure not in ("raise", "log"):
+        if on_sink_failure != "raise":
             raise ValueError(
-                f"on_sink_failure must be 'raise' or 'log', "
-                f"got '{on_sink_failure}'"
+                "AEGIS v2 only supports 'raise' for on_sink_failure"
             )
-
+        if sink is None:
+            raise EvidenceConfigurationError()
+        if not isinstance(sink, AuditSink):
+            raise TypeError("sink must be an AuditSink")
         self._sink = sink
         self._on_sink_failure = on_sink_failure
         self._strict_mode = strict_mode
@@ -3267,6 +3429,8 @@ class AEGIS:
         self._policy_loader = policy_loader
         self._risk_config = risk_config
         self._policy_cache = PolicyCache()
+        self._attempt_factory = AttemptFactory()
+        self._evidence_diagnostics = EvidenceDiagnostics()
         self._validator_hooks: list[Any] = []
 
         # Validate custom gates at construction time
@@ -3298,6 +3462,10 @@ class AEGIS:
         """Per-instance policy cache."""
         return self._policy_cache
 
+    def evidence_diagnostics(self):
+        """Return an immutable snapshot of evidence-loss counters."""
+        return self._evidence_diagnostics.snapshot()
+
     def open_session(
         self,
         *,
@@ -3318,6 +3486,7 @@ class AEGIS:
         sid = session_id or str(_uuid.uuid4())
         return GovernanceSession(self, sid, policy_file, metadata)
 
+    @_evidence_attempt_boundary("AEGIS.enforce", "unified")
     def enforce(self, invocation: Mapping[str, Any]) -> dict[str, Any]:
         """Enforce governance rules (synchronous).
 
@@ -3398,6 +3567,7 @@ class AEGIS:
             risk_config=self._risk_config,
         )
 
+    @_evidence_attempt_boundary("AEGIS.enforce_pre_call", "split_pre_call")
     def enforce_pre_call(
         self, invocation: Mapping[str, Any],
     ) -> PreCallResult:
@@ -3666,6 +3836,7 @@ class AEGIS:
             )
             return token
 
+    @_evidence_attempt_boundary("AEGIS.enforce_post_call", "split_post_call")
     def enforce_post_call(
         self,
         pre_call_result: PreCallResult,
@@ -4092,6 +4263,7 @@ class AEGIS:
                 span=span,
             )
 
+    @_evidence_attempt_boundary("AEGIS.enforce_pre_call_async", "split_pre_call")
     async def enforce_pre_call_async(
         self, invocation: Mapping[str, Any],
     ) -> PreCallResult:
@@ -4341,6 +4513,7 @@ class AEGIS:
             )
             return token
 
+    @_evidence_attempt_boundary("AEGIS.enforce_post_call_async", "split_post_call")
     async def enforce_post_call_async(
         self,
         pre_call_result: PreCallResult,
@@ -4350,8 +4523,9 @@ class AEGIS:
 
         enforce_post_call() is synchronous (CPU-bound); just delegate.
         """
-        return self.enforce_post_call(pre_call_result, output)
+        return AEGIS.enforce_post_call.__wrapped__(self, pre_call_result, output)
 
+    @_evidence_attempt_boundary("AEGIS.enforce_async", "unified")
     async def enforce_async(
         self, invocation: Mapping[str, Any]
     ) -> dict[str, Any]:

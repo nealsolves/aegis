@@ -28,9 +28,7 @@ from aegis.sinks import (
     CallbackAuditSink,
     JsonFileAuditSink,
     get_audit_sink,
-    get_sink_failure_mode,
     set_audit_sink,
-    set_sink_failure_mode,
 )
 
 
@@ -82,10 +80,13 @@ def test_all_error_types_exported():
         assert issubclass(cls, AIGCError), f"{cls.__name__} not subclass of AIGCError"
 
 
-def test_sink_failure_mode_apis_exported():
-    """set_sink_failure_mode and get_sink_failure_mode are importable from aegis.sinks."""
-    assert callable(set_sink_failure_mode)
-    assert callable(get_sink_failure_mode)
+def test_mutable_sink_failure_mode_is_not_a_v2_public_api():
+    import aegis.sinks as sinks
+
+    assert "set_sink_failure_mode" not in sinks.__all__
+    assert "get_sink_failure_mode" not in sinks.__all__
+    assert not hasattr(sinks, "set_sink_failure_mode")
+    assert not hasattr(sinks, "get_sink_failure_mode")
 
 
 def test_top_level_reexports_match_errors_module():
@@ -99,10 +100,9 @@ def test_top_level_reexports_match_errors_module():
         assert hasattr(aegis, name), f"aegis.{name} not exported"
 
 
-def test_top_level_reexports_sink_failure_mode():
-    """Sink failure mode APIs importable from top-level aegis package."""
-    assert hasattr(aegis, "set_sink_failure_mode")
-    assert hasattr(aegis, "get_sink_failure_mode")
+def test_top_level_does_not_reexport_mutable_sink_failure_mode():
+    assert not hasattr(aegis, "set_sink_failure_mode")
+    assert not hasattr(aegis, "get_sink_failure_mode")
 
 
 def test_m2_risk_scoring_exports():

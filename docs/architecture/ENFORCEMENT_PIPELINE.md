@@ -341,8 +341,11 @@ traverse cross-invocation lineage.
 Registration:
 
 ```python
-from aegis import AEGIS, ProvenanceGate
-aegis = AEGIS(custom_gates=[ProvenanceGate()])
+from aegis import AEGIS, JsonFileAuditSink, ProvenanceGate
+aegis = AEGIS(
+    sink=JsonFileAuditSink("audit.jsonl"),
+    custom_gates=[ProvenanceGate()],
+)
 ```
 
 Failure codes:
@@ -366,3 +369,10 @@ A session manages:
 
 Invocation artifacts remain one-per-attempt. The separate workflow artifact
 correlates step checksums, lifecycle, approvals, and workflow evidence.
+
+Both artifact types cross the same finalizer boundary after their terminal
+outcome is known. The sequence is normalize, correlate, checksum, sign (or mark
+explicitly unsigned), schema validate, then synchronously emit for
+acknowledgement. The exact normalized finalized value is emitted and returned.
+Invocation and workflow signatures use separate domains; workflow artifacts
+are never added to an invocation audit chain.

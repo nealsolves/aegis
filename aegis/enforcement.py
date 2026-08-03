@@ -1,6 +1,7 @@
 from aegis._internal.enforcement import (
     AEGIS,
     AIGC,
+    configure_module_enforcement,
     PreCallResult,
     enforce_invocation,
     enforce_invocation_async,
@@ -13,6 +14,7 @@ from aegis._internal.enforcement import (
 __all__ = [
     "AEGIS",
     "AIGC",
+    "configure_module_enforcement",
     "PreCallResult",
     "enforce_invocation",
     "enforce_invocation_async",

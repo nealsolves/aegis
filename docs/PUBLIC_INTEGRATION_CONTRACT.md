@@ -90,7 +90,17 @@ output_schema:
 ### 1.3 Call `enforce_invocation`
 
 ```python
-from aegis import enforce_invocation, GovernanceViolationError, PreconditionError
+from aegis import (
+    JsonFileAuditSink,
+    configure_module_enforcement,
+    enforce_invocation,
+    GovernanceViolationError,
+    PreconditionError,
+)
+
+configure_module_enforcement(
+    sink=JsonFileAuditSink("audit.jsonl"),
+)
 
 invocation = {
     "policy_file": "policies/hello_policy.yaml",
@@ -244,7 +254,6 @@ chain = AuditChain(chain_id="analytics-session-001")
 
 aegis = AEGIS(
     sink=JsonFileAuditSink("audit/governance.jsonl"),
-    on_sink_failure="log",
     signer=signer,
     custom_gates=[TenantIsolationGate()],
 )
@@ -255,8 +264,9 @@ Configuration is immutable after construction. `AEGIS.enforce()` is thread-safe.
 - **`sink`**: Every enforcement call (PASS and FAIL) emits an artifact as a JSON line.
 - **`signer`**: HMAC-SHA256 signs every artifact automatically — both PASS and FAIL.
 - **`custom_gates`**: Validated at construction time. Invalid insertion points raise immediately.
-- **`on_sink_failure`**: `"log"` (default) logs a warning on sink errors; `"raise"` propagates
-  them as `AuditSinkError`. Sink errors never replace governance exceptions.
+- **`on_sink_failure`**: `"raise"` is the only v2 mode and prevents an
+  allow-class result when durable evidence was not acknowledged. Legacy
+  best-effort delivery cannot configure an `AEGIS` or module runtime.
 
 ### 2.4 Building and enforcing invocations
 
@@ -336,9 +346,11 @@ For simpler call sites that don't need instance-scoped configuration, the `@gove
 decorator wraps a function and runs enforcement transparently:
 
 ```python
-from aegis import governed, set_audit_sink, JsonFileAuditSink
+from aegis import governed, configure_module_enforcement, JsonFileAuditSink
 
-set_audit_sink(JsonFileAuditSink("audit/governance.jsonl"))
+configure_module_enforcement(
+    sink=JsonFileAuditSink("audit/governance.jsonl"),
+)
 
 
 @governed(
@@ -364,8 +376,9 @@ the wrapped function; Phase B (`enforce_post_call_async()`) validates the return
 Pass `pre_call_enforcement=False` for legacy unified mode (deprecated).
 Governance exceptions propagate unchanged.
 
-The decorator uses the global audit sink (via `set_audit_sink`). For per-instance sinks,
-signers, or custom gates, use the `AEGIS` class directly as shown in sections 2.3–2.5.
+The decorator uses the private module runtime. Configure it exactly once before
+the first governed call; that first attempt atomically seals it. For
+per-instance signers or custom gates, use `AEGIS` directly.
 
 ### 2.7 Error handling
 
@@ -494,7 +507,7 @@ integration, see Section 2.
 Subclass `AuditSink` to send artifacts to any destination:
 
 ```python
-from aegis import AuditSink, set_audit_sink
+from aegis import AEGIS, AuditSink
 import json
 
 
@@ -509,10 +522,13 @@ class SQLiteAuditSink(AuditSink):
         )
 
 
-set_audit_sink(SQLiteAuditSink(db_connection))
+governance = AEGIS(sink=SQLiteAuditSink(db_connection))
 ```
 
-In `"log"` mode (default), any exception raised by `emit()` is caught and logged as a `WARNING`; enforcement continues. In `"raise"` mode, sink errors propagate as `AuditSinkError`. Sinks receive a deep copy; they cannot mutate the returned artifact.
+Successful synchronous return from `emit()` is the v2 acknowledgement. Any
+exception becomes `AuditSinkError(code="AUDIT_DELIVERY_FAILED")`; no PASS/WARN
+artifact is returned. Sinks receive a deep copy and cannot mutate the returned
+artifact.
 
 ### 3.2 Policy composition via `extends`
 
@@ -641,7 +657,10 @@ class ComplianceTagGate(EnforcementGate):
         return GateResult(passed=True, metadata={"compliance": "sox-compliant"})
 
 
-aegis = AEGIS(custom_gates=[ComplianceTagGate()])
+aegis = AEGIS(
+    sink=JsonFileAuditSink("audit.jsonl"),
+    custom_gates=[ComplianceTagGate()],
+)
 ```
 
 Gate metadata is merged into `metadata.custom_gate_metadata` in the audit artifact.
@@ -655,9 +674,12 @@ The SDK ships `ProvenanceGate` — a workflow-aware built-in gate for source
 presence enforcement. Import and register it like any custom gate:
 
 ```python
-from aegis import AEGIS, ProvenanceGate
+from aegis import AEGIS, JsonFileAuditSink, ProvenanceGate
 
-aegis = AEGIS(custom_gates=[ProvenanceGate()])
+aegis = AEGIS(
+    sink=JsonFileAuditSink("audit.jsonl"),
+    custom_gates=[ProvenanceGate()],
+)
 ```
 
 Available built-in gates:
@@ -1079,7 +1101,7 @@ Load policies from sources other than the filesystem:
 ```python
 import yaml
 
-from aegis import AEGIS, PolicyLoaderBase, PolicyLoadError
+from aegis import AEGIS, JsonFileAuditSink, PolicyLoaderBase, PolicyLoadError
 
 
 class DatabasePolicyLoader(PolicyLoaderBase):
@@ -1093,7 +1115,10 @@ class DatabasePolicyLoader(PolicyLoaderBase):
         return yaml.safe_load(row["yaml"])
 
 
-aegis = AEGIS(policy_loader=DatabasePolicyLoader(db))
+aegis = AEGIS(
+    sink=JsonFileAuditSink("audit.jsonl"),
+    policy_loader=DatabasePolicyLoader(db),
+)
 artifact = aegis.enforce(invocation)
 ```
 
@@ -1151,7 +1176,7 @@ from aegis import AEGIS
 
 aegis = AEGIS(
     sink=my_sink,                    # AuditSink instance
-    on_sink_failure="log",           # "log" or "raise"
+    on_sink_failure="raise",         # v2 fail-closed default
     strict_mode=True,                # Reject weak policies
     signer=my_signer,                # ArtifactSigner instance
     custom_gates=[gate_a, gate_b],   # EnforcementGate instances
@@ -1483,14 +1508,14 @@ Reordered named arguments (e.g., `context` before `input_data`) are supported.
 
 ### Q: Audit artifacts are not appearing in my `JsonFileAuditSink` file
 
-**Cause**: The sink was registered after the first enforcement call, or `set_audit_sink`
-was not called at all.
+**Cause**: The instance has no acknowledged sink, or the module runtime was not
+configured before its first enforcement attempt.
 
 **Fix**: Register the sink once at application startup, before any governed calls:
 
 ```python
-from aegis import set_audit_sink, JsonFileAuditSink
-set_audit_sink(JsonFileAuditSink("audit.jsonl"))
+from aegis import configure_module_enforcement, JsonFileAuditSink
+configure_module_enforcement(sink=JsonFileAuditSink("audit.jsonl"))
 ```
 
 ---

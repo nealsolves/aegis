@@ -183,7 +183,7 @@ def test_sink_failure_mode_raise_propagates():
     set_audit_sink(_BrokenSink())
     set_sink_failure_mode("raise")
 
-    with pytest.raises(AuditSinkError, match="sink exploded"):
+    with pytest.raises(AuditSinkError, match="Finalized evidence delivery failed"):
         enforce_invocation(VALID_INVOCATION)
 
 
@@ -287,17 +287,16 @@ def test_aigc_on_sink_failure_raise_is_effective():
     from aegis import AEGIS
 
     aegis = AEGIS(sink=_BrokenSink(), on_sink_failure="raise")
-    with pytest.raises(AuditSinkError, match="sink exploded"):
+    with pytest.raises(AuditSinkError, match="Finalized evidence delivery failed"):
         aegis.enforce(VALID_INVOCATION)
 
 
-def test_aigc_on_sink_failure_log_does_not_raise():
-    """AEGIS(on_sink_failure='log') must not raise on sink failure."""
+def test_aigc_on_sink_failure_log_is_not_a_v2_mode():
+    """Best-effort delivery cannot configure an AEGIS v2 instance."""
     from aegis import AEGIS
 
-    aegis = AEGIS(sink=_BrokenSink(), on_sink_failure="log")
-    audit = aegis.enforce(VALID_INVOCATION)
-    assert audit["enforcement_result"] == "PASS"
+    with pytest.raises(ValueError, match="only supports 'raise'"):
+        AEGIS(sink=_BrokenSink(), on_sink_failure="log")
 
 
 def test_aigc_does_not_mutate_global_failure_mode():
@@ -351,31 +350,28 @@ def test_aigc_sink_cannot_mutate_artifact():
 
 # --- CR-04: FAIL artifact preserved when sink raises ---
 
-def test_fail_artifact_preserved_when_sink_raises():
-    """On FAIL path, governance exception must propagate even if sink raises."""
+def test_fail_path_delivery_error_replaces_allow_or_deny_return():
+    """A FAIL decision cannot be reported as durable when delivery fails."""
     set_audit_sink(_BrokenSink())
     set_sink_failure_mode("raise")
 
     bad = {**VALID_INVOCATION, "role": "attacker"}
-    with pytest.raises(GovernanceViolationError) as exc_info:
+    with pytest.raises(AuditSinkError) as exc_info:
         enforce_invocation(bad)
 
-    # The governance exception must have the audit artifact attached
-    assert hasattr(exc_info.value, "audit_artifact")
-    assert exc_info.value.audit_artifact["enforcement_result"] == "FAIL"
+    assert exc_info.value.code == "AUDIT_DELIVERY_FAILED"
 
 
-def test_fail_artifact_preserved_via_aigc_instance():
-    """AEGIS(on_sink_failure='raise') must preserve FAIL artifact on sink error."""
+def test_fail_path_delivery_error_via_aegis_instance():
+    """Instance enforcement also fails closed when FAIL evidence is lost."""
     from aegis import AEGIS
 
     aegis = AEGIS(sink=_BrokenSink(), on_sink_failure="raise")
     bad = {**VALID_INVOCATION, "role": "attacker"}
-    with pytest.raises(GovernanceViolationError) as exc_info:
+    with pytest.raises(AuditSinkError) as exc_info:
         aegis.enforce(bad)
 
-    assert hasattr(exc_info.value, "audit_artifact")
-    assert exc_info.value.audit_artifact["enforcement_result"] == "FAIL"
+    assert exc_info.value.code == "AUDIT_DELIVERY_FAILED"
 
 
 # --- CR-04: Pre-pipeline FAIL artifact generation ---

@@ -1,0 +1,202 @@
+{
+  "schema_version": 1,
+  "change_id": "b2-evidence-finalizer-workflow-signing",
+  "workflow_family": "feature",
+  "action": "local_implementation",
+  "current_state": "COMPLETE",
+  "change_hash": "7cda0ac22f64da4daf8b5f578e395412f3eed25e83c9b4e55b54222a885b41c8",
+  "facts": {
+    "documentation_only": {
+      "value": false,
+      "source_type": "approved_implementation_plan",
+      "source_ref": "docs/superpowers/plans/2026-07-30-b2-evidence-finalizer-workflow-signing.md",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "7cda0ac22f64da4daf8b5f578e395412f3eed25e83c9b4e55b54222a885b41c8",
+      "corroboration": []
+    },
+    "modifies_runtime_code": {
+      "value": true,
+      "source_type": "approved_implementation_plan",
+      "source_ref": "docs/superpowers/plans/2026-07-30-b2-evidence-finalizer-workflow-signing.md",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "7cda0ac22f64da4daf8b5f578e395412f3eed25e83c9b4e55b54222a885b41c8",
+      "corroboration": []
+    },
+    "modifies_authorization": {
+      "value": true,
+      "source_type": "approved_security_design",
+      "source_ref": "docs/superpowers/specs/2026-07-30-enforcement-core-security-remediation-design.md",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "7cda0ac22f64da4daf8b5f578e395412f3eed25e83c9b4e55b54222a885b41c8",
+      "corroboration": []
+    },
+    "changes_public_contract": {
+      "value": true,
+      "source_type": "approved_implementation_plan",
+      "source_ref": "docs/superpowers/plans/2026-07-30-b2-evidence-finalizer-workflow-signing.md",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "7cda0ac22f64da4daf8b5f578e395412f3eed25e83c9b4e55b54222a885b41c8",
+      "corroboration": []
+    },
+    "adds_external_dependency": {
+      "value": false,
+      "source_type": "approved_implementation_plan",
+      "source_ref": "docs/superpowers/plans/2026-07-30-b2-evidence-finalizer-workflow-signing.md",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "7cda0ac22f64da4daf8b5f578e395412f3eed25e83c9b4e55b54222a885b41c8",
+      "corroboration": []
+    },
+    "deploys_to_production": {
+      "value": false,
+      "source_type": "approved_scope_analysis",
+      "source_ref": "docs/superpowers/plans/2026-07-30-enforcement-core-plan-index.md",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "7cda0ac22f64da4daf8b5f578e395412f3eed25e83c9b4e55b54222a885b41c8",
+      "corroboration": []
+    },
+    "instruction_system_change": {
+      "value": false,
+      "source_type": "approved_scope_analysis",
+      "source_ref": "docs/superpowers/plans/2026-07-30-b2-evidence-finalizer-workflow-signing.md",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "7cda0ac22f64da4daf8b5f578e395412f3eed25e83c9b4e55b54222a885b41c8",
+      "corroboration": []
+    }
+  },
+  "clarifications": [],
+  "exceptions": [],
+  "authority_constraints": [],
+  "evidence": {
+    "evaluation_passed": {
+      "satisfied": true,
+      "source_ref": "docs/spec-driven-dev/changes/b2-evidence-finalizer-workflow-signing/evidence.md",
+      "hashes": {
+        "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa",
+        "context_hash": "fd85cc2e3152a3dff3fda019bf010c851faeee1dcc76c4c82a9efcc5d6c79f6f",
+        "change_hash": "7cda0ac22f64da4daf8b5f578e395412f3eed25e83c9b4e55b54222a885b41c8"
+      }
+    },
+    "spec_complete": {
+      "satisfied": true,
+      "source_ref": "docs/superpowers/specs/2026-07-30-enforcement-core-security-remediation-design.md",
+      "hashes": {
+        "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa",
+        "context_hash": "ba540a04143be34101611c080c05e4ca18c8e76bba9354267c34608e23c520f1",
+        "change_hash": "7cda0ac22f64da4daf8b5f578e395412f3eed25e83c9b4e55b54222a885b41c8"
+      }
+    },
+    "material_clarifications_resolved": {
+      "satisfied": true,
+      "source_ref": "docs/spec-driven-dev/changes/b2-evidence-finalizer-workflow-signing/evidence.md",
+      "hashes": {
+        "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa",
+        "context_hash": "1cbfeaaeb4aab5fce93da8e29e13804994531e92e36c4f6d023a621e0e4b9a6e",
+        "change_hash": "7cda0ac22f64da4daf8b5f578e395412f3eed25e83c9b4e55b54222a885b41c8"
+      }
+    },
+    "plan_complete": {
+      "satisfied": true,
+      "source_ref": "docs/superpowers/plans/2026-07-30-b2-evidence-finalizer-workflow-signing.md",
+      "hashes": {
+        "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa",
+        "context_hash": "270a8aeb68740b9660460cd682134e5be86e2dd4766f4a4bd2b9a407fd0c336e",
+        "change_hash": "7cda0ac22f64da4daf8b5f578e395412f3eed25e83c9b4e55b54222a885b41c8"
+      }
+    },
+    "instruction_context_valid": {
+      "satisfied": true,
+      "source_ref": "docs/spec-driven-dev/changes/b2-evidence-finalizer-workflow-signing/context.json",
+      "hashes": {
+        "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa",
+        "context_hash": "270a8aeb68740b9660460cd682134e5be86e2dd4766f4a4bd2b9a407fd0c336e",
+        "change_hash": "7cda0ac22f64da4daf8b5f578e395412f3eed25e83c9b4e55b54222a885b41c8"
+      }
+    },
+    "tasks_trace_to_acceptance": {
+      "satisfied": true,
+      "source_ref": "docs/superpowers/plans/2026-07-30-b2-evidence-finalizer-workflow-signing.md",
+      "hashes": {
+        "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa",
+        "context_hash": "992365f5bbcb82e80fbaff0a2a44ce6c87d71afcd98eb111b02fdc52a7409487",
+        "change_hash": "7cda0ac22f64da4daf8b5f578e395412f3eed25e83c9b4e55b54222a885b41c8"
+      }
+    },
+    "artifact_analysis_clean": {
+      "satisfied": true,
+      "source_ref": "docs/superpowers/plans/2026-07-30-enforcement-core-plan-index.md",
+      "hashes": {
+        "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa",
+        "context_hash": "5230fa41dc44f3563dccc935300d645b5e3f1e9bcf2793186fb010ad412f1740",
+        "change_hash": "7cda0ac22f64da4daf8b5f578e395412f3eed25e83c9b4e55b54222a885b41c8"
+      }
+    },
+    "implementation_authorized": {
+      "satisfied": true,
+      "source_ref": "docs/spec-driven-dev/changes/b2-evidence-finalizer-workflow-signing/evidence.md",
+      "hashes": {
+        "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa",
+        "context_hash": "547f123f317a7e2e4b468114b3773052b93fcc18a5c8dec68550b48fc6e7d069",
+        "change_hash": "7cda0ac22f64da4daf8b5f578e395412f3eed25e83c9b4e55b54222a885b41c8"
+      }
+    },
+    "implementation_tasks_complete": {
+      "satisfied": true,
+      "source_ref": "docs/spec-driven-dev/changes/b2-evidence-finalizer-workflow-signing/evidence.md",
+      "hashes": {
+        "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa",
+        "context_hash": "f4d95a569c84b096de143553d23e31440b06d6785dc911bfbeba62bba9214c65",
+        "change_hash": "7cda0ac22f64da4daf8b5f578e395412f3eed25e83c9b4e55b54222a885b41c8"
+      }
+    },
+    "local_validation_passed": {
+      "satisfied": true,
+      "source_ref": "docs/spec-driven-dev/changes/b2-evidence-finalizer-workflow-signing/evidence.md",
+      "hashes": {
+        "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa",
+        "context_hash": "446fceb6ef3775bd3a3ce2152ac85d6b64ab6498c0651b183acf143b0b6dd708",
+        "change_hash": "7cda0ac22f64da4daf8b5f578e395412f3eed25e83c9b4e55b54222a885b41c8"
+      }
+    },
+    "required_reviews_passed": {
+      "satisfied": true,
+      "source_ref": "docs/spec-driven-dev/changes/b2-evidence-finalizer-workflow-signing/evidence.md",
+      "hashes": {
+        "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa",
+        "context_hash": "bef7894a825cf3062a3d17c7911d3870333dcef97fe3b521c689108175486783",
+        "change_hash": "7cda0ac22f64da4daf8b5f578e395412f3eed25e83c9b4e55b54222a885b41c8"
+      }
+    },
+    "required_ci_passed": {
+      "satisfied": true,
+      "source_ref": "docs/spec-driven-dev/changes/b2-evidence-finalizer-workflow-signing/evidence.md",
+      "hashes": {
+        "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa",
+        "context_hash": "bef7894a825cf3062a3d17c7911d3870333dcef97fe3b521c689108175486783",
+        "change_hash": "7cda0ac22f64da4daf8b5f578e395412f3eed25e83c9b4e55b54222a885b41c8"
+      }
+    },
+    "convergence_passed": {
+      "satisfied": true,
+      "source_ref": "docs/spec-driven-dev/changes/b2-evidence-finalizer-workflow-signing/evidence.md",
+      "hashes": {
+        "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa",
+        "context_hash": "c9cdb9d57cd12bd2d22ae7a1bf22808f218706155a4e41471d50b0d7fb247606",
+        "change_hash": "7cda0ac22f64da4daf8b5f578e395412f3eed25e83c9b4e55b54222a885b41c8"
+      }
+    }
+  },
+  "resources": {
+    "repair_attempts": 1,
+    "ci_reruns": 0,
+    "elapsed_minutes": 0
+  },
+  "open_escalation": null,
+  "responses": []
+}

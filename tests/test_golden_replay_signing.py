@@ -24,11 +24,14 @@ def test_signed_pass_artifact():
     assert verify_artifact(audit, signer)
 
 
-def test_aegis_legacy_signer_emits_signature_without_metadata():
+def test_aegis_legacy_signer_is_adapted_to_v2_metadata():
     audit = AEGIS(signer=HMACSigner(key=b"golden-test-key")).enforce(INVOCATION)
 
     assert audit["signature"] is not None
-    assert "signature_metadata" not in audit
+    assert audit["signature_status"] == "signed"
+    assert audit["signature_metadata"]["canonicalization_profile"] == (
+        "aegis-json-v2"
+    )
 
 
 def test_signed_fail_artifact():

@@ -38,6 +38,8 @@ def _make_valid_workflow_artifact(steps: int = 2, status: str = "COMPLETED") -> 
         "workflow_schema_version": "2.0",
         "canonicalization_profile": "aegis-json-v2",
         "checksum": "c" * 64,
+        "signature_status": "unsigned",
+        "signature": None,
         "artifact_type": "workflow",
         "session_id": "sess-001",
         "status": status,
@@ -84,6 +86,7 @@ def _make_valid_audit_artifact() -> dict:
         "chain_index": None,
         "previous_audit_checksum": None,
         "checksum": "c" * 64,
+        "signature_status": "unsigned",
     }
 
 

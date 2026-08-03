@@ -30,6 +30,13 @@ class AIGCError(Exception):
         self.audit_artifact: dict | None = None
 
 
+class EvidenceConfigurationError(AIGCError, ValueError):
+    """Raised before authorization when v2 evidence delivery is unavailable."""
+
+    def __init__(self, message: str = "V2 evidence sink is required") -> None:
+        super().__init__(message, code="V2_SINK_REQUIRED", details={})
+
+
 class SignatureMetadataError(AIGCError):
     """Raised when signature metadata does not meet its contract."""
 
@@ -191,10 +198,27 @@ class ToolConstraintViolationError(GovernanceViolationError):
 class AuditSinkError(AIGCError):
     """Raised when audit sink emission fails (in 'raise' failure mode)."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "AUDIT_SINK_ERROR",
+        details: dict | None = None,
+    ):
+        super().__init__(
+            message,
+            code=code,
+            details=details,
+        )
+
+
+class EvidenceFinalizationError(AIGCError):
+    """Raised when evidence cannot be normalized, signed, or validated."""
+
     def __init__(self, message: str, *, details: dict | None = None):
         super().__init__(
             message,
-            code="AUDIT_SINK_ERROR",
+            code="EVIDENCE_FINALIZATION_FAILED",
             details=details,
         )
 

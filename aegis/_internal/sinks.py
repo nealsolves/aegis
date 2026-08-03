@@ -11,13 +11,10 @@ in a future release. It now behaves identically to "log" mode.
 from __future__ import annotations
 
 import abc
-import copy
 import json
 import logging
 from pathlib import Path
 from typing import Any, Callable
-
-from aegis._internal.errors import AuditSinkError
 
 logger = logging.getLogger("aegis.sinks")
 
@@ -135,13 +132,14 @@ def emit_to_sink(
     if effective_sink is None:
         return
     effective_mode = failure_mode if failure_mode is not None else _sink_failure_mode
-    artifact_copy = copy.deepcopy(audit_artifact)
-    try:
-        effective_sink.emit(artifact_copy)
-    except Exception as exc:  # noqa: BLE001
-        if effective_mode == "raise":
-            raise AuditSinkError(
-                f"Audit sink emit failed: {exc}",
-                details={"original_error": str(exc)},
-            ) from exc
-        logger.warning("Audit sink emit failed: %s", exc)
+    from aegis._internal.evidence_finalizer import (
+        finalize_legacy_invocation_artifact,
+    )
+
+    finalize_legacy_invocation_artifact(
+        audit_artifact,
+        sink=effective_sink,
+        failure_mode=effective_mode,
+        entry_point="legacy.emit_to_sink",
+        mode="legacy_delivery",
+    )

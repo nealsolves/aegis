@@ -166,7 +166,8 @@ def _verify_continuity(
         errors.append(
             _error(
                 "CHAIN_LINK_INVALID",
-                f"Index 0: chain_index={first_index} supplied prefix requires a valid previous_audit_checksum",
+                f"Index 0: chain_index={first_index} supplied prefix "
+                "requires a valid previous_audit_checksum",
                 0,
             )
         )
@@ -178,7 +179,8 @@ def _verify_continuity(
             errors.append(
                 _error(
                     "CHAIN_INDEX_MISMATCH",
-                    f"Index {offset}: expected chain_index={expected_index}, got {artifact['chain_index']}",
+                    f"Index {offset}: expected chain_index={expected_index}, "
+                    f"got {artifact['chain_index']}",
                     offset,
                 )
             )

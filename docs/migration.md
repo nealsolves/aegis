@@ -23,7 +23,7 @@ Single one-off calls are fine with invocation-only governance.
 ### Before (invocation-only)
 
 ```python
-governance = aegis.AEGIS()
+governance = aegis.AEGIS(sink=audit_sink)
 
 pre = governance.enforce_pre_call(invocation)
 output = call_model(...)
@@ -33,7 +33,7 @@ artifact = governance.enforce_post_call(pre, output)
 ### After (additive workflow adoption)
 
 ```python
-governance = aegis.AEGIS()
+governance = aegis.AEGIS(sink=audit_sink)
 
 with governance.open_session(policy_file="policy.yaml") as session:  # + wrap
     pre = session.enforce_step_pre_call(invocation)                    # enforce_pre_call →
@@ -51,6 +51,25 @@ The four changes are:
 4. `session.complete()` — mark the workflow as successfully finished
 
 ## Migrating evidence verification to v2
+
+V2 evidence delivery is acknowledged and fail-closed. Instance APIs require an
+explicit sink; module and decorator APIs require one-time configuration before
+their first attempt:
+
+```python
+from aegis import AEGIS, JsonFileAuditSink, configure_module_enforcement
+
+governance = AEGIS(sink=JsonFileAuditSink("audit.jsonl"))
+
+configure_module_enforcement(
+    sink=JsonFileAuditSink("module-audit.jsonl"),
+)
+```
+
+The first module-level attempt seals its private runtime. Sink failure raises
+`AuditSinkError` and cannot return PASS/WARN. Mutable global failure-mode APIs
+are no longer part of the v2 public surface. Finalized invocation and workflow
+evidence explicitly reports `signature_status` as `signed` or `unsigned`.
 
 New invocation evidence declares `audit_schema_version: "2.0"`,
 `canonicalization_profile: "aegis-json-v2"`, and a non-null content checksum.

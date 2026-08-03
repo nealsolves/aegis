@@ -60,7 +60,13 @@ The SDK enforces this boundary:
 ### Direct enforcement
 
 ```python
-from aegis import enforce_invocation
+from aegis import (
+    JsonFileAuditSink,
+    configure_module_enforcement,
+    enforce_invocation,
+)
+
+configure_module_enforcement(sink=JsonFileAuditSink("audit.jsonl"))
 
 response = llm.generate(messages)
 
@@ -189,13 +195,15 @@ The SDK generates audit artifacts. You choose where they go.
 ### Built-in sinks
 
 ```python
-from aegis import JsonFileAuditSink, CallbackAuditSink, set_audit_sink
+from aegis import AEGIS, CallbackAuditSink, JsonFileAuditSink
 
-# File sink — append one JSON line per enforcement
-set_audit_sink(JsonFileAuditSink("audit.jsonl"))
+# File sink — append one JSON line per enforcement.
+governance = AEGIS(sink=JsonFileAuditSink("audit.jsonl"))
 
-# Callback sink — bridge to your own persistence
-set_audit_sink(CallbackAuditSink(lambda artifact: db.insert(artifact)))
+# Callback sink — bridge to your own persistence.
+governance = AEGIS(
+    sink=CallbackAuditSink(lambda artifact: db.insert(artifact)),
+)
 ```
 
 ### Custom sinks
@@ -211,7 +219,10 @@ class MyDatabaseSink(AuditSink):
         self.db.insert("audit_log", artifact)
 ```
 
-Sink failure behavior is configurable: `"log"` mode (default) logs a `WARNING`; `"raise"` mode propagates as `AuditSinkError`. Sinks receive a deep copy and cannot mutate the caller's artifact.
+V2 evidence delivery is fail-closed. Successful return from `emit()` is the
+acknowledgement; any sink exception becomes
+`AuditSinkError(code="AUDIT_DELIVERY_FAILED")`, and no allow-class result is
+returned. Sinks receive a deep copy and cannot mutate the caller's artifact.
 
 ### Correlation
 
