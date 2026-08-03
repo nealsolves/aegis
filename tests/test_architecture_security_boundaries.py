@@ -1117,21 +1117,44 @@ def _self_attribute_name(node: ast.AST) -> str | None:
     return None
 
 
-def _method_assignments(function: ast.FunctionDef) -> dict[str, ast.AST]:
-    assignments: dict[str, ast.AST] = {}
+def _method_definitions(
+    function: ast.FunctionDef,
+) -> list[tuple[str, ast.Assign | ast.AnnAssign, ast.AST]]:
+    definitions: list[tuple[str, ast.Assign | ast.AnnAssign, ast.AST]] = []
     for node in ast.walk(function):
         if not isinstance(node, (ast.Assign, ast.AnnAssign)):
             continue
         for target in _assigned_names(node):
-            assignments[target] = node.value
-    return assignments
+            definitions.append((target, node, node.value))
+    return definitions
+
+
+def _source_position(node: ast.AST, *, end: bool = False) -> tuple[int, int]:
+    line = getattr(node, "end_lineno" if end else "lineno", None)
+    column = getattr(node, "end_col_offset" if end else "col_offset", None)
+    return (line if line is not None else -1, column if column is not None else -1)
+
+
+def _reaching_definition(
+    name: str,
+    use: ast.AST,
+    definitions: list[tuple[str, ast.Assign | ast.AnnAssign, ast.AST]],
+) -> tuple[ast.Assign | ast.AnnAssign, ast.AST] | None:
+    preceding = [
+        (assignment, value)
+        for defined_name, assignment, value in definitions
+        if defined_name == name and _source_position(assignment, end=True) <= _source_position(use)
+    ]
+    if not preceding:
+        return None
+    return max(preceding, key=lambda definition: _source_position(definition[0], end=True))
 
 
 def _expression_origins(
     expression: ast.AST,
-    assignments: dict[str, ast.AST],
+    definitions: list[tuple[str, ast.Assign | ast.AnnAssign, ast.AST]],
     *,
-    seen: set[str] | None = None,
+    seen: set[tuple[str, int, int]] | None = None,
 ) -> set[str]:
     if isinstance(expression, ast.Attribute):
         name = _self_attribute_name(expression)
@@ -1139,40 +1162,48 @@ def _expression_origins(
             return {"attempts"}
         if name == "_steps":
             return {"steps"}
-    if isinstance(expression, ast.Name) and expression.id in assignments:
-        visited = set() if seen is None else set(seen)
-        if expression.id in visited:
+    if isinstance(expression, ast.Name):
+        definition = _reaching_definition(expression.id, expression, definitions)
+        if definition is None:
             return set()
-        visited.add(expression.id)
+        visited = set() if seen is None else set(seen)
+        definition_key = (expression.id, *_source_position(definition[0], end=True))
+        if definition_key in visited:
+            return set()
+        visited.add(definition_key)
         return _expression_origins(
-            assignments[expression.id],
-            assignments,
+            definition[1],
+            definitions,
             seen=visited,
         )
     origins: set[str] = set()
     for child in ast.iter_child_nodes(expression):
-        origins.update(_expression_origins(child, assignments, seen=seen))
+        origins.update(_expression_origins(child, definitions, seen=seen))
     return origins
 
 
 def _bound_self_method(
     expression: ast.AST,
-    assignments: dict[str, ast.AST],
+    definitions: list[tuple[str, ast.Assign | ast.AnnAssign, ast.AST]],
     *,
-    seen: set[str] | None = None,
+    seen: set[tuple[str, int, int]] | None = None,
 ) -> str | None:
     method = _self_attribute_name(expression)
     if method is not None:
         return method
-    if not isinstance(expression, ast.Name) or expression.id not in assignments:
+    if not isinstance(expression, ast.Name):
+        return None
+    definition = _reaching_definition(expression.id, expression, definitions)
+    if definition is None:
         return None
     visited = set() if seen is None else set(seen)
-    if expression.id in visited:
+    definition_key = (expression.id, *_source_position(definition[0], end=True))
+    if definition_key in visited:
         return None
-    visited.add(expression.id)
+    visited.add(definition_key)
     return _bound_self_method(
-        assignments[expression.id],
-        assignments,
+        definition[1],
+        definitions,
         seen=visited,
     )
 
@@ -1240,7 +1271,7 @@ def _workflow_claim_boundary_violations(source: str) -> set[str]:
         violations.add("step-index-not-locked")
 
     pre_call = methods["enforce_step_pre_call"]
-    pre_call_assignments = _method_assignments(pre_call)
+    pre_call_definitions = _method_definitions(pre_call)
     allocation_calls = [
         node
         for node in ast.walk(pre_call)
@@ -1253,15 +1284,14 @@ def _workflow_claim_boundary_violations(source: str) -> set[str]:
         allocation_line = allocation_calls[0].lineno
         if any(
             isinstance(node, ast.Call)
-            and _bound_self_method(node.func, pre_call_assignments) is not None
+            and _bound_self_method(node.func, pre_call_definitions) is not None
             and node.lineno < allocation_line
             for node in ast.walk(pre_call)
         ):
             violations.add("pre-allocation-call")
 
     finalize = methods["_do_finalize"]
-    assignments = _method_assignments(finalize)
-    allocated_count = assignments.get("allocated_count")
+    definitions = _method_definitions(finalize)
     allocated_assignments = [
         node
         for node in ast.walk(finalize)
@@ -1269,38 +1299,6 @@ def _workflow_claim_boundary_violations(source: str) -> set[str]:
         and "allocated_count" in _assigned_names(node)
     ]
     finalize_parents, _ = _parent_maps(finalize)
-    if (
-        allocated_count is None
-        or _self_attribute_name(allocated_count) != "_next_step_index"
-        or len(allocated_assignments) != 1
-        or not _ancestor_with_lock(allocated_assignments[0], finalize_parents)
-    ):
-        violations.add("allocated-count-not-locked")
-
-    records = assignments.get("records")
-    if records is None or "attempts" not in _expression_origins(records, assignments):
-        violations.add("records-not-terminal-attempts")
-    if records is not None and "steps" in _expression_origins(records, assignments):
-        violations.add("claim-from-steps")
-    record_comprehensions = [
-        node
-        for node in ast.walk(records) if isinstance(node, ast.GeneratorExp)
-    ] if records is not None else []
-    if (
-        len(record_comprehensions) != 1
-        or len(record_comprehensions[0].generators) != 1
-        or record_comprehensions[0].generators[0].ifs != [
-            next(
-                (
-                    test
-                    for test in record_comprehensions[0].generators[0].ifs
-                    if _is_terminal_not_none(test)
-                ),
-                None,
-            )
-        ]
-    ):
-        violations.add("records-excludes-terminal-classes")
 
     artifacts = [
         node
@@ -1334,6 +1332,16 @@ def _workflow_claim_boundary_violations(source: str) -> set[str]:
     step_count = fields["step_count"]
     if not isinstance(step_count, ast.Name) or step_count.id != "allocated_count":
         violations.add("step-count-not-allocation")
+    allocated_definition = _reaching_definition(
+        "allocated_count", step_count, definitions
+    )
+    if (
+        allocated_definition is None
+        or _self_attribute_name(allocated_definition[1]) != "_next_step_index"
+        or len(allocated_assignments) != 1
+        or not _ancestor_with_lock(allocated_assignments[0], finalize_parents)
+    ):
+        violations.add("allocated-count-not-locked")
 
     invocations = fields["invocations"]
     if not isinstance(invocations, ast.ListComp) or len(invocations.generators) != 1:
@@ -1346,7 +1354,37 @@ def _workflow_claim_boundary_violations(source: str) -> set[str]:
         or generator.iter.id != "records"
     ):
         violations.add("claim-filtered")
-    claim_origins = _expression_origins(invocations, assignments)
+    records_definition = _reaching_definition("records", generator.iter, definitions)
+    records = records_definition[1] if records_definition is not None else None
+    if (
+        isinstance(records, ast.Call)
+        and isinstance(records.func, ast.Name)
+        and records.func.id == "filter"
+    ):
+        violations.add("claim-filtered")
+    if records is None or "attempts" not in _expression_origins(records, definitions):
+        violations.add("records-not-terminal-attempts")
+    if records is not None and "steps" in _expression_origins(records, definitions):
+        violations.add("claim-from-steps")
+    record_comprehensions = [
+        node for node in ast.walk(records) if isinstance(node, ast.GeneratorExp)
+    ] if records is not None else []
+    if (
+        len(record_comprehensions) != 1
+        or len(record_comprehensions[0].generators) != 1
+        or record_comprehensions[0].generators[0].ifs != [
+            next(
+                (
+                    test
+                    for test in record_comprehensions[0].generators[0].ifs
+                    if _is_terminal_not_none(test)
+                ),
+                None,
+            )
+        ]
+    ):
+        violations.add("records-excludes-terminal-classes")
+    claim_origins = _expression_origins(invocations, definitions)
     if "steps" in claim_origins:
         violations.add("claim-from-steps")
     if "attempts" not in claim_origins:
@@ -1407,6 +1445,21 @@ def test_workflow_claim_fitness_rejects_aliased_preallocation_gate() -> None:
     assert "pre-allocation-call" in _workflow_claim_boundary_violations(source)
 
 
+def test_workflow_claim_fitness_rejects_alias_rebound_after_allocation() -> None:
+    source = _WORKFLOW_CLAIM_FIXTURE.replace(
+        "        attempt = self._aigc._attempt_factory.allocate",
+        "        gate = self._assert_accepting_new_step\n"
+        "        gate()\n"
+        "        attempt = self._aigc._attempt_factory.allocate",
+    ).replace(
+        '        step_index = self._allocate_step_index("step", attempt.attempt_id)\n',
+        '        step_index = self._allocate_step_index("step", attempt.attempt_id)\n'
+        "        gate = lambda: None\n",
+    )
+
+    assert "pre-allocation-call" in _workflow_claim_boundary_violations(source)
+
+
 def test_workflow_claim_fitness_rejects_success_only_claim_filter() -> None:
     source = _WORKFLOW_CLAIM_FIXTURE.replace(
         "                for record in records\n",
@@ -1427,6 +1480,28 @@ def test_workflow_claim_fitness_rejects_filter_call_claim_source() -> None:
         "        )\n"
         "        artifact = {",
     ).replace("for record in records", "for record in filtered")
+
+    assert "claim-filtered" in _workflow_claim_boundary_violations(source)
+
+
+def test_workflow_claim_fitness_rejects_records_rebound_after_artifact() -> None:
+    source = _WORKFLOW_CLAIM_FIXTURE.replace(
+        "        artifact = {",
+        "        records = filter(\n"
+        "            lambda record: record.terminal in "
+        "{TerminalClass.ALLOW, TerminalClass.WARN},\n"
+        "            records,\n"
+        "        )\n"
+        "        artifact = {",
+    ).replace(
+        "            ],\n        }\n",
+        "            ],\n        }\n"
+        "        records = tuple(\n"
+        "            record\n"
+        "            for _, record in sorted(self._attempts.items())\n"
+        "            if record.terminal is not None\n"
+        "        )\n",
+    )
 
     assert "claim-filtered" in _workflow_claim_boundary_violations(source)
 
