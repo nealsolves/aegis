@@ -182,10 +182,27 @@ class ToolConstraintViolationError(GovernanceViolationError):
 class AuditSinkError(AIGCError):
     """Raised when audit sink emission fails (in 'raise' failure mode)."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "AUDIT_SINK_ERROR",
+        details: dict | None = None,
+    ):
+        super().__init__(
+            message,
+            code=code,
+            details=details,
+        )
+
+
+class EvidenceFinalizationError(AIGCError):
+    """Raised when evidence cannot be normalized, signed, or validated."""
+
     def __init__(self, message: str, *, details: dict | None = None):
         super().__init__(
             message,
-            code="AUDIT_SINK_ERROR",
+            code="EVIDENCE_FINALIZATION_FAILED",
             details=details,
         )
 
