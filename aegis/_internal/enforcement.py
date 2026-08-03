@@ -506,6 +506,29 @@ def _run_registry_post_call(
         )
         raise
 
+    return _run_consumed_post_call(
+        record,
+        output,
+        sink=sink,
+        sink_failure_mode=sink_failure_mode,
+        redaction_patterns=redaction_patterns,
+        signer=signer,
+        risk_config=risk_config,
+    )
+
+
+def _run_consumed_post_call(
+    record: OperationRecord,
+    output: object,
+    *,
+    sink: AuditSink | None = None,
+    sink_failure_mode: str = "raise",
+    redaction_patterns: list[tuple[str, re.Pattern[str]]] | None = None,
+    signer: ArtifactSigner | None = None,
+    risk_config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Run Phase B after the caller has atomically consumed *record*."""
+
     if not isinstance(output, dict):
         exc = InvocationValidationError(
             "enforce_post_call() output must be a dict",
@@ -2501,6 +2524,39 @@ class AEGIS:
             signer=self._signer,
             risk_config=self._risk_config,
         )
+
+    @_evidence_attempt_boundary("AEGIS.enforce_post_call", "split_post_call")
+    def _enforce_consumed_post_call(
+        self,
+        record: OperationRecord,
+        output: object,
+    ) -> dict[str, Any]:
+        """Run session Phase B for an operation already consumed atomically."""
+        return _run_consumed_post_call(
+            record,
+            output,
+            sink=self._sink,
+            sink_failure_mode=self._on_sink_failure,
+            redaction_patterns=self._redaction_patterns,
+            signer=self._signer,
+            risk_config=self._risk_config,
+        )
+
+    @_evidence_attempt_boundary("AEGIS.enforce_post_call", "split_post_call")
+    def _reject_consumed_post_call(
+        self,
+        exc: InvocationValidationError,
+        record: OperationRecord | None = None,
+    ) -> NoReturn:
+        """Finalize one session Phase B rejection through instance evidence."""
+        _emit_split_validation_failure(
+            exc,
+            record=record,
+            sink=self._sink,
+            sink_failure_mode=self._on_sink_failure,
+            redaction_patterns=self._redaction_patterns,
+        )
+        raise exc
 
     @_evidence_attempt_boundary("AEGIS.enforce_pre_call_async", "split_pre_call")
     async def enforce_pre_call_async(

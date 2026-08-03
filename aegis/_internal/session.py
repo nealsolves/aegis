@@ -25,6 +25,7 @@ from aegis._internal.tools import validate_tool_constraints
 if TYPE_CHECKING:
     from aegis._internal.compiled_policy import CompiledPolicy
     from aegis._internal.enforcement import AEGIS
+    from aegis._internal.operation_registry import OperationRecord
 
 logger = logging.getLogger(__name__)
 
@@ -959,7 +960,7 @@ class GovernanceSession:
     # Step enforcement
     # ------------------------------------------------------------------
 
-    def _assert_owns(self, session_result: SessionPreCallResult) -> None:
+    def _assert_handle_shape(self, session_result: SessionPreCallResult) -> None:
         if not isinstance(session_result, SessionPreCallResult):
             raise InvocationValidationError(
                 "Session operation handle is invalid",
@@ -977,6 +978,9 @@ class GovernanceSession:
                 "Session operation handle fields are invalid",
                 code="OPERATION_HANDLE_INVALID",
             )
+
+    def _assert_owns(self, session_result: SessionPreCallResult) -> None:
+        self._assert_handle_shape(session_result)
         if session_result.session_id != self._session_id:
             raise InvocationValidationError(
                 "Token belongs to a different session",
@@ -990,53 +994,29 @@ class GovernanceSession:
         self,
         exc: InvocationValidationError,
     ) -> None:
-        from aegis._internal.enforcement import _emit_split_validation_failure
+        self._aigc._reject_consumed_post_call(exc)
 
-        _emit_split_validation_failure(
-            exc,
-            sink=self._aigc._sink,
-            sink_failure_mode=self._aigc._on_sink_failure,
-            redaction_patterns=self._aigc._redaction_patterns,
-        )
-
-    def _consume_and_reject_post_call(
+    def _consume_post_call_operation(
         self,
         session_result: SessionPreCallResult,
-        exc: InvocationValidationError,
-    ) -> NoReturn:
-        """Burn an authenticated session operation and emit its FAIL artifact."""
-        from aegis._internal.enforcement import (
-            _emit_split_validation_failure,
-            _operation_handle,
-        )
+    ) -> OperationRecord:
+        """Consume one authenticated session operation before Phase B parsing."""
+        from aegis._internal.enforcement import _operation_handle
 
         operation_id = session_result.operation_id
         try:
             record = self._aigc._operation_registry.consume(
                 _operation_handle(_inner_result(session_result)),
             )
-        except InvocationValidationError as consume_exc:
+        except InvocationValidationError as exc:
             self._aigc._operation_registry.cancel_operation(operation_id)
             self._pending_results.pop(operation_id, None)
             self._adapter_step_states.pop(operation_id, None)
-            _emit_split_validation_failure(
-                consume_exc,
-                sink=self._aigc._sink,
-                sink_failure_mode=self._aigc._on_sink_failure,
-                redaction_patterns=self._aigc._redaction_patterns,
-            )
-            raise
+            self._aigc._reject_consumed_post_call(exc)
 
         self._pending_results.pop(operation_id, None)
         self._adapter_step_states.pop(operation_id, None)
-        _emit_split_validation_failure(
-            exc,
-            record=record,
-            sink=self._aigc._sink,
-            sink_failure_mode=self._aigc._on_sink_failure,
-            redaction_patterns=self._aigc._redaction_patterns,
-        )
-        raise exc
+        return record
 
     @_session_locked
     def authorize_step_tool_call(
@@ -1651,7 +1631,7 @@ class GovernanceSession:
         :return: Invocation PASS audit artifact
         """
         try:
-            self._assert_owns(session_result)
+            self._assert_handle_shape(session_result)
         except InvocationValidationError as exc:
             self._emit_post_validation_failure(exc)
             raise
@@ -1660,7 +1640,8 @@ class GovernanceSession:
         entry = self._pending_results.get(operation_id)
         if entry is None:
             exc = InvocationValidationError(
-                "Operation is unknown or consumed",
+                "Operation belongs to a different session, is unknown, or "
+                "has been consumed",
                 code="OPERATION_NOT_ACTIVE",
                 details={"operation_id": operation_id},
             )
@@ -1668,27 +1649,29 @@ class GovernanceSession:
             raise exc
         self._assert_open()
 
-        # Session metadata is not authorization state, but an authenticated
-        # attempt with forged wrapper metadata still burns the operation.
+        # Pop first: no caller-controlled wrapper, metadata, or output field is
+        # interpreted until this authenticated attempt owns the operation.
+        record = self._consume_post_call_operation(session_result)
+
         if (
-            session_result.step_id != entry["step_id"]
+            session_result.session_id != self._session_id
+            or session_result.step_id != entry["step_id"]
             or session_result.participant_id != entry["participant_id"]
         ):
-            self._consume_and_reject_post_call(
-                session_result,
+            self._aigc._reject_consumed_post_call(
                 InvocationValidationError(
                     "Session operation metadata does not match minted values",
                     code="OPERATION_SESSION_METADATA_MISMATCH",
                     details={
-                        "token_step_id": session_result.step_id,
+                        "session_id": self._session_id,
                         "registered_step_id": entry["step_id"],
                     },
                 ),
+                record,
             )
 
         if step_metadata is not None and not isinstance(step_metadata, dict):
-            self._consume_and_reject_post_call(
-                session_result,
+            self._aigc._reject_consumed_post_call(
                 InvocationValidationError(
                     "step_metadata must be a mapping when provided",
                     details={
@@ -1697,19 +1680,10 @@ class GovernanceSession:
                         "metadata_type": type(step_metadata).__name__,
                     },
                 ),
+                record,
             )
 
-        try:
-            inv_artifact = self._aigc.enforce_post_call(
-                _inner_result(session_result),
-                output,
-            )
-        finally:
-            # Every authenticated Phase B attempt consumes or cancels the live
-            # registry record, including malformed output and binding failures.
-            self._aigc._operation_registry.cancel_operation(operation_id)
-            self._pending_results.pop(operation_id, None)
-            self._adapter_step_states.pop(operation_id, None)
+        inv_artifact = self._aigc._enforce_consumed_post_call(record, output)
 
         # Increment tool-call counter from the invocation dict (consistent with
         # pre_call budget check — both use invocation-time count). Budget is
