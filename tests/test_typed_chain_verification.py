@@ -62,6 +62,40 @@ def test_valid_prefix_never_claims_completeness():
     assert report.completeness is Completeness.UNPROVEN
 
 
+@pytest.mark.parametrize(
+    ("field", "value", "expected_code"),
+    [
+        ("chain_id", "   ", "CHAIN_ID_INVALID"),
+        ("chain_id", "c" * 513, "CHAIN_ID_INVALID"),
+        ("reservation_id", "   ", "CHAIN_RESERVATION_ID_INVALID"),
+        (
+            "reservation_id",
+            "r" * 513,
+            "CHAIN_RESERVATION_ID_INVALID",
+        ),
+    ],
+)
+def test_chain_identifiers_obey_the_linker_contract(
+    field,
+    value,
+    expected_code,
+):
+    coordinates = {
+        "chain_id": "chain-1",
+        "chain_index": 7,
+        "previous_audit_checksum": "f" * 64,
+        "reservation_id": "reservation-7",
+    }
+    coordinates[field] = value
+    artifact = finalized_artifact(**coordinates)
+
+    report = verify_chain_detailed([artifact])
+
+    assert report.content_integrity is ContentIntegrity.VALID
+    assert report.chain_continuity is ChainContinuity.INVALID
+    assert any(error.code == expected_code for error in report.errors)
+
+
 def test_checksum_valid_unsigned_chain_is_not_authentic():
     report = verify_chain_detailed(valid_prefix())
     assert report.content_integrity is ContentIntegrity.VALID
