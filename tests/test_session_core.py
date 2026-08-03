@@ -148,6 +148,15 @@ def test_second_completion_rejected():
         session.complete()
 
 
+def test_session_post_call_rejects_wrong_handle_type_with_typed_error():
+    a = _aigc()
+    with a.open_session() as session:
+        with pytest.raises(InvocationValidationError) as exc_info:
+            session.enforce_step_post_call(object(), dict(_GOOD_OUTPUT))
+        assert exc_info.value.code == "OPERATION_HANDLE_INVALID"
+        session.cancel()
+
+
 # ---------------------------------------------------------------------------
 # Cross-session rejection
 # ---------------------------------------------------------------------------

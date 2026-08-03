@@ -72,6 +72,17 @@ class OperationRegistry:
                 code="OPERATION_HANDLE_INVALID",
             )
         if (
+            not isinstance(handle.operation_id, str)
+            or not isinstance(handle.issuer_id, str)
+            or type(handle.process_id) is not int
+            or not isinstance(handle.policy_digest, str)
+            or not isinstance(handle.canonicalization_profile, str)
+        ):
+            raise InvocationValidationError(
+                "Operation handle fields are invalid",
+                code="OPERATION_HANDLE_INVALID",
+            )
+        if (
             handle.process_id != os.getpid()
             or handle.process_id != self._process_id
         ):
@@ -118,6 +129,9 @@ class OperationRegistry:
                 "Operation is unknown or consumed",
                 code="OPERATION_NOT_ACTIVE",
             )
+        # Binding is checked after pop by design: once process and issuer
+        # affinity authenticate an attempt for a live operation ID, even a
+        # tampered policy/profile binding burns that one-shot operation.
         self._validate_binding(validated, record)
         return record
 

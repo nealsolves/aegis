@@ -5,11 +5,13 @@ GovernanceSession and SessionPreCallResult — v0.9.0 workflow primitives.
 from __future__ import annotations
 
 import logging
+import threading
 import time
 import unicodedata
 import uuid
 from collections.abc import Mapping as MappingABC
 from dataclasses import dataclass
+from functools import wraps
 from typing import TYPE_CHECKING, Any, NoReturn
 
 from aegis._internal.errors import (
@@ -25,6 +27,17 @@ if TYPE_CHECKING:
     from aegis._internal.enforcement import AEGIS
 
 logger = logging.getLogger(__name__)
+
+
+def _session_locked(method: Any) -> Any:
+    """Serialize lifecycle and pending-operation mutations per session."""
+    @wraps(method)
+    def locked(self: Any, *args: Any, **kwargs: Any) -> Any:
+        with self._lifecycle_lock:
+            return method(self, *args, **kwargs)
+
+    return locked
+
 
 # ---------------------------------------------------------------------------
 # Lifecycle constants
@@ -469,6 +482,7 @@ class GovernanceSession:
         self._session_id = session_id
         self._policy_file = policy_file
         self._metadata = dict(metadata or {})
+        self._lifecycle_lock = threading.RLock()
 
         self._state = STATE_OPEN
         self._started_at = int(time.time())
@@ -588,6 +602,7 @@ class GovernanceSession:
         participant = self._participants_by_id.get(participant_id)
         return dict(participant) if participant is not None else None
 
+    @_session_locked
     def register_adapter_step_state(
         self,
         session_result: SessionPreCallResult,
@@ -603,6 +618,7 @@ class GovernanceSession:
             )
         self._adapter_step_states[session_result.operation_id] = state
 
+    @_session_locked
     def adapter_step_state(
         self,
         session_result: SessionPreCallResult,
@@ -612,6 +628,7 @@ class GovernanceSession:
         self._assert_owns(session_result)
         return self._adapter_step_states.get(session_result.operation_id)
 
+    @_session_locked
     def pop_adapter_step_state(
         self,
         session_result: SessionPreCallResult,
@@ -621,6 +638,7 @@ class GovernanceSession:
         self._assert_owns(session_result)
         return self._adapter_step_states.pop(session_result.operation_id, {})
 
+    @_session_locked
     def discard_adapter_step(
         self,
         session_result: SessionPreCallResult,
@@ -640,6 +658,7 @@ class GovernanceSession:
     def __enter__(self) -> "GovernanceSession":
         return self
 
+    @_session_locked
     def __exit__(
         self,
         exc_type: type[BaseException] | None,
@@ -706,6 +725,7 @@ class GovernanceSession:
             )
         self._state = to_state
 
+    @_session_locked
     def pause(
         self,
         *,
@@ -727,6 +747,7 @@ class GovernanceSession:
         }
         self._approval_records.append(checkpoint)
 
+    @_session_locked
     def resume(
         self,
         *,
@@ -786,6 +807,7 @@ class GovernanceSession:
             target["approver_id"] = approver_id
         target["approval_note"] = approval_note
 
+    @_session_locked
     def deny_approval(
         self,
         *,
@@ -830,6 +852,7 @@ class GovernanceSession:
         target["resumed_at"] = None
         # Session stays PAUSED — do NOT transition
 
+    @_session_locked
     def complete(self) -> None:
         """Mark the session as successfully completed (OPEN/PAUSED → COMPLETED)."""
         if self._pending_results:
@@ -858,11 +881,13 @@ class GovernanceSession:
                 )
         self._transition(STATE_COMPLETED)
 
+    @_session_locked
     def cancel(self) -> None:
         """Cancel the session (OPEN/PAUSED → CANCELED)."""
         self._cancel_pending_operations()
         self._transition(STATE_CANCELED)
 
+    @_session_locked
     def finalize(self) -> dict[str, Any]:
         """Explicitly finalize and emit the workflow artifact.
 
@@ -935,6 +960,23 @@ class GovernanceSession:
     # ------------------------------------------------------------------
 
     def _assert_owns(self, session_result: SessionPreCallResult) -> None:
+        if not isinstance(session_result, SessionPreCallResult):
+            raise InvocationValidationError(
+                "Session operation handle is invalid",
+                code="OPERATION_HANDLE_INVALID",
+                details={"received_type": type(session_result).__name__},
+            )
+        if (
+            not isinstance(session_result.operation_id, str)
+            or not isinstance(session_result.issuer_id, str)
+            or type(session_result.process_id) is not int
+            or not isinstance(session_result.policy_digest, str)
+            or not isinstance(session_result.canonicalization_profile, str)
+        ):
+            raise InvocationValidationError(
+                "Session operation handle fields are invalid",
+                code="OPERATION_HANDLE_INVALID",
+            )
         if session_result.session_id != self._session_id:
             raise InvocationValidationError(
                 "Token belongs to a different session",
@@ -944,6 +986,59 @@ class GovernanceSession:
                 },
             )
 
+    def _emit_post_validation_failure(
+        self,
+        exc: InvocationValidationError,
+    ) -> None:
+        from aegis._internal.enforcement import _emit_split_validation_failure
+
+        _emit_split_validation_failure(
+            exc,
+            sink=self._aigc._sink,
+            sink_failure_mode=self._aigc._on_sink_failure,
+            redaction_patterns=self._aigc._redaction_patterns,
+        )
+
+    def _consume_and_reject_post_call(
+        self,
+        session_result: SessionPreCallResult,
+        exc: InvocationValidationError,
+    ) -> NoReturn:
+        """Burn an authenticated session operation and emit its FAIL artifact."""
+        from aegis._internal.enforcement import (
+            _emit_split_validation_failure,
+            _operation_handle,
+        )
+
+        operation_id = session_result.operation_id
+        try:
+            record = self._aigc._operation_registry.consume(
+                _operation_handle(_inner_result(session_result)),
+            )
+        except InvocationValidationError as consume_exc:
+            self._aigc._operation_registry.cancel_operation(operation_id)
+            self._pending_results.pop(operation_id, None)
+            self._adapter_step_states.pop(operation_id, None)
+            _emit_split_validation_failure(
+                consume_exc,
+                sink=self._aigc._sink,
+                sink_failure_mode=self._aigc._on_sink_failure,
+                redaction_patterns=self._aigc._redaction_patterns,
+            )
+            raise
+
+        self._pending_results.pop(operation_id, None)
+        self._adapter_step_states.pop(operation_id, None)
+        _emit_split_validation_failure(
+            exc,
+            record=record,
+            sink=self._aigc._sink,
+            sink_failure_mode=self._aigc._on_sink_failure,
+            redaction_patterns=self._aigc._redaction_patterns,
+        )
+        raise exc
+
+    @_session_locked
     def authorize_step_tool_call(
         self,
         session_result: SessionPreCallResult,
@@ -983,49 +1078,52 @@ class GovernanceSession:
                 "call register_adapter_step_state before authorizing tool calls",
                 details={"operation_id": session_result.operation_id},
             )
-        observed_tool_calls = list(adapter_state.get("dynamic_tool_calls") or [])
-        projected_call = {"name": tool_name, "id": tool_call_id}
         from aegis._internal.enforcement import _operation_handle
 
-        def _validate_active_record(record: Any) -> None:
+        def _authorize_active_record(record: Any) -> None:
+            observed_tool_calls = list(
+                adapter_state.get("dynamic_tool_calls") or []
+            )
+            projected_call = {"name": tool_name, "id": tool_call_id}
             validate_tool_constraints(
                 {"tool_calls": [*observed_tool_calls, projected_call]},
                 record.compiled_policy.tools,
             )
+            projected = self._total_tool_calls_consumed + 1
+            if (
+                self._max_total_tool_calls is not None
+                and projected > self._max_total_tool_calls
+            ):
+                from aegis._internal.errors import (
+                    WorkflowToolBudgetExceededError,
+                )
+                raise WorkflowToolBudgetExceededError(
+                    f"Session tool-call budget exceeded (dynamic): "
+                    f"max_total_tool_calls={self._max_total_tool_calls}, "
+                    f"current={self._total_tool_calls_consumed}",
+                    details={
+                        "session_id": self._session_id,
+                        "max_total_tool_calls": self._max_total_tool_calls,
+                        "total_tool_calls_consumed": (
+                            self._total_tool_calls_consumed
+                        ),
+                        "tool_name": tool_name,
+                    },
+                )
+
+            self._total_tool_calls_consumed += 1
+            adapter_state["dynamic_tool_calls_count"] += 1
+            adapter_state["dynamic_tool_calls"].append({
+                "name": tool_name,
+                "tool_name": tool_name,
+                "tool_call_id": tool_call_id,
+                "authorized_at": int(time.time()),
+            })
 
         self._aigc._operation_registry.apply(
             _operation_handle(_inner_result(session_result)),
-            _validate_active_record,
+            _authorize_active_record,
         )
-
-        # Enforce session-level tool-call budget (real-time)
-        projected = self._total_tool_calls_consumed + 1
-        if (
-            self._max_total_tool_calls is not None
-            and projected > self._max_total_tool_calls
-        ):
-            from aegis._internal.errors import WorkflowToolBudgetExceededError
-            raise WorkflowToolBudgetExceededError(
-                f"Session tool-call budget exceeded (dynamic): "
-                f"max_total_tool_calls={self._max_total_tool_calls}, "
-                f"current={self._total_tool_calls_consumed}",
-                details={
-                    "session_id": self._session_id,
-                    "max_total_tool_calls": self._max_total_tool_calls,
-                    "total_tool_calls_consumed": self._total_tool_calls_consumed,
-                    "tool_name": tool_name,
-                },
-            )
-
-        self._total_tool_calls_consumed += 1
-
-        adapter_state["dynamic_tool_calls_count"] += 1
-        adapter_state["dynamic_tool_calls"].append({
-            "name": tool_name,
-            "tool_name": tool_name,
-            "tool_call_id": tool_call_id,
-            "authorized_at": int(time.time()),
-        })
 
     def _discard_pending_step(
         self,
@@ -1057,6 +1155,7 @@ class GovernanceSession:
         if rollback_authorization and self._authorized_step_count > 0:
             self._authorized_step_count -= 1
 
+    @_session_locked
     def enforce_step_pre_call(
         self,
         invocation: dict[str, Any],
@@ -1533,6 +1632,7 @@ class GovernanceSession:
             canonicalization_profile=inner_result.canonicalization_profile,
         )
 
+    @_session_locked
     def enforce_step_post_call(
         self,
         session_result: SessionPreCallResult,
@@ -1550,16 +1650,22 @@ class GovernanceSession:
             interpret it at runtime.
         :return: Invocation PASS audit artifact
         """
-        self._assert_owns(session_result)
+        try:
+            self._assert_owns(session_result)
+        except InvocationValidationError as exc:
+            self._emit_post_validation_failure(exc)
+            raise
 
         operation_id = session_result.operation_id
         entry = self._pending_results.get(operation_id)
         if entry is None:
-            raise InvocationValidationError(
+            exc = InvocationValidationError(
                 "Operation is unknown or consumed",
                 code="OPERATION_NOT_ACTIVE",
                 details={"operation_id": operation_id},
             )
+            self._emit_post_validation_failure(exc)
+            raise exc
         self._assert_open()
 
         # Session metadata is not authorization state, but an authenticated
@@ -1568,29 +1674,29 @@ class GovernanceSession:
             session_result.step_id != entry["step_id"]
             or session_result.participant_id != entry["participant_id"]
         ):
-            self._pending_results.pop(operation_id, None)
-            self._adapter_step_states.pop(operation_id, None)
-            self._aigc._operation_registry.cancel_operation(operation_id)
-            raise InvocationValidationError(
-                "Session operation metadata does not match minted values",
-                code="OPERATION_SESSION_METADATA_MISMATCH",
-                details={
-                    "token_step_id": session_result.step_id,
-                    "registered_step_id": entry["step_id"],
-                },
+            self._consume_and_reject_post_call(
+                session_result,
+                InvocationValidationError(
+                    "Session operation metadata does not match minted values",
+                    code="OPERATION_SESSION_METADATA_MISMATCH",
+                    details={
+                        "token_step_id": session_result.step_id,
+                        "registered_step_id": entry["step_id"],
+                    },
+                ),
             )
 
         if step_metadata is not None and not isinstance(step_metadata, dict):
-            self._pending_results.pop(operation_id, None)
-            self._adapter_step_states.pop(operation_id, None)
-            self._aigc._operation_registry.cancel_operation(operation_id)
-            raise InvocationValidationError(
-                "step_metadata must be a mapping when provided",
-                details={
-                    "session_id": self._session_id,
-                    "step_id": entry["step_id"],
-                    "metadata_type": type(step_metadata).__name__,
-                },
+            self._consume_and_reject_post_call(
+                session_result,
+                InvocationValidationError(
+                    "step_metadata must be a mapping when provided",
+                    details={
+                        "session_id": self._session_id,
+                        "step_id": entry["step_id"],
+                        "metadata_type": type(step_metadata).__name__,
+                    },
+                ),
             )
 
         try:

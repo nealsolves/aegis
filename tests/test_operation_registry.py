@@ -154,6 +154,32 @@ def test_consume_rejects_non_handle_with_typed_error(operation_record):
     assert exc_info.value.code == "OPERATION_HANDLE_INVALID"
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("operation_id", 7),
+        ("issuer_id", 7),
+        ("process_id", True),
+        ("policy_digest", None),
+        ("canonicalization_profile", []),
+    ],
+)
+def test_consume_rejects_malformed_handle_fields_with_typed_error(
+    operation_record,
+    field,
+    value,
+):
+    registry = OperationRegistry()
+    handle = registry.issue(operation_record)
+    malformed = replace(handle, **{field: value})
+
+    with pytest.raises(InvocationValidationError) as exc_info:
+        registry.consume(malformed)
+
+    assert exc_info.value.code == "OPERATION_HANDLE_INVALID"
+    assert registry.consume(handle) is operation_record
+
+
 def test_cancel_removes_operation_once(operation_record):
     registry = OperationRegistry()
     handle = registry.issue(operation_record)

@@ -5,10 +5,12 @@ from __future__ import annotations
 import copy
 import multiprocessing
 import pickle
+from dataclasses import replace
 
 import pytest
 
 from aegis._internal.enforcement import (
+    AIGC,
     configure_module_enforcement,
     enforce_post_call,
     enforce_pre_call,
@@ -114,3 +116,37 @@ def test_forked_process_cannot_consume_inherited_operation():
         _valid_output(),
     )["enforcement_result"] == "PASS"
     result_queue.close()
+
+
+@pytest.mark.parametrize("use_instance", [False, True])
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("operation_id", []),
+        ("issuer_id", 7),
+        ("process_id", True),
+        ("policy_digest", None),
+        ("canonicalization_profile", {}),
+    ],
+)
+def test_malformed_public_handle_is_typed_audited_and_non_consuming(
+    use_instance,
+    field,
+    value,
+):
+    runtime = AIGC() if use_instance else None
+    pre_call = runtime.enforce_pre_call if runtime else enforce_pre_call
+    post_call = runtime.enforce_post_call if runtime else enforce_post_call
+    handle = pre_call(_pre_call_invocation())
+    malformed = replace(handle, **{field: value})
+
+    with pytest.raises(InvocationValidationError) as exc_info:
+        post_call(malformed, _valid_output())
+
+    assert exc_info.value.code == "OPERATION_HANDLE_INVALID"
+    assert exc_info.value.audit_artifact is not None
+    assert exc_info.value.audit_artifact["enforcement_result"] == "FAIL"
+    assert post_call(
+        handle,
+        _valid_output(),
+    )["enforcement_result"] == "PASS"
