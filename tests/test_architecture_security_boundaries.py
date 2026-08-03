@@ -1121,11 +1121,38 @@ def _method_definitions(
     function: ast.FunctionDef,
 ) -> list[tuple[str, ast.Assign | ast.AnnAssign, ast.AST]]:
     definitions: list[tuple[str, ast.Assign | ast.AnnAssign, ast.AST]] = []
-    for node in ast.walk(function):
-        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
-            continue
-        for target in _assigned_names(node):
-            definitions.append((target, node, node.value))
+
+    class MethodScopeCollector(ast.NodeVisitor):
+        def visit_Assign(self, node: ast.Assign) -> None:
+            for target in _assigned_names(node):
+                definitions.append((target, node, node.value))
+            self.generic_visit(node)
+
+        def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+            for target in _assigned_names(node):
+                definitions.append((target, node, node.value))
+            self.generic_visit(node)
+
+        def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+            return
+
+        def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+            return
+
+        def visit_Lambda(self, node: ast.Lambda) -> None:
+            return
+
+        def visit_ClassDef(self, node: ast.ClassDef) -> None:
+            return
+
+        def visit_comprehension(self, node: ast.comprehension) -> None:
+            self.visit(node.iter)
+            for condition in node.ifs:
+                self.visit(condition)
+
+    collector = MethodScopeCollector()
+    for statement in function.body:
+        collector.visit(statement)
     return definitions
 
 
@@ -1460,6 +1487,19 @@ def test_workflow_claim_fitness_rejects_alias_rebound_after_allocation() -> None
     assert "pre-allocation-call" in _workflow_claim_boundary_violations(source)
 
 
+def test_workflow_claim_fitness_ignores_nested_gate_rebinding() -> None:
+    source = _WORKFLOW_CLAIM_FIXTURE.replace(
+        "        attempt = self._aigc._attempt_factory.allocate",
+        "        gate = self._assert_accepting_new_step\n"
+        "        def helper():\n"
+        "            gate = lambda: None\n"
+        "        gate()\n"
+        "        attempt = self._aigc._attempt_factory.allocate",
+    )
+
+    assert "pre-allocation-call" in _workflow_claim_boundary_violations(source)
+
+
 def test_workflow_claim_fitness_rejects_success_only_claim_filter() -> None:
     source = _WORKFLOW_CLAIM_FIXTURE.replace(
         "                for record in records\n",
@@ -1501,6 +1541,26 @@ def test_workflow_claim_fitness_rejects_records_rebound_after_artifact() -> None
         "            for _, record in sorted(self._attempts.items())\n"
         "            if record.terminal is not None\n"
         "        )\n",
+    )
+
+    assert "claim-filtered" in _workflow_claim_boundary_violations(source)
+
+
+def test_workflow_claim_fitness_ignores_nested_records_rebinding() -> None:
+    source = _WORKFLOW_CLAIM_FIXTURE.replace(
+        "        artifact = {",
+        "        records = filter(\n"
+        "            lambda record: record.terminal in "
+        "{TerminalClass.ALLOW, TerminalClass.WARN},\n"
+        "            records,\n"
+        "        )\n"
+        "        def helper():\n"
+        "            records = tuple(\n"
+        "                record\n"
+        "                for _, record in sorted(self._attempts.items())\n"
+        "                if record.terminal is not None\n"
+        "            )\n"
+        "        artifact = {",
     )
 
     assert "claim-filtered" in _workflow_claim_boundary_violations(source)
