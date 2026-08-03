@@ -455,6 +455,10 @@ class EvidenceFinalizer:
                     reservation,
                     normalized_final["checksum"],
                 )
+            if draft.artifact_type == "invocation":
+                recorder = _CURRENT_TERMINAL_RECORDER.get()
+                if recorder is not None:
+                    recorder(normalized_final["checksum"], draft.terminal)
             return copy.deepcopy(normalized_final)
         except (AuditSinkError, ChainLinkError, EvidenceFinalizationError):
             raise
@@ -475,6 +479,12 @@ _LEGACY_SINK_UNSET = object()
 _LEGACY_ATTEMPTS = AttemptFactory()
 _CURRENT_ATTEMPT: ContextVar[AttemptEnvelope | None] = ContextVar(
     "aegis_current_evidence_attempt",
+    default=None,
+)
+_TerminalRecorder = Callable[[str, TerminalClass], None]
+_TERMINAL_RECORDER_UNSET = object()
+_CURRENT_TERMINAL_RECORDER: ContextVar[_TerminalRecorder | None] = ContextVar(
+    "aegis_current_terminal_recorder",
     default=None,
 )
 _CURRENT_RUNTIME: ContextVar[
@@ -526,15 +536,27 @@ def evidence_attempt(
     failure_mode: str | None = None,
     diagnostics: EvidenceDiagnostics | None = None,
     chain_linker: ChainLinker | None = None,
+    terminal_recorder: _TerminalRecorder | None | object = (
+        _TERMINAL_RECORDER_UNSET
+    ),
 ):
     """Bind one preallocated attempt to all finalization in this call path."""
-    attempt_token = _CURRENT_ATTEMPT.set(attempt)
+    # A session binds its attempt before entering the instance enforcement
+    # boundary. Nested decorators allocate their own minimum envelope, but the
+    # outer session attempt remains authoritative for the emitted artifact.
+    bound_attempt = _CURRENT_ATTEMPT.get() or attempt
+    attempt_token = _CURRENT_ATTEMPT.set(bound_attempt)
     runtime_token = _CURRENT_RUNTIME.set(
         (sink, signer, failure_mode, diagnostics, chain_linker)
     )
+    recorder_token = None
+    if terminal_recorder is not _TERMINAL_RECORDER_UNSET:
+        recorder_token = _CURRENT_TERMINAL_RECORDER.set(terminal_recorder)
     try:
         yield
     finally:
+        if recorder_token is not None:
+            _CURRENT_TERMINAL_RECORDER.reset(recorder_token)
         _CURRENT_RUNTIME.reset(runtime_token)
         _CURRENT_ATTEMPT.reset(attempt_token)
 
@@ -624,6 +646,7 @@ def finalize_legacy_invocation_artifact(
     failure_mode: str | None = None,
     signer: ArtifactSigner | FinalizerSigner | None = None,
     chain_linker: ChainLinker | None = None,
+    terminal: TerminalClass | None = None,
 ) -> dict[str, Any]:
     """Finalize a detached legacy builder result through the v2 boundary."""
     runtime = _CURRENT_RUNTIME.get()
@@ -681,11 +704,15 @@ def finalize_legacy_invocation_artifact(
                     ),
                 )
             )
-    terminal = (
-        TerminalClass.ALLOW
-        if detached.get("enforcement_result") == "PASS"
-        else TerminalClass.DENY
-    )
+    selected_terminal = terminal
+    if selected_terminal is None:
+        selected_terminal = (
+            TerminalClass.ALLOW
+            if detached.get("enforcement_result") == "PASS"
+            else TerminalClass.DENY
+        )
+    elif type(selected_terminal) is not TerminalClass:
+        raise TypeError("terminal must be a TerminalClass")
     for field_name in _FINALIZATION_FIELDS:
         detached.pop(field_name, None)
     detached.pop("enforcement_result", None)
@@ -701,7 +728,7 @@ def finalize_legacy_invocation_artifact(
         finalized = finalizer.finalize(
             EvidenceDraft(
                 attempt=envelope,
-                terminal=terminal,
+                terminal=selected_terminal,
                 artifact_type="invocation",
                 body=detached,
                 failures=tuple(failures),

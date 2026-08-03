@@ -20,7 +20,13 @@ from aegis._internal.errors import (
     SessionStateError,
 )
 from aegis._internal.audit import checksum as _audit_checksum
-from aegis._internal.evidence_finalizer import finalize_legacy_workflow_artifact
+from aegis._internal.evidence_finalizer import (
+    _EvidenceAbort,
+    _plain_json,
+    evidence_attempt,
+    finalize_legacy_invocation_artifact,
+    finalize_legacy_workflow_artifact,
+)
 from aegis._internal.outcomes import TerminalClass
 from aegis._internal.tools import validate_tool_constraints
 
@@ -509,7 +515,10 @@ class GovernanceSession:
         # operation_id → {"step_id": str,
         #              "participant_id": str | None,
         #              "effective_policy_file": str | None,
-        #              "tool_calls_count": int}
+        #              "tool_calls_count": int,
+        #              "step_index": int,
+        #              "attempt": AttemptEnvelope,
+        #              "context": dict[str, Any]}
         self._pending_results: dict[str, dict[str, Any]] = {}
 
         # Ordered step records for the workflow artifact
@@ -632,6 +641,149 @@ class GovernanceSession:
                 None,
             )
             return index
+
+    def record_terminal_attempt(
+        self,
+        step_index: int,
+        invocation_checksum: str,
+        terminal: TerminalClass,
+    ) -> None:
+        """Atomically bind one allocated attempt to one terminal artifact."""
+        if type(step_index) is not int or step_index < 0:
+            raise SessionStateError(
+                "Terminal attempt index is invalid",
+                code="SESSION_ATTEMPT_UNKNOWN",
+                details={"session_id": self._session_id, "step_index": step_index},
+            )
+        if (
+            not isinstance(invocation_checksum, str)
+            or len(invocation_checksum) != 64
+            or any(char not in "0123456789abcdef" for char in invocation_checksum)
+        ):
+            raise SessionStateError(
+                "Terminal attempt checksum is invalid",
+                code="SESSION_ATTEMPT_CONFLICT",
+                details={"session_id": self._session_id, "step_index": step_index},
+            )
+        if type(terminal) is not TerminalClass:
+            raise SessionStateError(
+                "Terminal attempt class is invalid",
+                code="SESSION_ATTEMPT_CONFLICT",
+                details={"session_id": self._session_id, "step_index": step_index},
+            )
+        with self._attempt_lock:
+            current = self._attempts.get(step_index)
+            if current is None:
+                raise SessionStateError(
+                    "Terminal artifact references an unknown session attempt",
+                    code="SESSION_ATTEMPT_UNKNOWN",
+                    details={
+                        "session_id": self._session_id,
+                        "step_index": step_index,
+                    },
+                )
+            if current.terminal is not None:
+                duplicate = (
+                    current.invocation_checksum == invocation_checksum
+                    and current.terminal is terminal
+                )
+                raise SessionStateError(
+                    "Session attempt already has a terminal artifact",
+                    code=(
+                        "SESSION_ATTEMPT_DUPLICATE"
+                        if duplicate
+                        else "SESSION_ATTEMPT_CONFLICT"
+                    ),
+                    details={
+                        "session_id": self._session_id,
+                        "step_index": step_index,
+                    },
+                )
+            self._attempts[step_index] = SessionAttempt(
+                step_index=current.step_index,
+                step_id=current.step_id,
+                attempt_id=current.attempt_id,
+                invocation_checksum=invocation_checksum,
+                terminal=terminal,
+            )
+
+    def finalized_attempts(self) -> tuple[SessionAttempt, ...]:
+        """Return immutable terminal records in allocated index order."""
+        with self._attempt_lock:
+            return tuple(
+                record
+                for _, record in sorted(self._attempts.items())
+                if record.terminal is not None
+            )
+
+    def _attempt_finalization_scope(self, step_index: int, attempt: Any):
+        return evidence_attempt(
+            attempt,
+            sink=self._aigc._sink,
+            signer=self._aigc._signer,
+            failure_mode=self._aigc._on_sink_failure,
+            diagnostics=self._aigc._evidence_diagnostics,
+            chain_linker=self._aigc._chain_linker,
+            terminal_recorder=lambda checksum, terminal: (
+                self.record_terminal_attempt(step_index, checksum, terminal)
+            ),
+        )
+
+    def _finalize_rejected_attempt(
+        self,
+        invocation: object,
+        *,
+        resolved_step_id: str,
+        participant_id: str | None,
+        attempt: Any,
+        step_index: int,
+        exc: Exception,
+    ) -> None:
+        """Emit terminal evidence for a rejection before an operation is issued."""
+        context = _plain_json(attempt.context)
+        context.update(
+            session_id=self._session_id,
+            step_id=resolved_step_id,
+            step_index=step_index,
+        )
+        if self._compiled_policy is not None:
+            context["workflow_policy_digest"] = (
+                self._compiled_policy.policy_digest
+            )
+        if participant_id is not None:
+            context["participant_id"] = participant_id
+        code = getattr(exc, "code", type(exc).__name__)
+        terminal = (
+            TerminalClass.DENY
+            if isinstance(exc, AIGCError)
+            else TerminalClass.EXECUTION_FAILURE
+        )
+        artifact = {
+            "policy_file": attempt.policy_file,
+            "model_provider": attempt.model_provider,
+            "model_identifier": attempt.model_identifier,
+            "role": attempt.role,
+            "context": context,
+            "enforcement_result": "FAIL",
+            "failures": [
+                {"code": str(code), "message": str(exc)[:1024], "field": None}
+            ],
+            "failure_gate": (
+                "invocation_validation"
+                if isinstance(exc, AIGCError)
+                else "wrapped_function_error"
+            ),
+            "failure_reason": str(exc)[:1024],
+            "metadata": {"enforcement_mode": "split_pre_call_only"},
+        }
+        finalized = finalize_legacy_invocation_artifact(
+            artifact,
+            invocation=invocation,
+            attempt=attempt,
+            terminal=terminal,
+        )
+        if isinstance(exc, AIGCError):
+            exc.audit_artifact = finalized
 
     @_session_locked
     def register_adapter_step_state(
@@ -919,7 +1071,7 @@ class GovernanceSession:
         self._transition(STATE_CANCELED)
 
     @_session_locked
-    def finalize(self) -> dict[str, Any]:
+    def finalize(self, *, status: str | None = None) -> dict[str, Any]:
         """Explicitly finalize and emit the workflow artifact.
 
         May be called from any non-finalized state. OPEN or PAUSED emits
@@ -930,11 +1082,41 @@ class GovernanceSession:
                 "Session is already finalized",
                 details={"session_id": self._session_id},
             )
-        return self._do_finalize()
+        if status is not None and status not in {
+            "COMPLETED",
+            "FAILED",
+            "CANCELED",
+            "INCOMPLETE",
+        }:
+            raise SessionStateError(
+                f"Invalid workflow artifact status: {status!r}",
+                details={"session_id": self._session_id, "status": status},
+            )
+        return self._do_finalize(status=status)
 
-    def _do_finalize(self) -> dict[str, Any]:
+    def _do_finalize(self, *, status: str | None = None) -> dict[str, Any]:
         """Internal finalization — emits artifact and transitions to FINALIZED."""
         self._cancel_pending_operations()
+        with self._attempt_lock:
+            allocated_count = self._next_step_index
+            records = tuple(
+                record for _, record in sorted(self._attempts.items())
+            )
+        if (
+            len(records) != allocated_count
+            or any(record.terminal is None for record in records)
+        ):
+            raise SessionStateError(
+                "Every allocated session attempt requires terminal evidence",
+                code="SESSION_ATTEMPT_INCOMPLETE",
+                details={
+                    "session_id": self._session_id,
+                    "allocated_attempt_count": allocated_count,
+                    "terminal_attempt_count": sum(
+                        record.terminal is not None for record in records
+                    ),
+                },
+            )
         evidence_attempt = self._aigc._attempt_factory.allocate(
             "GovernanceSession.finalize",
             "workflow",
@@ -942,7 +1124,19 @@ class GovernanceSession:
         )
         self._finalized_at = int(time.time())
 
-        artifact_status = _ARTIFACT_STATUS_MAP.get(self._state, "INCOMPLETE")
+        artifact_status = status or _ARTIFACT_STATUS_MAP.get(
+            self._state,
+            "INCOMPLETE",
+        )
+        if artifact_status == "COMPLETED" and any(
+            record.terminal not in {TerminalClass.ALLOW, TerminalClass.WARN}
+            for record in records
+        ):
+            raise SessionStateError(
+                "A completed session cannot contain failed or canceled attempts",
+                code="SESSION_ATTEMPT_NOT_SUCCESSFUL",
+                details={"session_id": self._session_id},
+            )
         policy_file = _compute_policy_file(
             self._policy_file,
             self._step_policy_files,
@@ -980,11 +1174,47 @@ class GovernanceSession:
         return artifact
 
     def _cancel_pending_operations(self) -> None:
-        """Remove every still-live operation issued on behalf of this session."""
-        for operation_id in tuple(self._pending_results):
-            self._aigc._operation_registry.cancel_operation(operation_id)
+        """Burn and terminally finalize every still-live session operation."""
+        pending = tuple(self._pending_results.items())
         self._pending_results.clear()
         self._adapter_step_states.clear()
+        for operation_id, entry in pending:
+            self._aigc._operation_registry.cancel_operation(operation_id)
+            self._finalize_canceled_entry(entry)
+
+    def _finalize_canceled_entry(self, entry: dict[str, Any]) -> None:
+        """Finalize terminal canceled evidence after its handle is burned."""
+        attempt = entry["attempt"]
+        step_index = entry["step_index"]
+        cancellation = {
+            "policy_file": attempt.policy_file,
+            "model_provider": attempt.model_provider,
+            "model_identifier": attempt.model_identifier,
+            "role": attempt.role,
+            "context": _plain_json(entry["context"]),
+            "enforcement_result": "FAIL",
+            "failures": [
+                {
+                    "code": "CANCELED",
+                    "message": "Session closed before Phase B completion",
+                    "field": None,
+                }
+            ],
+            "failure_gate": "wrapped_function_error",
+            "failure_reason": "Session closed before Phase B completion",
+            "metadata": {"enforcement_mode": "split"},
+        }
+        with self._attempt_finalization_scope(step_index, attempt):
+            try:
+                finalize_legacy_invocation_artifact(
+                    cancellation,
+                    attempt=attempt,
+                    terminal=TerminalClass.EXECUTION_FAILURE,
+                )
+            except _EvidenceAbort as abort:
+                error = abort.error
+                error.__cause__ = None
+                raise error
 
     # ------------------------------------------------------------------
     # Step enforcement
@@ -1161,6 +1391,7 @@ class GovernanceSession:
             return
 
         self._aigc._operation_registry.cancel_operation(operation_id)
+        self._finalize_canceled_entry(entry)
 
         if rollback_authorization and self._authorized_step_count > 0:
             self._authorized_step_count -= 1
@@ -1187,6 +1418,45 @@ class GovernanceSession:
             invocation,
         )
         step_index = self._allocate_step_index(resolved_step_id, attempt.attempt_id)
+        with self._attempt_finalization_scope(step_index, attempt):
+            try:
+                return self._enforce_step_pre_call_attempt(
+                    invocation,
+                    step_id=step_id,
+                    resolved_step_id=resolved_step_id,
+                    participant_id=participant_id,
+                    attempt=attempt,
+                    step_index=step_index,
+                )
+            except BaseException as exc:
+                if isinstance(exc, _EvidenceAbort):
+                    error = exc.error
+                    error.__cause__ = None
+                    raise error
+                with self._attempt_lock:
+                    finalized = self._attempts[step_index].terminal is not None
+                if not finalized and isinstance(exc, Exception):
+                    self._finalize_rejected_attempt(
+                        invocation,
+                        resolved_step_id=resolved_step_id,
+                        participant_id=participant_id,
+                        attempt=attempt,
+                        step_index=step_index,
+                        exc=exc,
+                    )
+                raise
+
+    def _enforce_step_pre_call_attempt(
+        self,
+        invocation: dict[str, Any],
+        *,
+        step_id: str | None,
+        resolved_step_id: str,
+        participant_id: str | None,
+        attempt: Any,
+        step_index: int,
+    ) -> SessionPreCallResult:
+        """Run Phase A after the session attempt identity is bound."""
         self._assert_accepting_new_step()
 
         # Budget check: max_steps (Fix 4: raise WorkflowStepBudgetExceededError,
@@ -1648,6 +1918,9 @@ class GovernanceSession:
             "participant_id": participant_id,
             "effective_policy_file": effective_policy_file,
             "tool_calls_count": _tool_calls_this_step,
+            "step_index": step_index,
+            "attempt": attempt,
+            "context": _plain_json(ctx),
         }
 
         # Increment only after all checks pass — pre-call rejection must not
@@ -1703,6 +1976,31 @@ class GovernanceSession:
             )
             self._emit_post_validation_failure(exc)
             raise exc
+        with self._attempt_finalization_scope(
+            entry["step_index"],
+            entry["attempt"],
+        ):
+            try:
+                return self._enforce_step_post_call_attempt(
+                    session_result,
+                    output,
+                    step_metadata=step_metadata,
+                    entry=entry,
+                )
+            except _EvidenceAbort as abort:
+                error = abort.error
+                error.__cause__ = None
+                raise error
+
+    def _enforce_step_post_call_attempt(
+        self,
+        session_result: SessionPreCallResult,
+        output: dict[str, Any],
+        *,
+        step_metadata: dict[str, Any] | None,
+        entry: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Run Phase B while its allocated session attempt is bound."""
         self._assert_open()
 
         # Pop first: no caller-controlled wrapper, metadata, or output field is

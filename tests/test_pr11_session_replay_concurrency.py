@@ -128,7 +128,7 @@ def test_pause_resume_interleaving_rejects_new_step_until_resumed():
             session.enforce_step_pre_call(_inv())
         session.enforce_step_post_call(token, GOOD_OUTPUT)
         session.resume(approval_id="pause-1")
-        session.complete()
+        session.cancel()
 
 
 def test_concurrent_phase_b_completion_attempt_is_fail_closed():

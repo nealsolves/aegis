@@ -8,6 +8,7 @@ import pytest
 
 from aegis import AEGIS, InvocationValidationError, SessionStateError
 from aegis._internal.errors import GovernanceViolationError
+from aegis._internal.outcomes import TerminalClass
 
 
 POLICY = "tests/golden_replays/golden_policy_v1.yaml"
@@ -59,8 +60,8 @@ def test_rejected_phase_a_attempt_retains_allocated_index_and_correlation(sessio
     rejected = session._attempts[0]
     assert rejected.step_index == 0
     assert rejected.step_id == "rejected"
-    assert rejected.invocation_checksum is None
-    assert rejected.terminal is None
+    assert rejected.invocation_checksum == exc_info.value.audit_artifact["checksum"]
+    assert rejected.terminal is TerminalClass.DENY
 
     artifact = exc_info.value.audit_artifact
     assert artifact is not None
@@ -84,8 +85,8 @@ def test_paused_step_rejection_retains_allocated_index(session):
     paused = session._attempts[0]
     assert paused.step_index == 0
     assert paused.step_id == "paused"
-    assert paused.invocation_checksum is None
-    assert paused.terminal is None
+    assert paused.invocation_checksum is not None
+    assert paused.terminal is TerminalClass.DENY
 
 
 def test_pre_call_validation_failure_includes_workflow_policy_digest():

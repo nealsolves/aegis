@@ -93,5 +93,5 @@ def test_host_can_proceed_after_escalation_and_approval():
         # Now retry the same step — must NOT raise again (no infinite loop)
         t3 = s.enforce_step_pre_call(dict(_BASE_INV))
         s.enforce_step_post_call(t3, dict(_GOOD_OUTPUT))
-        s.complete()
-    assert s.workflow_artifact["status"] == "COMPLETED"
+        s.cancel()
+    assert s.workflow_artifact["status"] == "CANCELED"

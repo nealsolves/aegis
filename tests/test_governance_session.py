@@ -11,6 +11,8 @@ import pytest
 import aegis
 from aegis import (
     AIGC,
+    AuditSink,
+    AuditSinkError,
     GovernanceSession,
     SessionPreCallResult,
     SessionStateError,
@@ -34,6 +36,15 @@ def test_session_pre_call_result_importable_from_aigc():
 def test_session_state_error_importable_from_aigc():
     """SessionStateError is a module-level export of aegis."""
     assert SessionStateError is aegis.SessionStateError
+
+
+def test_session_state_error_accepts_specific_code_and_preserves_default():
+    """Removing the code override would collapse distinct lifecycle failures."""
+    assert SessionStateError("default").code == "WORKFLOW_INVALID_TRANSITION"
+    assert (
+        SessionStateError("incomplete", code="SESSION_ATTEMPT_INCOMPLETE").code
+        == "SESSION_ATTEMPT_INCOMPLETE"
+    )
 
 
 def test_open_session_is_not_module_level():
@@ -104,6 +115,45 @@ def test_open_session_exception_exit_produces_failed():
         with a.open_session() as session:
             raise ValueError("deliberate failure")
     assert session.workflow_artifact["status"] == "FAILED"
+
+
+def test_finalize_with_pending_handle_emits_terminal_canceled_attempt():
+    """Closing a live operation must burn it and retain canceled evidence."""
+    session = AIGC().open_session(session_id="pending-close-session")
+    token = session.enforce_step_pre_call(dict(_BASE_INV), step_id="pending")
+
+    artifact = session.finalize(status="INCOMPLETE")
+
+    assert artifact["status"] == "INCOMPLETE"
+    assert token.operation_id not in session._pending_results
+    record = session.finalized_attempts()[0]
+    assert record.step_index == token.step_index
+    assert record.invocation_checksum is not None
+    assert record.terminal.value == "execution_failure"
+
+
+def test_canceled_attempt_delivery_failure_prevents_workflow_claim():
+    """Skipping failed cancellation evidence must not fall through to workflow."""
+    observed = []
+
+    class RejectingSink(AuditSink):
+        def emit(self, artifact):
+            observed.append(artifact)
+            raise RuntimeError("unavailable")
+
+    governance = AIGC(sink=RejectingSink())
+    session = governance.open_session(session_id="pending-delivery-failure")
+    token = session.enforce_step_pre_call(dict(_BASE_INV), step_id="pending")
+
+    with pytest.raises(AuditSinkError):
+        session.finalize(status="INCOMPLETE")
+
+    assert len(observed) == 1
+    assert observed[0]["context"]["step_index"] == token.step_index
+    assert observed[0]["enforcement_result"] == "FAIL"
+    assert session.workflow_artifact is None
+    assert session.finalized_attempts() == ()
+    assert governance.evidence_diagnostics().evidence_delivery_failures_total == 1
 
 
 def test_session_token_rejected_by_module_enforce_post_call():
