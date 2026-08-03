@@ -35,6 +35,14 @@ def _observed_artifact(coordinates):
     )
 
 
+@pytest.mark.parametrize("chain_id", ["", "   "])
+def test_explicit_blank_chain_identity_is_rejected(chain_id):
+    with pytest.raises(ChainLinkError) as exc_info:
+        AuditChain(chain_id=chain_id)
+
+    assert exc_info.value.code == "CHAIN_COORDINATES_INVALID"
+
+
 def test_commit_advances_index_and_prior_content_checksum():
     chain = AuditChain(chain_id="tenant-audit")
     first = chain.reserve(_request(1), timeout=0.1)

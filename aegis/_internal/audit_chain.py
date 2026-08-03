@@ -60,7 +60,7 @@ class AuditChain:
     """Single-process linker; it provides no crash-persistence guarantee."""
 
     def __init__(self, chain_id: str | None = None) -> None:
-        selected_id = chain_id or str(uuid.uuid4())
+        selected_id = str(uuid.uuid4()) if chain_id is None else chain_id
         if (
             not isinstance(selected_id, str)
             or not selected_id.strip()
