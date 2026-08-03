@@ -372,6 +372,15 @@ The following rules are invariant:
   and verifier adapters disposable equal copies
 * signing failure leaves the artifact unchanged; detailed verification never
   mutates the artifact
+* when configured, a host-owned chain linker reserves `chain_id`, `chain_index`,
+  `previous_audit_checksum`, and `reservation_id` before checksum construction
+  and signing; the four fields are complete or absent
+* `previous_audit_checksum` is the prior artifact's v2 content checksum, never a
+  signature or storage-provider digest
+* the finalizer order is reserve, attach coordinates, checksum, sign, validate,
+  emit, then commit; pre-ack failures abort and post-ack commit failures never
+  attempt to retract acknowledged evidence
+* workflow evidence is not chain-linkable in this contract
 * the host-configured verifier resolves the exact key reference and version;
   artifact data never triggers provider or network lookup
 * the metadata-declared algorithm is not authorization; the resolved key policy
@@ -389,9 +398,14 @@ The following rules are invariant:
 
 The host owns key resolution, trusted-anchor configuration, credentials,
 provider transport, retry and timeout behavior, availability policy, and
-artifact storage. AEGIS does not claim replay prevention, sequence
-completeness, complete-chain replacement detection, trusted time, immutable or
-WORM storage, certification, or regulatory compliance.
+artifact storage. The bundled `AuditChain` is a single-process linker with one
+outstanding reservation and no crash-persistence guarantee; hosts own recovery
+or reconciliation after sink acknowledgement and before commit. AEGIS verifies
+only the supplied sequence's internal continuity. It does not claim replay
+prevention, sequence completeness, complete-chain replacement or tail-truncation
+detection, trusted time, immutable or WORM storage, certification, or regulatory
+compliance. Roadmap item #46 separately binds trusted heads to v2 content
+checksums.
 
 ---
 
