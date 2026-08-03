@@ -20,6 +20,7 @@ from aegis._internal.errors import (
 )
 from aegis._internal.audit import checksum as _audit_checksum
 from aegis._internal.evidence_finalizer import finalize_legacy_workflow_artifact
+from aegis._internal.outcomes import TerminalClass
 from aegis._internal.tools import validate_tool_constraints
 
 if TYPE_CHECKING:
@@ -103,6 +104,18 @@ class SessionPreCallResult:
     correlation_id: str
     policy_digest: str
     canonicalization_profile: str
+    step_index: int = -1
+
+
+@dataclass(frozen=True, slots=True)
+class SessionAttempt:
+    """One allocated workflow attempt, retained in per-session order."""
+
+    step_index: int
+    step_id: str
+    attempt_id: int
+    invocation_checksum: str | None
+    terminal: TerminalClass | None = None
 
 
 def _inner_result(session_result: SessionPreCallResult) -> Any:
@@ -484,6 +497,9 @@ class GovernanceSession:
         self._policy_file = policy_file
         self._metadata = dict(metadata or {})
         self._lifecycle_lock = threading.RLock()
+        self._attempt_lock = threading.Lock()
+        self._next_step_index = 0
+        self._attempts: dict[int, SessionAttempt] = {}
 
         self._state = STATE_OPEN
         self._started_at = int(time.time())
@@ -602,6 +618,19 @@ class GovernanceSession:
         """Return a workflow participant declaration for adapter binding checks."""
         participant = self._participants_by_id.get(participant_id)
         return dict(participant) if participant is not None else None
+
+    def _allocate_step_index(self, step_id: str, attempt_id: int) -> int:
+        """Atomically reserve a permanent index for one workflow attempt."""
+        with self._attempt_lock:
+            index = self._next_step_index
+            self._next_step_index += 1
+            self._attempts[index] = SessionAttempt(
+                index,
+                step_id,
+                attempt_id,
+                None,
+            )
+            return index
 
     @_session_locked
     def register_adapter_step_state(
@@ -1152,6 +1181,14 @@ class GovernanceSession:
         """
         self._assert_accepting_new_step()
 
+        resolved_step_id = step_id or str(uuid.uuid4())
+        attempt = self._aigc._attempt_factory.allocate(
+            "GovernanceSession.enforce_step_pre_call",
+            "workflow",
+            invocation,
+        )
+        step_index = self._allocate_step_index(resolved_step_id, attempt.attempt_id)
+
         # Budget check: max_steps (Fix 4: raise WorkflowStepBudgetExceededError,
         # not WorkflowToolBudgetExceededError, so doctor gives the right remediation)
         if (
@@ -1168,8 +1205,6 @@ class GovernanceSession:
                     "authorized_step_count": self._authorized_step_count,
                 },
             )
-
-        resolved_step_id = step_id or str(uuid.uuid4())
 
         # 5A1: Participant enforcement
         if self._participants_by_id:
@@ -1489,6 +1524,7 @@ class GovernanceSession:
             )
         ctx["session_id"] = self._session_id
         ctx["step_id"] = resolved_step_id
+        ctx["step_index"] = step_index
         if participant_id is not None:
             ctx["participant_id"] = participant_id
         enriched["context"] = ctx
@@ -1515,13 +1551,15 @@ class GovernanceSession:
                 },
             )
 
-        if self._compiled_policy is not None:
-            inner_result = self._aigc._enforce_pre_call_compiled(
-                enriched,
-                self._compiled_policy,
-            )
-        else:
-            inner_result = self._aigc.enforce_pre_call(enriched)
+        effective_policy = self._aigc._prepare_pre_call_policy(
+            enriched,
+            policy=self._compiled_policy,
+        )
+        ctx["workflow_policy_digest"] = effective_policy.policy_digest
+        inner_result = self._aigc._enforce_pre_call_compiled(
+            enriched,
+            effective_policy,
+        )
 
         # Run validator hooks after invocation-level governance passes
         # (Fix 3: hooks are wired internally — validator_hooks is NOT a parameter of
@@ -1610,6 +1648,7 @@ class GovernanceSession:
             correlation_id=inner_result.correlation_id,
             policy_digest=inner_result.policy_digest,
             canonicalization_profile=inner_result.canonicalization_profile,
+            step_index=step_index,
         )
 
     @_session_locked

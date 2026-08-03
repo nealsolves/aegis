@@ -152,6 +152,21 @@ def test_concurrent_phase_b_completion_attempt_is_fail_closed():
         session.complete()
 
 
+def test_step_indices_follow_allocation_not_phase_b_completion_order():
+    with AEGIS().open_session() as session:
+        first = session.enforce_step_pre_call(_inv(), step_id="first")
+        second = session.enforce_step_pre_call(_inv(), step_id="second")
+
+        second_artifact = session.enforce_step_post_call(second, GOOD_OUTPUT)
+        first_artifact = session.enforce_step_post_call(first, GOOD_OUTPUT)
+
+        assert first.step_index == 0
+        assert second.step_index == 1
+        assert second_artifact["context"]["step_index"] == 1
+        assert first_artifact["context"]["step_index"] == 0
+        session.complete()
+
+
 def test_concurrent_dynamic_tool_calls_respect_per_tool_limit():
     invocation = _inv()
     invocation["policy_file"] = "tests/golden_replays/policy_with_tools.yaml"
