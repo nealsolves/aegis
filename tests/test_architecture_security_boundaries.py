@@ -1155,6 +1155,28 @@ def _expression_origins(
     return origins
 
 
+def _bound_self_method(
+    expression: ast.AST,
+    assignments: dict[str, ast.AST],
+    *,
+    seen: set[str] | None = None,
+) -> str | None:
+    method = _self_attribute_name(expression)
+    if method is not None:
+        return method
+    if not isinstance(expression, ast.Name) or expression.id not in assignments:
+        return None
+    visited = set() if seen is None else set(seen)
+    if expression.id in visited:
+        return None
+    visited.add(expression.id)
+    return _bound_self_method(
+        assignments[expression.id],
+        assignments,
+        seen=visited,
+    )
+
+
 def _ancestor_with_lock(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> bool:
     parent = parents.get(node)
     while parent is not None:
@@ -1218,6 +1240,7 @@ def _workflow_claim_boundary_violations(source: str) -> set[str]:
         violations.add("step-index-not-locked")
 
     pre_call = methods["enforce_step_pre_call"]
+    pre_call_assignments = _method_assignments(pre_call)
     allocation_calls = [
         node
         for node in ast.walk(pre_call)
@@ -1230,7 +1253,7 @@ def _workflow_claim_boundary_violations(source: str) -> set[str]:
         allocation_line = allocation_calls[0].lineno
         if any(
             isinstance(node, ast.Call)
-            and _self_attribute_name(node.func) is not None
+            and _bound_self_method(node.func, pre_call_assignments) is not None
             and node.lineno < allocation_line
             for node in ast.walk(pre_call)
         ):
@@ -1317,7 +1340,11 @@ def _workflow_claim_boundary_violations(source: str) -> set[str]:
         violations.add("workflow-claim-invalid")
         return violations
     generator = invocations.generators[0]
-    if generator.ifs:
+    if (
+        generator.ifs
+        or not isinstance(generator.iter, ast.Name)
+        or generator.iter.id != "records"
+    ):
         violations.add("claim-filtered")
     claim_origins = _expression_origins(invocations, assignments)
     if "steps" in claim_origins:
@@ -1369,12 +1396,37 @@ def test_workflow_claim_fitness_rejects_preallocation_authorization_gate() -> No
     assert "pre-allocation-call" in _workflow_claim_boundary_violations(source)
 
 
+def test_workflow_claim_fitness_rejects_aliased_preallocation_gate() -> None:
+    source = _WORKFLOW_CLAIM_FIXTURE.replace(
+        "        attempt = self._aigc._attempt_factory.allocate",
+        "        gate = self._assert_accepting_new_step\n"
+        "        gate()\n"
+        "        attempt = self._aigc._attempt_factory.allocate",
+    )
+
+    assert "pre-allocation-call" in _workflow_claim_boundary_violations(source)
+
+
 def test_workflow_claim_fitness_rejects_success_only_claim_filter() -> None:
     source = _WORKFLOW_CLAIM_FIXTURE.replace(
         "                for record in records\n",
         "                for record in records\n"
         "                if record.terminal in {TerminalClass.ALLOW, TerminalClass.WARN}\n",
     )
+
+    assert "claim-filtered" in _workflow_claim_boundary_violations(source)
+
+
+def test_workflow_claim_fitness_rejects_filter_call_claim_source() -> None:
+    source = _WORKFLOW_CLAIM_FIXTURE.replace(
+        "        artifact = {",
+        "        filtered = filter(\n"
+        "            lambda record: record.terminal in "
+        "{TerminalClass.ALLOW, TerminalClass.WARN},\n"
+        "            records,\n"
+        "        )\n"
+        "        artifact = {",
+    ).replace("for record in records", "for record in filtered")
 
     assert "claim-filtered" in _workflow_claim_boundary_violations(source)
 
