@@ -1,0 +1,80 @@
+schema_version: 1
+change_id: b3-publish-authorization-retry
+workflow_family: instruction_system
+action: instruction_system_change
+current_state: HUMAN_DECISION_REQUIRED
+change_hash: 72ceda5fd27a743ae60d6e7659f60d036ce13276a06e822494c0d23aacae552d
+facts:
+  documentation_only: &base_fact
+    value: false
+    source_type: scoped_instruction_change_proposal
+    source_ref: docs/spec-driven-dev/changes/b3-publish-authorization/retry-proposal.md
+    extractor: codex-repository-fact-extractor-v1
+    confidence: 1.0
+    observed_at_change: 72ceda5fd27a743ae60d6e7659f60d036ce13276a06e822494c0d23aacae552d
+    corroboration: []
+  modifies_runtime_code: *base_fact
+  modifies_authorization:
+    value: true
+    source_type: scoped_instruction_change_proposal
+    source_ref: docs/spec-driven-dev/changes/b3-publish-authorization/retry-proposal.md
+    extractor: codex-repository-fact-extractor-v1
+    confidence: 1.0
+    observed_at_change: 72ceda5fd27a743ae60d6e7659f60d036ce13276a06e822494c0d23aacae552d
+    corroboration: []
+  changes_public_contract: *base_fact
+  adds_external_dependency: *base_fact
+  deploys_to_production: *base_fact
+  instruction_system_change:
+    value: true
+    source_type: scoped_instruction_change_proposal
+    source_ref: docs/spec-driven-dev/changes/b3-publish-authorization/retry-proposal.md
+    extractor: codex-repository-fact-extractor-v1
+    confidence: 1.0
+    observed_at_change: 72ceda5fd27a743ae60d6e7659f60d036ce13276a06e822494c0d23aacae552d
+    corroboration: []
+clarifications: []
+exceptions: []
+authority_constraints: []
+evidence: {}
+resources:
+  repair_attempts: 0
+  ci_reruns: 0
+  elapsed_minutes: 0
+open_escalation:
+  decision:
+    action: instruction_system_change
+    kind: authority
+    risk_tier: high
+    rules:
+      - action_matrix:instruction_system_change:high
+      - post_bootstrap_instruction_system_change
+  decision_id: DEC-b3-publish-authorization-retry-AUTH-instruction_system_change
+  evidence_collected:
+    - docs/spec-driven-dev/changes/b3-publish-authorization/retry-proposal.md
+  hashes:
+    change_hash: 72ceda5fd27a743ae60d6e7659f60d036ce13276a06e822494c0d23aacae552d
+    context_hash: 42e834dc4dd8d46307a620e3043974ac42ea40796e65716878c535bb707455e8
+    policy_hash: d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa
+  options:
+    - id: authorize_once
+      label: Authorize once
+      outcome: autonomous_with_enhanced_gates
+      consequence: Authorize only the listed rules for this action, policy, context, and change; enhanced gates still apply.
+      conditions:
+        - change_id=b3-publish-authorization-retry
+        - action=instruction_system_change
+        - rules=action_matrix:instruction_system_change:high,post_bootstrap_instruction_system_change
+  policy_trigger: authority.post_bootstrap_instruction_system_change
+  reason: "Deterministic policy requires human authority for: action_matrix:instruction_system_change:high, post_bootstrap_instruction_system_change"
+  recommended_option: authorize_once
+  required_response:
+    - decision_id
+    - selected_option
+    - decided_by
+    - authority_basis
+    - timestamp
+    - hashes
+  resume_state: UNCLASSIFIED
+  status: open
+responses: []

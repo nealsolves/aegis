@@ -43,3 +43,20 @@ The remote operation did not begin. `gh auth status` reported that the active
 failed before any push or PR creation. The temporary control and fixture diffs
 were restored to their committed disabled values. Restored-state validation
 passed, and no branch data was sent to a remote.
+
+## Authorized retry
+
+- The GitHub device flow completed, and an approved network-context check
+  verified account `nealsolves` with `repo` and `workflow` scopes.
+- The owner issued a second explicit `authorized` instruction. The prior
+  trusted policy evaluated change
+  `b3-publish-authorization-retry` at change hash
+  `72ceda5fd27a743ae60d6e7659f60d036ce13276a06e822494c0d23aacae552d`
+  and context hash
+  `42e834dc4dd8d46307a620e3043974ac42ea40796e65716878c535bb707455e8`.
+- Deterministic response ingestion returned
+  `autonomous_with_enhanced_gates` for the second one-time proposal.
+- The temporary retry control plane validated, the six affected policy tests
+  passed against its temporary expected value, and a closed-scope assertion
+  confirmed update, merge, release, and production actions remained disabled.
+- Push and draft-PR outcome are pending.
