@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from aegis import AEGIS
+from aegis import AEGIS, InvocationValidationError, SessionStateError
 from aegis._internal.errors import GovernanceViolationError
 
 
@@ -74,9 +74,50 @@ def test_rejected_phase_a_attempt_retains_allocated_index_and_correlation(sessio
     assert handle.step_index == 1
 
 
+def test_paused_step_rejection_retains_allocated_index(session):
+    """Moving allocation after the accepting-state gate would lose attempt zero."""
+    session.pause(approval_id="pause-for-index")
+
+    with pytest.raises(SessionStateError):
+        session.enforce_step_pre_call(_invocation(), step_id="paused")
+
+    paused = session._attempts[0]
+    assert paused.step_index == 0
+    assert paused.step_id == "paused"
+    assert paused.invocation_checksum is None
+    assert paused.terminal is None
+
+
+def test_pre_call_validation_failure_includes_workflow_policy_digest():
+    """Adding the digest after policy validation would omit it from FAIL evidence."""
+    with AEGIS().open_session(
+        session_id="invalid-pre-call-session",
+        policy_file=POLICY,
+    ) as session:
+        invalid = _invocation()
+        del invalid["role"]
+
+        with pytest.raises(InvocationValidationError) as exc_info:
+            session.enforce_step_pre_call(invalid, step_id="missing-role")
+
+        artifact = exc_info.value.audit_artifact
+        assert artifact is not None
+        assert artifact["context"] == {
+            "role_declared": True,
+            "schema_exists": True,
+            "session_id": session.session_id,
+            "step_id": "missing-role",
+            "step_index": 0,
+            "workflow_policy_digest": session._compiled_policy.policy_digest,
+        }
+        session.cancel()
+
+
 def test_terminal_invocation_correlation_binds_allocated_index_and_policy_digest(session):
     """Dropping a correlation field before finalization would break audit linkage."""
-    handle = session.enforce_step_pre_call(_invocation(), step_id="correlated")
+    invocation = _invocation()
+    invocation["context"]["workflow_policy_digest"] = "forged-by-host"
+    handle = session.enforce_step_pre_call(invocation, step_id="correlated")
     artifact = session.enforce_step_post_call(handle, GOOD_OUTPUT)
 
     correlation = artifact["context"]

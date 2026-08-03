@@ -1179,8 +1179,6 @@ class GovernanceSession:
         :param participant_id: Optional participant identifier
         :return: SessionPreCallResult token (pass to enforce_step_post_call)
         """
-        self._assert_accepting_new_step()
-
         resolved_step_id = step_id or str(uuid.uuid4())
         attempt = self._aigc._attempt_factory.allocate(
             "GovernanceSession.enforce_step_pre_call",
@@ -1188,6 +1186,7 @@ class GovernanceSession:
             invocation,
         )
         step_index = self._allocate_step_index(resolved_step_id, attempt.attempt_id)
+        self._assert_accepting_new_step()
 
         # Budget check: max_steps (Fix 4: raise WorkflowStepBudgetExceededError,
         # not WorkflowToolBudgetExceededError, so doctor gives the right remediation)
@@ -1525,6 +1524,8 @@ class GovernanceSession:
         ctx["session_id"] = self._session_id
         ctx["step_id"] = resolved_step_id
         ctx["step_index"] = step_index
+        if self._compiled_policy is not None:
+            ctx["workflow_policy_digest"] = self._compiled_policy.policy_digest
         if participant_id is not None:
             ctx["participant_id"] = participant_id
         enriched["context"] = ctx
