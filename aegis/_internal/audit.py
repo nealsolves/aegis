@@ -17,13 +17,21 @@ import time
 import hashlib
 from typing import Any, Dict, Iterable, Mapping
 
-from aegis._internal.utils import canonical_json_bytes
+from aegis._internal.canonicalization import (
+    CANONICALIZATION_PROFILE_V2,
+    canonicalize_v2,
+)
+from aegis._internal.evidence_profiles import (
+    ContentIntegrity,
+    build_content_checksum_v2,
+    verify_content_checksum_v2,
+)
 
 logger = logging.getLogger("aegis.audit")
 
 
 POLICY_SCHEMA_VERSION = "http://json-schema.org/draft-07/schema#"
-AUDIT_SCHEMA_VERSION = "1.4"
+AUDIT_SCHEMA_VERSION = "2.0"
 
 MAX_FAILURES = 1000
 MAX_METADATA_KEYS = 100
@@ -67,11 +75,22 @@ def sanitize_failure_message(
 
 def checksum(obj: Mapping[str, Any]) -> str:
     """
-    Generate checksum from canonical JSON bytes.
+    Generate a v2 checksum for a JSON mapping.
+
+    Finalized v2 evidence is addressed by its stored content checksum. Other
+    mappings (including invocation inputs and outputs) are hashed directly.
 
     :param obj: JSON-serializable mapping representing input or output
     """
-    data = canonical_json_bytes(obj)
+    value = dict(obj)
+    if (
+        value.get("canonicalization_profile") == CANONICALIZATION_PROFILE_V2
+        and verify_content_checksum_v2(value) is ContentIntegrity.VALID
+    ):
+        stored = value["checksum"]
+        assert isinstance(stored, str)
+        return stored
+    data = canonicalize_v2(value).data
     return hashlib.sha256(data).hexdigest()
 
 
@@ -93,7 +112,7 @@ def _normalize_failures(
                 ),
             }
         )
-    return sorted(normalized, key=canonical_json_bytes)
+    return sorted(normalized, key=lambda item: canonicalize_v2(item).data)
 
 
 # Provenance fields that the audit schema (v1.4) requires to be JSON arrays.
@@ -284,8 +303,9 @@ def generate_audit_artifact(
         )
         normalized_provenance = None
 
-    return {
+    unsigned_artifact = {
         "audit_schema_version": AUDIT_SCHEMA_VERSION,
+        "canonicalization_profile": CANONICALIZATION_PROFILE_V2,
         "policy_file": invocation["policy_file"],
         "policy_schema_version": POLICY_SCHEMA_VERSION,
         "policy_version": policy.get("policy_version") or "unknown",
@@ -302,6 +322,8 @@ def generate_audit_artifact(
         "timestamp": int(time.time()) if timestamp is None else int(timestamp),
         "metadata": metadata_dict,
         "risk_score": risk_score,
-        "signature": None,
         "provenance": normalized_provenance,
     }
+    artifact = build_content_checksum_v2(unsigned_artifact)
+    artifact["signature"] = None
+    return artifact

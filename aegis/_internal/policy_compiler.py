@@ -30,6 +30,7 @@ from aegis._internal.compiled_policy import (
 )
 from aegis._internal.errors import PolicyLoadError, PolicyValidationError
 from aegis._internal.guards import compile_guard_program
+from aegis._internal.legacy import LegacyFeature, is_legacy_authorized
 from aegis._internal.patterns import compile_pattern
 from aegis._internal.restrictions import (
     RestrictionComparator,
@@ -893,12 +894,22 @@ def compile_policy(
     *,
     source: str,
     allow_legacy: bool = False,
+    legacy_authorization: object | None = None,
 ) -> CompiledPolicy:
     """Validate and compile a caller-detached immutable policy snapshot."""
+    if allow_legacy is not False:
+        raise PolicyValidationError(
+            "Boolean legacy switches cannot grant compiler authority",
+            code="LEGACY_AUTHORIZATION_REQUIRED",
+            details={"feature": LegacyFeature.BARE_STRING_PRECONDITIONS.value},
+        )
     return _compile_policy(
         raw_policy,
         source=source,
-        allow_legacy=allow_legacy,
+        allow_legacy=is_legacy_authorized(
+            legacy_authorization,
+            LegacyFeature.BARE_STRING_PRECONDITIONS,
+        ),
         validate_guard_effects=True,
     )
 

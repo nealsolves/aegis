@@ -144,7 +144,9 @@ def _make_starter_dir(tmp_path: Path) -> Path:
 def _make_workflow_artifact(tmp_path: Path, status: str = "COMPLETED") -> Path:
     checksums = ["a" * 64, "b" * 64]
     artifact = {
-        "workflow_schema_version": "1.0",
+        "workflow_schema_version": "2.0",
+        "canonicalization_profile": "aegis-json-v2",
+        "checksum": "c" * 64,
         "artifact_type": "workflow",
         "session_id": "sess-001",
         "status": status,
@@ -165,7 +167,8 @@ def _make_workflow_artifact(tmp_path: Path, status: str = "COMPLETED") -> Path:
 
 def _make_audit_artifact(tmp_path: Path, enforcement_result: str = "PASS") -> Path:
     artifact = {
-        "audit_schema_version": "1.0",
+        "audit_schema_version": "2.0",
+        "canonicalization_profile": "aegis-json-v2",
         "policy_file": "policies/base_policy.yaml",
         "policy_schema_version": "1.0",
         "policy_version": "1.0",
@@ -187,7 +190,7 @@ def _make_audit_artifact(tmp_path: Path, enforcement_result: str = "PASS") -> Pa
         "chain_id": None,
         "chain_index": None,
         "previous_audit_checksum": None,
-        "checksum": None,
+        "checksum": "c" * 64,
     }
     p = tmp_path / "audit.json"
     p.write_text(json.dumps(artifact), encoding="utf-8")
@@ -296,7 +299,8 @@ class TestWorkflowDoctorCLI:
 
     def test_provenance_fail_artifact_exits_1(self, tmp_path):
         artifact = {
-            "audit_schema_version": "1.0",
+            "audit_schema_version": "2.0",
+            "canonicalization_profile": "aegis-json-v2",
             "policy_file": "policies/base_policy.yaml",
             "policy_schema_version": "1.0",
             "policy_version": "1.0",
@@ -320,7 +324,7 @@ class TestWorkflowDoctorCLI:
             "chain_id": None,
             "chain_index": None,
             "previous_audit_checksum": None,
-            "checksum": None,
+            "checksum": "c" * 64,
         }
         p = tmp_path / "audit.json"
         p.write_text(json.dumps(artifact), encoding="utf-8")
@@ -329,7 +333,8 @@ class TestWorkflowDoctorCLI:
 
     def test_token_misuse_artifact_json_flag(self, tmp_path, capsys):
         artifact = {
-            "audit_schema_version": "1.0",
+            "audit_schema_version": "2.0",
+            "canonicalization_profile": "aegis-json-v2",
             "policy_file": "policies/base_policy.yaml",
             "policy_schema_version": "1.0",
             "policy_version": "1.0",
@@ -351,7 +356,7 @@ class TestWorkflowDoctorCLI:
             "chain_id": None,
             "chain_index": None,
             "previous_audit_checksum": None,
-            "checksum": None,
+            "checksum": "c" * 64,
         }
         p = tmp_path / "token.json"
         p.write_text(json.dumps(artifact), encoding="utf-8")

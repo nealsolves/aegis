@@ -7,6 +7,10 @@ import pytest
 import yaml
 
 from aegis._internal.errors import PolicyValidationError
+from aegis._internal.legacy import (
+    LegacyFeature,
+    create_legacy_authorization,
+)
 from aegis._internal.policy_compiler import compile_policy
 
 
@@ -136,6 +140,8 @@ def test_legacy_fixture_requires_explicit_host_authority():
     compiled = compile_policy(
         policy,
         source=str(LEGACY_FIXTURE),
-        allow_legacy=True,
+        legacy_authorization=create_legacy_authorization(
+            LegacyFeature.BARE_STRING_PRECONDITIONS
+        ),
     )
     assert all(precondition.legacy for precondition in compiled.preconditions)

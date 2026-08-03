@@ -43,7 +43,10 @@ def test_audit_contract():
     )
     schema = load_json(AUDIT_SCHEMA)
     validate(instance=audit, schema=schema)
-    assert audit["audit_schema_version"] == "1.4"
+    assert audit["audit_schema_version"] == "2.0"
+    assert audit["canonicalization_profile"] == "aegis-json-v2"
+    assert isinstance(audit["checksum"], str)
+    assert len(audit["checksum"]) == 64
     assert audit["enforcement_result"] == "PASS"
     assert audit["policy_file"] == invocation["policy_file"]
     assert audit["failures"] == []

@@ -3,6 +3,10 @@
 import pytest
 
 from aegis._internal.errors import PolicyValidationError, PreconditionError
+from aegis._internal.legacy import (
+    LegacyFeature,
+    create_legacy_authorization,
+)
 from aegis._internal.policy_compiler import compile_policy
 
 
@@ -173,7 +177,9 @@ def test_explicit_legacy_authority_preserves_truthiness_semantics():
     condition = compile_policy(
         policy,
         source="test",
-        allow_legacy=True,
+        legacy_authorization=create_legacy_authorization(
+            LegacyFeature.BARE_STRING_PRECONDITIONS
+        ),
     ).preconditions[0]
     condition.validate({"role_declared": True})
     with pytest.raises(PreconditionError):

@@ -305,24 +305,30 @@ Each `append()` adds three fields to the artifact:
 - `chain_index`: 0-based position in the chain
 - `previous_audit_checksum`: SHA-256 of the prior artifact (null for the first)
 
-After a session, verify the full chain:
+After a session, inspect the independent verification axes:
 
 ```python
-valid, errors = chain.verify()
-assert valid, f"Chain integrity broken: {errors}"
+report = chain.verify_detailed()
+assert report.content_integrity.value == "valid"
+assert report.chain_continuity.value == "valid"
+assert report.completeness.value == "unproven"
 ```
 
 To verify a chain loaded from storage (e.g., from the audit sink's JSONL file):
 
 ```python
 import json
-from aegis import verify_chain
+from aegis import verify_chain_detailed
 
 with open("audit/governance.jsonl") as f:
     artifacts = [json.loads(line) for line in f]
 
-valid, errors = verify_chain(artifacts)
+report = verify_chain_detailed(artifacts)
 ```
+
+`verify_chain()` remains a deprecated compatibility wrapper. Its boolean means
+only that content and continuity are internally valid; it says nothing about
+signature validity, anchoring, or completeness.
 
 ### 2.6 Decorator pattern
 
@@ -1004,21 +1010,21 @@ certification, or a compliance determination. Signer and verifier availability
 never weakens or changes the governance decision already recorded by the
 artifact.
 
-### 3.9 Tamper-evident audit chain
+### 3.9 Typed tamper-evident audit-chain verification
 
 Link enforcement artifacts into a cryptographic chain:
 
 ```python
-from aegis import AuditChain, verify_chain
+from aegis import AuditChain, verify_chain_detailed
 
 chain = AuditChain(chain_id="session-001")
 chain.append(artifact_1)
 chain.append(artifact_2)
 
-valid, errors = chain.verify()
+report = chain.verify_detailed()
 
 # Or verify from stored artifacts
-valid, errors = verify_chain([artifact_1, artifact_2])
+report = verify_chain_detailed([artifact_1, artifact_2])
 ```
 
 Each artifact gains `chain_id`, `chain_index`, and `previous_audit_checksum`.
@@ -1026,6 +1032,19 @@ Verification detects insertion, deletion, reordering, and modification
 relative to the chain supplied for verification. Hash chaining does not make
 storage immutable and cannot detect replacement of the complete chain without
 an external trusted checkpoint.
+
+The five result axes are independent: content integrity, chain continuity,
+signature status, anchor status, and completeness. A supplied valid prefix is
+`unproven`, not complete. V2 verification never selects a legacy profile from
+artifact content.
+
+Trusted hosts can create an exact legacy capability with
+`create_legacy_authorization(...)`. Checksum-free audit 1.x verification
+requires both `LegacyFeature.CHECKSUM_FREE_CHAIN_VERIFICATION` and
+`LegacyFeature.AUDIT_SCHEMA_1X_VERIFICATION`; workflow 1.x uses the separate
+workflow-schema feature. Authorized results are explicitly `legacy` and
+completeness remains `unproven`. Policies, guards, providers, invocation
+context, and artifacts cannot construct or imply this capability.
 
 ### 3.10 Policy date validation
 

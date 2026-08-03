@@ -50,6 +50,44 @@ The four changes are:
 3. `session.enforce_step_post_call` instead of `governance.enforce_post_call`
 4. `session.complete()` — mark the workflow as successfully finished
 
+## Migrating evidence verification to v2
+
+New invocation evidence declares `audit_schema_version: "2.0"`,
+`canonicalization_profile: "aegis-json-v2"`, and a non-null content checksum.
+Verification now reports content integrity, chain continuity, signature status,
+anchor status, and completeness independently:
+
+```python
+from aegis import verify_chain_detailed
+
+report = verify_chain_detailed(artifacts)
+assert report.content_integrity.value == "valid"
+assert report.chain_continuity.value in {"valid", "unchained"}
+```
+
+An internally valid supplied prefix still reports completeness `unproven`.
+Checksum validity never implies a valid signature or an external anchor.
+
+Legacy evidence is strict-invalid by default. A trusted host may opt in only
+for the exact compatibility operations it needs:
+
+```python
+from aegis import LegacyFeature, create_legacy_authorization, verify_chain_detailed
+
+legacy = create_legacy_authorization(
+    LegacyFeature.CHECKSUM_FREE_CHAIN_VERIFICATION,
+    LegacyFeature.AUDIT_SCHEMA_1X_VERIFICATION,
+)
+report = verify_chain_detailed(artifacts, legacy_authorization=legacy)
+assert report.content_integrity.value == "legacy"
+assert report.completeness.value == "unproven"
+```
+
+Policy, artifact, guard, provider, and invocation fields cannot grant this
+authority. For operator-driven policy diagnostics, the equivalent narrow CLI
+opt-in is `--allow-legacy-preconditions` on `aegis policy lint` and
+`aegis policy validate`.
+
 ## What you get after migration
 
 | Artifact | Before | After |

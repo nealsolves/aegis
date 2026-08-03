@@ -35,7 +35,9 @@ def _write(tmp_path: Path, filename: str, content: str) -> str:
 def _make_valid_workflow_artifact(steps: int = 2, status: str = "COMPLETED") -> dict:
     checksums = [f"{i + 1:064x}" for i in range(steps)]
     return {
-        "workflow_schema_version": "1.0",
+        "workflow_schema_version": "2.0",
+        "canonicalization_profile": "aegis-json-v2",
+        "checksum": "c" * 64,
         "artifact_type": "workflow",
         "session_id": "sess-001",
         "status": status,
@@ -58,7 +60,8 @@ def _make_valid_workflow_artifact(steps: int = 2, status: str = "COMPLETED") -> 
 
 def _make_valid_audit_artifact() -> dict:
     return {
-        "audit_schema_version": "1.0",
+        "audit_schema_version": "2.0",
+        "canonicalization_profile": "aegis-json-v2",
         "policy_file": "policies/base_policy.yaml",
         "policy_schema_version": "1.0",
         "policy_version": "1.0",
@@ -80,7 +83,7 @@ def _make_valid_audit_artifact() -> dict:
         "chain_id": None,
         "chain_index": None,
         "previous_audit_checksum": None,
-        "checksum": None,
+        "checksum": "c" * 64,
     }
 
 

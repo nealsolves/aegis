@@ -80,10 +80,12 @@ def test_golden_split_pre_result_is_single_use():
         enforce_post_call(pre_call_result, output)  # second use fails
 
 
-def test_golden_unified_mode_still_produces_v1_4_artifact():
-    """Unified mode still works after split refactor, produces v1.4."""
+def test_golden_unified_mode_produces_v2_artifact():
+    """Unified mode emits the strict v2 evidence profile."""
     invocation = _load("golden_invocation_success.json")
     artifact = enforce_invocation(invocation)
 
-    assert artifact["audit_schema_version"] == "1.4"
+    assert artifact["audit_schema_version"] == "2.0"
+    assert artifact["canonicalization_profile"] == "aegis-json-v2"
+    assert artifact["checksum"]
     assert artifact["metadata"]["enforcement_mode"] == "unified"

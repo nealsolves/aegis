@@ -276,23 +276,14 @@ def test_phase_b_fail_artifact_carries_provenance():
 # ── Bug regression: provenance normalization (Codex review findings) ──────────
 
 
-def test_tuple_source_ids_normalized_to_list_in_artifact():
-    """Tuple source_ids must be coerced to list so the emitted artifact is schema-valid.
+def test_tuple_source_ids_are_rejected_by_the_v2_evidence_domain():
+    """V2 evidence rejects non-JSON tuple containers instead of coercing them."""
+    from aegis._internal.canonicalization import CanonicalizationError
 
-    jsonschema treats Python tuples as non-arrays. _normalize_provenance must
-    round-trip through JSON to ensure tuples become lists before the artifact
-    is written. PASS artifacts were previously rejected by schema validators
-    for this input.
-    """
-    import json
-    from pathlib import Path
-    from jsonschema import validate
-    schema = json.loads(Path("schemas/audit_artifact.schema.json").read_text())
     aigc_instance = AIGC(custom_gates=[ProvenanceGate()])
-    audit = aigc_instance.enforce(_inv(provenance={"source_ids": ("doc-a",)}))
-    assert audit["enforcement_result"] == "PASS"
-    assert audit["provenance"]["source_ids"] == ["doc-a"]  # tuple coerced to list
-    validate(instance=audit, schema=schema)
+    with pytest.raises(CanonicalizationError) as exc:
+        aigc_instance.enforce(_inv(provenance={"source_ids": ("doc-a",)}))
+    assert exc.value.code == "NON_JSON_VALUE"
 
 
 def test_scalar_checksums_dropped_not_forwarded():

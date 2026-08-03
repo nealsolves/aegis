@@ -4,7 +4,6 @@ GovernanceSession and SessionPreCallResult — v0.9.0 workflow primitives.
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import time
 import unicodedata
@@ -17,9 +16,11 @@ from aegis._internal.errors import (
     InvocationValidationError,
     SessionStateError,
 )
+from aegis._internal.audit import checksum as _audit_checksum
+from aegis._internal.canonicalization import CANONICALIZATION_PROFILE_V2
+from aegis._internal.evidence_profiles import build_content_checksum_v2
 from aegis._internal.sinks import emit_to_sink
 from aegis._internal.tools import validate_tool_constraints
-from aegis._internal.utils import canonical_json_bytes
 
 if TYPE_CHECKING:
     from aegis._internal.compiled_policy import CompiledPolicy
@@ -99,8 +100,8 @@ class SessionPreCallResult:
 # ---------------------------------------------------------------------------
 
 def _checksum(artifact: dict) -> str:
-    """SHA-256 hex digest of canonical JSON (same canonicalization as audit.checksum)."""
-    return hashlib.sha256(canonical_json_bytes(artifact)).hexdigest()
+    """Return a v2 content checksum or hash a non-artifact JSON value with v2."""
+    return _audit_checksum(artifact)
 
 
 def _compute_policy_file(
@@ -875,8 +876,9 @@ class GovernanceSession:
             self._step_policy_files,
         )
 
-        artifact: dict[str, Any] = {
-            "workflow_schema_version": "0.9.0",
+        unsigned_artifact: dict[str, Any] = {
+            "workflow_schema_version": "2.0",
+            "canonicalization_profile": CANONICALIZATION_PROFILE_V2,
             "artifact_type": "workflow",
             "session_id": self._session_id,
             "policy_file": policy_file,
@@ -892,6 +894,7 @@ class GovernanceSession:
             "validator_hook_evidence": list(self._validator_hook_evidence),
             "metadata": self._metadata,
         }
+        artifact = build_content_checksum_v2(unsigned_artifact)
 
         self._workflow_artifact = artifact
         self._state = STATE_FINALIZED

@@ -5,7 +5,12 @@
   "additionalProperties": false,
   "properties": {
     "audit_schema_version": {
-      "type": "string"
+      "type": "string",
+      "const": "2.0"
+    },
+    "canonicalization_profile": {
+      "type": "string",
+      "const": "aegis-json-v2"
     },
     "policy_file": {
       "type": "string",
@@ -201,12 +206,14 @@
       "description": "SHA-256 checksum of the previous artifact in the chain"
     },
     "checksum": {
-      "type": ["string", "null"],
-      "description": "SHA-256 checksum of this artifact (populated by AuditChain to enable tamper detection of the last link)"
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "SHA-256 v2 content checksum of this artifact"
     }
   },
   "required": [
     "audit_schema_version",
+    "canonicalization_profile",
     "policy_file",
     "policy_schema_version",
     "policy_version",
@@ -219,6 +226,7 @@
     "output_checksum",
     "timestamp",
     "context",
-    "metadata"
+    "metadata",
+    "checksum"
   ]
 }
