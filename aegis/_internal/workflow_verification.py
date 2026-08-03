@@ -12,6 +12,10 @@ from aegis._internal.evidence_profiles import (
     ContentIntegrity,
     verify_content_checksum_v2,
 )
+from aegis._internal.evidence_finalizer import (
+    _audit_validator,
+    _workflow_validator,
+)
 from aegis._internal.signature_models import SignatureStatus
 from aegis._internal.verification import (
     Completeness,
@@ -142,9 +146,10 @@ def _validate_claim(
                 f"Claim contains {len(claim)} entries for step_count={step_count}",
             )
         )
-    claimed_indices = [item["step_index"] for item in typed_claim]
-    expected_indices = list(range(step_count))
-    if len(typed_claim) == len(claim) and claimed_indices != expected_indices:
+    if len(typed_claim) == len(claim) and any(
+        item["step_index"] != expected_index
+        for expected_index, item in enumerate(typed_claim)
+    ):
         errors.append(
             _error(
                 "WORKFLOW_CLAIM_INDEX_MISMATCH",
@@ -195,6 +200,15 @@ def _compare_selected(
                     "INVOCATION_PROFILE_INVALID",
                     f"Supplied artifact at position {position} is not "
                     "v2 invocation evidence",
+                    position,
+                )
+            )
+        if not _audit_validator().is_valid(artifact):
+            errors.append(
+                _error(
+                    "INVOCATION_SCHEMA_INVALID",
+                    f"Supplied invocation at position {position} does not "
+                    "match the v2 audit artifact schema",
                     position,
                 )
             )
@@ -278,6 +292,15 @@ def verify_workflow_claim(
             _error(
                 "WORKFLOW_CONTENT_INVALID",
                 "Workflow checksum or v2 content profile is invalid",
+            )
+        )
+        return _report(WorkflowClaimStatus.INVALID, signature_status, errors)
+
+    if not _workflow_validator().is_valid(workflow):
+        errors.append(
+            _error(
+                "WORKFLOW_SCHEMA_INVALID",
+                "Workflow does not match the v2 workflow artifact schema",
             )
         )
         return _report(WorkflowClaimStatus.INVALID, signature_status, errors)

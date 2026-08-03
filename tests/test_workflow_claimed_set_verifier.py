@@ -17,6 +17,7 @@ from aegis import (
     verify_workflow_claim,
 )
 from aegis._internal.evidence_profiles import build_content_checksum_v2
+from aegis._internal import workflow_verification as workflow_verification_module
 from aegis.workflow_verification import (
     WorkflowClaimStatus as ModuleWorkflowClaimStatus,
 )
@@ -198,6 +199,69 @@ def test_boolean_step_index_cannot_alias_integer_zero(evidence_set):
 
     assert report.claim_status is WorkflowClaimStatus.INVALID
     assert "WORKFLOW_CLAIM_INDEX_MISMATCH" in _error_codes(report)
+
+
+def test_huge_step_count_returns_typed_mismatch_without_count_sized_allocation(
+    evidence_set,
+    monkeypatch,
+):
+    workflow, _ = evidence_set
+    changed = copy.deepcopy(workflow)
+    changed["step_count"] = 10**12
+    changed["invocations"] = []
+    changed = _refinalize_unsigned(changed)
+    real_range = range
+
+    def reject_huge_range(*args):
+        value = real_range(*args)
+        if len(value) > 1000:
+            raise AssertionError("count-sized range allocation attempted")
+        return value
+
+    monkeypatch.setattr(
+        workflow_verification_module,
+        "range",
+        reject_huge_range,
+        raising=False,
+    )
+
+    report = verify_workflow_claim(changed, ())
+
+    assert report.claim_status is WorkflowClaimStatus.INVALID
+    assert report.completeness is Completeness.UNPROVEN
+    assert "WORKFLOW_CLAIM_COUNT_MISMATCH" in _error_codes(report)
+
+
+def test_checksum_valid_schema_incomplete_workflow_is_invalid(evidence_set):
+    workflow, invocations = evidence_set
+    incomplete = copy.deepcopy(workflow)
+    incomplete.pop("status")
+    incomplete = _refinalize_unsigned(incomplete)
+
+    report = verify_workflow_claim(incomplete, invocations)
+
+    assert report.claim_status is WorkflowClaimStatus.INVALID
+    assert "WORKFLOW_SCHEMA_INVALID" in _error_codes(report)
+
+
+def test_contradictory_workflow_role_marker_cannot_pass_as_invocation(
+    evidence_set,
+):
+    workflow, invocations = evidence_set
+    contradictory = copy.deepcopy(invocations[0])
+    contradictory["artifact_type"] = "workflow"
+    contradictory = _refinalize_unsigned(contradictory)
+    changed_workflow = copy.deepcopy(workflow)
+    changed_workflow["invocations"][0]["checksum"] = contradictory["checksum"]
+    changed_workflow = _refinalize_unsigned(changed_workflow)
+
+    report = verify_workflow_claim(
+        changed_workflow,
+        [contradictory, invocations[1]],
+    )
+
+    assert report.claim_status is WorkflowClaimStatus.INVALID
+    assert "INVOCATION_SCHEMA_INVALID" in _error_codes(report)
 
 
 def test_legacy_workflow_is_classified_without_claim_promotion():
