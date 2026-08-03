@@ -597,8 +597,8 @@ def test_prepare_step_success_registers_state_and_does_not_mutate_invocation():
         assert "protocol" not in original
         assert "protocol_evidence" not in original["context"]
         assert original["output"] == {"result": "host-placeholder"}
-        pending = session._pending_results[prepared._session_result._token_id]
-        assert "output" not in pending["inner"].invocation_snapshot
+        pending = session._pending_results[prepared._session_result.operation_id]
+        assert "inner" not in pending
         adapter.complete_step(
             prepared,
             dict(_GOOD_OUTPUT),

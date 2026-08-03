@@ -47,21 +47,17 @@ def test_aigc_enforce_pre_call_uses_policy_cache():
     # First call — loads and caches the policy
     pre1 = aegis.enforce_pre_call(inv)
     assert isinstance(pre1, PreCallResult)
-    assert pre1.policy_file == GOLDEN_POLICY
+    assert pre1.operation_id
 
     # Second call — should succeed using the cached policy
     pre2 = aegis.enforce_pre_call(inv)
     assert isinstance(pre2, PreCallResult)
-    assert pre2.policy_file == GOLDEN_POLICY
+    assert pre2.operation_id != pre1.operation_id
 
-    # Both carry equivalent typed compiler authority, never policy maps.
-    assert pre1._compiled_policy is not None
-    assert pre2._compiled_policy is not None
-    assert (
-        pre1._compiled_policy.policy_digest
-        == pre2._compiled_policy.policy_digest
-    )
+    # Both expose the same policy binding without carrying compiler authority.
+    assert pre1.policy_digest == pre2.policy_digest
     assert not hasattr(pre1, "effective_policy")
+    assert not hasattr(pre1, "_compiled_policy")
 
 
 def test_aigc_enforce_post_call_does_not_reload_policy():
@@ -130,10 +126,10 @@ async def test_aigc_enforce_pre_call_async():
     pre = await aegis.enforce_pre_call_async(_pre_call_invocation())
 
     assert isinstance(pre, PreCallResult)
-    assert pre.policy_file == GOLDEN_POLICY
-    assert pre.model_provider == "openai"
-    assert pre.model_identifier == "gpt-4"
-    assert pre.role == "planner"
+    assert pre.operation_id
+    assert pre.issuer_id
+    assert pre.correlation_id
+    assert pre.policy_digest
 
 
 @pytest.mark.asyncio

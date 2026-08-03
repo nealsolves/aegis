@@ -254,13 +254,13 @@ This proves enforcement occurred before action. In split mode, the Phase A list
 is the explicit proof that the authorization-side gates completed before the
 wrapped model call executed.
 
-The split token carries the exact in-memory `CompiledPolicy`. Pickle/deepcopy
-compatibility transfers a canonical typed compiled DTO, reconstructs compiled
-value objects without calling `compile_policy()`, and binds Phase B to both the
-source `policy_digest` and a domain-separated canonical compiled-DTO content
-digest inside HMAC-authenticated Phase A evidence. The digest is verified
-before DTO reconstruction and again before Phase B use. Tokens retain no
-generic effective-policy map or serialized raw-policy copy.
+The split handle carries opaque operation identity only. The exact
+`CompiledPolicy`, invocation snapshot, phase-A evidence, and Phase-B gates stay
+inside the issuing runtime's locked `OperationRegistry`. Phase B validates
+process and issuer affinity and atomically pops that private record before
+validating output. Copies and pickle round-trips therefore identify the same
+one-shot operation; they do not copy authority. A different process or
+`AEGIS` instance cannot consume the handle.
 
 A policy-backed workflow session pins the exact `CompiledPolicy` created when
 the session opens. Step authorization and dynamic tool checks use that pinned

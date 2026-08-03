@@ -98,12 +98,12 @@ def test_prepare_step_clones_agent_graph():
     with a.open_session(policy_file=None) as session:
         binding = OpenAIAgentsParticipantBinding("p1", "OriginalAgent", "planner")
         prepared = adapter.prepare_step(session, invocation, binding=binding)
-        pending = session._pending_results[prepared._session_result._token_id]
+        pending = session._pending_results[prepared._session_result.operation_id]
 
         # Verify tools were wrapped on cloned agent
         assert prepared.wrapped_root_agent is not root_agent
         assert prepared.wrapped_root_agent.name == root_agent.name
-        assert "output" not in pending["inner"].invocation_snapshot
+        assert "inner" not in pending
         assert invocation["output"] == {
             "result": "ok",
             "confidence": 0.9,

@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import copy
 import pickle
-import types
 
 import pytest
 
@@ -153,64 +152,55 @@ class TestFinding4FAILArtifactIdentityForgery:
     """
 
     def test_module_snapshot_mutation_does_not_forge_policy_file_in_fail_artifact(self):
-        """Tampered policy_file in snapshot must not appear in FAIL artifact."""
+        """Private policy identity is retained for an output-validation FAIL."""
         pre = enforce_pre_call(_pre_call_inv())
-        original_policy_file = pre.policy_file
-        # Mutate the snapshot
-        pre._frozen_invocation_snapshot["policy_file"] = "tampered.yaml"
+        assert not hasattr(pre, "_frozen_invocation_snapshot")
         with pytest.raises(InvocationValidationError) as exc_info:
             enforce_post_call(pre, "not a dict")
         artifact = exc_info.value.audit_artifact
         assert artifact is not None
-        assert artifact["policy_file"] == original_policy_file, (
-            f"Expected {original_policy_file!r}, got {artifact['policy_file']!r}"
-        )
+        assert artifact["policy_file"] == GOLDEN_POLICY
 
     def test_module_snapshot_mutation_does_not_forge_role_in_fail_artifact(self):
         """Tampered role in snapshot must not appear in FAIL artifact."""
         pre = enforce_pre_call(_pre_call_inv())
-        original_role = pre.role
-        pre._frozen_invocation_snapshot["role"] = "tampered-role"
+        assert not hasattr(pre, "role")
         with pytest.raises(InvocationValidationError) as exc_info:
             enforce_post_call(pre, "not a dict")
         artifact = exc_info.value.audit_artifact
         assert artifact is not None
-        assert artifact["role"] == original_role
+        assert artifact["role"] == "planner"
 
     def test_module_snapshot_mutation_does_not_forge_fail_artifact_on_non_serializable(self):
         """Tampered snapshot must not forge artifact on non-serializable output."""
         pre = enforce_pre_call(_pre_call_inv())
-        original_policy_file = pre.policy_file
-        pre._frozen_invocation_snapshot["policy_file"] = "tampered.yaml"
+        assert not hasattr(pre, "invocation_snapshot")
         with pytest.raises(InvocationValidationError) as exc_info:
             enforce_post_call(pre, {"bad": float("nan")})  # non-serializable
         artifact = exc_info.value.audit_artifact
         assert artifact is not None
-        assert artifact["policy_file"] == original_policy_file
+        assert artifact["policy_file"] == GOLDEN_POLICY
 
     def test_module_snapshot_mutation_does_not_forge_fail_artifact_on_reuse(self):
         """Tampered snapshot must not forge artifact when token is reused."""
         pre = enforce_pre_call(_pre_call_inv())
-        original_policy_file = pre.policy_file
         enforce_post_call(pre, _valid_output())  # consume it
-        pre._frozen_invocation_snapshot["policy_file"] = "tampered.yaml"
         with pytest.raises(InvocationValidationError) as exc_info:
             enforce_post_call(pre, _valid_output())  # reuse -> error path
         artifact = exc_info.value.audit_artifact
         assert artifact is not None
-        assert artifact["policy_file"] == original_policy_file
+        assert artifact["policy_file"] == "unknown"
 
     def test_aigc_snapshot_mutation_does_not_forge_policy_file_in_fail_artifact(self):
         """AIGC instance: tampered snapshot must not forge FAIL artifact."""
         engine = AIGC()
         pre = engine.enforce_pre_call(_pre_call_inv())
-        original_policy_file = pre.policy_file
-        pre._frozen_invocation_snapshot["policy_file"] = "tampered.yaml"
+        assert not hasattr(pre, "policy_file")
         with pytest.raises(InvocationValidationError) as exc_info:
             engine.enforce_post_call(pre, "not a dict")
         artifact = exc_info.value.audit_artifact
         assert artifact is not None
-        assert artifact["policy_file"] == original_policy_file
+        assert artifact["policy_file"] == GOLDEN_POLICY
 
 
 # ── Finding 1: Policy bytes tampering via _frozen_policy_bytes replacement ────
@@ -286,10 +276,9 @@ class TestFinding2GateManifestTamperPrevention:
             _pre_call_inv(),
             custom_gates=[_AlwaysFailPreOutputGate()],
         )
-        object.__setattr__(
-            pre, "_phase_b_grouped_gates", types.MappingProxyType({}),
-        )
-        with pytest.raises(InvocationValidationError, match="[Gg]ate"):
+        assert not hasattr(pre, "_phase_b_grouped_gates")
+        from aegis._internal.errors import CustomGateViolationError
+        with pytest.raises(CustomGateViolationError):
             enforce_post_call(pre, _valid_output())
 
     def test_module_gates_field_replacement_attaches_fail_artifact(self):
@@ -298,15 +287,14 @@ class TestFinding2GateManifestTamperPrevention:
             _pre_call_inv(),
             custom_gates=[_AlwaysFailPreOutputGate()],
         )
-        object.__setattr__(
-            pre, "_phase_b_grouped_gates", types.MappingProxyType({}),
-        )
-        with pytest.raises(InvocationValidationError) as exc_info:
+        assert not hasattr(pre, "_phase_b_grouped_gates")
+        from aegis._internal.errors import CustomGateViolationError
+        with pytest.raises(CustomGateViolationError) as exc_info:
             enforce_post_call(pre, _valid_output())
         artifact = exc_info.value.audit_artifact
         assert artifact is not None
         assert artifact["enforcement_result"] == "FAIL"
-        assert artifact["failure_gate"] == "invocation_validation"
+        assert artifact["failure_gate"] == "custom_gate_violation"
 
     def test_module_no_gates_no_fingerprint_mismatch(self):
         """A genuine token with no custom gates passes Phase B normally."""
@@ -328,10 +316,9 @@ class TestFinding2GateManifestTamperPrevention:
         """AIGC instance: _phase_b_grouped_gates replacement detected."""
         engine = AIGC(custom_gates=[_AlwaysFailPreOutputGate()])
         pre = engine.enforce_pre_call(_pre_call_inv())
-        object.__setattr__(
-            pre, "_phase_b_grouped_gates", types.MappingProxyType({}),
-        )
-        with pytest.raises(InvocationValidationError, match="[Gg]ate"):
+        assert not hasattr(pre, "_phase_b_grouped_gates")
+        from aegis._internal.errors import CustomGateViolationError
+        with pytest.raises(CustomGateViolationError):
             engine.enforce_post_call(pre, _valid_output())
 
 

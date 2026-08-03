@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import pickle
 from pathlib import Path
 from textwrap import dedent
@@ -15,9 +16,8 @@ from aegis._internal.cli import _lint_policy
 from aegis._internal.compiled_policy import CompiledPolicy
 from aegis._internal.enforcement import (
     AEGIS,
-    _compiled_policy_to_dto,
-    _reconstruct_precall_result,
     _validate_compiled_role,
+    enforce_post_call,
     enforce_pre_call,
 )
 from aegis._internal.errors import (
@@ -135,7 +135,7 @@ def test_explicit_empty_tools_deny_all_but_absent_tools_remain_unconfigured():
         validate_tool_constraints(_tool_invocation(), explicit_empty.tools)
 
 
-def test_tool_presence_is_typed_and_authenticated_in_compiled_dto(
+def test_tool_presence_is_not_exposed_on_the_public_operation_handle(
     tmp_path: Path,
 ):
     policy_file = tmp_path / "deny-all-tools.yaml"
@@ -144,15 +144,9 @@ def test_tool_presence_is_typed_and_authenticated_in_compiled_dto(
         deny_all_tools=True,
     )
     issued = enforce_pre_call(_pre_invocation(policy_file, code="ok"))
-    state = issued.__getstate__()
-    dto = state["_compiled_policy_dto"]
 
-    assert issued._compiled_policy.tools.configured is True
-    assert dto["tools_configured"] is True
-
-    dto["tools_configured"] = False
-    with pytest.raises(InvocationValidationError, match="compiled policy"):
-        _reconstruct_precall_result(state)
+    assert "_compiled_policy" not in issued.__slots__
+    assert "tools" not in issued.__slots__
 
 
 def test_static_role_subset_replaces_parent_allowlist():
@@ -509,49 +503,27 @@ def test_pattern_metadata_switch_cannot_weaken_pinned_session(
         session.cancel()
 
 
-def test_authenticated_pickle_restore_registers_fresh_pattern_identity(
+def test_pickle_restore_keeps_pattern_authority_in_the_live_registry(
     tmp_path: Path,
 ):
     policy_file = tmp_path / "pattern-restore.yaml"
     _precondition_policy(policy_file)
     issued = enforce_pre_call(_pre_invocation(policy_file, code="ok"))
     payload = pickle.dumps(issued)
-    identity_registry = getattr(
-        pattern_module,
-        "_PATTERN_ATTESTATIONS",
-        None,
-    )
-    if identity_registry is None:
-        pattern_module._ATTESTED_PROGRAMS.clear()
-    else:
-        identity_registry.clear()
-    pattern_module._RUNTIME_CACHE.clear()
-
     restored = pickle.loads(payload)
-    restored_pattern = restored._compiled_policy.preconditions[0].pattern
-    assert restored_pattern is not None
-    assert restored_pattern.fullmatch("ok") is True
-    assert restored_pattern.fullmatch("not-ok") is False
+
+    assert "_compiled_policy" not in restored.__slots__
+    assert enforce_post_call(restored, {})["enforcement_result"] == "PASS"
 
 
-def test_pattern_dto_reconstructs_from_authenticated_program_metadata(
+def test_pattern_authority_cannot_be_rebound_by_editing_the_public_handle(
     tmp_path: Path,
 ):
     policy_file = tmp_path / "pattern-dto.yaml"
     _precondition_policy(policy_file)
     issued = enforce_pre_call(_pre_invocation(policy_file, code="ok"))
-    dto = _compiled_policy_to_dto(issued._compiled_policy)
-    pattern = dto["preconditions"][0]["pattern"]
+    forged = dataclasses.replace(issued, policy_digest="0" * 64)
 
-    assert set(pattern) == {
-        "source",
-        "path",
-        "program_digest",
-        "source_max_bytes",
-        "input_max_bytes",
-    }
-    pattern["program_digest"] = "0" * 64
-    state = issued.__getstate__()
-    state["_compiled_policy_dto"] = dto
-    with pytest.raises(InvocationValidationError, match="compiled policy"):
-        _reconstruct_precall_result(state)
+    with pytest.raises(InvocationValidationError) as exc_info:
+        enforce_post_call(forged, {})
+    assert exc_info.value.code == "OPERATION_POLICY_MISMATCH"

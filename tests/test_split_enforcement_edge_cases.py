@@ -100,7 +100,7 @@ class TestPreCallResultReuse:
         with pytest.raises(InvocationValidationError) as exc_info:
             enforce_post_call(pre, _valid_output())
 
-        assert "already been consumed" in str(exc_info.value)
+        assert exc_info.value.code == "OPERATION_NOT_ACTIVE"
         assert exc_info.value.audit_artifact is not None
 
 
@@ -253,34 +253,23 @@ class TestSplitArtifactGateLists:
         assert meta["enforcement_mode"] == "split"
 
 
-# ── PreCallResult _consumed invariant ──────────────────────────────
+# ── Registry-backed PreCallResult invariant ───────────────────────
 
 
-class TestConsumedInvariant:
+class TestRegistryBackedInvariant:
 
-    def test_consumed_is_false_initially(self):
-        """_consumed is False immediately after enforce_pre_call."""
+    def test_handle_carries_no_mutable_consumption_state(self):
         pre = enforce_pre_call(_pre_call_invocation())
-        assert pre._consumed is False
+        assert not hasattr(pre, "_consumed")
 
-    def test_consumed_is_true_after_consume(self):
-        """_consumed is True after enforce_post_call."""
+    def test_pickle_after_consumption_does_not_restore_authorization(self):
         pre = enforce_pre_call(_pre_call_invocation())
         enforce_post_call(pre, _valid_output())
-        assert pre._consumed is True
-
-    def test_pickle_consumed_roundtrip_preserves_flag(self):
-        """Pickle round-trip after consumption preserves _consumed=True."""
-        pre = enforce_pre_call(_pre_call_invocation())
-        enforce_post_call(pre, _valid_output())
-        assert pre._consumed is True
-
         roundtripped = pickle.loads(pickle.dumps(pre))
-        assert roundtripped._consumed is True
 
-        # Reusing the pickled consumed result should also fail
-        with pytest.raises(InvocationValidationError):
+        with pytest.raises(InvocationValidationError) as exc_info:
             enforce_post_call(roundtripped, _valid_output())
+        assert exc_info.value.code == "OPERATION_NOT_ACTIVE"
 
 
 # ── AIGC instance edge cases ───────────────────────────────────────
@@ -306,4 +295,4 @@ class TestAIGCInstanceEdgeCases:
         with pytest.raises(InvocationValidationError) as exc_info:
             aegis.enforce_post_call(pre, _valid_output())
 
-        assert "already been consumed" in str(exc_info.value)
+        assert exc_info.value.code == "OPERATION_NOT_ACTIVE"

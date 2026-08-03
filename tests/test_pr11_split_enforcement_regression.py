@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+from dataclasses import replace
 
 import pytest
 
@@ -68,13 +69,18 @@ def test_split_replay_deepcopy_token_rejected():
         aegis.enforce_post_call(cloned, GOOD_OUTPUT)
 
 
-def test_split_tampered_policy_bytes_rejected():
+def test_split_tampered_policy_binding_rejected_and_burned():
     aegis = AEGIS()
     pre = aegis.enforce_pre_call(_pre_invocation())
-    object.__setattr__(pre, "_frozen_evidence_bytes", b"{not-json")
+    forged = replace(pre, policy_digest="forged-policy")
 
-    with pytest.raises(InvocationValidationError):
+    with pytest.raises(InvocationValidationError) as exc_info:
+        aegis.enforce_post_call(forged, GOOD_OUTPUT)
+    assert exc_info.value.code == "OPERATION_POLICY_MISMATCH"
+
+    with pytest.raises(InvocationValidationError) as replay_exc:
         aegis.enforce_post_call(pre, GOOD_OUTPUT)
+    assert replay_exc.value.code == "OPERATION_NOT_ACTIVE"
 
 
 def test_phase_b_uses_frozen_phase_a_policy_when_file_changes(tmp_path):

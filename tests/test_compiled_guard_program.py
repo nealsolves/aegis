@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from aegis._internal.enforcement import (
-    _reconstruct_precall_result,
+    enforce_post_call,
     enforce_pre_call,
 )
 from aegis._internal.errors import (
@@ -468,19 +468,16 @@ def _invocation(path: Path) -> dict:
     }
 
 
-def test_pickle_restores_typed_guard_program_without_parsing(
+def test_pickle_restores_opaque_handle_without_parsing_guard_program(
     tmp_path,
     monkeypatch,
 ):
     policy_path = tmp_path / "guard-policy.yaml"
     _write_split_policy(policy_path)
     issued = enforce_pre_call(_invocation(policy_path))
-    state = issued.__getstate__()
-
-    assert "program" in state["_compiled_policy_dto"]["guards"][0]
 
     def parser_called(*_args, **_kwargs):
-        raise AssertionError("guard parser reached DTO reconstruction")
+        raise AssertionError("guard parser reached handle restoration")
 
     monkeypatch.setattr(
         "aegis._internal.guards.compile_guard_expression",
@@ -493,16 +490,16 @@ def test_pickle_restores_typed_guard_program_without_parsing(
 
     restored = pickle.loads(pickle.dumps(issued))
 
-    assert restored._compiled_policy.guards[0].program.root is not None
+    assert "_compiled_policy" not in restored.__slots__
+    assert restored == issued
 
 
-def test_guard_program_dto_tampering_fails_content_digest(tmp_path):
+def test_guard_program_authority_cannot_be_rebound_by_handle_tampering(tmp_path):
     policy_path = tmp_path / "guard-policy.yaml"
     _write_split_policy(policy_path)
     issued = enforce_pre_call(_invocation(policy_path))
-    state = issued.__getstate__()
-    program = state["_compiled_policy_dto"]["guards"][0]["program"]
-    program["root"]["op"] = "always"
+    forged = dataclasses.replace(issued, policy_digest="0" * 64)
 
-    with pytest.raises(InvocationValidationError, match="compiled policy"):
-        _reconstruct_precall_result(state)
+    with pytest.raises(InvocationValidationError) as exc_info:
+        enforce_post_call(forged, {"result": "ok"})
+    assert exc_info.value.code == "OPERATION_POLICY_MISMATCH"

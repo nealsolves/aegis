@@ -58,12 +58,11 @@ class TestBasicSplitPath:
         """Basic happy path: enforce_pre_call returns a PreCallResult."""
         result = enforce_pre_call(_pre_call_invocation())
         assert isinstance(result, PreCallResult)
-        assert result.policy_file == (
-            "tests/golden_replays/golden_policy_v1.yaml"
-        )
-        assert result.model_provider == "openai"
-        assert result.model_identifier == "gpt-4"
-        assert result.role == "planner"
+        assert result.operation_id
+        assert result.issuer_id
+        assert result.correlation_id
+        assert result.policy_digest
+        assert result.canonicalization_profile == "aegis-json-v2"
 
     def test_enforce_post_call_returns_audit_artifact(self):
         """Happy path end-to-end: pre_call + post_call produces artifact."""
@@ -229,7 +228,7 @@ class TestValidation:
         with pytest.raises(InvocationValidationError) as exc_info:
             enforce_post_call(pre, _valid_output())
 
-        assert "already been consumed" in str(exc_info.value)
+        assert exc_info.value.code == "OPERATION_NOT_ACTIVE"
 
     def test_enforce_post_call_invalid_output_type_raises(self):
         """Non-dict output raises InvocationValidationError."""

@@ -7,6 +7,7 @@ F-01 — PreCallResult provenance check is bypassable (misuse-detection only)
 F-02 — Pickle / deepcopy round-trip breaks valid unconsumed tokens
 """
 import copy
+import os
 import pickle
 
 import pytest
@@ -14,7 +15,6 @@ import pytest
 from aegis._internal.enforcement import (
     AIGC,
     PreCallResult,
-    _ENFORCEMENT_TOKEN,
     enforce_post_call,
     enforce_pre_call,
 )
@@ -60,18 +60,16 @@ class TestF01ProvenanceCheck:
         with pytest.raises(InvocationValidationError) as exc_info:
             enforce_post_call(
                 PreCallResult(
-                    resolved_guards=(),
-                    resolved_conditions={},
-                    phase_a_metadata={},
-                    invocation_snapshot={},
-                    policy_file="p.yaml",
-                    model_provider="openai",
-                    model_identifier="gpt-4",
-                    role="planner",
+                    operation_id="forged",
+                    issuer_id="0" * 32,
+                    process_id=os.getpid(),
+                    correlation_id="forged",
+                    policy_digest="0" * 64,
+                    canonicalization_profile="forged",
                 ),
                 _valid_output(),
             )
-        assert "not issued by enforce_pre_call" in str(exc_info.value)
+        assert exc_info.value.code == "OPERATION_ISSUER_MISMATCH"
 
     def test_directly_constructed_token_rejected_aigc_path(self):
         """AIGC.enforce_post_call() rejects a directly-constructed token."""
@@ -79,27 +77,25 @@ class TestF01ProvenanceCheck:
         with pytest.raises(InvocationValidationError) as exc_info:
             engine.enforce_post_call(
                 PreCallResult(
-                    resolved_guards=(),
-                    resolved_conditions={},
-                    phase_a_metadata={},
-                    invocation_snapshot={},
-                    policy_file="p.yaml",
-                    model_provider="openai",
-                    model_identifier="gpt-4",
-                    role="planner",
+                    operation_id="forged",
+                    issuer_id="0" * 32,
+                    process_id=os.getpid(),
+                    correlation_id="forged",
+                    policy_digest="0" * 64,
+                    canonicalization_profile="forged",
                 ),
                 _valid_output(),
             )
-        assert "not issued by enforce_pre_call" in str(exc_info.value)
+        assert exc_info.value.code == "OPERATION_ISSUER_MISMATCH"
 
-    def test_enforcement_token_singleton_is_picklable(self):
-        """_ENFORCEMENT_TOKEN round-trips through pickle with identity preserved."""
-        restored = pickle.loads(pickle.dumps(_ENFORCEMENT_TOKEN))
-        assert restored is _ENFORCEMENT_TOKEN
+    def test_public_handle_contains_no_provenance_sentinel(self):
+        handle = enforce_pre_call(_pre_call_inv())
+        assert "_origin" not in handle.__slots__
 
-    def test_enforcement_token_singleton_is_deepcopy_stable(self):
-        """copy.deepcopy(_ENFORCEMENT_TOKEN) returns the same singleton."""
-        assert copy.deepcopy(_ENFORCEMENT_TOKEN) is _ENFORCEMENT_TOKEN
+    def test_public_handle_contains_no_authorization_snapshot(self):
+        handle = enforce_pre_call(_pre_call_inv())
+        assert "_compiled_policy" not in handle.__slots__
+        assert "invocation_snapshot" not in handle.__slots__
 
 
 # ── F-02: Pickle / deepcopy round-trip ───────────────────────────────────────
@@ -143,7 +139,7 @@ class TestF02PickleRoundTrip:
         pre_restored = pickle.loads(pickle.dumps(pre))
         with pytest.raises(InvocationValidationError) as exc_info:
             enforce_post_call(pre_restored, _valid_output())
-        assert "already been consumed" in str(exc_info.value)
+        assert exc_info.value.code == "OPERATION_NOT_ACTIVE"
 
     def test_consumed_token_rejected_after_pickle_aigc_path(self):
         """Same consumed-after-pickle test via AIGC instance."""
@@ -153,7 +149,7 @@ class TestF02PickleRoundTrip:
         pre_restored = pickle.loads(pickle.dumps(pre))
         with pytest.raises(InvocationValidationError) as exc_info:
             engine.enforce_post_call(pre_restored, _valid_output())
-        assert "already been consumed" in str(exc_info.value)
+        assert exc_info.value.code == "OPERATION_NOT_ACTIVE"
 
     # ── deepcopy ──────────────────────────────────────────────────────────────
 
@@ -179,4 +175,4 @@ class TestF02PickleRoundTrip:
         pre_copy = copy.deepcopy(pre)
         with pytest.raises(InvocationValidationError) as exc_info:
             enforce_post_call(pre_copy, _valid_output())
-        assert "already been consumed" in str(exc_info.value)
+        assert exc_info.value.code == "OPERATION_NOT_ACTIVE"

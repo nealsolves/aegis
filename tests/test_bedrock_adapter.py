@@ -291,8 +291,8 @@ def test_prepare_step_accepts_arn_alias():
             },
         }
         result = adapter.prepare_step(session, inv, binding=binding)
-        pending = session._pending_results[result._session_result._token_id]
-        assert "output" not in pending["inner"].invocation_snapshot
+        pending = session._pending_results[result._session_result.operation_id]
+        assert "inner" not in pending
         assert inv["output"] == {"result": "ok", "confidence": 0.9}
         assert result._session_result is not None
         assert result._adapter_step_key is not None
@@ -624,7 +624,7 @@ def test_adapter_cleans_up_state_on_complete_step_failure():
             session,
             protocol_constraints={"bedrock": {"require_trace": True}},
         )
-        token_id = prepared._session_result._token_id
+        token_id = prepared._session_result.operation_id
 
         with pytest.raises(WorkflowProtocolViolationError):
             adapter.complete_step(
@@ -861,7 +861,7 @@ def test_complete_step_discards_token_on_key_mismatch():
             protocol_constraints={"bedrock": {"require_trace": True}},
         )
         session_result = prepared._session_result
-        token_id = session_result._token_id
+        token_id = session_result.operation_id
 
         # Forge a prepared step with a mismatched adapter_step_key.
         forged = BedrockPreparedStep(

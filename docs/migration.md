@@ -50,6 +50,26 @@ The four changes are:
 3. `session.enforce_step_post_call` instead of `governance.enforce_post_call`
 4. `session.complete()` — mark the workflow as successfully finished
 
+## Migrating split-operation handle storage
+
+`PreCallResult` and `SessionPreCallResult` are now opaque, process-affine
+operation handles. Do not persist them for restart recovery, send them to a
+worker process, move them between `AEGIS` instances, or inspect policy and
+invocation fields on them.
+
+For every model operation:
+
+1. call the matching pre-call API in the process and instance that will own the
+   operation;
+2. perform the model call;
+3. call the matching post-call API exactly once;
+4. if the operation is abandoned, discard or cancel the owning session.
+
+Copying or pickling a handle retains the same one-shot identity and does not
+create another authorization. There is no renewal operation. After a process
+restart, instance change, failed Phase B attempt, or cancellation, rerun Phase
+A to obtain a fresh handle.
+
 ## Migrating evidence verification to v2
 
 V2 evidence delivery is acknowledged and fail-closed. Instance APIs require an

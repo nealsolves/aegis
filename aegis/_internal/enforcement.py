@@ -17,16 +17,13 @@ from __future__ import annotations
 import asyncio
 import copy
 import functools
-import hashlib
-import hmac as _hmac_mod
 import json
 import logging
-import math
-import os
 import re
 import time as _time
-import types
-from dataclasses import dataclass, field
+import uuid
+from dataclasses import dataclass
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Mapping, NoReturn, Sequence
 
 if TYPE_CHECKING:
@@ -44,32 +41,9 @@ from aegis._internal.policy_loader import (
     PolicyLoaderBase,
 )
 from aegis._internal.compiled_policy import (
-    AuthorityEnvelope,
-    CompiledGuard,
-    CompiledGuardAnd,
-    CompiledGuardComparison,
-    CompiledGuardCondition,
-    CompiledGuardLiteral,
-    CompiledGuardMembership,
-    CompiledGuardNode,
-    CompiledGuardNot,
-    CompiledGuardOr,
-    CompiledGuardProgram,
-    CompiledGuardReference,
-    CompiledOutputValidator,
     CompiledPolicy,
-    CompiledPolicyOverlay,
-    CompiledPrecondition,
-    CompiledRetryPolicy,
-    CompiledRiskFactor,
-    CompiledRiskOverlay,
-    CompiledRiskPolicy,
-    CompiledToolLimit,
-    CompiledToolPolicy,
     freeze,
 )
-from aegis._internal.patterns import restore_compiled_pattern
-from aegis._internal.schema_compiler import compile_output_schema
 from aegis._internal.policy_compiler import (
     compile_policy,
     resolve_runtime_risk,
@@ -122,11 +96,17 @@ from aegis._internal.errors import (
     ToolConstraintViolationError,
 )
 from aegis._internal.sinks import AuditSink
+from aegis._internal.operation_registry import (
+    OperationHandle,
+    OperationRecord,
+    OperationRegistry,
+)
 
 logger = logging.getLogger("aegis.enforcement")
 
 _MODULE_ATTEMPT_FACTORY = AttemptFactory()
 _MODULE_EVIDENCE_DIAGNOSTICS = EvidenceDiagnostics()
+_MODULE_OPERATION_REGISTRY = OperationRegistry()
 
 
 class _ModuleEnforcementRuntime:
@@ -179,10 +159,11 @@ def configure_module_enforcement(
 
 
 def _reset_module_enforcement_for_test() -> None:
-    global _MODULE_EVIDENCE_DIAGNOSTICS
+    global _MODULE_EVIDENCE_DIAGNOSTICS, _MODULE_OPERATION_REGISTRY
 
     _MODULE_RUNTIME.reset_for_test()
     _MODULE_EVIDENCE_DIAGNOSTICS = EvidenceDiagnostics()
+    _MODULE_OPERATION_REGISTRY = OperationRegistry()
 
 
 def _attempt_invocation(
@@ -335,767 +316,6 @@ def _compiled_audit_projection(policy: CompiledPolicy) -> dict[str, str]:
     return {"policy_version": policy.declared_policy_version}
 
 
-def _compiled_precondition_to_dto(
-    item: CompiledPrecondition,
-) -> dict[str, Any]:
-    return {
-        "name": item.name,
-        "declared_type": item.declared_type,
-        "pattern": (
-            {
-                "source": item.pattern.source,
-                "path": item.pattern.path,
-                "program_digest": item.pattern.program_digest,
-                "source_max_bytes": item.pattern.source_max_bytes,
-                "input_max_bytes": item.pattern.input_max_bytes,
-            }
-            if item.pattern is not None
-            else None
-        ),
-        "enum": _plain_compiled_value(item.enum),
-        "min_length": item.min_length,
-        "max_length": item.max_length,
-        "minimum": item.minimum,
-        "maximum": item.maximum,
-        "legacy": item.legacy,
-    }
-
-
-def _compiled_output_program_to_dto(
-    program: CompiledOutputValidator | None,
-) -> dict[str, Any]:
-    return {
-        "output_schema": (
-            _plain_compiled_value(program.schema)
-            if program is not None
-            else None
-        ),
-        "output_schema_program_digest": (
-            program.program_digest
-            if program is not None
-            else None
-        ),
-        "output_schema_pattern_sources": (
-            list(program.pattern_sources)
-            if program is not None
-            else None
-        ),
-    }
-
-
-def _compiled_output_program_from_dto(
-    dto: Mapping[str, Any],
-) -> CompiledOutputValidator | None:
-    schema = dto["output_schema"]
-    expected_digest = dto["output_schema_program_digest"]
-    expected_sources = dto["output_schema_pattern_sources"]
-    if schema is None:
-        if expected_digest is not None or expected_sources is not None:
-            raise InvocationValidationError(
-                "Authenticated compiled output program metadata is invalid",
-                details={"field": "output_schema"},
-            )
-        return None
-
-    compiled = compile_output_schema(schema)
-    if (
-        compiled.program_digest != expected_digest
-        or list(compiled.pattern_sources) != expected_sources
-    ):
-        raise InvocationValidationError(
-            "Authenticated compiled output program metadata does not match "
-            "its schema",
-            details={"field": "output_schema"},
-        )
-    return compiled
-
-
-def _compiled_guard_node_to_dto(
-    node: CompiledGuardNode | CompiledGuardLiteral | CompiledGuardReference,
-) -> dict[str, Any]:
-    if isinstance(node, CompiledGuardCondition):
-        return {"op": "condition", "name": node.name}
-    if isinstance(node, CompiledGuardLiteral):
-        return {"op": "literal", "value": node.value}
-    if isinstance(node, CompiledGuardReference):
-        return {
-            "op": "reference",
-            "source": node.source,
-            "name": node.name,
-            "declared_type": node.declared_type,
-        }
-    if isinstance(node, CompiledGuardNot):
-        return {
-            "op": "not",
-            "operand": _compiled_guard_node_to_dto(node.operand),
-        }
-    if isinstance(node, CompiledGuardAnd):
-        return {
-            "op": "and",
-            "left": _compiled_guard_node_to_dto(node.left),
-            "right": _compiled_guard_node_to_dto(node.right),
-        }
-    if isinstance(node, CompiledGuardOr):
-        return {
-            "op": "or",
-            "left": _compiled_guard_node_to_dto(node.left),
-            "right": _compiled_guard_node_to_dto(node.right),
-        }
-    if isinstance(node, CompiledGuardComparison):
-        return {
-            "op": "compare",
-            "operator": node.operator,
-            "left": _compiled_guard_node_to_dto(node.left),
-            "right": _compiled_guard_node_to_dto(node.right),
-        }
-    if isinstance(node, CompiledGuardMembership):
-        return {
-            "op": "membership",
-            "value": _compiled_guard_node_to_dto(node.value),
-            "container": _compiled_guard_node_to_dto(node.container),
-        }
-    raise InvocationValidationError(
-        "Compiled guard program contains an unsupported node",
-        details={"field": "guards.program"},
-    )
-
-
-def _compiled_guard_program_to_dto(
-    program: CompiledGuardProgram,
-) -> dict[str, Any]:
-    return {
-        "root": _compiled_guard_node_to_dto(program.root),
-        "expression_bytes": program.expression_bytes,
-        "token_count": program.token_count,
-        "node_count": program.node_count,
-        "max_depth": program.max_depth,
-    }
-
-
-def _compiled_guard_node_from_dto(
-    dto: Mapping[str, Any],
-    *,
-    depth: int = 1,
-) -> CompiledGuardNode | CompiledGuardLiteral | CompiledGuardReference:
-    from aegis._internal.guards import GUARD_EXPRESSION_MAX_DEPTH
-
-    if depth > GUARD_EXPRESSION_MAX_DEPTH:
-        raise InvocationValidationError(
-            "Authenticated compiled guard program exceeds its depth bound",
-            details={"field": "guards.program"},
-        )
-    if type(dto) is not dict or type(dto.get("op")) is not str:
-        raise InvocationValidationError(
-            "Authenticated compiled guard program node is invalid",
-            details={"field": "guards.program"},
-        )
-    op = dto["op"]
-    if op == "condition":
-        if set(dto) != {"op", "name"} or type(dto["name"]) is not str:
-            raise InvocationValidationError(
-                "Authenticated compiled guard condition is invalid",
-                details={"field": "guards.program"},
-            )
-        return CompiledGuardCondition(name=dto["name"])
-    if op == "literal":
-        value = dto.get("value")
-        if (
-            set(dto) != {"op", "value"}
-            or type(value) not in {type(None), bool, int, float, str}
-            or (
-                type(value) is float
-                and not math.isfinite(value)
-            )
-        ):
-            raise InvocationValidationError(
-                "Authenticated compiled guard literal is invalid",
-                details={"field": "guards.program"},
-            )
-        return CompiledGuardLiteral(value=value)
-    if op == "reference":
-        if (
-            set(dto) != {"op", "source", "name", "declared_type"}
-            or dto.get("source") not in {"role", "condition", "context"}
-            or type(dto.get("name")) is not str
-            or dto.get("declared_type")
-            not in {
-                "string",
-                "number",
-                "integer",
-                "boolean",
-                "array",
-                "null",
-            }
-        ):
-            raise InvocationValidationError(
-                "Authenticated compiled guard reference is invalid",
-                details={"field": "guards.program"},
-            )
-        if (
-            dto["source"] == "role"
-            and (
-                dto["name"] != "role"
-                or dto["declared_type"] != "string"
-            )
-        ) or (
-            dto["source"] == "condition"
-            and dto["declared_type"] != "boolean"
-        ):
-            raise InvocationValidationError(
-                "Authenticated compiled guard reference contract is invalid",
-                details={"field": "guards.program"},
-            )
-        return CompiledGuardReference(
-            source=dto["source"],
-            name=dto["name"],
-            declared_type=dto["declared_type"],
-        )
-    if op == "not":
-        if set(dto) != {"op", "operand"}:
-            raise InvocationValidationError(
-                "Authenticated compiled guard negation is invalid",
-                details={"field": "guards.program"},
-            )
-        operand = _compiled_guard_node_from_dto(
-            dto["operand"],
-            depth=depth + 1,
-        )
-        if isinstance(
-            operand,
-            (CompiledGuardLiteral, CompiledGuardReference),
-        ):
-            raise InvocationValidationError(
-                "Authenticated compiled guard negation operand is invalid",
-                details={"field": "guards.program"},
-            )
-        return CompiledGuardNot(operand=operand)
-    if op in {"and", "or"}:
-        if set(dto) != {"op", "left", "right"}:
-            raise InvocationValidationError(
-                "Authenticated compiled guard logical node is invalid",
-                details={"field": "guards.program"},
-            )
-        left = _compiled_guard_node_from_dto(
-            dto["left"],
-            depth=depth + 1,
-        )
-        right = _compiled_guard_node_from_dto(
-            dto["right"],
-            depth=depth + 1,
-        )
-        if isinstance(
-            left,
-            (CompiledGuardLiteral, CompiledGuardReference),
-        ) or isinstance(
-            right,
-            (CompiledGuardLiteral, CompiledGuardReference),
-        ):
-            raise InvocationValidationError(
-                "Authenticated compiled guard logical operand is invalid",
-                details={"field": "guards.program"},
-            )
-        logical_type = CompiledGuardAnd if op == "and" else CompiledGuardOr
-        return logical_type(left=left, right=right)
-    if op == "compare":
-        if (
-            set(dto) != {"op", "operator", "left", "right"}
-            or dto.get("operator") not in {"==", "!=", "<", ">", "<=", ">="}
-        ):
-            raise InvocationValidationError(
-                "Authenticated compiled guard comparison is invalid",
-                details={"field": "guards.program"},
-            )
-        left = _compiled_guard_node_from_dto(
-            dto["left"],
-            depth=depth + 1,
-        )
-        right = _compiled_guard_node_from_dto(
-            dto["right"],
-            depth=depth + 1,
-        )
-        if not isinstance(left, CompiledGuardReference) or not isinstance(
-            right,
-            CompiledGuardLiteral,
-        ):
-            raise InvocationValidationError(
-                "Authenticated compiled guard comparison operands are invalid",
-                details={"field": "guards.program"},
-            )
-        return CompiledGuardComparison(
-            left=left,
-            operator=dto["operator"],
-            right=right,
-        )
-    if op == "membership":
-        if set(dto) != {"op", "value", "container"}:
-            raise InvocationValidationError(
-                "Authenticated compiled guard membership is invalid",
-                details={"field": "guards.program"},
-            )
-        value = _compiled_guard_node_from_dto(
-            dto["value"],
-            depth=depth + 1,
-        )
-        container = _compiled_guard_node_from_dto(
-            dto["container"],
-            depth=depth + 1,
-        )
-        if not isinstance(
-            value,
-            (CompiledGuardLiteral, CompiledGuardReference),
-        ) or not isinstance(container, CompiledGuardReference):
-            raise InvocationValidationError(
-                "Authenticated compiled guard membership operands are invalid",
-                details={"field": "guards.program"},
-            )
-        if (
-            container.source != "context"
-            or container.declared_type not in {"array", "string"}
-        ):
-            raise InvocationValidationError(
-                "Authenticated compiled guard membership contract is invalid",
-                details={"field": "guards.program"},
-            )
-        return CompiledGuardMembership(
-            value=value,
-            container=container,
-        )
-    raise InvocationValidationError(
-        "Authenticated compiled guard program opcode is invalid",
-        details={"field": "guards.program", "opcode": op},
-    )
-
-
-def _compiled_guard_program_from_dto(
-    dto: Mapping[str, Any],
-) -> CompiledGuardProgram:
-    from aegis._internal.guards import (
-        GUARD_EXPRESSION_MAX_BYTES,
-        GUARD_EXPRESSION_MAX_DEPTH,
-        GUARD_EXPRESSION_MAX_NODES,
-        GUARD_EXPRESSION_MAX_TOKENS,
-    )
-
-    expected_fields = {
-        "root",
-        "expression_bytes",
-        "token_count",
-        "node_count",
-        "max_depth",
-    }
-    if type(dto) is not dict or set(dto) != expected_fields:
-        raise InvocationValidationError(
-            "Authenticated compiled guard program is invalid",
-            details={"field": "guards.program"},
-        )
-    metrics = {
-        name: dto[name]
-        for name in expected_fields - {"root"}
-    }
-    if any(type(value) is not int for value in metrics.values()):
-        raise InvocationValidationError(
-            "Authenticated compiled guard program metrics are invalid",
-            details={"field": "guards.program"},
-        )
-    if (
-        not 0 < metrics["expression_bytes"] <= GUARD_EXPRESSION_MAX_BYTES
-        or not 0 < metrics["token_count"] <= GUARD_EXPRESSION_MAX_TOKENS
-        or not 0 < metrics["node_count"] <= GUARD_EXPRESSION_MAX_NODES
-        or not 0 < metrics["max_depth"] <= GUARD_EXPRESSION_MAX_DEPTH
-    ):
-        raise InvocationValidationError(
-            "Authenticated compiled guard program metrics exceed bounds",
-            details={"field": "guards.program"},
-        )
-    root = _compiled_guard_node_from_dto(dto["root"])
-    if isinstance(root, (CompiledGuardLiteral, CompiledGuardReference)):
-        raise InvocationValidationError(
-            "Authenticated compiled guard root is invalid",
-            details={"field": "guards.program"},
-        )
-    pending = [(root, 1)]
-    node_count = 0
-    max_depth = 0
-    while pending:
-        node, depth = pending.pop()
-        node_count += 1
-        max_depth = max(max_depth, depth)
-        if isinstance(node, CompiledGuardNot):
-            pending.append((node.operand, depth + 1))
-        elif isinstance(node, (CompiledGuardAnd, CompiledGuardOr)):
-            pending.append((node.left, depth + 1))
-            pending.append((node.right, depth + 1))
-    if (
-        node_count != metrics["node_count"]
-        or max_depth != metrics["max_depth"]
-    ):
-        raise InvocationValidationError(
-            "Authenticated compiled guard program metrics do not match",
-            details={"field": "guards.program"},
-        )
-    return CompiledGuardProgram(root=root, **metrics)
-
-
-def _compiled_guard_to_dto(guard: CompiledGuard) -> dict[str, Any]:
-    return {
-        "condition": guard.condition,
-        "program": _compiled_guard_program_to_dto(guard.program),
-        "effect": _compiled_overlay_to_dto(guard.effect),
-    }
-
-
-def _compiled_guard_from_dto(dto: Mapping[str, Any]) -> CompiledGuard:
-    if type(dto) is not dict or set(dto) != {
-        "condition",
-        "program",
-        "effect",
-    }:
-        raise InvocationValidationError(
-            "Authenticated compiled guard DTO is invalid",
-            details={"field": "guards"},
-        )
-    return CompiledGuard(
-        condition=dto["condition"],
-        program=_compiled_guard_program_from_dto(dto["program"]),
-        effect=_compiled_overlay_from_dto(dto["effect"]),
-    )
-
-
-def _compiled_overlay_to_dto(
-    overlay: CompiledPolicyOverlay,
-) -> dict[str, Any]:
-    return {
-        "roles": list(overlay.roles) if overlay.roles is not None else None,
-        "conditions": (
-            _plain_compiled_value(overlay.conditions)
-            if overlay.conditions is not None
-            else None
-        ),
-        "tools": (
-            [
-                {"name": item.name, "max_calls": item.max_calls}
-                for item in overlay.tools
-            ]
-            if overlay.tools is not None
-            else None
-        ),
-        "tools_configured": (
-            overlay.tools.configured
-            if overlay.tools is not None
-            else None
-        ),
-        "retry_max_retries": overlay.retry_max_retries,
-        "retry_backoff_ms": overlay.retry_backoff_ms,
-        "risk": (
-            {
-                "mode": overlay.risk.mode,
-                "threshold": overlay.risk.threshold,
-                "factors": [
-                    {
-                        "name": item.name,
-                        "weight": item.weight,
-                        "condition": item.condition,
-                    }
-                    for item in overlay.risk.factors
-                ],
-            }
-            if overlay.risk is not None
-            else None
-        ),
-        "preconditions": [
-            _compiled_precondition_to_dto(item)
-            for item in overlay.preconditions
-        ],
-        "postconditions": list(overlay.postconditions),
-        **_compiled_output_program_to_dto(overlay.output_validator),
-        "guards": [
-            _compiled_guard_to_dto(item)
-            for item in overlay.guards
-        ],
-        "workflow": (
-            _plain_compiled_value(overlay.workflow)
-            if overlay.workflow is not None
-            else None
-        ),
-    }
-
-
-def _compiled_policy_to_dto(policy: CompiledPolicy) -> dict[str, Any]:
-    """Serialize already-compiled semantics without reopening raw policy."""
-    return {
-        "policy_digest": policy.policy_digest,
-        "source_identity": policy.source_identity,
-        "declared_policy_version": policy.declared_policy_version,
-        "policy_contract_version": policy.policy_contract_version,
-        "pattern_engine": policy.pattern_engine,
-        "canonicalization_profile": policy.canonicalization_profile,
-        "roles": list(policy.roles),
-        "tools_configured": policy.tools.configured,
-        "tools": [
-            {"name": item.name, "max_calls": item.max_calls}
-            for item in policy.tools
-        ],
-        "risk": {
-            "configured": policy.risk.configured,
-            "mode": policy.risk.mode,
-            "threshold": policy.risk.threshold,
-            "critical_ceiling": policy.risk.critical_ceiling,
-            "factors": [
-                {
-                    "name": factor.name,
-                    "weight": factor.weight,
-                    "condition": factor.condition,
-                }
-                for factor in policy.risk.factors
-            ],
-        },
-        "retry": (
-            {
-                "max_retries": policy.retry.max_retries,
-                "backoff_ms": policy.retry.backoff_ms,
-            }
-            if policy.retry is not None
-            else None
-        ),
-        "conditions": _plain_compiled_value(policy.conditions),
-        "guards": [
-            _compiled_guard_to_dto(item)
-            for item in policy.guards
-        ],
-        "preconditions": [
-            _compiled_precondition_to_dto(item)
-            for item in policy.preconditions
-        ],
-        "postconditions": list(policy.postconditions),
-        **_compiled_output_program_to_dto(policy.output_validator),
-        "workflow": _plain_compiled_value(policy.workflow),
-    }
-
-
-_COMPILED_DTO_DIGEST_DOMAIN = b"aegis.compiled-policy-dto.v1\x00"
-
-
-def _compiled_dto_content_digest(dto: Mapping[str, Any]) -> str:
-    """Hash canonical typed DTO content with an explicit domain separator."""
-    payload = json.dumps(
-        dto,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-        allow_nan=False,
-    ).encode("utf-8")
-    return hashlib.sha256(_COMPILED_DTO_DIGEST_DOMAIN + payload).hexdigest()
-
-
-def _compiled_policy_content_digest(policy: CompiledPolicy) -> str:
-    return _compiled_dto_content_digest(_compiled_policy_to_dto(policy))
-
-
-def _compiled_preconditions_from_dto(
-    items: Sequence[Mapping[str, Any]],
-) -> tuple[CompiledPrecondition, ...]:
-    result: list[CompiledPrecondition] = []
-    for item in items:
-        pattern_data = item["pattern"]
-        pattern = None
-        if pattern_data is not None:
-            expected_fields = {
-                "source",
-                "path",
-                "program_digest",
-                "source_max_bytes",
-                "input_max_bytes",
-            }
-            if (
-                type(pattern_data) is not dict
-                or set(pattern_data) != expected_fields
-            ):
-                raise InvocationValidationError(
-                    "Authenticated compiled pattern DTO is invalid",
-                    details={"field": "preconditions.pattern"},
-                )
-            try:
-                pattern = restore_compiled_pattern(**pattern_data)
-            except AIGCError as exc:
-                raise InvocationValidationError(
-                    "Authenticated compiled pattern DTO failed integrity "
-                    "verification",
-                    details={"field": "preconditions.pattern"},
-                ) from exc
-        result.append(
-            CompiledPrecondition(
-                name=item["name"],
-                declared_type=item["declared_type"],
-                pattern=pattern,
-                enum=(
-                    tuple(freeze(item["enum"]))
-                    if item["enum"] is not None
-                    else None
-                ),
-                min_length=item["min_length"],
-                max_length=item["max_length"],
-                minimum=item["minimum"],
-                maximum=item["maximum"],
-                legacy=item["legacy"],
-            )
-        )
-    return tuple(result)
-
-
-def _compiled_overlay_from_dto(
-    dto: Mapping[str, Any],
-) -> CompiledPolicyOverlay:
-    if (
-        dto["tools"] is None
-        and dto["tools_configured"] is not None
-    ) or (
-        dto["tools"] is not None
-        and dto["tools_configured"] is not True
-    ):
-        raise InvocationValidationError(
-            "Authenticated compiled tool overlay presence is invalid",
-            details={"field": "tools_configured"},
-        )
-    risk_data = dto["risk"]
-    risk = (
-        CompiledRiskOverlay(
-            mode=risk_data["mode"],
-            threshold=risk_data["threshold"],
-            factors=tuple(
-                CompiledRiskFactor(
-                    name=item["name"],
-                    weight=item["weight"],
-                    condition=item["condition"],
-                )
-                for item in risk_data["factors"]
-            ),
-        )
-        if risk_data is not None
-        else None
-    )
-    return CompiledPolicyOverlay(
-        roles=(
-            tuple(dto["roles"]) if dto["roles"] is not None else None
-        ),
-        conditions=(
-            freeze(dto["conditions"])
-            if dto["conditions"] is not None
-            else None
-        ),
-        tools=(
-            CompiledToolPolicy(
-                configured=dto["tools_configured"],
-                allowed_tools=tuple(
-                    CompiledToolLimit(
-                        name=item["name"],
-                        max_calls=item["max_calls"],
-                    )
-                    for item in dto["tools"]
-                )
-            )
-            if dto["tools"] is not None
-            else None
-        ),
-        retry_max_retries=dto["retry_max_retries"],
-        retry_backoff_ms=dto["retry_backoff_ms"],
-        risk=risk,
-        preconditions=_compiled_preconditions_from_dto(dto["preconditions"]),
-        postconditions=tuple(dto["postconditions"]),
-        output_validator=_compiled_output_program_from_dto(dto),
-        guards=tuple(
-            _compiled_guard_from_dto(item)
-            for item in dto["guards"]
-        ),
-        workflow=(
-            freeze(dto["workflow"])
-            if dto["workflow"] is not None
-            else None
-        ),
-    )
-
-
-def _compiled_policy_from_dto(dto: Mapping[str, Any]) -> CompiledPolicy:
-    """Restore authenticated compiled value objects without policy compilation."""
-    if type(dto["tools_configured"]) is not bool:
-        raise InvocationValidationError(
-            "Authenticated compiled tool policy presence is invalid",
-            details={"field": "tools_configured"},
-        )
-    tools = CompiledToolPolicy(
-        configured=dto["tools_configured"],
-        allowed_tools=tuple(
-            CompiledToolLimit(
-                name=item["name"],
-                max_calls=item["max_calls"],
-            )
-            for item in dto["tools"]
-        ),
-    )
-    risk_data = dto["risk"]
-    risk = CompiledRiskPolicy(
-        mode=risk_data["mode"],
-        threshold=risk_data["threshold"],
-        critical_ceiling=risk_data["critical_ceiling"],
-        factors=tuple(
-            CompiledRiskFactor(
-                name=item["name"],
-                weight=item["weight"],
-                condition=item["condition"],
-            )
-            for item in risk_data["factors"]
-        ),
-        configured=risk_data["configured"],
-    )
-    retry_data = dto["retry"]
-    retry = (
-        CompiledRetryPolicy(
-            max_retries=retry_data["max_retries"],
-            backoff_ms=retry_data["backoff_ms"],
-        )
-        if retry_data is not None
-        else None
-    )
-    guards = tuple(
-        _compiled_guard_from_dto(item)
-        for item in dto["guards"]
-    )
-    preconditions = _compiled_preconditions_from_dto(dto["preconditions"])
-    output_validator = _compiled_output_program_from_dto(dto)
-    authority = AuthorityEnvelope(
-        roles=frozenset(dto["roles"]),
-        conditions=freeze(dto["conditions"]),
-        tools=tools,
-        retry=retry,
-        risk=risk,
-        preconditions=preconditions,
-        postconditions=tuple(dto["postconditions"]),
-        output_schema=(
-            output_validator.schema if output_validator is not None else None
-        ),
-        guards=guards,
-        workflow=freeze(dto["workflow"]),
-    )
-    return CompiledPolicy(
-        policy_digest=dto["policy_digest"],
-        source_identity=dto["source_identity"],
-        declared_policy_version=dto["declared_policy_version"],
-        policy_contract_version=dto["policy_contract_version"],
-        pattern_engine=dto["pattern_engine"],
-        canonicalization_profile=dto["canonicalization_profile"],
-        roles=tuple(dto["roles"]),
-        tools=tools,
-        risk=risk,
-        retry=retry,
-        conditions=freeze(dto["conditions"]),
-        guards=guards,
-        preconditions=preconditions,
-        postconditions=tuple(dto["postconditions"]),
-        output_validator=output_validator,
-        workflow=freeze(dto["workflow"]),
-        authority=authority,
-    )
-
-
 def _validate_compiled_role(role: str, policy: CompiledPolicy) -> None:
     if role not in policy.roles:
         raise GovernanceViolationError(
@@ -1148,270 +368,226 @@ def _record_gate(gates: list[str], gate_id: str) -> None:
 # ── PreCallResult handoff token ──────────────────────────────────
 
 
-class _EnforcementToken:
-    """Singleton sentinel used as the provenance marker on PreCallResult.
-
-    Provenance check threat model: misuse-detection only.
-    This sentinel prevents accidental construction of PreCallResult outside
-    enforce_pre_call() (e.g. typos, copy-paste errors). It does NOT prevent
-    hostile in-process code that imports module internals — Python offers no
-    language-level mechanism for that. Cross-process or multi-tenant isolation
-    is the host's responsibility (spec Section 10.6).
-
-    Pickle and deepcopy survival: __reduce__ and __deepcopy__ return the
-    module-level singleton so identity-based checks remain valid after
-    pickle round-trips and deepcopy operations (spec Section 10.5).
-    """
-
-    __slots__ = ()
-
-    def __copy__(self) -> "_EnforcementToken":
-        return self
-
-    def __deepcopy__(self, _memo: dict) -> "_EnforcementToken":
-        return self
-
-    def __reduce__(self) -> tuple:
-        # Unpickling calls _get_enforcement_token() which returns the
-        # module-level singleton, preserving object identity.
-        return (_get_enforcement_token, ())
-
-
-def _get_enforcement_token() -> "_EnforcementToken":
-    """Return the module-level _ENFORCEMENT_TOKEN singleton (pickle helper)."""
-    return _ENFORCEMENT_TOKEN
-
-
-def _reconstruct_precall_result(state: dict) -> "PreCallResult":
-    """Pickle reconstruction helper for PreCallResult.
-
-    Creates a blank PreCallResult via object.__new__ (bypassing __init__)
-    and restores state via __setstate__.  Called by PreCallResult.__reduce__
-    to ensure pickle always uses our custom __getstate__/__setstate__ pair
-    regardless of Python version behaviour for frozen+slots dataclasses.
-    """
-    obj = object.__new__(PreCallResult)
-    obj.__setstate__(state)
-    return obj
-
-
-# Module-private sentinel. Only code inside this module sets _origin to this
-# value via object.__setattr__. A directly-constructed PreCallResult gets
-# _origin=None (the field default) and is rejected by post-call.
-_ENFORCEMENT_TOKEN: _EnforcementToken = _EnforcementToken()
-
-
-def _make_token_signer() -> tuple:
-    """Return (sign_fn, verify_fn) with the HMAC session key in a closure.
-
-    The key is not exposed as a module-level attribute; extracting it requires
-    explicit closure introspection rather than a straightforward import.
-    Combined with the _origin sentinel check, this provides defense-in-depth
-    against trivial in-process token forgery (audit Finding #1, 2026-04-05).
-
-    Note: Python in-process security is inherently limited — a determined
-    hostile caller with full module-import access can still bypass these
-    checks via gc introspection.  The intended threat model is misuse
-    detection (accidental direct construction, copy-paste errors), not
-    adversarial in-process attackers.
-    """
-    _key = os.urandom(32)
-
-    def _sign(payload: bytes) -> bytes:
-        return _hmac_mod.digest(_key, payload, hashlib.sha256)
-
-    def _verify(payload: bytes, digest: bytes) -> bool:
-        if not isinstance(payload, bytes) or not isinstance(digest, bytes):
-            return False
-        try:
-            expected = _hmac_mod.digest(_key, payload, hashlib.sha256)
-            return _hmac_mod.compare_digest(expected, digest)
-        except Exception:
-            return False
-
-    return _sign, _verify
-
-
-_token_sign, _token_verify = _make_token_signer()
-
-# Process-local registry of consumed token HMACs (Finding 3, 2026-04-05).
-# Prevents replay via deepcopy/pickle clone of an unconsumed token.
-# Keyed by _token_hmac bytes (unique per session key + evidence content).
-# Thread safety: individual set.add/in operations are GIL-protected, but the
-# check-then-add sequence (step 1f → step 5) is NOT atomic across threads.
-# Concurrent calls with the same-token clone may both pass the check before
-# either registers. Use external locking if calling from multiple threads.
-# Threat model: process-local misuse detection (spec Section 10.6).
-_consumed_token_registry: set[bytes] = set()
-
-
-def _gate_fingerprint(grouped_gates: Any) -> dict[str, list[dict[str, str]]]:
-    """Compute a JSON-serializable fingerprint of the gate manifest.
-
-    Used to authenticate _phase_b_grouped_gates against signed evidence.
-    Maps insertion point -> list of {name, insertion_point} dicts.
-    """
-    if grouped_gates is None:
-        return {}
-    result: dict[str, list[dict[str, str]]] = {}
-    for pt, gates in grouped_gates.items():
-        result[pt] = [
-            {"name": g.name, "insertion_point": g.insertion_point}
-            for g in gates
-        ]
-    return result
-
-
 @dataclass(frozen=True, slots=True)
 class PreCallResult:
-    """Opaque handoff token from enforce_pre_call() to enforce_post_call().
+    """Opaque identity for one registry-backed split enforcement operation."""
 
-    Logically immutable. One-time use only.
-    Not public API directly -- exported via aegis.enforcement and aegis.__init__.
-    """
+    operation_id: str
+    issuer_id: str
+    process_id: int
+    correlation_id: str
+    policy_digest: str
+    canonicalization_profile: str
 
-    resolved_guards: tuple[dict[str, Any], ...]
-    resolved_conditions: Mapping[str, Any]
-    phase_a_metadata: Mapping[str, Any]
-    invocation_snapshot: Mapping[str, Any]
-    policy_file: str
-    model_provider: str
-    model_identifier: str
-    role: str
-    _consumed: bool = field(
-        init=False, default=False, repr=False, compare=False,
-    )
-    # Sorted Phase B gates — set by enforce_pre_call, consumed by
-    # enforce_post_call.  Stored here so the module-level split API
-    # can carry custom gates across the pre/post boundary without
-    # requiring callers to pass them again at post-call time.
-    _phase_b_grouped_gates: Any = field(
-        init=False, default=None, repr=False, compare=False,
-    )
-    # Provenance marker — set to _ENFORCEMENT_TOKEN only by this
-    # module via object.__setattr__.  A directly-constructed PreCallResult
-    # gets None here and is rejected by enforce_post_call.
-    _origin: "_EnforcementToken | None" = field(
-        init=False, default=None, repr=False, compare=False,
-    )
-    _compiled_policy: CompiledPolicy | None = field(
-        init=False, default=None, repr=False, compare=False,
-    )
-    _frozen_invocation_snapshot: Any = field(
-        init=False, default=None, repr=False, compare=False,
-    )
-    _frozen_phase_a_metadata: Any = field(
-        init=False, default=None, repr=False, compare=False,
-    )
-    # Canonical JSON serialization of invocation_snapshot, phase_a_metadata,
-    # guards_evaluated_engine, and conditions_resolved.  A bytes object cannot
-    # be mutated, so Phase B deserialization is immune to any post-Phase-A
-    # mutations of _frozen_invocation_snapshot, _frozen_phase_a_metadata,
-    # resolved_guards, or resolved_conditions (Round 3 audit Finding 2).
-    _frozen_evidence_bytes: Any = field(
-        init=False, default=None, repr=False, compare=False,
-    )
-    # HMAC-SHA256 of _frozen_evidence_bytes, keyed by a session secret held
-    # in the _make_token_signer() closure.  Phase B rejects tokens whose HMAC
-    # does not verify, providing forgery resistance beyond the _origin sentinel
-    # (audit Finding #1, 2026-04-05).  Default b"" is never a valid 32-byte
-    # digest, so an un-signed token is rejected automatically.
-    _token_hmac: bytes = field(
-        init=False, default=b"", repr=False, compare=False,
+
+def _operation_handle(result: PreCallResult) -> OperationHandle:
+    return OperationHandle(
+        operation_id=result.operation_id,
+        issuer_id=result.issuer_id,
+        process_id=result.process_id,
+        policy_digest=result.policy_digest,
+        canonicalization_profile=result.canonicalization_profile,
     )
 
 
-# ── PreCallResult pickle support ──────────────────────────────────
-#
-# Python 3.10's @dataclass(frozen=True, slots=True) has a bug: dunder methods
-# defined inside the class body are not always preserved in the new slots class
-# created by _add_slots().  Assigning pickle methods to the class AFTER creation
-# ensures they are present on the final class object on all Python versions.
-
-
-def _precall_result_getstate(self: "PreCallResult") -> dict:
-    """Pickle support: serialize all slots, converting MappingProxyType to dict."""
-    state = {
-        slot: getattr(self, slot)
-        for slot in self.__slots__
-        if hasattr(self, slot)
+def _issue_pre_call_result(
+    registry: OperationRegistry,
+    *,
+    compiled_policy: CompiledPolicy,
+    invocation_snapshot: Mapping[str, Any],
+    phase_a_metadata: Mapping[str, Any],
+    guards_evaluated_engine: Sequence[Mapping[str, Any]],
+    conditions_resolved: Mapping[str, Any],
+    grouped_gates: Mapping[str, Sequence[EnforcementGate]],
+) -> PreCallResult:
+    private_phase_a_state = {
+        **copy.deepcopy(dict(phase_a_metadata)),
+        "guards_evaluated_engine": [
+            dict(item) for item in guards_evaluated_engine
+        ],
+        "conditions_resolved": copy.deepcopy(dict(conditions_resolved)),
     }
-    compiled = state.pop("_compiled_policy", None)
-    state["_compiled_policy_dto"] = (
-        _compiled_policy_to_dto(compiled)
-        if compiled is not None
-        else None
-    )
-    # MappingProxyType is not picklable on Python < 3.12; convert to plain
-    # dict with list values so __setstate__ can rebuild the immutable proxy.
-    gates = state.get("_phase_b_grouped_gates")
-    if isinstance(gates, types.MappingProxyType):
-        state["_phase_b_grouped_gates"] = {
-            pt: list(gl) for pt, gl in gates.items()
-        }
-    return state
-
-
-def _precall_result_setstate(self: "PreCallResult", state: dict) -> None:
-    """Restore a token only after authenticating its canonical compiled DTO."""
-    compiled_dto = state.pop("_compiled_policy_dto", None)
-    if compiled_dto is not None:
-        evidence_bytes = state.get("_frozen_evidence_bytes")
-        token_hmac = state.get("_token_hmac")
-        try:
-            if not _token_verify(evidence_bytes, token_hmac):
-                raise ValueError("evidence HMAC mismatch")
-            evidence = json.loads(evidence_bytes)
-            expected_digest = evidence["compiled_policy_content_digest"]
-            actual_digest = _compiled_dto_content_digest(compiled_dto)
-            if not _hmac_mod.compare_digest(
-                expected_digest,
-                actual_digest,
-            ):
-                raise ValueError("compiled DTO content digest mismatch")
-        except (KeyError, TypeError, ValueError) as exc:
-            raise InvocationValidationError(
-                "Serialized compiled policy integrity check failed before "
-                "compiled policy reconstruction",
-                details={"field": "_compiled_policy_dto"},
-            ) from exc
-    for key, value in state.items():
-        object.__setattr__(self, key, value)
-    object.__setattr__(
-        self,
-        "_compiled_policy",
-        (
-            _compiled_policy_from_dto(compiled_dto)
-            if compiled_dto is not None
-            else None
+    record = OperationRecord(
+        compiled_policy=compiled_policy,
+        invocation_snapshot=freeze(dict(invocation_snapshot)),
+        phase_a_metadata=freeze(private_phase_a_state),
+        grouped_gates=MappingProxyType(
+            {point: tuple(gates) for point, gates in grouped_gates.items()}
         ),
     )
-    # Re-wrap gates in the immutable proxy that __getstate__ flattened.
-    gates = state.get("_phase_b_grouped_gates")
-    if isinstance(gates, dict):
-        object.__setattr__(
-            self,
-            "_phase_b_grouped_gates",
-            types.MappingProxyType(
-                {pt: tuple(gl) for pt, gl in gates.items()}
-            ),
+    handle = registry.issue(record)
+    return PreCallResult(
+        operation_id=handle.operation_id,
+        issuer_id=handle.issuer_id,
+        process_id=handle.process_id,
+        correlation_id=uuid.uuid4().hex,
+        policy_digest=handle.policy_digest,
+        canonicalization_profile=handle.canonicalization_profile,
+    )
+
+
+def _emit_split_validation_failure(
+    exc: InvocationValidationError,
+    *,
+    record: OperationRecord | None = None,
+    sink: AuditSink | None = None,
+    sink_failure_mode: str = "raise",
+    redaction_patterns: list[tuple[str, re.Pattern[str]]] | None = None,
+) -> None:
+    safe_invocation = (
+        _plain_compiled_value(record.invocation_snapshot)
+        if record is not None
+        else {
+            "policy_file": "unknown",
+            "model_provider": "unknown",
+            "model_identifier": "unknown",
+            "role": "unknown",
+            "input": {},
+            "context": {},
+        }
+    )
+    safe_invocation["output"] = {}
+    artifact = _generate_pre_pipeline_fail_artifact(
+        safe_invocation,
+        exc,
+        redaction_patterns=redaction_patterns,
+    )
+    artifact.setdefault("metadata", {})["enforcement_mode"] = "split"
+    exc.audit_artifact = artifact
+    try:
+        if sink is None:
+            emit_to_sink(artifact)
+        else:
+            emit_to_sink(
+                artifact,
+                sink=sink,
+                failure_mode=sink_failure_mode,
+            )
+    except AuditSinkError as sink_exc:
+        logger.error(
+            "Sink emission failed on split validation FAIL path: %s",
+            sink_exc,
         )
 
 
-def _precall_result_reduce(self: "PreCallResult") -> tuple:
-    """Explicit pickle/deepcopy protocol for PreCallResult.
+def _run_registry_post_call(
+    registry: OperationRegistry,
+    pre_call_result: object,
+    output: object,
+    *,
+    sink: AuditSink | None = None,
+    sink_failure_mode: str = "raise",
+    redaction_patterns: list[tuple[str, re.Pattern[str]]] | None = None,
+    signer: ArtifactSigner | None = None,
+    risk_config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if not isinstance(pre_call_result, PreCallResult):
+        exc = InvocationValidationError(
+            "enforce_post_call() requires a PreCallResult from "
+            "enforce_pre_call()",
+            details={"received_type": type(pre_call_result).__name__},
+        )
+        _emit_split_validation_failure(
+            exc,
+            sink=sink,
+            sink_failure_mode=sink_failure_mode,
+            redaction_patterns=redaction_patterns,
+        )
+        raise exc
 
-    Forces serialisation through _precall_result_getstate regardless of Python
-    version behaviour for frozen+slots dataclasses.
-    """
-    return (_reconstruct_precall_result, (_precall_result_getstate(self),))
+    try:
+        record = registry.consume(_operation_handle(pre_call_result))
+    except InvocationValidationError as exc:
+        _emit_split_validation_failure(
+            exc,
+            sink=sink,
+            sink_failure_mode=sink_failure_mode,
+            redaction_patterns=redaction_patterns,
+        )
+        raise
 
+    if not isinstance(output, dict):
+        exc = InvocationValidationError(
+            "enforce_post_call() output must be a dict",
+            details={"field": "output"},
+        )
+        _emit_split_validation_failure(
+            exc,
+            record=record,
+            sink=sink,
+            sink_failure_mode=sink_failure_mode,
+            redaction_patterns=redaction_patterns,
+        )
+        raise exc
+    try:
+        json.dumps(output, allow_nan=False, sort_keys=True)
+    except (TypeError, ValueError) as json_exc:
+        exc = InvocationValidationError(
+            "enforce_post_call() output is not JSON-serializable: "
+            f"{json_exc}",
+            details={"field": "output"},
+        )
+        _emit_split_validation_failure(
+            exc,
+            record=record,
+            sink=sink,
+            sink_failure_mode=sink_failure_mode,
+            redaction_patterns=redaction_patterns,
+        )
+        raise exc from json_exc
 
-# Assign after class creation so the methods land on the final slots class
-# (Python 3.10 _add_slots does not always carry user-defined dunders over).
-PreCallResult.__getstate__ = _precall_result_getstate  # type: ignore[method-assign]
-PreCallResult.__setstate__ = _precall_result_setstate  # type: ignore[method-assign]
-PreCallResult.__reduce__ = _precall_result_reduce  # type: ignore[method-assign]
+    full_invocation = _plain_compiled_value(record.invocation_snapshot)
+    full_invocation["output"] = output
+    phase_a_metadata = _plain_compiled_value(record.phase_a_metadata)
+    guards_evaluated_engine = [
+        dict(item)
+        for item in phase_a_metadata.pop("guards_evaluated_engine", ())
+    ]
+    conditions_resolved = dict(
+        phase_a_metadata.pop("conditions_resolved", {})
+    )
+    phase_a_gates = list(phase_a_metadata.get("gates_evaluated", []))
+    all_custom_metadata = dict(
+        phase_a_metadata.get("all_custom_metadata", {})
+    )
+
+    with enforcement_span(
+        "aegis.enforce_post_call",
+        attributes={
+            "aegis.policy_file": full_invocation.get("policy_file", ""),
+            "aegis.role": full_invocation.get("role", ""),
+            "aegis.enforcement_mode": "split",
+        },
+    ) as span:
+        return _run_phase_b(
+            record.compiled_policy,
+            record.compiled_policy,
+            full_invocation,
+            phase_a_gates=phase_a_gates,
+            phase_a_metadata=phase_a_metadata,
+            phase_a_extra={
+                "preconditions_satisfied": phase_a_metadata.get(
+                    "preconditions_satisfied",
+                    [],
+                ),
+                "tool_constraints": phase_a_metadata.get(
+                    "tool_constraints",
+                    {},
+                ),
+            },
+            guards_evaluated_engine=guards_evaluated_engine,
+            conditions_resolved=conditions_resolved,
+            all_custom_metadata=all_custom_metadata,
+            grouped_gates=record.grouped_gates,
+            sink=sink,
+            sink_failure_mode=sink_failure_mode,
+            redaction_patterns=redaction_patterns,
+            signer=signer,
+            risk_config=risk_config,
+            enforcement_mode="split",
+            pre_call_timestamp=phase_a_metadata.get("pre_call_timestamp"),
+            span=span,
+        )
 
 
 # ── Invocation validation (three layers) ─────────────────────────
@@ -2465,10 +1641,6 @@ def enforce_pre_call(
 
     grouped_gates = sort_gates(custom_gates or [])
     pre_call_timestamp = int(_time.time())
-    # Unique per-token nonce ensures _token_hmac is unique even for
-    # identical invocations in the same second (Finding 3, 2026-04-05).
-    _token_nonce = os.urandom(16).hex()
-
     with enforcement_span(
         "aegis.enforce_pre_call",
         attributes={
@@ -2547,92 +1719,15 @@ def enforce_pre_call(
             enforcement_mode="split",
         )
 
-        token = PreCallResult(
-            resolved_guards=tuple(
-                dict(g) if isinstance(g, dict) else g
-                for g in guards_evaluated_engine
-            ),
-            resolved_conditions=dict(conditions_resolved),
-            phase_a_metadata=phase_a_metadata,
+        return _issue_pre_call_result(
+            _MODULE_OPERATION_REGISTRY,
+            compiled_policy=effective_policy,
             invocation_snapshot=invocation_snapshot,
-            policy_file=invocation["policy_file"],
-            model_provider=invocation["model_provider"],
-            model_identifier=invocation["model_identifier"],
-            role=invocation["role"],
+            phase_a_metadata=phase_a_metadata,
+            guards_evaluated_engine=guards_evaluated_engine,
+            conditions_resolved=conditions_resolved,
+            grouped_gates=grouped_gates,
         )
-        # Stamp Phase B gates, provenance marker, and frozen copies.
-        # All are init=False so object.__setattr__ is required on a
-        # frozen dataclass.
-        # Wrap in MappingProxyType (outer) + tuples (inner) so callers
-        # cannot replace or append to gate lists after Phase A PASS
-        # (Round 3 audit Finding 1).
-        object.__setattr__(
-            token, "_phase_b_grouped_gates",
-            types.MappingProxyType(
-                {pt: tuple(gl) for pt, gl in grouped_gates.items()}
-            ),
-        )
-        object.__setattr__(token, "_origin", _ENFORCEMENT_TOKEN)
-        object.__setattr__(token, "_compiled_policy", effective_policy)
-        object.__setattr__(
-            token, "_frozen_invocation_snapshot",
-            copy.deepcopy(token.invocation_snapshot),
-        )
-        try:
-            frozen_evidence_bytes = json.dumps(
-                {
-                    "invocation_snapshot": dict(token.invocation_snapshot),
-                    "phase_a_metadata": phase_a_metadata,
-                    "guards_evaluated_engine": [
-                        dict(g) if isinstance(g, dict) else None
-                        for g in guards_evaluated_engine
-                    ],
-                    "conditions_resolved": dict(conditions_resolved),
-                    "policy_digest": effective_policy.policy_digest,
-                    "compiled_policy_content_digest": (
-                        _compiled_policy_content_digest(effective_policy)
-                    ),
-                    # Finding 2: gate fingerprint so Phase B can verify _phase_b_grouped_gates.
-                    "gate_fingerprint": _gate_fingerprint(grouped_gates),
-                    # Finding 3: unique per-token nonce so _token_hmac is unique
-                    # even for identical invocations within the same second.
-                    "token_nonce": _token_nonce,
-                },
-                sort_keys=True,
-            ).encode()
-        except (TypeError, ValueError) as json_exc:
-            freeze_err = InvocationValidationError(
-                f"Policy contains non-JSON-serializable values; "
-                f"cannot freeze token: {json_exc}",
-                details={"field": "compiled_policy"},
-            )
-            safe_inv = dict(invocation)
-            safe_inv.setdefault("output", {})
-            artifact = _generate_pre_pipeline_fail_artifact(
-                safe_inv, freeze_err,
-            )
-            artifact.setdefault("metadata", {})["enforcement_mode"] = (
-                "split_pre_call_only"
-            )
-            freeze_err.audit_artifact = artifact
-            try:
-                emit_to_sink(artifact)
-            except AuditSinkError as sink_exc:
-                logger.error(
-                    "Sink emission failed on policy freeze FAIL path: %s",
-                    sink_exc,
-                )
-            raise freeze_err from json_exc
-        object.__setattr__(token, "_frozen_evidence_bytes", frozen_evidence_bytes)
-        object.__setattr__(token, "_token_hmac", _token_sign(frozen_evidence_bytes))
-        # Deep-copy phase_a_metadata so Phase B artifact evidence cannot
-        # be forged by mutating the public phase_a_metadata field
-        # (Round 2 audit Finding 2).
-        object.__setattr__(
-            token, "_frozen_phase_a_metadata",
-            copy.deepcopy(phase_a_metadata),
-        )
-        return token
 
 
 @_evidence_attempt_boundary("enforce_post_call", "split_post_call")
@@ -2653,316 +1748,11 @@ def enforce_post_call(
     :raises: AIGCError subclasses on governance violation
              (FAIL artifact emitted)
     """
-    # 0. Session token guard — SessionPreCallResult must not bypass GovernanceSession
-    if getattr(pre_call_result, "_IS_SESSION_TOKEN", False):
-        exc = InvocationValidationError(
-            "SessionPreCallResult cannot be completed via enforce_post_call(); "
-            "use GovernanceSession.enforce_step_post_call() instead",
-            details={"received_type": type(pre_call_result).__name__},
-        )
-        safe_inv = {
-            "policy_file": "unknown", "model_provider": "unknown",
-            "model_identifier": "unknown", "role": "unknown",
-            "input": {}, "output": {}, "context": {},
-        }
-        artifact = _generate_pre_pipeline_fail_artifact(safe_inv, exc)
-        artifact.setdefault("metadata", {})["enforcement_mode"] = "split"
-        exc.audit_artifact = artifact
-        try:
-            emit_to_sink(artifact)
-        except AuditSinkError as sink_exc:
-            logger.error(
-                "Sink emission failed on pre-pipeline FAIL path: %s", sink_exc,
-            )
-        raise exc
-
-    # 1. Type check
-    if not isinstance(pre_call_result, PreCallResult):
-        exc = InvocationValidationError(
-            "enforce_post_call() requires a PreCallResult "
-            "from enforce_pre_call()",
-            details={"received_type": type(pre_call_result).__name__},
-        )
-        safe_inv = {
-            "policy_file": "unknown", "model_provider": "unknown",
-            "model_identifier": "unknown", "role": "unknown",
-            "input": {}, "output": {}, "context": {},
-        }
-        artifact = _generate_pre_pipeline_fail_artifact(safe_inv, exc)
-        artifact.setdefault("metadata", {})["enforcement_mode"] = "split"
-        exc.audit_artifact = artifact
-        try:
-            emit_to_sink(artifact)
-        except AuditSinkError as sink_exc:
-            logger.error(
-                "Sink emission failed on pre-pipeline FAIL path: %s", sink_exc,
-            )
-        raise exc
-
-    # 1b. Provenance check — reject directly-constructed PreCallResult
-    # objects (forgery prevention, Finding 2).
-    if pre_call_result._origin is not _ENFORCEMENT_TOKEN:
-        exc = InvocationValidationError(
-            "PreCallResult was not issued by enforce_pre_call(); "
-            "directly-constructed tokens are rejected",
-            details={"field": "pre_call_result"},
-        )
-        safe_inv = {
-            "policy_file": "unknown", "model_provider": "unknown",
-            "model_identifier": "unknown", "role": "unknown",
-            "input": {}, "output": {}, "context": {},
-        }
-        artifact = _generate_pre_pipeline_fail_artifact(safe_inv, exc)
-        artifact.setdefault("metadata", {})["enforcement_mode"] = "split"
-        exc.audit_artifact = artifact
-        try:
-            emit_to_sink(artifact)
-        except AuditSinkError as sink_exc:
-            logger.error(
-                "Sink emission failed on pre-pipeline FAIL path: %s", sink_exc,
-            )
-        raise exc
-
-    # 1c. HMAC integrity check — rejects tokens where _origin was stamped via
-    # object.__setattr__ without holding the session signing key (audit
-    # Finding #1, 2026-04-05).  Combined with the sentinel check above this
-    # provides defense-in-depth against trivial in-process token forgery.
-    if not _token_verify(
-        pre_call_result._frozen_evidence_bytes,
-        pre_call_result._token_hmac,
-    ):
-        exc = InvocationValidationError(
-            "PreCallResult token integrity check failed; "
-            "token may be forged or corrupted",
-            details={"field": "pre_call_result"},
-        )
-        safe_inv = {
-            "policy_file": "unknown", "model_provider": "unknown",
-            "model_identifier": "unknown", "role": "unknown",
-            "input": {}, "output": {}, "context": {},
-        }
-        artifact = _generate_pre_pipeline_fail_artifact(safe_inv, exc)
-        artifact.setdefault("metadata", {})["enforcement_mode"] = "split"
-        exc.audit_artifact = artifact
-        try:
-            emit_to_sink(artifact)
-        except AuditSinkError as sink_exc:
-            logger.error(
-                "Sink emission failed on pre-pipeline FAIL path: %s", sink_exc,
-            )
-        raise exc
-
-    # 1d. Pre-deserialize evidence for authenticated identity in error paths.
-    # HMAC verified above; _frozen_evidence_bytes is now authenticated.
-    # Use _verified_snap for all FAIL artifact safe_inv construction below so
-    # that mutations to _frozen_invocation_snapshot do not forge artifact
-    # identity (audit Finding 4, 2026-04-05).
-    # If the bytes are not valid JSON the token is corrupted; raise immediately.
-    try:
-        _pre_verified_evidence = json.loads(
-            pre_call_result._frozen_evidence_bytes
-        )
-        _verified_snap = dict(_pre_verified_evidence["invocation_snapshot"])
-        _verified_snap.setdefault("output", {})
-    except (TypeError, ValueError, KeyError) as _ev_exc:
-        exc = InvocationValidationError(
-            "PreCallResult contains invalid internal token state; "
-            "token may be corrupted or forged",
-            details={"field": "_frozen_evidence_bytes"},
-        )
-        safe_inv = {
-            "policy_file": "unknown", "model_provider": "unknown",
-            "model_identifier": "unknown", "role": "unknown",
-            "input": {}, "output": {}, "context": {},
-        }
-        artifact = _generate_pre_pipeline_fail_artifact(safe_inv, exc)
-        artifact.setdefault("metadata", {})["enforcement_mode"] = "split"
-        exc.audit_artifact = artifact
-        try:
-            emit_to_sink(artifact)
-        except AuditSinkError as sink_exc:
-            logger.error(
-                "Sink emission failed on pre-pipeline FAIL path: %s", sink_exc,
-            )
-        raise exc from _ev_exc
-
-    # 1e. Gate fingerprint integrity check — detects object.__setattr__ replacement
-    # of _phase_b_grouped_gates after Phase A (audit Finding 2, 2026-04-05).
-    # Skip if absent from evidence (backward compat: old pickled tokens lack this key).
-    _expected_gate_fp = _pre_verified_evidence.get("gate_fingerprint")
-    if _expected_gate_fp is not None:
-        _actual_gate_fp = _gate_fingerprint(pre_call_result._phase_b_grouped_gates)
-        if _actual_gate_fp != _expected_gate_fp:
-            exc = InvocationValidationError(
-                "Phase B gate manifest was tampered; "
-                "gate fingerprint does not match signed evidence",
-                details={"field": "_phase_b_grouped_gates"},
-            )
-            safe_inv = dict(_verified_snap)
-            artifact = _generate_pre_pipeline_fail_artifact(safe_inv, exc)
-            artifact.setdefault("metadata", {})["enforcement_mode"] = "split"
-            exc.audit_artifact = artifact
-            try:
-                emit_to_sink(artifact)
-            except AuditSinkError as sink_exc:
-                logger.error(
-                    "Sink emission failed on gate fingerprint FAIL path: %s", sink_exc,
-                )
-            raise exc
-
-    # 1f. Clone replay check — rejects second consumption of the same logical token
-    # (whether original or clone). Keyed by _token_hmac (unique per session + content).
-    # audit Finding 3, 2026-04-05.
-    if pre_call_result._token_hmac in _consumed_token_registry:
-        exc = InvocationValidationError(
-            "Token replay attempt detected; this token or a clone "
-            "of it has already been consumed",
-            details={"field": "pre_call_result"},
-        )
-        safe_inv = dict(_verified_snap)
-        artifact = _generate_pre_pipeline_fail_artifact(safe_inv, exc)
-        artifact.setdefault("metadata", {})["enforcement_mode"] = "split"
-        exc.audit_artifact = artifact
-        try:
-            emit_to_sink(artifact)
-        except AuditSinkError as sink_exc:
-            logger.error(
-                "Sink emission failed on clone replay FAIL path: %s", sink_exc,
-            )
-        raise exc
-
-    # 2. Output type validation
-    if not isinstance(output, dict):
-        exc = InvocationValidationError(
-            "enforce_post_call() output must be a dict",
-            details={"field": "output"},
-        )
-        safe_inv = dict(_verified_snap)
-        artifact = _generate_pre_pipeline_fail_artifact(safe_inv, exc)
-        artifact.setdefault("metadata", {})["enforcement_mode"] = "split"
-        exc.audit_artifact = artifact
-        try:
-            emit_to_sink(artifact)
-        except AuditSinkError as sink_exc:
-            logger.error(
-                "Sink emission failed on pre-pipeline FAIL path: %s", sink_exc,
-            )
-        raise exc
-
-    # 2b. Output serializability check (Finding 4).
-    # Mirror _validate_invocation()'s json.dumps() check so that a
-    # non-serializable output produces a typed FAIL artifact rather
-    # than a raw TypeError escaping from checksum generation later.
-    # Must happen BEFORE _consumed is flipped.
-    try:
-        json.dumps(output, allow_nan=False, sort_keys=True)
-    except (TypeError, ValueError) as json_exc:
-        exc = InvocationValidationError(
-            f"enforce_post_call() output is not JSON-serializable: "
-            f"{json_exc}",
-            details={"field": "output"},
-        )
-        safe_inv = dict(_verified_snap)
-        artifact = _generate_pre_pipeline_fail_artifact(safe_inv, exc)
-        artifact.setdefault("metadata", {})["enforcement_mode"] = "split"
-        exc.audit_artifact = artifact
-        try:
-            emit_to_sink(artifact)
-        except AuditSinkError as sink_exc:
-            logger.error(
-                "Sink emission failed on pre-pipeline FAIL path: %s",
-                sink_exc,
-            )
-        raise exc from json_exc
-
-    # 3. Consumption check
-    if pre_call_result._consumed:
-        exc = InvocationValidationError(
-            "PreCallResult has already been consumed; "
-            "create a new one via enforce_pre_call()",
-            details={"field": "pre_call_result"},
-        )
-        safe_inv = dict(_verified_snap)
-        artifact = _generate_pre_pipeline_fail_artifact(safe_inv, exc)
-        artifact.setdefault("metadata", {})["enforcement_mode"] = "split"
-        exc.audit_artifact = artifact
-        try:
-            emit_to_sink(artifact)
-        except AuditSinkError as sink_exc:
-            logger.error(
-                "Sink emission failed on pre-pipeline FAIL path: %s", sink_exc,
-            )
-        raise exc
-
-    # 4. Bind Phase B to the compiled authority issued by Phase A.
-    evidence = _pre_verified_evidence
-    compiled_policy = pre_call_result._compiled_policy
-    if (
-        compiled_policy is None
-        or evidence.get("policy_digest") != compiled_policy.policy_digest
-        or evidence.get("compiled_policy_content_digest")
-        != _compiled_policy_content_digest(compiled_policy)
-    ):
-        raise InvocationValidationError(
-            "PreCallResult compiled policy is missing or does not match "
-            "authenticated Phase A evidence",
-            details={"field": "_compiled_policy"},
-        )
-
-    # 5. Register in replay registry BEFORE marking _consumed — order matters:
-    # registry add must happen first so that a concurrent clone cannot sneak through
-    # the step 1f check in the window between registration and consumed-flag flip.
-    # (audit Finding 3, 2026-04-05)
-    _consumed_token_registry.add(pre_call_result._token_hmac)
-    object.__setattr__(pre_call_result, "_consumed", True)
-
-    full_invocation = dict(evidence["invocation_snapshot"])
-    full_invocation["output"] = output
-
-    # 6. Recover Phase A state exclusively from the evidence snapshot.
-    phase_a_meta = dict(evidence["phase_a_metadata"])
-    phase_a_gates = list(
-        phase_a_meta.get("gates_evaluated", []),
+    return _run_registry_post_call(
+        _MODULE_OPERATION_REGISTRY,
+        pre_call_result,
+        output,
     )
-    all_custom_metadata = dict(
-        phase_a_meta.get("all_custom_metadata", {}),
-    )
-
-    with enforcement_span(
-        "aegis.enforce_post_call",
-        attributes={
-            "aegis.policy_file": pre_call_result.policy_file,
-            "aegis.role": pre_call_result.role,
-            "aegis.enforcement_mode": "split",
-        },
-    ) as span:
-        return _run_phase_b(
-            compiled_policy,
-            compiled_policy,
-            full_invocation,
-            phase_a_gates=phase_a_gates,
-            phase_a_metadata=phase_a_meta,
-            phase_a_extra={
-                "preconditions_satisfied": phase_a_meta.get(
-                    "preconditions_satisfied", [],
-                ),
-                "tool_constraints": phase_a_meta.get(
-                    "tool_constraints", {},
-                ),
-            },
-            guards_evaluated_engine=list(
-                evidence.get("guards_evaluated_engine", []),
-            ),
-            conditions_resolved=dict(
-                evidence.get("conditions_resolved", {}),
-            ),
-            all_custom_metadata=all_custom_metadata,
-            # Pass Phase B custom gates preserved from Phase A (Finding 1).
-            grouped_gates=pre_call_result._phase_b_grouped_gates,
-            enforcement_mode="split",
-            pre_call_timestamp=phase_a_meta.get("pre_call_timestamp"),
-            span=span,
-        )
 
 
 @_evidence_attempt_boundary("enforce_pre_call_async", "split_pre_call")
@@ -3026,10 +1816,6 @@ async def enforce_pre_call_async(
     # We loaded the policy async above; now run the rest synchronously.
     grouped_gates = sort_gates(custom_gates or [])
     pre_call_timestamp = int(_time.time())
-    # Unique per-token nonce ensures _token_hmac is unique even for
-    # identical invocations in the same second (Finding 3, 2026-04-05).
-    _token_nonce = os.urandom(16).hex()
-
     with enforcement_span(
         "aegis.enforce_pre_call",
         attributes={
@@ -3105,83 +1891,15 @@ async def enforce_pre_call_async(
             enforcement_mode="split",
         )
 
-        token = PreCallResult(
-            resolved_guards=tuple(
-                dict(g) if isinstance(g, dict) else g
-                for g in guards_evaluated_engine
-            ),
-            resolved_conditions=dict(conditions_resolved),
-            phase_a_metadata=phase_a_metadata,
+        return _issue_pre_call_result(
+            _MODULE_OPERATION_REGISTRY,
+            compiled_policy=effective_policy,
             invocation_snapshot=invocation_snapshot,
-            policy_file=invocation["policy_file"],
-            model_provider=invocation["model_provider"],
-            model_identifier=invocation["model_identifier"],
-            role=invocation["role"],
+            phase_a_metadata=phase_a_metadata,
+            guards_evaluated_engine=guards_evaluated_engine,
+            conditions_resolved=conditions_resolved,
+            grouped_gates=grouped_gates,
         )
-        object.__setattr__(
-            token, "_phase_b_grouped_gates",
-            types.MappingProxyType(
-                {pt: tuple(gl) for pt, gl in grouped_gates.items()}
-            ),
-        )
-        object.__setattr__(token, "_origin", _ENFORCEMENT_TOKEN)
-        object.__setattr__(token, "_compiled_policy", effective_policy)
-        object.__setattr__(
-            token, "_frozen_invocation_snapshot",
-            copy.deepcopy(token.invocation_snapshot),
-        )
-        try:
-            frozen_evidence_bytes = json.dumps(
-                {
-                    "invocation_snapshot": dict(token.invocation_snapshot),
-                    "phase_a_metadata": phase_a_metadata,
-                    "guards_evaluated_engine": [
-                        dict(g) if isinstance(g, dict) else None
-                        for g in guards_evaluated_engine
-                    ],
-                    "conditions_resolved": dict(conditions_resolved),
-                    "policy_digest": effective_policy.policy_digest,
-                    "compiled_policy_content_digest": (
-                        _compiled_policy_content_digest(effective_policy)
-                    ),
-                    # Finding 2: gate fingerprint so Phase B can verify _phase_b_grouped_gates.
-                    "gate_fingerprint": _gate_fingerprint(grouped_gates),
-                    # Finding 3: unique per-token nonce so _token_hmac is unique
-                    # even for identical invocations within the same second.
-                    "token_nonce": _token_nonce,
-                },
-                sort_keys=True,
-            ).encode()
-        except (TypeError, ValueError) as json_exc:
-            freeze_err = InvocationValidationError(
-                f"Policy contains non-JSON-serializable values; "
-                f"cannot freeze token: {json_exc}",
-                details={"field": "compiled_policy"},
-            )
-            safe_inv = dict(invocation)
-            safe_inv.setdefault("output", {})
-            artifact = _generate_pre_pipeline_fail_artifact(
-                safe_inv, freeze_err,
-            )
-            artifact.setdefault("metadata", {})["enforcement_mode"] = (
-                "split_pre_call_only"
-            )
-            freeze_err.audit_artifact = artifact
-            try:
-                emit_to_sink(artifact)
-            except AuditSinkError as sink_exc:
-                logger.error(
-                    "Sink emission failed on policy freeze FAIL path: %s",
-                    sink_exc,
-                )
-            raise freeze_err from json_exc
-        object.__setattr__(token, "_frozen_evidence_bytes", frozen_evidence_bytes)
-        object.__setattr__(token, "_token_hmac", _token_sign(frozen_evidence_bytes))
-        object.__setattr__(
-            token, "_frozen_phase_a_metadata",
-            copy.deepcopy(phase_a_metadata),
-        )
-        return token
 
 
 @_evidence_attempt_boundary("enforce_post_call_async", "split_post_call")
@@ -3321,14 +2039,18 @@ def emit_split_fn_failure_artifact(
     :param exc: Exception raised by the wrapped function
     :return: Emitted FAIL audit artifact
     """
-    inv_snap = dict(pre_call_result._frozen_invocation_snapshot)
-    inv_snap.setdefault("output", {})
-    compiled_policy = pre_call_result._compiled_policy
-    policy = (
-        _compiled_audit_projection(compiled_policy)
-        if compiled_policy is not None
-        else {}
+    if not isinstance(pre_call_result, PreCallResult):
+        raise InvocationValidationError(
+            "emit_split_fn_failure_artifact() requires a PreCallResult",
+            details={"received_type": type(pre_call_result).__name__},
+        )
+    record = _MODULE_OPERATION_REGISTRY.consume(
+        _operation_handle(pre_call_result)
     )
+    inv_snap = _plain_compiled_value(record.invocation_snapshot)
+    inv_snap.setdefault("output", {})
+    policy = _compiled_audit_projection(record.compiled_policy)
+    phase_a_metadata = _plain_compiled_value(record.phase_a_metadata)
 
     failure_reason, _ = sanitize_failure_message(
         f"{type(exc).__name__}: {exc}", None,
@@ -3353,7 +2075,7 @@ def emit_split_fn_failure_artifact(
         failure_reason=failure_reason,
         metadata={
             "enforcement_mode": "split",
-            "pre_call_gates_evaluated": pre_call_result.phase_a_metadata.get(
+            "pre_call_gates_evaluated": phase_a_metadata.get(
                 "gates_evaluated", []
             ),
         },
@@ -3429,6 +2151,7 @@ class AEGIS:
         self._policy_loader = policy_loader
         self._risk_config = risk_config
         self._policy_cache = PolicyCache()
+        self._operation_registry = OperationRegistry()
         self._attempt_factory = AttemptFactory()
         self._evidence_diagnostics = EvidenceDiagnostics()
         self._validator_hooks: list[Any] = []
@@ -3666,10 +2389,6 @@ class AEGIS:
         """Run Phase A after the shared split-boundary validation."""
         grouped_gates = sort_gates(self._custom_gates)
         pre_call_timestamp = int(_time.time())
-        # Unique per-token nonce ensures _token_hmac is unique even for
-        # identical invocations in the same second (Finding 3, 2026-04-05).
-        _token_nonce = os.urandom(16).hex()
-
         with enforcement_span(
             "aegis.enforce_pre_call",
             attributes={
@@ -3747,94 +2466,15 @@ class AEGIS:
                 enforcement_mode="split",
             )
 
-            token = PreCallResult(
-                resolved_guards=tuple(
-                    dict(g) if isinstance(g, dict) else g
-                    for g in guards_evaluated_engine
-                ),
-                resolved_conditions=dict(conditions_resolved),
-                phase_a_metadata=phase_a_metadata,
+            return _issue_pre_call_result(
+                self._operation_registry,
+                compiled_policy=effective_policy,
                 invocation_snapshot=invocation_snapshot,
-                policy_file=invocation["policy_file"],
-                model_provider=invocation["model_provider"],
-                model_identifier=invocation["model_identifier"],
-                role=invocation["role"],
+                phase_a_metadata=phase_a_metadata,
+                guards_evaluated_engine=guards_evaluated_engine,
+                conditions_resolved=conditions_resolved,
+                grouped_gates=grouped_gates,
             )
-            object.__setattr__(
-                token, "_phase_b_grouped_gates",
-                types.MappingProxyType(
-                    {pt: tuple(gl) for pt, gl in grouped_gates.items()}
-                ),
-            )
-            object.__setattr__(token, "_origin", _ENFORCEMENT_TOKEN)
-            object.__setattr__(token, "_compiled_policy", effective_policy)
-            object.__setattr__(
-                token, "_frozen_invocation_snapshot",
-                copy.deepcopy(token.invocation_snapshot),
-            )
-            try:
-                frozen_evidence_bytes = json.dumps(
-                    {
-                        "invocation_snapshot": dict(
-                            token.invocation_snapshot,
-                        ),
-                        "phase_a_metadata": phase_a_metadata,
-                        "guards_evaluated_engine": [
-                            dict(g) if isinstance(g, dict) else None
-                            for g in guards_evaluated_engine
-                        ],
-                        "conditions_resolved": dict(conditions_resolved),
-                        "policy_digest": effective_policy.policy_digest,
-                        "compiled_policy_content_digest": (
-                            _compiled_policy_content_digest(effective_policy)
-                        ),
-                        # Finding 2: gate fingerprint so Phase B can verify _phase_b_grouped_gates.
-                        "gate_fingerprint": _gate_fingerprint(grouped_gates),
-                        # Finding 3: unique per-token nonce so _token_hmac is unique
-                        # even for identical invocations within the same second.
-                        "token_nonce": _token_nonce,
-                    },
-                    sort_keys=True,
-                ).encode()
-            except (TypeError, ValueError) as json_exc:
-                freeze_err = InvocationValidationError(
-                    f"Policy contains non-JSON-serializable values; "
-                    f"cannot freeze token: {json_exc}",
-                    details={"field": "compiled_policy"},
-                )
-                safe_inv = dict(invocation)
-                safe_inv.setdefault("output", {})
-                artifact = _generate_pre_pipeline_fail_artifact(
-                    safe_inv, freeze_err,
-                    redaction_patterns=self._redaction_patterns,
-                )
-                artifact.setdefault("metadata", {})["enforcement_mode"] = (
-                    "split_pre_call_only"
-                )
-                freeze_err.audit_artifact = artifact
-                try:
-                    emit_to_sink(
-                        artifact,
-                        sink=self._sink,
-                        failure_mode=self._on_sink_failure,
-                    )
-                except AuditSinkError as sink_exc:
-                    logger.error(
-                        "Sink emission failed on policy freeze FAIL path: %s",
-                        sink_exc,
-                    )
-                raise freeze_err from json_exc
-            object.__setattr__(
-                token, "_frozen_evidence_bytes", frozen_evidence_bytes,
-            )
-            object.__setattr__(
-                token, "_token_hmac", _token_sign(frozen_evidence_bytes),
-            )
-            object.__setattr__(
-                token, "_frozen_phase_a_metadata",
-                copy.deepcopy(phase_a_metadata),
-            )
-            return token
 
     @_evidence_attempt_boundary("AEGIS.enforce_post_call", "split_post_call")
     def enforce_post_call(
@@ -3851,417 +2491,16 @@ class AEGIS:
         :return: PASS audit artifact
         :raises: AIGCError subclasses on governance violation
         """
-        # 0. Session token guard — SessionPreCallResult must not bypass GovernanceSession
-        if getattr(pre_call_result, "_IS_SESSION_TOKEN", False):
-            exc = InvocationValidationError(
-                "SessionPreCallResult cannot be completed via enforce_post_call(); "
-                "use GovernanceSession.enforce_step_post_call() instead",
-                details={
-                    "received_type": type(pre_call_result).__name__,
-                },
-            )
-            safe_inv = {
-                "policy_file": "unknown",
-                "model_provider": "unknown",
-                "model_identifier": "unknown",
-                "role": "unknown",
-                "input": {}, "output": {}, "context": {},
-            }
-            artifact = _generate_pre_pipeline_fail_artifact(
-                safe_inv, exc,
-                redaction_patterns=self._redaction_patterns,
-            )
-            artifact.setdefault("metadata", {})["enforcement_mode"] = "split"
-            exc.audit_artifact = artifact
-            try:
-                emit_to_sink(
-                    artifact,
-                    sink=self._sink,
-                    failure_mode=self._on_sink_failure,
-                )
-            except AuditSinkError as sink_exc:
-                logger.error(
-                    "Sink emission failed on pre-pipeline FAIL path: %s",
-                    sink_exc,
-                )
-            raise exc
-
-        # 1. Type check
-        if not isinstance(pre_call_result, PreCallResult):
-            exc = InvocationValidationError(
-                "enforce_post_call() requires a PreCallResult "
-                "from enforce_pre_call()",
-                details={
-                    "received_type": type(pre_call_result).__name__,
-                },
-            )
-            safe_inv = {
-                "policy_file": "unknown",
-                "model_provider": "unknown",
-                "model_identifier": "unknown",
-                "role": "unknown",
-                "input": {}, "output": {}, "context": {},
-            }
-            artifact = _generate_pre_pipeline_fail_artifact(
-                safe_inv, exc,
-                redaction_patterns=self._redaction_patterns,
-            )
-            artifact.setdefault("metadata", {})["enforcement_mode"] = (
-                "split"
-            )
-            exc.audit_artifact = artifact
-            try:
-                emit_to_sink(
-                    artifact,
-                    sink=self._sink,
-                    failure_mode=self._on_sink_failure,
-                )
-            except AuditSinkError as sink_exc:
-                logger.error(
-                    "Sink emission failed on pre-pipeline FAIL path: %s",
-                    sink_exc,
-                )
-            raise exc
-
-        # 1b. Provenance check (Finding 2).
-        if pre_call_result._origin is not _ENFORCEMENT_TOKEN:
-            exc = InvocationValidationError(
-                "PreCallResult was not issued by enforce_pre_call(); "
-                "directly-constructed tokens are rejected",
-                details={"field": "pre_call_result"},
-            )
-            safe_inv = {
-                "policy_file": "unknown",
-                "model_provider": "unknown",
-                "model_identifier": "unknown",
-                "role": "unknown",
-                "input": {}, "output": {}, "context": {},
-            }
-            artifact = _generate_pre_pipeline_fail_artifact(
-                safe_inv, exc,
-                redaction_patterns=self._redaction_patterns,
-            )
-            artifact.setdefault("metadata", {})["enforcement_mode"] = (
-                "split"
-            )
-            exc.audit_artifact = artifact
-            try:
-                emit_to_sink(
-                    artifact,
-                    sink=self._sink,
-                    failure_mode=self._on_sink_failure,
-                )
-            except AuditSinkError as sink_exc:
-                logger.error(
-                    "Sink emission failed on pre-pipeline FAIL path: %s",
-                    sink_exc,
-                )
-            raise exc
-
-        # 1c. HMAC integrity check — rejects tokens where _origin was stamped
-        # via object.__setattr__ without holding the session signing key (audit
-        # Finding #1, 2026-04-05).
-        if not _token_verify(
-            pre_call_result._frozen_evidence_bytes,
-            pre_call_result._token_hmac,
-        ):
-            exc = InvocationValidationError(
-                "PreCallResult token integrity check failed; "
-                "token may be forged or corrupted",
-                details={"field": "pre_call_result"},
-            )
-            safe_inv = {
-                "policy_file": "unknown",
-                "model_provider": "unknown",
-                "model_identifier": "unknown",
-                "role": "unknown",
-                "input": {}, "output": {}, "context": {},
-            }
-            artifact = _generate_pre_pipeline_fail_artifact(
-                safe_inv, exc,
-                redaction_patterns=self._redaction_patterns,
-            )
-            artifact.setdefault("metadata", {})["enforcement_mode"] = (
-                "split"
-            )
-            exc.audit_artifact = artifact
-            try:
-                emit_to_sink(
-                    artifact,
-                    sink=self._sink,
-                    failure_mode=self._on_sink_failure,
-                )
-            except AuditSinkError as sink_exc:
-                logger.error(
-                    "Sink emission failed on pre-pipeline FAIL path: %s",
-                    sink_exc,
-                )
-            raise exc
-
-        # 1d. Pre-deserialize evidence for authenticated identity in error paths.
-        # HMAC verified above; _frozen_evidence_bytes is now authenticated.
-        # Use _verified_snap for all FAIL artifact safe_inv construction below
-        # so that mutations to _frozen_invocation_snapshot do not forge
-        # artifact identity (audit Finding 4, 2026-04-05).
-        # If the bytes are not valid JSON the token is corrupted; raise
-        # immediately.
-        try:
-            _pre_verified_evidence = json.loads(
-                pre_call_result._frozen_evidence_bytes
-            )
-            _verified_snap = dict(
-                _pre_verified_evidence["invocation_snapshot"]
-            )
-            _verified_snap.setdefault("output", {})
-        except (TypeError, ValueError, KeyError) as _ev_exc:
-            exc = InvocationValidationError(
-                "PreCallResult contains invalid internal token state; "
-                "token may be corrupted or forged",
-                details={"field": "_frozen_evidence_bytes"},
-            )
-            safe_inv = {
-                "policy_file": "unknown",
-                "model_provider": "unknown",
-                "model_identifier": "unknown",
-                "role": "unknown",
-                "input": {}, "output": {}, "context": {},
-            }
-            artifact = _generate_pre_pipeline_fail_artifact(
-                safe_inv, exc,
-                redaction_patterns=self._redaction_patterns,
-            )
-            artifact.setdefault("metadata", {})["enforcement_mode"] = "split"
-            exc.audit_artifact = artifact
-            try:
-                emit_to_sink(
-                    artifact,
-                    sink=self._sink,
-                    failure_mode=self._on_sink_failure,
-                )
-            except AuditSinkError as sink_exc:
-                logger.error(
-                    "Sink emission failed on pre-pipeline FAIL path: %s",
-                    sink_exc,
-                )
-            raise exc from _ev_exc
-
-        # 1e. Gate fingerprint integrity check — detects object.__setattr__ replacement
-        # of _phase_b_grouped_gates after Phase A (audit Finding 2, 2026-04-05).
-        # Skip if absent from evidence (backward compat: old pickled tokens lack this key).
-        _expected_gate_fp = _pre_verified_evidence.get("gate_fingerprint")
-        if _expected_gate_fp is not None:
-            _actual_gate_fp = _gate_fingerprint(pre_call_result._phase_b_grouped_gates)
-            if _actual_gate_fp != _expected_gate_fp:
-                exc = InvocationValidationError(
-                    "Phase B gate manifest was tampered; "
-                    "gate fingerprint does not match signed evidence",
-                    details={"field": "_phase_b_grouped_gates"},
-                )
-                safe_inv = dict(_verified_snap)
-                artifact = _generate_pre_pipeline_fail_artifact(
-                    safe_inv, exc,
-                    redaction_patterns=self._redaction_patterns,
-                )
-                artifact.setdefault("metadata", {})["enforcement_mode"] = "split"
-                exc.audit_artifact = artifact
-                try:
-                    emit_to_sink(artifact, sink=self._sink, failure_mode=self._on_sink_failure)
-                except AuditSinkError as sink_exc:
-                    logger.error(
-                        "Sink emission failed on gate fingerprint FAIL path: %s", sink_exc,
-                    )
-                raise exc
-
-        # 1f. Clone replay check — rejects second consumption of the same logical token
-        # (whether original or clone). Keyed by _token_hmac (unique per session + content).
-        # audit Finding 3, 2026-04-05.
-        if pre_call_result._token_hmac in _consumed_token_registry:
-            exc = InvocationValidationError(
-                "Token replay attempt detected; this token or a clone "
-                "of it has already been consumed",
-                details={"field": "pre_call_result"},
-            )
-            safe_inv = dict(_verified_snap)
-            artifact = _generate_pre_pipeline_fail_artifact(
-                safe_inv, exc,
-                redaction_patterns=self._redaction_patterns,
-            )
-            artifact.setdefault("metadata", {})["enforcement_mode"] = "split"
-            exc.audit_artifact = artifact
-            try:
-                emit_to_sink(artifact, sink=self._sink, failure_mode=self._on_sink_failure)
-            except AuditSinkError as sink_exc:
-                logger.error(
-                    "Sink emission failed on clone replay FAIL path: %s", sink_exc,
-                )
-            raise exc
-
-        # 2. Output type validation
-        if not isinstance(output, dict):
-            exc = InvocationValidationError(
-                "enforce_post_call() output must be a dict",
-                details={"field": "output"},
-            )
-            safe_inv = dict(_verified_snap)
-            artifact = _generate_pre_pipeline_fail_artifact(
-                safe_inv, exc,
-                redaction_patterns=self._redaction_patterns,
-            )
-            artifact.setdefault("metadata", {})["enforcement_mode"] = (
-                "split"
-            )
-            exc.audit_artifact = artifact
-            try:
-                emit_to_sink(
-                    artifact,
-                    sink=self._sink,
-                    failure_mode=self._on_sink_failure,
-                )
-            except AuditSinkError as sink_exc:
-                logger.error(
-                    "Sink emission failed on pre-pipeline FAIL path: %s",
-                    sink_exc,
-                )
-            raise exc
-
-        # 2b. Output serializability check (Finding 4).
-        try:
-            json.dumps(output, allow_nan=False, sort_keys=True)
-        except (TypeError, ValueError) as json_exc:
-            exc = InvocationValidationError(
-                f"enforce_post_call() output is not JSON-serializable: "
-                f"{json_exc}",
-                details={"field": "output"},
-            )
-            safe_inv = dict(_verified_snap)
-            artifact = _generate_pre_pipeline_fail_artifact(
-                safe_inv, exc,
-                redaction_patterns=self._redaction_patterns,
-            )
-            artifact.setdefault("metadata", {})["enforcement_mode"] = (
-                "split"
-            )
-            exc.audit_artifact = artifact
-            try:
-                emit_to_sink(
-                    artifact,
-                    sink=self._sink,
-                    failure_mode=self._on_sink_failure,
-                )
-            except AuditSinkError as sink_exc:
-                logger.error(
-                    "Sink emission failed on pre-pipeline FAIL path: %s",
-                    sink_exc,
-                )
-            raise exc from json_exc
-
-        # 3. Consumption check
-        if pre_call_result._consumed:
-            exc = InvocationValidationError(
-                "PreCallResult has already been consumed; "
-                "create a new one via enforce_pre_call()",
-                details={"field": "pre_call_result"},
-            )
-            safe_inv = dict(_verified_snap)
-            artifact = _generate_pre_pipeline_fail_artifact(
-                safe_inv, exc,
-                redaction_patterns=self._redaction_patterns,
-            )
-            artifact.setdefault("metadata", {})["enforcement_mode"] = (
-                "split"
-            )
-            exc.audit_artifact = artifact
-            try:
-                emit_to_sink(
-                    artifact,
-                    sink=self._sink,
-                    failure_mode=self._on_sink_failure,
-                )
-            except AuditSinkError as sink_exc:
-                logger.error(
-                    "Sink emission failed on pre-pipeline FAIL path: %s",
-                    sink_exc,
-                )
-            raise exc
-
-        # 4. Bind Phase B to the compiled authority issued by Phase A.
-        evidence = _pre_verified_evidence
-        compiled_policy = pre_call_result._compiled_policy
-        if (
-            compiled_policy is None
-            or evidence.get("policy_digest") != compiled_policy.policy_digest
-            or evidence.get("compiled_policy_content_digest")
-            != _compiled_policy_content_digest(compiled_policy)
-        ):
-            raise InvocationValidationError(
-                "PreCallResult compiled policy is missing or does not match "
-                "authenticated Phase A evidence",
-                details={"field": "_compiled_policy"},
-            )
-
-        # 5. Register in replay registry BEFORE marking _consumed — order matters:
-        # registry add must happen first so that a concurrent clone cannot sneak through
-        # the step 1f check in the window between registration and consumed-flag flip.
-        # (audit Finding 3, 2026-04-05)
-        _consumed_token_registry.add(pre_call_result._token_hmac)
-        object.__setattr__(pre_call_result, "_consumed", True)
-
-        full_invocation = dict(evidence["invocation_snapshot"])
-        full_invocation["output"] = output
-
-        # 6. Recover Phase A state exclusively from the evidence snapshot.
-        phase_a_meta = dict(evidence["phase_a_metadata"])
-        phase_a_gates = list(
-            phase_a_meta.get("gates_evaluated", []),
+        return _run_registry_post_call(
+            self._operation_registry,
+            pre_call_result,
+            output,
+            sink=self._sink,
+            sink_failure_mode=self._on_sink_failure,
+            redaction_patterns=self._redaction_patterns,
+            signer=self._signer,
+            risk_config=self._risk_config,
         )
-        all_custom_metadata = dict(
-            phase_a_meta.get("all_custom_metadata", {}),
-        )
-
-        with enforcement_span(
-            "aegis.enforce_post_call",
-            attributes={
-                "aegis.policy_file": pre_call_result.policy_file,
-                "aegis.role": pre_call_result.role,
-                "aegis.enforcement_mode": "split",
-            },
-        ) as span:
-            return _run_phase_b(
-                compiled_policy,
-                compiled_policy,
-                full_invocation,
-                phase_a_gates=phase_a_gates,
-                phase_a_metadata=phase_a_meta,
-                phase_a_extra={
-                    "preconditions_satisfied": phase_a_meta.get(
-                        "preconditions_satisfied", [],
-                    ),
-                    "tool_constraints": phase_a_meta.get(
-                        "tool_constraints", {},
-                    ),
-                },
-                guards_evaluated_engine=list(
-                    evidence.get("guards_evaluated_engine", []),
-                ),
-                conditions_resolved=dict(
-                    evidence.get("conditions_resolved", {}),
-                ),
-                all_custom_metadata=all_custom_metadata,
-                # Use gates captured at Phase A time, consistent with the
-                # module-level path. Avoids a reachable bypass if
-                # self._custom_gates is mutated between phases (Finding 1).
-                grouped_gates=pre_call_result._phase_b_grouped_gates,
-                sink=self._sink,
-                sink_failure_mode=self._on_sink_failure,
-                redaction_patterns=self._redaction_patterns,
-                signer=self._signer,
-                risk_config=self._risk_config,
-                enforcement_mode="split",
-                pre_call_timestamp=phase_a_meta.get(
-                    "pre_call_timestamp",
-                ),
-                span=span,
-            )
 
     @_evidence_attempt_boundary("AEGIS.enforce_pre_call_async", "split_pre_call")
     async def enforce_pre_call_async(
@@ -4338,10 +2577,6 @@ class AEGIS:
 
         grouped_gates = sort_gates(self._custom_gates)
         pre_call_timestamp = int(_time.time())
-        # Unique per-token nonce ensures _token_hmac is unique even for
-        # identical invocations in the same second (Finding 3, 2026-04-05).
-        _token_nonce = os.urandom(16).hex()
-
         with enforcement_span(
             "aegis.enforce_pre_call",
             attributes={
@@ -4419,99 +2654,15 @@ class AEGIS:
                 enforcement_mode="split",
             )
 
-            token = PreCallResult(
-                resolved_guards=tuple(
-                    dict(g) if isinstance(g, dict) else g
-                    for g in guards_evaluated_engine
-                ),
-                resolved_conditions=dict(conditions_resolved),
-                phase_a_metadata=phase_a_metadata,
+            return _issue_pre_call_result(
+                self._operation_registry,
+                compiled_policy=effective_policy,
                 invocation_snapshot=invocation_snapshot,
-                policy_file=invocation["policy_file"],
-                model_provider=invocation["model_provider"],
-                model_identifier=invocation["model_identifier"],
-                role=invocation["role"],
+                phase_a_metadata=phase_a_metadata,
+                guards_evaluated_engine=guards_evaluated_engine,
+                conditions_resolved=conditions_resolved,
+                grouped_gates=grouped_gates,
             )
-            # Use grouped_gates captured BEFORE Phase A, not a fresh sort
-            # of self._custom_gates (Round 2 audit Finding 3): if a Phase A
-            # gate mutates self._custom_gates, re-sorting would produce a
-            # different gate set for Phase B than Phase A used.
-            # Also wrap in MappingProxyType (Round 3 audit Finding 1).
-            object.__setattr__(
-                token, "_phase_b_grouped_gates",
-                types.MappingProxyType(
-                    {pt: tuple(gl) for pt, gl in grouped_gates.items()}
-                ),
-            )
-            object.__setattr__(token, "_origin", _ENFORCEMENT_TOKEN)
-            object.__setattr__(token, "_compiled_policy", effective_policy)
-            object.__setattr__(
-                token, "_frozen_invocation_snapshot",
-                copy.deepcopy(token.invocation_snapshot),
-            )
-            try:
-                frozen_evidence_bytes = json.dumps(
-                    {
-                        "invocation_snapshot": dict(
-                            token.invocation_snapshot,
-                        ),
-                        "phase_a_metadata": phase_a_metadata,
-                        "guards_evaluated_engine": [
-                            dict(g) if isinstance(g, dict) else None
-                            for g in guards_evaluated_engine
-                        ],
-                        "conditions_resolved": dict(conditions_resolved),
-                        "policy_digest": effective_policy.policy_digest,
-                        "compiled_policy_content_digest": (
-                            _compiled_policy_content_digest(effective_policy)
-                        ),
-                        # Finding 2: gate fingerprint so Phase B can verify _phase_b_grouped_gates.
-                        "gate_fingerprint": _gate_fingerprint(grouped_gates),
-                        # Finding 3: unique per-token nonce so _token_hmac is unique
-                        # even for identical invocations within the same second.
-                        "token_nonce": _token_nonce,
-                    },
-                    sort_keys=True,
-                ).encode()
-            except (TypeError, ValueError) as json_exc:
-                freeze_err = InvocationValidationError(
-                    f"Policy contains non-JSON-serializable values; "
-                    f"cannot freeze token: {json_exc}",
-                    details={"field": "compiled_policy"},
-                )
-                safe_inv = dict(invocation)
-                safe_inv.setdefault("output", {})
-                artifact = _generate_pre_pipeline_fail_artifact(
-                    safe_inv, freeze_err,
-                    redaction_patterns=self._redaction_patterns,
-                )
-                artifact.setdefault("metadata", {})["enforcement_mode"] = (
-                    "split_pre_call_only"
-                )
-                freeze_err.audit_artifact = artifact
-                try:
-                    emit_to_sink(
-                        artifact,
-                        sink=self._sink,
-                        failure_mode=self._on_sink_failure,
-                    )
-                except AuditSinkError as sink_exc:
-                    logger.error(
-                        "Sink emission failed on policy freeze FAIL path: %s",
-                        sink_exc,
-                    )
-                raise freeze_err from json_exc
-            object.__setattr__(
-                token, "_frozen_evidence_bytes", frozen_evidence_bytes,
-            )
-            object.__setattr__(
-                token, "_token_hmac", _token_sign(frozen_evidence_bytes),
-            )
-            object.__setattr__(
-                token, "_frozen_phase_a_metadata",
-                copy.deepcopy(phase_a_metadata),
-            )
-            return token
 
     @_evidence_attempt_boundary("AEGIS.enforce_post_call_async", "split_post_call")
     async def enforce_post_call_async(

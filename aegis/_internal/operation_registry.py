@@ -7,11 +7,13 @@ import os
 import threading
 import uuid
 from dataclasses import dataclass
-from typing import Mapping
+from typing import Callable, Mapping, TypeVar
 
 from aegis._internal.compiled_policy import CompiledPolicy, JsonValue
 from aegis._internal.errors import InvocationValidationError
 from aegis._internal.gates import EnforcementGate
+
+T = TypeVar("T")
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,6 +130,34 @@ class OperationRegistry:
             return False
         self._validate_binding(validated, record)
         return True
+
+    def cancel_operation(self, operation_id: str) -> bool:
+        """Remove one operation by ID for its owning runtime's cleanup path."""
+        if not isinstance(operation_id, str):
+            raise TypeError("operation_id must be a string")
+        with self._lock:
+            return self._records.pop(operation_id, None) is not None
+
+    def apply(
+        self,
+        handle: object,
+        operation: Callable[[OperationRecord], T],
+    ) -> T:
+        """Run an internal authorization check against an active record.
+
+        The registry lock remains held for the callback, preventing Phase B
+        consumption from racing a dynamic authorization decision.
+        """
+        validated = self._validate_affinity(handle)
+        with self._lock:
+            record = self._records.get(validated.operation_id)
+            if record is None:
+                raise InvocationValidationError(
+                    "Operation is unknown or consumed",
+                    code="OPERATION_NOT_ACTIVE",
+                )
+            self._validate_binding(validated, record)
+            return operation(record)
 
     def cancel_all(self) -> int:
         """Remove every pending operation owned by this registry."""

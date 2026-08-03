@@ -9,8 +9,8 @@ import time
 import unicodedata
 import uuid
 from collections.abc import Mapping as MappingABC
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, ClassVar, NoReturn
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, NoReturn
 
 from aegis._internal.errors import (
     InvocationValidationError,
@@ -68,29 +68,41 @@ _A2A_GRPC_CHAR_MAP = {ord("ɡ"): "g"}
 
 
 # ---------------------------------------------------------------------------
-# SessionPreCallResult — step ticket, no _inner
+# SessionPreCallResult — opaque step operation identity
 # ---------------------------------------------------------------------------
 
 @dataclass(frozen=True, slots=True)
 class SessionPreCallResult:
-    """Single-use step token from GovernanceSession.enforce_step_pre_call().
+    """Single-use operation handle from GovernanceSession Phase A.
 
-    The inner PreCallResult is NOT stored here — it lives in
-    GovernanceSession._pending_results.  Cannot be completed through the
+    Authorization state remains in the owning AEGIS operation registry. The
+    handle cannot be completed through the
     module-level enforce_post_call(); use GovernanceSession.enforce_step_post_call().
     """
-
-    _IS_SESSION_TOKEN: ClassVar[bool] = True  # sentinel for enforce_post_call guards
 
     session_id: str
     step_id: str
     participant_id: str | None
-    _token_id: str = field(repr=False)
-    # Frozen bypass: _consumed starts False and is set to True exactly once by
-    # the owning GovernanceSession via object.__setattr__. The frozen constraint
-    # is intentional for all other fields; this field is lifecycle state, not
-    # immutable data.
-    _consumed: bool = field(default=False, init=False, repr=False)
+    operation_id: str
+    issuer_id: str
+    process_id: int
+    correlation_id: str
+    policy_digest: str
+    canonicalization_profile: str
+
+
+def _inner_result(session_result: SessionPreCallResult) -> Any:
+    """Rebuild the public invocation handle for the owning instance runtime."""
+    from aegis._internal.enforcement import PreCallResult
+
+    return PreCallResult(
+        operation_id=session_result.operation_id,
+        issuer_id=session_result.issuer_id,
+        process_id=session_result.process_id,
+        correlation_id=session_result.correlation_id,
+        policy_digest=session_result.policy_digest,
+        canonicalization_profile=session_result.canonicalization_profile,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -462,12 +474,11 @@ class GovernanceSession:
         self._started_at = int(time.time())
         self._finalized_at: int | None = None
 
-        # token_id → {"inner": PreCallResult, "step_id": str,
+        # operation_id → {"step_id": str,
         #              "participant_id": str | None,
         #              "effective_policy_file": str | None,
         #              "tool_calls_count": int}
         self._pending_results: dict[str, dict[str, Any]] = {}
-        self._consumed_token_ids: set[str] = set()
 
         # Ordered step records for the workflow artifact
         self._steps: list[dict[str, Any]] = []
@@ -542,7 +553,7 @@ class GovernanceSession:
         # for the current step. Cleared in enforce_step_post_call on success.
         self._escalation_in_progress: bool = False
 
-        # Adapter-managed step state (keyed by token_id).  Populated by
+        # Adapter-managed step state (keyed by operation_id).  Populated by
         # external adapters (e.g. OpenAIAgentsAdapter) to track dynamic tool
         # calls and interruption checkpoints for a given pending step.
         self._adapter_step_states: dict[str, dict[str, Any]] = {}
@@ -585,12 +596,12 @@ class GovernanceSession:
         """Register adapter-owned state for a pending governed step."""
         self._assert_open()
         self._assert_owns(session_result)
-        if session_result._token_id not in self._pending_results:
+        if session_result.operation_id not in self._pending_results:
             raise InvocationValidationError(
                 "Token not registered in this session",
-                details={"token_id": session_result._token_id},
+                details={"operation_id": session_result.operation_id},
             )
-        self._adapter_step_states[session_result._token_id] = state
+        self._adapter_step_states[session_result.operation_id] = state
 
     def adapter_step_state(
         self,
@@ -599,7 +610,7 @@ class GovernanceSession:
         """Return adapter-owned state for a pending governed step, if present."""
         self._assert_open()
         self._assert_owns(session_result)
-        return self._adapter_step_states.get(session_result._token_id)
+        return self._adapter_step_states.get(session_result.operation_id)
 
     def pop_adapter_step_state(
         self,
@@ -608,7 +619,7 @@ class GovernanceSession:
         """Remove and return adapter-owned state for a pending governed step."""
         self._assert_open()
         self._assert_owns(session_result)
-        return self._adapter_step_states.pop(session_result._token_id, {})
+        return self._adapter_step_states.pop(session_result.operation_id, {})
 
     def discard_adapter_step(
         self,
@@ -849,6 +860,7 @@ class GovernanceSession:
 
     def cancel(self) -> None:
         """Cancel the session (OPEN/PAUSED → CANCELED)."""
+        self._cancel_pending_operations()
         self._transition(STATE_CANCELED)
 
     def finalize(self) -> dict[str, Any]:
@@ -866,6 +878,7 @@ class GovernanceSession:
 
     def _do_finalize(self) -> dict[str, Any]:
         """Internal finalization — emits artifact and transitions to FINALIZED."""
+        self._cancel_pending_operations()
         evidence_attempt = self._aigc._attempt_factory.allocate(
             "GovernanceSession.finalize",
             "workflow",
@@ -910,6 +923,13 @@ class GovernanceSession:
 
         return artifact
 
+    def _cancel_pending_operations(self) -> None:
+        """Remove every still-live operation issued on behalf of this session."""
+        for operation_id in tuple(self._pending_results):
+            self._aigc._operation_registry.cancel_operation(operation_id)
+        self._pending_results.clear()
+        self._adapter_step_states.clear()
+
     # ------------------------------------------------------------------
     # Step enforcement
     # ------------------------------------------------------------------
@@ -949,36 +969,33 @@ class GovernanceSession:
         self._assert_open()
         self._assert_owns(session_result)
 
-        if session_result._token_id not in self._pending_results:
+        if session_result.operation_id not in self._pending_results:
             from aegis._internal.errors import WorkflowSessionTokenInvalidError
             raise WorkflowSessionTokenInvalidError(
                 "Token not registered in this session",
-                details={"token_id": session_result._token_id},
+                details={"operation_id": session_result.operation_id},
             )
 
-        entry = self._pending_results[session_result._token_id]
-        adapter_state = self._adapter_step_states.get(session_result._token_id)
+        adapter_state = self._adapter_step_states.get(session_result.operation_id)
         if adapter_state is None:
             raise InvocationValidationError(
                 "authorize_step_tool_call requires adapter state to be registered; "
                 "call register_adapter_step_state before authorizing tool calls",
-                details={"token_id": session_result._token_id},
+                details={"operation_id": session_result.operation_id},
             )
         observed_tool_calls = list(adapter_state.get("dynamic_tool_calls") or [])
         projected_call = {"name": tool_name, "id": tool_call_id}
-        inner = entry.get("inner")
-        effective_policy = getattr(inner, "_compiled_policy", None)
-        if effective_policy is None:
-            effective_policy = self._compiled_policy
-        if effective_policy is None:
-            raise InvocationValidationError(
-                "Pending step is missing compiled policy authority",
-                details={"token_id": session_result._token_id},
+        from aegis._internal.enforcement import _operation_handle
+
+        def _validate_active_record(record: Any) -> None:
+            validate_tool_constraints(
+                {"tool_calls": [*observed_tool_calls, projected_call]},
+                record.compiled_policy.tools,
             )
 
-        validate_tool_constraints(
-            {"tool_calls": [*observed_tool_calls, projected_call]},
-            effective_policy.tools,
+        self._aigc._operation_registry.apply(
+            _operation_handle(_inner_result(session_result)),
+            _validate_active_record,
         )
 
         # Enforce session-level tool-call budget (real-time)
@@ -1029,17 +1046,13 @@ class GovernanceSession:
         self._assert_open()
         self._assert_owns(session_result)
 
-        token_id = session_result._token_id
-        if token_id in self._consumed_token_ids:
-            return
-
-        entry = self._pending_results.pop(token_id, None)
-        self._adapter_step_states.pop(token_id, None)
+        operation_id = session_result.operation_id
+        entry = self._pending_results.pop(operation_id, None)
+        self._adapter_step_states.pop(operation_id, None)
         if entry is None:
             return
 
-        object.__setattr__(session_result, "_consumed", True)
-        self._consumed_token_ids.add(token_id)
+        self._aigc._operation_registry.cancel_operation(operation_id)
 
         if rollback_authorization and self._authorized_step_count > 0:
             self._authorized_step_count -= 1
@@ -1373,8 +1386,6 @@ class GovernanceSession:
                     },
                 )
 
-        token_id = str(uuid.uuid4())
-
         # Build enriched invocation: apply session-level policy override, then
         # inject workflow correlation fields into context
         enriched = dict(invocation)
@@ -1457,8 +1468,14 @@ class GovernanceSession:
                     policy_file=effective_policy_file,
                     invocation_checksum=_checksum(enriched),
                 )
-                _result = _invoke_hook(_hook, _envelope)
-                _outcome = normalize_hook_result(_result)
+                try:
+                    _result = _invoke_hook(_hook, _envelope)
+                    _outcome = normalize_hook_result(_result)
+                except Exception:
+                    self._aigc._operation_registry.cancel_operation(
+                        inner_result.operation_id,
+                    )
+                    raise
                 self._validator_hook_evidence.append({
                     "hook_id": _result.hook_id,
                     "hook_version": _result.hook_version,
@@ -1473,6 +1490,9 @@ class GovernanceSession:
                     "provenance": _result.provenance,
                 })
                 if not _outcome.allows_continuation:
+                    self._aigc._operation_registry.cancel_operation(
+                        inner_result.operation_id,
+                    )
                     raise WorkflowHookDeniedError(
                         f"Validator hook {_result.hook_id!r} blocked step "
                         f"{resolved_step_id!r}: terminal="
@@ -1489,8 +1509,7 @@ class GovernanceSession:
                     )
                 # Only the closed ALLOW/WARN terminal classes continue.
 
-        self._pending_results[token_id] = {
-            "inner": inner_result,
+        self._pending_results[inner_result.operation_id] = {
             "step_id": resolved_step_id,
             "participant_id": participant_id,
             "effective_policy_file": effective_policy_file,
@@ -1506,7 +1525,12 @@ class GovernanceSession:
             session_id=self._session_id,
             step_id=resolved_step_id,
             participant_id=participant_id,
-            _token_id=token_id,
+            operation_id=inner_result.operation_id,
+            issuer_id=inner_result.issuer_id,
+            process_id=inner_result.process_id,
+            correlation_id=inner_result.correlation_id,
+            policy_digest=inner_result.policy_digest,
+            canonicalization_profile=inner_result.canonicalization_profile,
         )
 
     def enforce_step_post_call(
@@ -1526,29 +1550,30 @@ class GovernanceSession:
             interpret it at runtime.
         :return: Invocation PASS audit artifact
         """
-        self._assert_open()
         self._assert_owns(session_result)
 
-        if session_result._token_id in self._consumed_token_ids:
-            raise InvocationValidationError(
-                "Token already consumed",
-                details={"token_id": session_result._token_id},
-            )
-
-        entry = self._pending_results.get(session_result._token_id)
+        operation_id = session_result.operation_id
+        entry = self._pending_results.get(operation_id)
         if entry is None:
             raise InvocationValidationError(
-                "Token not registered in this session",
-                details={"token_id": session_result._token_id},
+                "Operation is unknown or consumed",
+                code="OPERATION_NOT_ACTIVE",
+                details={"operation_id": operation_id},
             )
+        self._assert_open()
 
-        # Verify token fields match minted values — rejects forged wrappers
+        # Session metadata is not authorization state, but an authenticated
+        # attempt with forged wrapper metadata still burns the operation.
         if (
             session_result.step_id != entry["step_id"]
             or session_result.participant_id != entry["participant_id"]
         ):
+            self._pending_results.pop(operation_id, None)
+            self._adapter_step_states.pop(operation_id, None)
+            self._aigc._operation_registry.cancel_operation(operation_id)
             raise InvocationValidationError(
-                "Token fields do not match minted values — possible forged wrapper",
+                "Session operation metadata does not match minted values",
+                code="OPERATION_SESSION_METADATA_MISMATCH",
                 details={
                     "token_step_id": session_result.step_id,
                     "registered_step_id": entry["step_id"],
@@ -1556,6 +1581,9 @@ class GovernanceSession:
             )
 
         if step_metadata is not None and not isinstance(step_metadata, dict):
+            self._pending_results.pop(operation_id, None)
+            self._adapter_step_states.pop(operation_id, None)
+            self._aigc._operation_registry.cancel_operation(operation_id)
             raise InvocationValidationError(
                 "step_metadata must be a mapping when provided",
                 details={
@@ -1566,20 +1594,16 @@ class GovernanceSession:
             )
 
         try:
-            # Phase B FIRST — output validation
-            inv_artifact = self._aigc.enforce_post_call(entry["inner"], output)
-        except Exception:
-            # A session token is single-use once Phase B has been attempted,
-            # even if the inner invocation token failed before artifact emission.
-            object.__setattr__(session_result, "_consumed", True)
-            self._consumed_token_ids.add(session_result._token_id)
-            self._pending_results.pop(session_result._token_id, None)
-            raise
-
-        # Validation succeeded — NOW mark consumed
-        object.__setattr__(session_result, "_consumed", True)
-        self._consumed_token_ids.add(session_result._token_id)
-        del self._pending_results[session_result._token_id]
+            inv_artifact = self._aigc.enforce_post_call(
+                _inner_result(session_result),
+                output,
+            )
+        finally:
+            # Every authenticated Phase B attempt consumes or cancels the live
+            # registry record, including malformed output and binding failures.
+            self._aigc._operation_registry.cancel_operation(operation_id)
+            self._pending_results.pop(operation_id, None)
+            self._adapter_step_states.pop(operation_id, None)
 
         # Increment tool-call counter from the invocation dict (consistent with
         # pre_call budget check — both use invocation-time count). Budget is

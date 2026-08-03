@@ -90,10 +90,7 @@ def test_split_phase_b_ignores_reachable_runtime_mutation(
     policy_file = tmp_path / "split-policy.yaml"
     _write_policy(policy_file)
     issued = enforce_pre_call(_invocation(policy_file))
-    program = issued._compiled_policy.output_validator
-    assert program is not None
-
-    _attempt_reachable_runtime_mutation(program, mutation)
+    assert "_compiled_policy" not in issued.__slots__
 
     with pytest.raises(SchemaValidationError):
         enforce_post_call(issued, _invalid_output(mutation))
@@ -153,28 +150,16 @@ def test_compiled_output_program_exposes_only_immutable_state() -> None:
         program.schema["properties"]["result"]["pattern"] = ".*"
 
 
-def test_pickle_reconstructs_authenticated_immutable_output_program(
+def test_pickle_restores_handle_for_the_same_private_output_program(
     tmp_path: Path,
 ) -> None:
-    """Authenticated DTO reconstruction must restore the same closed semantics."""
+    """Pickling copies identity, while output authority stays registry-private."""
     policy_file = tmp_path / "pickle-policy.yaml"
     _write_policy(policy_file)
     issued = enforce_pre_call(_invocation(policy_file))
-    original_program = issued._compiled_policy.output_validator
-    state = issued.__getstate__()
-
-    assert state["_compiled_policy_dto"]["output_schema_program_digest"] == (
-        original_program.program_digest
-    )
-    assert state["_compiled_policy_dto"]["output_schema_pattern_sources"] == [
-        "^ok$",
-    ]
 
     restored = pickle.loads(pickle.dumps(issued))
-    restored_program = restored._compiled_policy.output_validator
-    assert restored_program.program_digest == original_program.program_digest
-    assert restored_program.pattern_sources == ("^ok$",)
-    assert not hasattr(restored_program, "validator")
-    assert not hasattr(restored_program, "patterns")
+    assert restored == issued
+    assert "_compiled_policy" not in restored.__slots__
     with pytest.raises(SchemaValidationError):
         enforce_post_call(restored, {"result": "not-ok"})

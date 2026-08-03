@@ -10,6 +10,8 @@ Finding 3 — PreCallResult is shallow-mutable (nested dict tamper)
 Finding 4 — split post-call raises raw TypeError on non-serializable output
 Finding 5 — packaging metadata version disagrees with runtime __version__
 """
+import os
+
 import pytest
 
 import aegis
@@ -212,24 +214,12 @@ class TestFinding2PreCallResultForgeryPrevention:
     def _make_forged_token(self):
         """Construct a PreCallResult directly, bypassing enforce_pre_call."""
         return PreCallResult(
-            resolved_guards=(),
-            resolved_conditions={},
-            phase_a_metadata={
-                "gates_evaluated": [],
-                "pre_call_timestamp": 0,
-            },
-            invocation_snapshot={
-                "policy_file": GOLDEN_POLICY,
-                "model_provider": "openai",
-                "model_identifier": "gpt-4",
-                "role": "attacker",
-                "input": {},
-                "context": {},
-            },
-            policy_file=GOLDEN_POLICY,
-            model_provider="openai",
-            model_identifier="gpt-4",
-            role="attacker",
+            operation_id="forged",
+            issuer_id="0" * 32,
+            process_id=os.getpid(),
+            correlation_id="forged",
+            policy_digest="0" * 64,
+            canonicalization_profile="forged",
         )
 
     def test_forged_token_rejected_by_module_level_post_call(self):
@@ -260,9 +250,7 @@ class TestFinding2PreCallResultForgeryPrevention:
         forged = self._make_forged_token()
         with pytest.raises(InvocationValidationError) as exc_info:
             enforce_post_call(forged, _valid_output())
-        # The message should not confuse this with a wrong-type argument
-        assert "not issued by enforce_pre_call" in str(exc_info.value).lower() or \
-               "directly-constructed" in str(exc_info.value).lower()
+        assert exc_info.value.code == "OPERATION_ISSUER_MISMATCH"
 
 
 # ── Finding 3: PreCallResult shallow-mutability ───────────────────
@@ -282,25 +270,18 @@ class TestFinding3PreCallResultShallowMutability:
             enforce_post_call(pre, {"result": "ok"})
 
     def test_mutating_invocation_snapshot_context_does_not_affect_artifact(self):
-        """Mutating invocation_snapshot context must not appear in the audit artifact."""
+        """Invocation context is no longer reachable through the public handle."""
         pre = enforce_pre_call(_pre_call_inv())
-        original_context = dict(pre.invocation_snapshot["context"])
-        # Tamper with the stored snapshot
-        pre.invocation_snapshot["context"]["session_id"] = "tampered"
+        assert "invocation_snapshot" not in pre.__slots__
         artifact = enforce_post_call(pre, _valid_output())
-        # The artifact context must reflect the original, not the tampered value
         assert artifact.get("context", {}).get("session_id") != "tampered", (
             "Tampered session_id must not appear in audit artifact"
         )
-        # Original fields must still be present
-        for k, v in original_context.items():
-            assert artifact.get("context", {}).get(k) == v
 
     def test_mutating_invocation_snapshot_input_does_not_affect_artifact(self):
-        """Mutating invocation_snapshot input must not affect the audit artifact."""
+        """Invocation input authority is private and preserves its checksum."""
         pre = enforce_pre_call(_pre_call_inv())
-        # Mutate the public snapshot; Phase B reads from the frozen copy.
-        pre.invocation_snapshot["input"]["injected_key"] = "injected_value"
+        assert "invocation_snapshot" not in pre.__slots__
         artifact = enforce_post_call(pre, _valid_output())
         # The input checksum must match the ORIGINAL input (before mutation).
         from aegis._internal.audit import checksum
@@ -337,13 +318,14 @@ class TestFinding4NonSerializableOutput:
         assert exc.audit_artifact is not None, "FAIL artifact must be attached"
         assert exc.audit_artifact["enforcement_result"] == "FAIL"
 
-    def test_non_serializable_output_pre_call_result_remains_unconsumed(self):
-        """After a non-serializable output error, the token must remain unconsumed."""
+    def test_non_serializable_output_consumes_the_operation(self):
+        """Every attempted Phase B consumption burns the live operation."""
         pre = enforce_pre_call(_pre_call_inv())
         with pytest.raises(InvocationValidationError):
             enforce_post_call(pre, {"result": object(), "confidence": 0.9})
-        # The token should NOT have been consumed (validation fails before _consumed flip)
-        assert not pre._consumed
+        with pytest.raises(InvocationValidationError) as replay:
+            enforce_post_call(pre, _valid_output())
+        assert replay.value.code == "OPERATION_NOT_ACTIVE"
 
     def test_non_serializable_output_aigc_instance(self):
         """AIGC.enforce_post_call also produces FAIL artifact for non-serializable output."""
