@@ -20,9 +20,23 @@ from aegis._internal.utils import canonical_json_bytes
 
 
 _HEX64_RE = re.compile(r"^[a-f0-9]{64}$")
+_MAX_CHAIN_IDENTIFIER_LENGTH = 512
 _CHAIN_FIELDS = frozenset(
-    {"chain_id", "chain_index", "previous_audit_checksum"}
+    {
+        "chain_id",
+        "chain_index",
+        "previous_audit_checksum",
+        "reservation_id",
+    }
 )
+
+
+def _is_bounded_chain_identifier(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and bool(value.strip())
+        and len(value) <= _MAX_CHAIN_IDENTIFIER_LENGTH
+    )
 
 
 class ChainContinuity(str, Enum):
@@ -139,7 +153,7 @@ def _verify_continuity(
     first = typed_artifacts[0]
     chain_id = first["chain_id"]
     first_index = first["chain_index"]
-    if type(chain_id) is not str or not chain_id:
+    if not _is_bounded_chain_identifier(chain_id):
         errors.append(_error("CHAIN_ID_INVALID", "Index 0: chain_id is invalid", 0))
         continuity = ChainContinuity.INVALID
     if type(first_index) is not int or first_index < 0:
@@ -147,7 +161,6 @@ def _verify_continuity(
             _error("CHAIN_INDEX_INVALID", "Index 0: chain_index is invalid", 0)
         )
         return ChainContinuity.INVALID
-
     first_previous = first["previous_audit_checksum"]
     if first_index == 0:
         if first_previous is not None:
@@ -190,6 +203,16 @@ def _verify_continuity(
                 _error(
                     "CHAIN_ID_MISMATCH",
                     f"Index {offset}: chain_id mismatch",
+                    offset,
+                )
+            )
+            continuity = ChainContinuity.INVALID
+        reservation_id = artifact["reservation_id"]
+        if not _is_bounded_chain_identifier(reservation_id):
+            errors.append(
+                _error(
+                    "CHAIN_RESERVATION_ID_INVALID",
+                    f"Index {offset}: reservation_id is invalid",
                     offset,
                 )
             )

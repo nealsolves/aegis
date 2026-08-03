@@ -47,6 +47,11 @@ def _make_base_artifact(result: str = "PASS") -> dict:
     )
 
 
+def _append(chain: AuditChain, artifact: dict) -> dict:
+    with pytest.warns(DeprecationWarning, match="AuditChain.append"):
+        return chain.append(artifact)
+
+
 # ---------------------------------------------------------------------------
 # Chain → schema compatibility
 # ---------------------------------------------------------------------------
@@ -55,7 +60,7 @@ def test_chained_artifact_passes_audit_schema():
     """After AuditChain.append(), the artifact must be valid per audit_artifact.schema.json."""
     artifact = _make_base_artifact()
     chain = AuditChain()
-    chained = chain.append(artifact)
+    chained = _append(chain, artifact)
 
     schema = _audit_schema()
     # Must not raise
@@ -78,8 +83,9 @@ def test_signed_artifact_cannot_be_moved_into_a_chain_after_finalization():
         "signed_at": 1_721_600_000,
     }
 
-    with pytest.raises(EvidenceProfileError) as exc:
-        AuditChain().append(artifact)
+    with pytest.warns(DeprecationWarning, match="AuditChain.append"):
+        with pytest.raises(EvidenceProfileError) as exc:
+            AuditChain().append(artifact)
     assert exc.value.code == "EVIDENCE_FINALIZATION_FIELDS_PRESENT"
 
 
@@ -88,7 +94,7 @@ def test_multiple_chained_artifacts_all_pass_schema():
     chain = AuditChain()
     schema = _audit_schema()
     for _ in range(3):
-        chained = chain.append(_make_base_artifact())
+        chained = _append(chain, _make_base_artifact())
         jsonschema_validate(instance=chained, schema=schema)
 
 
@@ -96,7 +102,7 @@ def test_chained_artifact_checksum_field_is_string():
     """The checksum field added by chain.append() must be a non-empty string."""
     artifact = _make_base_artifact()
     chain = AuditChain()
-    chained = chain.append(artifact)
+    chained = _append(chain, artifact)
 
     assert "checksum" in chained
     assert isinstance(chained["checksum"], str)
@@ -111,7 +117,7 @@ def test_chained_artifact_accepted_by_compliance_export(tmp_path):
     """compliance export must count a chained artifact as valid (not invalid)."""
     artifact = _make_base_artifact()
     chain = AuditChain()
-    chained = chain.append(artifact)
+    chained = _append(chain, artifact)
 
     jsonl_path = tmp_path / "chained.jsonl"
     jsonl_path.write_text(json.dumps(chained) + "\n", encoding="utf-8")
@@ -134,7 +140,7 @@ def test_chained_fail_artifact_accepted_by_compliance_export(tmp_path):
     """A chained FAIL artifact is accepted and counted in fail_count."""
     artifact = _make_base_artifact(result="FAIL")
     chain = AuditChain()
-    chained = chain.append(artifact)
+    chained = _append(chain, artifact)
 
     jsonl_path = tmp_path / "chained_fail.jsonl"
     jsonl_path.write_text(json.dumps(chained) + "\n", encoding="utf-8")

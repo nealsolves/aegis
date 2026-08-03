@@ -160,9 +160,6 @@ def _base_audit_artifact() -> dict:
         "risk_score": None,
         "signature": None,
         "provenance": None,
-        "chain_id": None,
-        "chain_index": None,
-        "previous_audit_checksum": None,
         "checksum": "c" * 64,
         "signature_status": "unsigned",
     }

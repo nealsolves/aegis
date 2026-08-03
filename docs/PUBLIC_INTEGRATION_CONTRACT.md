@@ -255,6 +255,7 @@ chain = AuditChain(chain_id="analytics-session-001")
 aegis = AEGIS(
     sink=JsonFileAuditSink("audit/governance.jsonl"),
     signer=signer,
+    chain_linker=chain,
     custom_gates=[TenantIsolationGate()],
 )
 ```
@@ -263,6 +264,8 @@ Configuration is immutable after construction. `AEGIS.enforce()` is thread-safe.
 
 - **`sink`**: Every enforcement call (PASS and FAIL) emits an artifact as a JSON line.
 - **`signer`**: HMAC-SHA256 signs every artifact automatically — both PASS and FAIL.
+- **`chain_linker`**: Reserves host-owned chain coordinates before the content checksum
+  and signature are created. `AuditChain` is the bundled single-process implementation.
 - **`custom_gates`**: Validated at construction time. Invalid insertion points raise immediately.
 - **`on_sink_failure`**: `"raise"` is the only v2 mode and prevents an
   allow-class result when durable evidence was not acknowledged. Legacy
@@ -302,29 +305,28 @@ with the FAIL artifact attached at `exc.audit_artifact`.
 
 ### 2.5 Audit chain for artifact integrity
 
-Append each enforcement artifact to the chain for tamper-evident sequencing:
+Configure a host-owned linker at startup for tamper-evident sequencing. The linker reserves
+the next placement before checksum construction and signing; successful sink acknowledgement
+is followed by commit. Callers do not append or mutate the returned artifact:
 
 ```python
-chain.append(artifact)
+artifact = aegis.enforce(invocation)
 print(chain.length)  # 1
 ```
 
-Each `append()` adds three fields to the artifact:
+Each linked invocation artifact contains one complete coordinate set:
 
 - `chain_id`: links the artifact to this chain
 - `chain_index`: 0-based position in the chain
-- `previous_audit_checksum`: SHA-256 of the prior artifact (null for the first)
+- `previous_audit_checksum`: prior artifact's v2 content checksum (`null` for the first)
+- `reservation_id`: opaque host reservation used for commit/abort reconciliation
 
-After a session, inspect the independent verification axes:
+`previous_audit_checksum` is the prior artifact’s v2 content checksum; it is never a
+signature or storage-provider digest. `AuditChain.append()` remains deprecated for offline
+compatibility only; new enforcement code configures `chain_linker` instead.
 
-```python
-report = chain.verify_detailed()
-assert report.content_integrity.value == "valid"
-assert report.chain_continuity.value == "valid"
-assert report.completeness.value == "unproven"
-```
-
-To verify a chain loaded from storage (e.g., from the audit sink's JSONL file):
+Inspect the independent verification axes using the sequence read from storage (e.g.,
+from the audit sink's JSONL file):
 
 ```python
 import json
@@ -334,6 +336,9 @@ with open("audit/governance.jsonl") as f:
     artifacts = [json.loads(line) for line in f]
 
 report = verify_chain_detailed(artifacts)
+assert report.content_integrity.value == "valid"
+assert report.chain_continuity.value == "valid"
+assert report.completeness.value == "unproven"
 ```
 
 `verify_chain()` remains a deprecated compatibility wrapper. Its boolean means
@@ -1034,26 +1039,27 @@ artifact.
 
 ### 3.9 Typed tamper-evident audit-chain verification
 
-Link enforcement artifacts into a cryptographic chain:
+Link enforcement artifacts into a cryptographic chain before they are signed:
 
 ```python
-from aegis import AuditChain, verify_chain_detailed
+from aegis import AEGIS, AuditChain, verify_chain_detailed
 
 chain = AuditChain(chain_id="session-001")
-chain.append(artifact_1)
-chain.append(artifact_2)
+aegis = AEGIS(sink=sink, signer=signer, chain_linker=chain)
+artifact_1 = aegis.enforce(invocation_1)
+artifact_2 = aegis.enforce(invocation_2)
 
-report = chain.verify_detailed()
-
-# Or verify from stored artifacts
 report = verify_chain_detailed([artifact_1, artifact_2])
 ```
 
-Each artifact gains `chain_id`, `chain_index`, and `previous_audit_checksum`.
-Verification detects insertion, deletion, reordering, and modification
-relative to the chain supplied for verification. Hash chaining does not make
-storage immutable and cannot detect replacement of the complete chain without
-an external trusted checkpoint.
+Each artifact gains `chain_id`, `chain_index`, `previous_audit_checksum`, and
+`reservation_id` before its checksum and signature are created. Verification establishes
+content integrity and continuity within the sequence supplied by the caller. A reordered
+or internally truncated supplied sequence is invalid, but a valid prefix remains internally
+valid because the verifier cannot know that a later artifact exists. Hash chaining does not
+make storage immutable and cannot detect replacement or tail truncation of an otherwise valid
+chain without an external trusted checkpoint. Trusted-head binding to content checksums is
+tracked separately in roadmap item #46.
 
 The five result axes are independent: content integrity, chain continuity,
 signature status, anchor status, and completeness. A supplied valid prefix is
@@ -1317,9 +1323,10 @@ invocation context dict.
 | `has_cycle()` | `bool` | True if graph contains a cycle |
 
 **Node identity:** The node key is `sha256(canonical_json_bytes(artifact_without_chain_fields))`,
-where chain fields (`chain_id`, `chain_index`, `previous_audit_checksum`, `checksum`) are
+where chain fields (`chain_id`, `chain_index`, `previous_audit_checksum`, `reservation_id`,
+`checksum`) are
 excluded before hashing. This content-only key is stable regardless of whether
-`AuditChain.append()` has been called. **Do not use `artifact["checksum"]`** as a lineage
+the artifact is chain-linked. **Do not use `artifact["checksum"]`** as a lineage
 key — that is `AuditChain`'s chain-integrity hash and differs from the lineage node key.
 Use `lineage.checksum_of(artifact)` or the return value of `add_artifact()` instead.
 
@@ -1569,7 +1576,8 @@ Fields added by v0.3.0 extension points (present when the feature is active):
 | `signature` | Artifact signing | HMAC-SHA256 hex string (or custom signer output) |
 | `chain_id` | Audit chain | Chain identifier |
 | `chain_index` | Audit chain | 0-based position in chain |
-| `previous_audit_checksum` | Audit chain | SHA-256 of prior artifact (null for first) |
+| `previous_audit_checksum` | Audit chain | Prior artifact's v2 content checksum (null for first); never a signature or storage-provider digest |
+| `reservation_id` | Audit chain | Opaque host reservation identifier used for post-ack reconciliation |
 | `metadata.custom_gate_metadata` | Custom gates | Dict of gate-specific metadata merged from `GateResult.metadata` |
 
 Source-only field added after the `0.9.0b1` release:

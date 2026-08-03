@@ -1,0 +1,17 @@
+{
+  "decision_id": "DEC-b3-publish-authorization-retry-AUTH-instruction_system_change",
+  "selected_option": "authorize_once",
+  "decided_by": "Neal Bhattacharya",
+  "authority_basis": "repository_owner_second_explicit_chat_authorization",
+  "timestamp": "2026-08-03T16:01:33-04:00",
+  "hashes": {
+    "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa",
+    "context_hash": "42e834dc4dd8d46307a620e3043974ac42ea40796e65716878c535bb707455e8",
+    "change_hash": "72ceda5fd27a743ae60d6e7659f60d036ce13276a06e822494c0d23aacae552d"
+  },
+  "conditions": [
+    "change_id=b3-publish-authorization-retry",
+    "action=instruction_system_change",
+    "rules=action_matrix:instruction_system_change:high,post_bootstrap_instruction_system_change"
+  ]
+}

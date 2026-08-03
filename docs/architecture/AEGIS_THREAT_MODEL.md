@@ -244,6 +244,8 @@ Model output is treated as untrusted input.
 * modified signature metadata
 * impossible, hostile, or unavailable external-verifier responses
 * replay or replacement of otherwise valid evidence
+* sink acknowledgement followed by a crash before chain-reservation commit
+* storage-write attackers deleting a valid tail or replacing a complete valid chain
 
 **Risks:**
 
@@ -274,6 +276,13 @@ Model output is treated as untrusted input.
 * exact valid parsed `signature_metadata` remains available as explicitly
   untrusted artifact data; hosts keep it non-secret and apply their own
   redaction before logging it
+* a host-owned chain linker reserves the complete coordinate set before the v2
+  content checksum and signature are created, so every signature covers chain
+  placement
+* pre-ack failures abort the reservation; post-ack commit failures are surfaced
+  distinctly and can be reconciled by reservation ID against observed sink state
+* supplied-sequence verification checks content and internal continuity without
+  promoting either result into a sequence-completeness claim
 
 The host owns the trust store or key resolver, credentials, secret keys,
 provider transport, retries, timeouts, availability behavior, and storage.
@@ -285,7 +294,12 @@ Residual limits are deliberate: HMAC and hash chaining are tamper-evidence, not
 immutable storage. A valid or anchored result does not prevent replay, prove
 sequence completeness, detect replacement of a complete valid chain without a
 trusted checkpoint, provide WORM retention, or establish certification or
-regulatory compliance.
+regulatory compliance. An attacker with storage-write access can replace a
+complete chain or remove a valid tail while leaving the supplied sequence
+internally consistent. Roadmap item #46 is the separate control that binds
+trusted heads to v2 content checksums. The bundled `AuditChain` is in-memory and
+does not claim crash persistence; hosts must reconcile the emit/commit crash
+window or provide a persistent linker.
 
 ---
 

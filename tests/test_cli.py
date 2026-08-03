@@ -190,9 +190,6 @@ def _make_audit_artifact(tmp_path: Path, enforcement_result: str = "PASS") -> Pa
         "signature_status": "unsigned",
         "signature": None,
         "provenance": None,
-        "chain_id": None,
-        "chain_index": None,
-        "previous_audit_checksum": None,
         "checksum": "c" * 64,
     }
     p = tmp_path / "audit.json"
@@ -325,9 +322,6 @@ class TestWorkflowDoctorCLI:
             "signature_status": "unsigned",
             "signature": None,
             "provenance": None,
-            "chain_id": None,
-            "chain_index": None,
-            "previous_audit_checksum": None,
             "checksum": "c" * 64,
         }
         p = tmp_path / "audit.json"
@@ -358,9 +352,6 @@ class TestWorkflowDoctorCLI:
             "signature_status": "unsigned",
             "signature": None,
             "provenance": None,
-            "chain_id": None,
-            "chain_index": None,
-            "previous_audit_checksum": None,
             "checksum": "c" * 64,
         }
         p = tmp_path / "token.json"

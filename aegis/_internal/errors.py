@@ -229,6 +229,19 @@ class EvidenceFinalizationError(AIGCError):
         )
 
 
+class ChainLinkError(AIGCError):
+    """Raised when host-owned chain placement cannot complete safely."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "CHAIN_LINK_ERROR",
+        details: dict | None = None,
+    ) -> None:
+        super().__init__(message, code=code, details=details)
+
+
 class RiskThresholdError(AIGCError):
     """Raised when risk score exceeds threshold in strict mode."""
 

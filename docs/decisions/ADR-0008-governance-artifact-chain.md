@@ -1,210 +1,124 @@
 # ADR-0008: Governance Artifact Chain (Tamper-Evident Audit Sequence)
 
 Date: 2026-03-05
-Status: Proposed
+Status: Accepted
 Owners: Neal
 
 ---
 
 ## Context
 
-Individual audit artifacts are checksummed (SHA-256 of canonical JSON) and
-optionally signed (planned in ADR-D05, roadmap v0.3.0). However, there is no
-mechanism to detect:
+V2 invocation artifacts have content checksums and may be signed, but independent
+artifacts do not establish their order. Linking each artifact to its predecessor can
+detect modification, insertion, deletion, or reordering within a sequence presented for
+verification. It cannot prove that the presented sequence is complete.
 
-1. **Deletion** — an artifact is removed from the audit trail
-2. **Reordering** — artifacts are rearranged to disguise a sequence of actions
-3. **Insertion** — a fabricated artifact is injected into the trail
-
-These are distinct from *modification* of a single artifact (which signing
-addresses). The audit trail as a *sequence* has no integrity guarantee.
-
-For compliance frameworks (SOC 2, ISO 27001) and forensic analysis, the
-question is not just "is this artifact authentic?" but "is the complete
-sequence of artifacts intact and unmodified?"
-
-### Constraints
-
-- Hash chaining must be optional (not all deployments need it)
-- Must not introduce mandatory dependencies (no blockchain, no external
-  services)
-- Must work with any `AuditSink` (JSONL, database, SIEM)
-- Must be deterministic: same sequence of enforcements produces same chain
-- Signing (HMAC/asymmetric) is a separate concern from chaining
-
----
+Chain placement has to be covered by both the v2 content checksum and the signature. A
+post-sign append API would mutate finalized evidence, invalidate its signature, or leave
+the placement unsigned. At the same time, AEGIS cannot own storage ordering, durable
+sequence state, or recovery policy for every host.
 
 ## Decision
 
-Introduce optional hash-chain linking between consecutive audit artifacts
-within an `AEGIS` instance. Each artifact optionally includes
-`previous_audit_checksum`, creating a singly-linked chain that makes
-deletions and insertions detectable.
+AEGIS accepts an optional host-owned `ChainLinker`. The invocation evidence finalizer uses
+it in this strict order:
 
-### Mechanism
+1. reserve the next host placement;
+2. attach the complete coordinate set;
+3. compute the v2 content checksum;
+4. sign and schema-validate the artifact;
+5. emit it and obtain sink acknowledgement;
+6. commit the reservation using the finalized content checksum.
 
-```
-Artifact N:
-  checksum: SHA-256(canonical_json_bytes(artifact_N excluding signature fields))
-  previous_audit_checksum: artifact_N-1.checksum
-  chain_index: N
+Failures before acknowledgement abort the reservation. A commit failure after
+acknowledgement is reported as a distinct post-ack failure and does not attempt to retract
+or abort evidence the sink has already accepted. The opaque reservation ID lets a host
+reconcile that crash window against observed sink state.
 
-Artifact N+1:
-  checksum: SHA-256(canonical_json_bytes(artifact_N+1 excluding signature fields))
-  previous_audit_checksum: artifact_N.checksum
-  chain_index: N+1
-```
-
-The first artifact in a chain has `previous_audit_checksum: null` and
-`chain_index: 0`.
-
-### New audit artifact fields (v1.2 additive)
+The complete coordinate set is:
 
 ```json
 {
-  "previous_audit_checksum": "sha256:abc123...",
+  "chain_id": "analytics-session-001",
   "chain_index": 42,
-  "chain_id": "aegis-instance-uuid"
+  "previous_audit_checksum": "0123456789abcdef...",
+  "reservation_id": "opaque-host-reservation"
 }
 ```
 
-- `previous_audit_checksum`: SHA-256 hex of the previous artifact's canonical
-  bytes (null for the first artifact in a chain).
-- `chain_index`: Monotonically increasing integer within a chain. Enables
-  gap detection without reading every artifact.
-- `chain_id`: UUID identifying the `AEGIS` instance that produced the chain.
-  Enables correlation when multiple instances write to the same sink.
+`previous_audit_checksum` is the prior artifact’s v2 content checksum; it is never a signature or storage-provider digest.
+The first artifact uses `null`. The four fields are complete or absent; partial
+caller-supplied coordinates are invalid. Workflow evidence is outside this linker contract.
 
-### Opt-in activation
+`AuditChain` is the bundled in-memory implementation. It serializes one outstanding
+reservation, supports bounded reservation waits, idempotent commit/abort behavior, and
+reservation reconciliation. It does not claim crash persistence. Hosts that require
+durable cross-process ordering provide a persistent `ChainLinker`.
 
 ```python
+from aegis import AEGIS, AuditChain, HMACSigner, JsonFileAuditSink
+
+chain = AuditChain(chain_id="analytics-session-001")
 aegis = AEGIS(
     sink=JsonFileAuditSink("audit.jsonl"),
-    chain_artifacts=True,  # enables hash chaining
+    signer=HMACSigner(key=b"host-managed-key"),
+    chain_linker=chain,
 )
+artifact = aegis.enforce(invocation)
 ```
 
-When `chain_artifacts=False` (default), the three chain fields are omitted
-from artifacts. No performance or storage overhead.
+`AuditChain.append()` remains deprecated for offline compatibility. New enforcement code
+must configure the linker so chain placement is finalized before signing.
 
-### Verification
+## Verification and Assurance Boundary
 
-A standalone verification function (and future CLI command) walks a sequence
-of artifacts and checks:
+`verify_chain_detailed()` independently reports content integrity, chain continuity,
+signature status, anchor status, and completeness. For the sequence supplied by the
+caller, it verifies checksum integrity, coordinate continuity, and predecessor checksum
+links. A reordered or internally truncated supplied sequence is invalid.
 
-1. Each `previous_audit_checksum` matches the computed checksum of the
-   preceding artifact
-2. `chain_index` is monotonically increasing with no gaps
-3. `chain_id` is consistent within the sequence
-4. No artifact has been modified (recompute checksum, compare)
-
-```python
-from aegis.audit import verify_chain
-
-artifacts = load_artifacts("audit.jsonl")
-result = verify_chain(artifacts)
-# result.valid: bool
-# result.breaks: list of (index, reason) tuples
-```
-
----
+A valid prefix is still internally continuous, so completeness always remains `unproven`
+without an external trusted checkpoint. An attacker with storage-write access can remove a
+valid tail or replace an entire valid chain. Hash chaining is tamper-evidence, not immutable
+or WORM storage. Roadmap item #46 separately binds trusted heads to v2 content checksums.
 
 ## Options Considered
 
-### Option A: Singly-linked hash chain on AEGIS instance (chosen)
+### AEGIS-owned counter after signing
 
-Pros:
+Rejected because it mutates finalized evidence and leaves chain placement outside the
+signature. It also incorrectly makes the enforcement object responsible for host storage
+ordering and durable recovery.
 
-- Simple, well-understood cryptographic primitive
-- No external dependencies
-- Deletion and insertion detectable
-- Works with any sink (artifacts are self-contained)
-- Optional — zero overhead when disabled
+### Host-owned reserve/commit linker (chosen)
 
-Cons:
+Keeps storage and ordering authority with the host while making chain-before-sign coverage
+an AEGIS invariant. The transaction boundary is explicit, including the unavoidable
+sink-acknowledgement/commit crash window.
 
-- Chain breaks if AEGIS instance restarts (new chain starts)
-- Does not prevent reordering within a chain break
-- Single-instance scope — cross-instance chains not supported
+### Merkle batches or external transparency log
 
-### Option B: Merkle tree over artifact batches
-
-Pros:
-
-- Efficient verification of large audit trails
-- Can verify subsets without reading all artifacts
-
-Cons:
-
-- More complex implementation
-- Requires batch boundaries (how often to close a tree?)
-- Overkill for most deployments
-
-### Option C: External append-only log (e.g., transparency log)
-
-Pros:
-
-- Strongest tamper-evidence guarantee
-- Third-party verification possible
-
-Cons:
-
-- External dependency (network service)
-- Availability concern — enforcement blocked if log is down?
-- Contradicts "minimal dependencies" principle
-
----
+Not required by the SDK core. Hosts may implement either behind their storage and trusted
+checkpoint controls; neither changes the finalizer's content or signature coverage.
 
 ## Consequences
 
-- What becomes easier:
-  - Compliance evidence: auditors can verify trail integrity with a single
-    function call
-  - Forensic analysis: deletions and insertions are detectable
-  - Multi-instance deployments: `chain_id` enables per-instance correlation
-
-- What becomes harder:
-  - Instance restarts create chain breaks (mitigated: `chain_id` + initial
-    `previous_audit_checksum: null` marks expected break points)
-  - Sink implementations must preserve artifact ordering (already expected
-    for JSONL; database sinks use `chain_index` for ordering)
-
-- Risks introduced:
-  - Chain verification is only as strong as the sink's append-only guarantee
-  - Mitigation: document that sinks must preserve ordering; signing
-    (separate concern) adds per-artifact authenticity
-  - `previous_audit_checksum` creates a dependency between consecutive
-    artifacts — parallel enforcement must serialize chain updates
-  - Mitigation: chain update is protected by `threading.Lock` on the AEGIS
-    instance (already required for counter state)
-
----
-
-## Contract Impact
-
-- Enforcement pipeline impact: After `generate_audit_artifact()`, optionally
-  compute and attach chain fields before `emit_to_sink()`.
-- Policy DSL impact: None
-- Schema impact: Three new optional fields in `audit_artifact.schema.json`
-  (v1.2 additive). All nullable. Not in `required` array.
-- Audit artifact impact: Three new fields when `chain_artifacts=True`
-- Golden replays impact: New golden fixtures for chained artifacts. Chain
-  verification golden replay.
-- Structural impact: New `verify_chain()` function in `aegis._internal.audit`
-  or `aegis._internal.chain`. Public export via `aegis.audit`.
-- Backward compatibility: Fully backward compatible. Fields are optional and
-  additive. Disabled by default.
-
----
+- Chain coordinates, checksum, and signature describe one immutable finalized artifact.
+- Concurrent producers must serialize or coordinate placement through their linker.
+- The schema adds four optional fields as a complete set; only
+  `previous_audit_checksum` may be `null`, and only at index zero.
+- Re-signing for key rotation changes the signature layer without changing the content
+  checksum or chain coordinates.
+- Sink acknowledgement and chain commit remain separate operations; persistent linkers
+  must define reconciliation and recovery.
+- Verification detects breaks inside the supplied sequence but makes no completeness,
+  replay-prevention, retention, certification, or compliance claim.
 
 ## Validation
 
-- `ci:signature` (v0.3.0): chain of 10 artifacts → `verify_chain()` returns
-  valid. Remove artifact 5 → `verify_chain()` detects gap. Modify artifact 3 →
-  `verify_chain()` detects checksum mismatch.
-- Golden replay: 3-artifact chain with frozen timestamps. Assert
-  `previous_audit_checksum` values match computed checksums.
-- Determinism: same 3 enforcements with frozen time → identical chain
-  checksums across 100 runs.
-- Thread safety: 10-thread concurrent enforcement with `chain_artifacts=True`.
-  Assert `chain_index` is monotonic with no gaps.
+- contract tests cover malformed coordinates and linker failures;
+- ordering tests prove reserve/attach/checksum/sign/validate/emit/commit sequencing;
+- concurrency tests prove no gaps after abort/retry and one outstanding placement;
+- reconciliation tests cover the post-ack commit crash window;
+- deterministic vectors prove key rotation preserves chain coordinates and checksums;
+- deletion/reordering vectors keep completeness `unproven` without an external anchor.

@@ -199,16 +199,26 @@
       "additionalProperties": false
     },
     "chain_id": {
-      "type": ["string", "null"],
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
       "description": "Audit chain identifier for tamper-evident chaining"
     },
     "chain_index": {
-      "type": ["integer", "null"],
+      "type": "integer",
+      "minimum": 0,
       "description": "Position in the audit chain"
     },
     "previous_audit_checksum": {
       "type": ["string", "null"],
-      "description": "SHA-256 checksum of the previous artifact in the chain"
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "V2 content checksum of the previous artifact in the chain"
+    },
+    "reservation_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "description": "Host-owned identity for the chain placement transaction"
     },
     "checksum": {
       "type": "string",
@@ -216,6 +226,49 @@
       "description": "SHA-256 v2 content checksum of this artifact"
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "anyOf": [
+          {"required": ["chain_id"]},
+          {"required": ["chain_index"]},
+          {"required": ["previous_audit_checksum"]},
+          {"required": ["reservation_id"]}
+        ]
+      },
+      "then": {
+        "required": [
+          "chain_id",
+          "chain_index",
+          "previous_audit_checksum",
+          "reservation_id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": ["chain_index"],
+        "properties": {"chain_index": {"const": 0}}
+      },
+      "then": {
+        "properties": {"previous_audit_checksum": {"type": "null"}}
+      }
+    },
+    {
+      "if": {
+        "required": ["chain_index"],
+        "properties": {"chain_index": {"minimum": 1}}
+      },
+      "then": {
+        "properties": {
+          "previous_audit_checksum": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        }
+      }
+    }
+  ],
   "required": [
     "audit_schema_version",
     "canonicalization_profile",
