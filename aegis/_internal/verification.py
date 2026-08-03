@@ -16,6 +16,14 @@ from aegis._internal.evidence_profiles import (
 from aegis._internal.external_signing import verify_artifact_detailed
 from aegis._internal.legacy import LegacyFeature, is_legacy_authorized
 from aegis._internal.signature_models import AnchorStatus, SignatureStatus
+from aegis._internal.signature_models import (
+    CANONICALIZATION_VERSION,
+    SIGNATURE_METADATA_SCHEMA_VERSION,
+    SIGNING_PROFILE,
+    SignatureEncoding,
+    SignerIdentity,
+    validate_encoded_signature,
+)
 from aegis._internal.utils import canonical_json_bytes
 
 
@@ -27,6 +35,20 @@ _CHAIN_FIELDS = frozenset(
         "chain_index",
         "previous_audit_checksum",
         "reservation_id",
+    }
+)
+_FINALIZER_SIGNATURE_METADATA_FIELDS = frozenset(
+    {
+        "schema_version",
+        "signing_profile",
+        "canonicalization_version",
+        "canonicalization_profile",
+        "payload_type",
+        "algorithm",
+        "signature_encoding",
+        "key_reference",
+        "key_version",
+        "signed_at",
     }
 )
 
@@ -309,7 +331,48 @@ def _verify_signatures(
             or artifact.get("audit_schema_version") == "2.0"
             or artifact.get("workflow_schema_version") == "2.0"
         )
+        signature = artifact.get("signature")
         signature_metadata = artifact.get("signature_metadata")
+        declared_signature_status = artifact.get("signature_status")
+        if "signature_status" in artifact and (
+            (
+                signature is None
+                and (
+                    declared_signature_status != "unsigned"
+                    or "signature_metadata" in artifact
+                )
+            )
+            or (signature is not None and declared_signature_status != "signed")
+        ):
+            errors.append(
+                _error(
+                    "SIGNATURE_METADATA_INVALID",
+                    f"Index {index}: signature fields are inconsistent",
+                    index,
+                )
+            )
+            signature_statuses.append(SignatureStatus.INDETERMINATE)
+            anchor_statuses.append(AnchorStatus.NOT_EVALUATED)
+            continue
+        if (
+            signature is not None
+            and type(signature_metadata) is dict
+            and "canonicalization_profile" in signature_metadata
+        ):
+            if not _valid_finalizer_signature_metadata(
+                artifact,
+                signature_metadata,
+            ):
+                errors.append(
+                    _error(
+                        "SIGNATURE_METADATA_INVALID",
+                        f"Index {index}: finalizer signature metadata is invalid",
+                        index,
+                    )
+                )
+            signature_statuses.append(SignatureStatus.INDETERMINATE)
+            anchor_statuses.append(AnchorStatus.NOT_EVALUATED)
+            continue
         signature_profile = (
             signature_metadata.get("canonicalization_version")
             if type(signature_metadata) is dict
@@ -352,6 +415,49 @@ def _verify_signatures(
     return (
         _worst(signature_statuses, _SIGNATURE_PRIORITY, SignatureStatus.UNSIGNED),
         _worst(anchor_statuses, _ANCHOR_PRIORITY, AnchorStatus.NOT_EVALUATED),
+    )
+
+
+def _valid_finalizer_signature_metadata(
+    artifact: dict[str, Any],
+    metadata: dict[str, Any],
+) -> bool:
+    """Validate B2 metadata without treating its presence as authenticity."""
+    expected_payload_type = (
+        "workflow_artifact"
+        if artifact.get("workflow_schema_version") == "2.0"
+        and "audit_schema_version" not in artifact
+        else "audit_artifact"
+        if artifact.get("audit_schema_version") == "2.0"
+        and "workflow_schema_version" not in artifact
+        else None
+    )
+    try:
+        encoding = SignatureEncoding(metadata.get("signature_encoding"))
+        identity = SignerIdentity(
+            algorithm=metadata.get("algorithm"),
+            signature_encoding=encoding,
+            key_reference=metadata.get("key_reference"),
+            key_version=metadata.get("key_version"),
+        )
+        validate_encoded_signature(artifact.get("signature"), encoding)
+    except Exception:
+        return False
+    signed_at = metadata.get("signed_at")
+    return (
+        set(metadata) == _FINALIZER_SIGNATURE_METADATA_FIELDS
+        and artifact.get("signature_status") == "signed"
+        and metadata.get("schema_version") == SIGNATURE_METADATA_SCHEMA_VERSION
+        and metadata.get("signing_profile") == SIGNING_PROFILE
+        and metadata.get("canonicalization_version")
+        == CANONICALIZATION_VERSION
+        and metadata.get("canonicalization_profile")
+        == CANONICALIZATION_PROFILE_V2
+        and metadata.get("payload_type") == expected_payload_type
+        and not isinstance(signed_at, bool)
+        and isinstance(signed_at, int)
+        and signed_at >= 0
+        and isinstance(identity, SignerIdentity)
     )
 
 
