@@ -16,75 +16,17 @@ from __future__ import annotations
 
 import abc
 import logging
-from typing import Any, Iterator, Mapping
+from typing import Any, Mapping
+
+from aegis._internal.errors import OutcomeContractError
+from aegis._internal.gate_projection import GateProjectionFactory
+from aegis._internal.outcomes import (
+    FailureRecord,
+    NormalizedOutcome,
+    OutcomeNormalizer,
+)
 
 logger = logging.getLogger("aegis.gates")
-
-
-class _ImmutableView(Mapping[str, Any]):
-    """Read-only view of a dict that raises on mutation attempts.
-
-    Recursively wraps nested dicts as _ImmutableView and nested lists as
-    tuples so that custom gates cannot mutate policy or invocation data.
-    """
-
-    __slots__ = ("_data",)
-
-    def __init__(self, data: Mapping[str, Any]) -> None:
-        self._data = data
-
-    def __getitem__(self, key: str) -> Any:
-        value = self._data[key]
-        if isinstance(value, dict):
-            return _ImmutableView(value)
-        if isinstance(value, list):
-            return tuple(
-                _ImmutableView(v) if isinstance(v, dict) else v
-                for v in value
-            )
-        return value
-
-    def __iter__(self) -> Iterator[str]:
-        return iter(self._data)
-
-    def __len__(self) -> int:
-        return len(self._data)
-
-    def __contains__(self, key: object) -> bool:
-        return key in self._data
-
-    def __repr__(self) -> str:
-        return f"_ImmutableView({self._data!r})"
-
-    def __setitem__(self, key: str, value: Any) -> None:
-        raise TypeError(
-            "Custom gates receive read-only views; "
-            "mutation of policy/invocation is not permitted"
-        )
-
-    def __delitem__(self, key: str) -> None:
-        raise TypeError(
-            "Custom gates receive read-only views; "
-            "deletion from policy/invocation is not permitted"
-        )
-
-    def pop(self, *args: Any) -> Any:
-        raise TypeError(
-            "Custom gates receive read-only views; "
-            "mutation of policy/invocation is not permitted"
-        )
-
-    def update(self, *args: Any, **kwargs: Any) -> None:
-        raise TypeError(
-            "Custom gates receive read-only views; "
-            "mutation of policy/invocation is not permitted"
-        )
-
-    def clear(self) -> None:
-        raise TypeError(
-            "Custom gates receive read-only views; "
-            "mutation of policy/invocation is not permitted"
-        )
 
 
 # Supported insertion points for custom gates
@@ -123,6 +65,140 @@ class GateResult:
         self.metadata = metadata or {}
 
 
+def _synthetic_failure(
+    gate_id: str,
+    code: str,
+    message: str,
+) -> FailureRecord:
+    return FailureRecord(code=code, message=f"Gate '{gate_id}' {message}")
+
+
+def _normalize_gate_failures(
+    failures: object,
+) -> tuple[FailureRecord, ...]:
+    if not isinstance(failures, (list, tuple)):
+        return (
+            FailureRecord(
+                code="CUSTOM_GATE_MALFORMED_FAILURE",
+                message="Custom gate returned a malformed failures collection",
+            ),
+        )
+    normalized: list[FailureRecord] = []
+    for item in failures:
+        if not isinstance(item, Mapping):
+            normalized.append(
+                FailureRecord(
+                    code="CUSTOM_GATE_MALFORMED_FAILURE",
+                    message=str(item)[:1024],
+                )
+            )
+            continue
+        try:
+            normalized.append(OutcomeNormalizer._failure(item))
+        except OutcomeContractError:
+            normalized.append(
+                FailureRecord(
+                    code="CUSTOM_GATE_MALFORMED_FAILURE",
+                    message="Custom gate returned a malformed failure record",
+                )
+            )
+    return tuple(normalized)
+
+
+def _plain_json_value(value: Any) -> Any:
+    """Thaw a detached outcome value for the public JSON audit artifact."""
+    if isinstance(value, Mapping):
+        return {key: _plain_json_value(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return [_plain_json_value(item) for item in value]
+    return value
+
+
+def _normalize_gate_result_unchecked(
+    gate_id: str,
+    result: object,
+) -> NormalizedOutcome:
+    if not isinstance(result, GateResult):
+        return OutcomeNormalizer.execution_failure(
+            "CUSTOM_GATE_INVALID_RETURN",
+            failures=(
+                _synthetic_failure(
+                    gate_id,
+                    "CUSTOM_GATE_INVALID_RETURN",
+                    "returned an unsupported result",
+                ),
+            ),
+        )
+    failures = _normalize_gate_failures(result.failures)
+    if type(result.passed) is not bool:
+        return OutcomeNormalizer.invalid(
+            "CUSTOM_GATE_INVALID_RESULT",
+            failures=failures
+            or (
+                _synthetic_failure(
+                    gate_id,
+                    "CUSTOM_GATE_INVALID_RESULT",
+                    "returned a non-boolean passed value",
+                ),
+            ),
+        )
+    if result.passed is False:
+        return OutcomeNormalizer.deny(
+            "CUSTOM_GATE_DENIED",
+            failures=failures
+            or (
+                _synthetic_failure(
+                    gate_id,
+                    "CUSTOM_GATE_DENIED",
+                    "denied authorization",
+                ),
+            ),
+        )
+    if failures:
+        return OutcomeNormalizer.invalid(
+            "CUSTOM_GATE_INCONSISTENT_RESULT",
+            failures=failures,
+        )
+    try:
+        return OutcomeNormalizer.allow(
+            "CUSTOM_GATE_ALLOWED",
+            metadata=result.metadata,
+        )
+    except (OutcomeContractError, TypeError):
+        return OutcomeNormalizer.invalid(
+            "CUSTOM_GATE_INVALID_METADATA",
+            failures=(
+                _synthetic_failure(
+                    gate_id,
+                    "CUSTOM_GATE_INVALID_METADATA",
+                    "returned unsupported metadata",
+                ),
+            ),
+        )
+
+
+def normalize_gate_result(gate_id: str, result: object) -> NormalizedOutcome:
+    """Map any untrusted custom-gate return value to a closed outcome."""
+    safe_gate_id = (
+        str.__str__(gate_id)
+        if isinstance(gate_id, str)
+        else "unknown-gate"
+    )
+    try:
+        return _normalize_gate_result_unchecked(safe_gate_id, result)
+    except Exception:  # noqa: BLE001 - untrusted result object graph
+        return OutcomeNormalizer.execution_failure(
+            "CUSTOM_GATE_MALFORMED_RESULT",
+            failures=(
+                _synthetic_failure(
+                    safe_gate_id,
+                    "CUSTOM_GATE_MALFORMED_RESULT",
+                    "returned a result that could not be inspected safely",
+                ),
+            ),
+        )
+
+
 class EnforcementGate(abc.ABC):
     """Abstract base class for custom enforcement gates.
 
@@ -130,10 +206,10 @@ class EnforcementGate(abc.ABC):
     Register instances with the AEGIS class or enforcement pipeline.
 
     Safety contract:
-    - Gates receive a read-only view of invocation and policy
+    - Supplied projections cannot mutate AEGIS enforcement state
     - Gates return GateResult (they cannot raise to bypass governance)
     - Failures are append-only (cannot suppress prior failures)
-    - Gates cannot modify the invocation or policy
+    - Gate arguments contain detached invocation, policy, and context data
 
     Usage::
 
@@ -174,9 +250,9 @@ class EnforcementGate(abc.ABC):
     ) -> GateResult:
         """Execute the custom gate logic.
 
-        :param invocation: Read-only invocation dict
-        :param policy: Read-only effective policy dict
-        :param context: Mutable pipeline context for passing data
+        :param invocation: Detached immutable invocation projection
+        :param policy: Detached immutable effective-policy projection
+        :param context: Detached per-call context projection
         :return: GateResult indicating pass/fail with optional metadata
         """
 
@@ -219,6 +295,26 @@ def run_gates(
     gates_evaluated: list[str],
     prior_failures: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Compatibility wrapper returning normalized failures and metadata."""
+    failures, metadata, _ = run_gates_normalized(
+        gates,
+        invocation,
+        policy,
+        pipeline_context,
+        gates_evaluated,
+        prior_failures,
+    )
+    return failures, metadata
+
+
+def run_gates_normalized(
+    gates: list[EnforcementGate],
+    invocation: Mapping[str, Any],
+    policy: Mapping[str, Any],
+    pipeline_context: dict[str, Any],
+    gates_evaluated: list[str],
+    prior_failures: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], dict[str, Any], NormalizedOutcome]:
     """Run a list of custom gates and collect results.
 
     Failures are append-only: prior_failures are preserved.
@@ -236,77 +332,56 @@ def run_gates(
     accumulated_failures = list(prior_failures)
     merged_metadata: dict[str, Any] = {}
 
-    # Wrap invocation and policy in immutable views so custom gates
-    # cannot mutate authorization-relevant data (stop-ship gate).
-    immutable_invocation = _ImmutableView(invocation)
-    immutable_policy = _ImmutableView(policy)
+    projected_invocation = GateProjectionFactory.invocation(invocation)
+    projected_policy = GateProjectionFactory.policy_from_mapping(policy)
+    projected_context = GateProjectionFactory.context(pipeline_context)
 
+    aggregate = OutcomeNormalizer.allow("CUSTOM_GATES_ALLOWED")
     for gate in gates:
         gate_id = f"custom:{gate.name}"
         try:
             result = gate.evaluate(
-                immutable_invocation, immutable_policy, pipeline_context,
+                projected_invocation, projected_policy, projected_context,
             )
-        except TypeError as exc:
-            if "read-only" in str(exc):
-                # Gate tried to mutate — convert to failure
-                logger.error(
-                    "Custom gate '%s' attempted mutation: %s",
-                    gate.name,
-                    exc,
-                )
-                result = GateResult(
-                    passed=False,
-                    failures=[{
-                        "code": "CUSTOM_GATE_MUTATION",
-                        "message": (
-                            f"Gate '{gate.name}' attempted to mutate "
-                            f"read-only data: {exc}"
-                        ),
-                        "field": None,
-                    }],
-                )
-            else:
-                # Non-mutation TypeError from gate code — convert to
-                # failure so FAIL artifact is always emitted (fail-closed).
-                logger.error(
-                    "Custom gate '%s' raised TypeError: %s",
-                    gate.name,
-                    exc,
-                )
-                result = GateResult(
-                    passed=False,
-                    failures=[{
-                        "code": "CUSTOM_GATE_ERROR",
-                        "message": (
-                            f"Gate '{gate.name}' raised TypeError: {exc}"
-                        ),
-                        "field": None,
-                    }],
-                )
         except Exception as exc:  # noqa: BLE001
-            logger.error("Custom gate '%s' raised: %s", gate.name, exc)
-            result = GateResult(
-                passed=False,
-                failures=[{
-                    "code": "CUSTOM_GATE_ERROR",
-                    "message": f"Gate '{gate.name}' raised: {exc}",
-                    "field": None,
-                }],
+            logger.error(
+                "Custom gate '%s' execution failed (%s)",
+                gate.name,
+                type(exc).__name__,
             )
+            outcome = OutcomeNormalizer.execution_failure(
+                "CUSTOM_GATE_EXECUTION_FAILURE",
+                failures=(
+                    _synthetic_failure(
+                        gate.name,
+                        "CUSTOM_GATE_ERROR",
+                        "failed during execution",
+                    ),
+                ),
+            )
+        else:
+            outcome = normalize_gate_result(gate.name, result)
 
         gates_evaluated.append(gate_id)
 
-        if result.failures:
-            accumulated_failures.extend(result.failures)
-        if result.metadata:
-            merged_metadata.update(result.metadata)
+        accumulated_failures.extend(
+            {
+                "code": failure.code,
+                "message": failure.message,
+                "field": failure.field,
+            }
+            for failure in outcome.failures
+        )
+        if outcome.metadata:
+            merged_metadata.update(_plain_json_value(outcome.metadata))
+        if aggregate.allows_continuation and not outcome.allows_continuation:
+            aggregate = outcome
 
         logger.debug(
-            "Custom gate '%s' completed: passed=%s, failures=%d",
+            "Custom gate '%s' completed: terminal=%s, failures=%d",
             gate.name,
-            result.passed,
-            len(result.failures),
+            outcome.terminal.value,
+            len(outcome.failures),
         )
 
-    return accumulated_failures, merged_metadata
+    return accumulated_failures, merged_metadata, aggregate

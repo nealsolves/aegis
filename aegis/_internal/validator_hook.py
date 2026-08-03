@@ -12,6 +12,8 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
+from aegis._internal.outcomes import NormalizedOutcome, OutcomeNormalizer
+
 # ---------------------------------------------------------------------------
 # Decision constants
 # ---------------------------------------------------------------------------
@@ -22,8 +24,8 @@ VALIDATOR_WARN = "warn"
 VALIDATOR_REVIEW_REQUIRED = "review_required"
 VALIDATOR_EXECUTION_FAILURE = "execution_failure"
 VALIDATOR_TIMEOUT = "timeout"
+_VALIDATOR_INVALID_RESULT = "invalid_result"
 
-_FAIL_CLOSED_DECISIONS = {VALIDATOR_DENY, VALIDATOR_TIMEOUT, VALIDATOR_REVIEW_REQUIRED}
 _RETRY_ELIGIBLE_DECISIONS = {VALIDATOR_EXECUTION_FAILURE}
 
 # ---------------------------------------------------------------------------
@@ -60,6 +62,31 @@ class ValidatorHookResult:
     observed_at: int  # unix milliseconds
     stale_result: bool = False
     provenance: str | None = None
+
+
+def normalize_hook_result(result: object) -> NormalizedOutcome:
+    """Convert a final validator-hook result to a closed terminal class."""
+    if not _valid_hook_result_shape(result):
+        return OutcomeNormalizer.invalid("HOOK_INVALID_RESULT")
+    if result.stale_result:
+        return OutcomeNormalizer.timeout("HOOK_STALE_RESULT")
+    decision = result.decision
+    reason_code = result.reason_code
+    if decision == VALIDATOR_ALLOW:
+        return OutcomeNormalizer.allow(reason_code or "HOOK_ALLOWED")
+    if decision == VALIDATOR_WARN:
+        return OutcomeNormalizer.warn(reason_code or "HOOK_WARNING")
+    if decision in {VALIDATOR_DENY, VALIDATOR_REVIEW_REQUIRED}:
+        return OutcomeNormalizer.deny(reason_code or "HOOK_DENIED")
+    if decision == VALIDATOR_TIMEOUT:
+        return OutcomeNormalizer.timeout(reason_code or "HOOK_TIMEOUT")
+    if decision == VALIDATOR_EXECUTION_FAILURE:
+        return OutcomeNormalizer.execution_failure(
+            reason_code or "HOOK_EXECUTION_FAILURE"
+        )
+    if decision == _VALIDATOR_INVALID_RESULT:
+        return OutcomeNormalizer.invalid("HOOK_INVALID_RESULT")
+    return OutcomeNormalizer.invalid("HOOK_INVALID_DECISION")
 
 
 # ---------------------------------------------------------------------------
@@ -120,7 +147,7 @@ def _call_hook_once(
     attempt: int,
 ) -> ValidatorHookResult:
     """Call hook.evaluate() in a daemon thread with timeout_ms enforcement."""
-    result_holder: list[ValidatorHookResult] = []
+    result_holder: list[object] = []
     exception_holder: list[BaseException] = []
 
     def _run() -> None:
@@ -151,7 +178,7 @@ def _call_hook_once(
         return ValidatorHookResult(
             decision=VALIDATOR_EXECUTION_FAILURE,
             reason_code="HOOK_EXCEPTION",
-            explanation=str(exception_holder[0]),
+            explanation="Hook execution failed",
             hook_id=hook.hook_id,
             hook_version=hook.hook_version,
             attempt=attempt,
@@ -161,12 +188,19 @@ def _call_hook_once(
 
     result = result_holder[0]
 
+    if not _valid_hook_result_shape(result):
+        return _invalid_hook_result(hook, attempt, elapsed_ms)
+
     # Stale-result check: reject results that arrived after the deadline or
     # whose attempt number doesn't match the active attempt.
     # Use TIMEOUT (not EXECUTION_FAILURE) so stale results fail closed — they
     # are not transient errors that warrant retry.
     _absolute_deadline = envelope.observed_at + envelope.deadline_ms
-    if result.observed_at > _absolute_deadline or result.attempt != attempt:
+    if (
+        result.stale_result
+        or result.observed_at > _absolute_deadline
+        or result.attempt != attempt
+    ):
         return ValidatorHookResult(
             decision=VALIDATOR_TIMEOUT,
             reason_code="HOOK_STALE_RESULT",
@@ -183,27 +217,49 @@ def _call_hook_once(
             stale_result=True,
         )
 
-    _KNOWN_DECISIONS = {
-        VALIDATOR_ALLOW,
-        VALIDATOR_DENY,
-        VALIDATOR_WARN,
-        VALIDATOR_REVIEW_REQUIRED,
-        VALIDATOR_EXECUTION_FAILURE,
-        VALIDATOR_TIMEOUT,
-    }
-    if result.decision not in _KNOWN_DECISIONS:
-        return ValidatorHookResult(
-            decision=VALIDATOR_DENY,
-            reason_code="HOOK_INVALID_DECISION",
-            explanation=f"Unrecognized decision: {result.decision!r}",
-            hook_id=result.hook_id,
-            hook_version=result.hook_version,
-            attempt=attempt,
-            latency_ms=elapsed_ms,
-            observed_at=int(time.time() * 1000),
-        )
-
     return result
+
+
+def _valid_hook_result_shape(result: object) -> bool:
+    """Validate exact field types before stale/retry logic dereferences them."""
+    if type(result) is not ValidatorHookResult:
+        return False
+    try:
+        return (
+            type(result.decision) is str
+            and (result.reason_code is None or type(result.reason_code) is str)
+            and (result.explanation is None or type(result.explanation) is str)
+            and type(result.hook_id) is str
+            and type(result.hook_version) is str
+            and type(result.attempt) is int
+            and type(result.latency_ms) is int
+            and type(result.observed_at) is int
+            and type(result.stale_result) is bool
+            and (result.provenance is None or type(result.provenance) is str)
+        )
+    except Exception:  # noqa: BLE001 - untrusted result fields
+        return False
+
+
+def _invalid_hook_result(
+    hook: ValidatorHook,
+    attempt: int,
+    latency_ms: int,
+) -> ValidatorHookResult:
+    hook_id = hook.hook_id if type(hook.hook_id) is str else "unknown-hook"
+    hook_version = (
+        hook.hook_version if type(hook.hook_version) is str else "unknown"
+    )
+    return ValidatorHookResult(
+        decision=_VALIDATOR_INVALID_RESULT,
+        reason_code="HOOK_INVALID_RESULT",
+        explanation="Hook returned a malformed result",
+        hook_id=hook_id,
+        hook_version=hook_version,
+        attempt=attempt,
+        latency_ms=latency_ms,
+        observed_at=int(time.time() * 1000),
+    )
 
 
 def _invoke_hook(

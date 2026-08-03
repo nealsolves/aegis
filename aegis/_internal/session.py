@@ -1435,9 +1435,7 @@ class GovernanceSession:
             from aegis._internal.validator_hook import (
                 ValidatorHookEnvelope,
                 _invoke_hook,
-                VALIDATOR_DENY,
-                VALIDATOR_TIMEOUT,
-                VALIDATOR_REVIEW_REQUIRED,
+                normalize_hook_result,
             )
             from aegis._internal.errors import WorkflowHookDeniedError
             for _hook in self._validator_hooks:
@@ -1454,12 +1452,13 @@ class GovernanceSession:
                     invocation_checksum=_checksum(enriched),
                 )
                 _result = _invoke_hook(_hook, _envelope)
+                _outcome = normalize_hook_result(_result)
                 self._validator_hook_evidence.append({
                     "hook_id": _result.hook_id,
                     "hook_version": _result.hook_version,
                     "step_id": resolved_step_id,
                     "decision": _result.decision,
-                    "reason_code": _result.reason_code,
+                    "reason_code": _outcome.reason_code,
                     "explanation": _result.explanation,
                     "attempt": _result.attempt,
                     "latency_ms": _result.latency_ms,
@@ -1467,23 +1466,22 @@ class GovernanceSession:
                     "stale_result": _result.stale_result,
                     "provenance": _result.provenance,
                 })
-                if _result.decision in {
-                    VALIDATOR_DENY, VALIDATOR_TIMEOUT, VALIDATOR_REVIEW_REQUIRED
-                }:
+                if not _outcome.allows_continuation:
                     raise WorkflowHookDeniedError(
                         f"Validator hook {_result.hook_id!r} blocked step "
-                        f"{resolved_step_id!r}: decision={_result.decision!r}, "
-                        f"reason_code={_result.reason_code!r}",
+                        f"{resolved_step_id!r}: terminal="
+                        f"{_outcome.terminal.value!r}, "
+                        f"reason_code={_outcome.reason_code!r}",
                         details={
                             "session_id": self._session_id,
                             "step_id": resolved_step_id,
                             "hook_id": _result.hook_id,
                             "decision": _result.decision,
-                            "reason_code": _result.reason_code,
+                            "reason_code": _outcome.reason_code,
+                            "terminal": _outcome.terminal.value,
                         },
                     )
-                # After fail-closed raise above, only ALLOW/WARN/EXECUTION_FAILURE
-                # remain — all are safe to continue.
+                # Only the closed ALLOW/WARN terminal classes continue.
 
         self._pending_results[token_id] = {
             "inner": inner_result,

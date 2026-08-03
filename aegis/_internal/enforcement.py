@@ -77,14 +77,13 @@ from aegis._internal.tools import validate_tool_constraints
 from aegis._internal.sinks import emit_to_sink
 from aegis._internal.risk_scoring import (
     compute_compiled_risk_score,
-    RISK_MODE_STRICT,
-    RISK_MODE_WARN_ONLY,
+    normalize_risk_result,
     RiskScore,
 )
 from aegis._internal.signing import ArtifactSigner, sign_artifact
 from aegis._internal.gates import (
     EnforcementGate,
-    run_gates,
+    run_gates_normalized,
     sort_gates,
     validate_gate,
     INSERTION_PRE_AUTHORIZATION,
@@ -92,6 +91,7 @@ from aegis._internal.gates import (
     INSERTION_PRE_OUTPUT,
     INSERTION_POST_OUTPUT,
 )
+from aegis._internal.gate_projection import GateProjectionFactory
 from aegis._internal.telemetry import (
     enforcement_span,
     record_gate_event,
@@ -164,79 +164,16 @@ def _plain_compiled_value(value: Any) -> Any:
     return copy.deepcopy(value)
 
 
-def _compiled_gate_projection(policy: CompiledPolicy) -> dict[str, Any]:
+def _compiled_gate_projection(
+    policy: CompiledPolicy,
+) -> Mapping[str, Any]:
     """Derive a non-authoritative compatibility view for custom gates."""
-    return {
-        "policy_version": policy.declared_policy_version,
-        "roles": list(policy.roles),
-        "conditions": _plain_compiled_value(policy.conditions),
-        "tools": {
-            "configured": policy.tools.configured,
-            "allowed_tools": [
-                {"name": item.name, "max_calls": item.max_calls}
-                for item in policy.tools
-            ],
-        },
-        "retry_policy": (
-            {
-                "max_retries": policy.retry.max_retries,
-                "backoff_ms": policy.retry.backoff_ms,
-            }
-            if policy.retry is not None
-            else None
-        ),
-        "risk": {
-            "mode": policy.risk.mode,
-            "threshold": policy.risk.threshold,
-            "factors": [
-                {
-                    "name": item.name,
-                    "weight": item.weight,
-                    "condition": item.condition,
-                }
-                for item in policy.risk.factors
-            ],
-        },
-        "pre_conditions": {
-            "required": {
-                item.name: _compiled_precondition_spec(item)
-                for item in policy.preconditions
-            },
-        },
-        "post_conditions": {"required": list(policy.postconditions)},
-        "output_schema": (
-            _plain_compiled_value(policy.output_validator.schema)
-            if policy.output_validator is not None
-            else None
-        ),
-        "workflow": _plain_compiled_value(policy.workflow),
-    }
+    return GateProjectionFactory.policy(policy)
 
 
 def _compiled_audit_projection(policy: CompiledPolicy) -> dict[str, str]:
     """Expose only compiler-owned metadata required by audit generation."""
     return {"policy_version": policy.declared_policy_version}
-
-
-def _compiled_precondition_spec(
-    item: CompiledPrecondition,
-) -> dict[str, Any]:
-    specification: dict[str, Any] = {}
-    if item.declared_type is not None:
-        specification["type"] = item.declared_type
-    if item.pattern is not None:
-        specification["pattern"] = item.pattern.source
-    if item.enum is not None:
-        specification["enum"] = _plain_compiled_value(item.enum)
-    if item.min_length is not None:
-        specification["minLength"] = item.min_length
-    if item.max_length is not None:
-        specification["maxLength"] = item.max_length
-    if item.minimum is not None:
-        specification["minimum"] = item.minimum
-    if item.maximum is not None:
-        specification["maximum"] = item.maximum
-    return specification
 
 
 def _compiled_precondition_to_dto(
@@ -740,6 +677,7 @@ def _compiled_policy_to_dto(policy: CompiledPolicy) -> dict[str, Any]:
             for item in policy.tools
         ],
         "risk": {
+            "configured": policy.risk.configured,
             "mode": policy.risk.mode,
             "threshold": policy.risk.threshold,
             "critical_ceiling": policy.risk.critical_ceiling,
@@ -947,6 +885,7 @@ def _compiled_policy_from_dto(dto: Mapping[str, Any]) -> CompiledPolicy:
             )
             for item in risk_data["factors"]
         ),
+        configured=risk_data["configured"],
     )
     retry_data = dto["retry"]
     retry = (
@@ -1467,24 +1406,16 @@ def _make_custom_gate_runner(
         gates_at = grouped_gates.get(insertion_point, [])
         if not gates_at:
             return
-        failures, meta = run_gates(
+        failures, meta, outcome = run_gates_normalized(
             gates_at, invocation, policy_view, {},
             gates_evaluated, [],
         )
         if meta:
             all_custom_metadata.update(meta)
-        if failures:
-            first = failures[0]
-            first_msg = (
-                first.get("message", "unknown") if isinstance(first, dict)
-                else str(first)
-            )
-            raise CustomGateViolationError(
-                f"Custom gate failed at {insertion_point}: {first_msg}",
-                details={
-                    "custom_gate_failures": failures,
-                    "insertion_point": insertion_point,
-                },
+        if not outcome.allows_continuation:
+            raise CustomGateViolationError.from_outcome(
+                outcome,
+                details={"insertion_point": insertion_point},
             )
 
     return _run_custom_gates_at
@@ -1763,7 +1694,7 @@ def _run_phase_b(
             effective_policy.risk,
             risk_config,
         )
-        if effective_risk_config.factors:
+        if effective_risk_config.configured:
             risk_result = compute_compiled_risk_score(
                 invocation, effective_policy,
                 risk_config=effective_risk_config,
@@ -1774,21 +1705,23 @@ def _run_phase_b(
                 details={"score": risk_result.score},
             )
 
-            if risk_result.exceeded:
-                if risk_result.mode == RISK_MODE_STRICT:
-                    raise RiskThresholdError(
-                        f"Risk score {risk_result.score:.3f} exceeds "
-                        f"threshold {risk_result.threshold:.3f} "
-                        f"in strict mode",
-                        details=risk_result.to_dict(),
-                    )
-                elif risk_result.mode == RISK_MODE_WARN_ONLY:
-                    logger.warning(
-                        "Risk score %.3f exceeds threshold %.3f "
-                        "(warn_only mode -- not blocking)",
-                        risk_result.score,
-                        risk_result.threshold,
-                    )
+            risk_outcome = normalize_risk_result(risk_result)
+            if not risk_outcome.allows_continuation:
+                raise RiskThresholdError(
+                    f"Risk authorization denied: {risk_outcome.reason_code}",
+                    details={
+                        **risk_result.to_dict(),
+                        "reason_code": risk_outcome.reason_code,
+                        "terminal": risk_outcome.terminal.value,
+                    },
+                )
+            if risk_outcome.terminal.value == "warn":
+                logger.warning(
+                    "Risk score %.3f reached threshold %.3f (%s)",
+                    risk_result.score,
+                    risk_result.threshold,
+                    risk_outcome.reason_code,
+                )
 
         # Merge custom metadata from Phase A and Phase B
         merged_custom_metadata = dict(all_custom_metadata)

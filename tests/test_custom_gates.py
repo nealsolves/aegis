@@ -177,7 +177,10 @@ def test_run_crashing_gate_converts_to_failure():
     )
     assert len(failures) == 1
     assert failures[0]["code"] == "CUSTOM_GATE_ERROR"
-    assert "Unexpected crash" in failures[0]["message"]
+    assert "Unexpected crash" not in failures[0]["message"]
+    assert failures[0]["message"] == (
+        "Gate 'crashing_gate' failed during execution"
+    )
 
 
 def test_custom_gates_cannot_remove_prior_failures():

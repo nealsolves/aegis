@@ -8,12 +8,14 @@ from aegis._internal.errors import PolicyValidationError
 from aegis._internal.policy_compiler import compile_risk_policy
 from aegis._internal.risk_scoring import (
     compute_risk_score,
+    normalize_risk_result,
     RISK_MODE_STRICT,
     RISK_MODE_RISK_SCORED,
     RISK_MODE_WARN_ONLY,
     DEFAULT_RISK_THRESHOLD,
     _evaluate_risk_condition,
 )
+from aegis._internal.outcomes import TerminalClass
 
 
 def _base_invocation():
@@ -134,8 +136,28 @@ def test_exact_threshold_is_exceeded():
     assert result.exceeded
 
 
+def test_decimal_factor_sum_cannot_fall_below_declared_boundary():
+    """Binary float accumulation must not turn declared 0.3 + 0.6 below 0.9."""
+    config = {
+        "mode": "strict",
+        "threshold": 0.9,
+        "factors": [
+            {"name": "f1", "weight": 0.3, "condition": "no_output_schema"},
+            {"name": "f2", "weight": 0.6, "condition": "missing_guards"},
+        ],
+    }
+
+    result = compute_risk_score(
+        _base_invocation(), _base_policy(), risk_config=config,
+    )
+
+    assert result.score == 0.9
+    assert result.exceeded is True
+    assert normalize_risk_result(result).terminal is TerminalClass.DENY
+
+
 def test_fixed_critical_ceiling_is_inclusive():
-    """A score at 0.90 must exceed even a higher policy threshold."""
+    """A score at 0.90 must deny even below a higher policy threshold."""
     risk = compile_risk_policy(
         {
             "mode": "warn_only",
@@ -152,8 +174,9 @@ def test_fixed_critical_ceiling_is_inclusive():
 
     result = compute_risk_score(_base_invocation(), _base_policy(), risk_config=risk)
 
-    assert result.exceeded
+    assert not result.exceeded
     assert result.threshold == 1.0
+    assert normalize_risk_result(result).terminal is TerminalClass.DENY
 
 
 def test_caller_constructed_compiled_policy_cannot_raise_critical_ceiling():
@@ -179,7 +202,8 @@ def test_caller_constructed_compiled_policy_cannot_raise_critical_ceiling():
 
     assert result.score == 0.9
     assert result.threshold == 1.0
-    assert result.exceeded
+    assert not result.exceeded
+    assert normalize_risk_result(result).terminal is TerminalClass.DENY
 
 
 # ── Factor conditions ────────────────────────────────────────────
