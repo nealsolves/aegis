@@ -113,6 +113,34 @@ def test_pre_call_validation_failure_includes_workflow_policy_digest():
         session.cancel()
 
 
+def test_invocation_policy_validation_failure_includes_workflow_policy_digest():
+    """Skipping authoritative compilation would omit digest from FAIL evidence."""
+    runtime = AEGIS()
+    authority_session = runtime.open_session(policy_file=POLICY)
+    expected_digest = authority_session._compiled_policy.policy_digest
+    authority_session.finalize()
+
+    with runtime.open_session(session_id="invocation-policy-invalid") as session:
+        invalid = _invocation()
+        invalid["context"]["workflow_policy_digest"] = "forged-by-host"
+        del invalid["role"]
+
+        with pytest.raises(InvocationValidationError) as exc_info:
+            session.enforce_step_pre_call(invalid, step_id="missing-role")
+
+        artifact = exc_info.value.audit_artifact
+        assert artifact is not None
+        assert artifact["context"] == {
+            "role_declared": True,
+            "schema_exists": True,
+            "session_id": session.session_id,
+            "step_id": "missing-role",
+            "step_index": 0,
+            "workflow_policy_digest": expected_digest,
+        }
+        session.cancel()
+
+
 def test_terminal_invocation_correlation_binds_allocated_index_and_policy_digest(session):
     """Dropping a correlation field before finalization would break audit linkage."""
     invocation = _invocation()

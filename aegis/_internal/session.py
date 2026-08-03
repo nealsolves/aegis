@@ -15,6 +15,7 @@ from functools import wraps
 from typing import TYPE_CHECKING, Any, NoReturn
 
 from aegis._internal.errors import (
+    AIGCError,
     InvocationValidationError,
     SessionStateError,
 )
@@ -1524,8 +1525,23 @@ class GovernanceSession:
         ctx["session_id"] = self._session_id
         ctx["step_id"] = resolved_step_id
         ctx["step_index"] = step_index
-        if self._compiled_policy is not None:
-            ctx["workflow_policy_digest"] = self._compiled_policy.policy_digest
+        ctx.pop("workflow_policy_digest", None)
+        correlation_policy = self._compiled_policy
+        if correlation_policy is None:
+            from aegis._internal.enforcement import _compile_cached_policy
+
+            policy_file = enriched.get("policy_file")
+            if isinstance(policy_file, str) and policy_file:
+                try:
+                    correlation_policy = _compile_cached_policy(
+                        policy_file,
+                        cache=self._aigc._policy_cache,
+                        loader=self._aigc._policy_loader,
+                    )
+                except AIGCError:
+                    pass
+        if correlation_policy is not None:
+            ctx["workflow_policy_digest"] = correlation_policy.policy_digest
         if participant_id is not None:
             ctx["participant_id"] = participant_id
         enriched["context"] = ctx
