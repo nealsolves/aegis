@@ -1,0 +1,36 @@
+{
+  "valid": true,
+  "change_id": "a3-process-affine-operation-registry",
+  "previous_state": "ANALYZED",
+  "current_state": "IMPLEMENTING",
+  "authority": {
+    "action": "local_implementation",
+    "outcome": "autonomous_with_enhanced_gates"
+  },
+  "risk": {
+    "tier": "high"
+  },
+  "classifications": [
+    "feature",
+    "security_sensitive",
+    "public_contract_change"
+  ],
+  "hashes": {
+    "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa",
+    "context_hash": "c34c55f120400bdf1e4a29fd8e53b7d9b50d8a07a46e80fa44f535e75c61d2bd",
+    "change_hash": "e31bc38d43730c7ee6e7db352cd30ee285cacebd038250960fdd8f53c1aebe7e"
+  },
+  "transition": {
+    "from": "ANALYZED",
+    "to": "IMPLEMENTING",
+    "workflow_path": "code",
+    "required_evidence": [
+      "implementation_authorized"
+    ],
+    "authorized_by_hashes": {
+      "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa",
+      "context_hash": "15b3e95fe8845a50fbf128db0ac7c70afc79a54fa8f4b8c8f75c4f0907025cdc",
+      "change_hash": "e31bc38d43730c7ee6e7db352cd30ee285cacebd038250960fdd8f53c1aebe7e"
+    }
+  }
+}

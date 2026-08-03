@@ -1,0 +1,202 @@
+{
+  "schema_version": 1,
+  "change_id": "a3-process-affine-operation-registry",
+  "workflow_family": "feature",
+  "action": "local_implementation",
+  "current_state": "COMPLETE",
+  "change_hash": "e31bc38d43730c7ee6e7db352cd30ee285cacebd038250960fdd8f53c1aebe7e",
+  "facts": {
+    "documentation_only": {
+      "value": false,
+      "source_type": "approved_implementation_plan",
+      "source_ref": "docs/superpowers/plans/2026-07-30-a3-process-affine-operation-registry.md",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "e31bc38d43730c7ee6e7db352cd30ee285cacebd038250960fdd8f53c1aebe7e",
+      "corroboration": []
+    },
+    "modifies_runtime_code": {
+      "value": true,
+      "source_type": "approved_implementation_plan",
+      "source_ref": "docs/superpowers/plans/2026-07-30-a3-process-affine-operation-registry.md",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "e31bc38d43730c7ee6e7db352cd30ee285cacebd038250960fdd8f53c1aebe7e",
+      "corroboration": []
+    },
+    "modifies_authorization": {
+      "value": true,
+      "source_type": "approved_security_design",
+      "source_ref": "docs/superpowers/specs/2026-07-30-enforcement-core-security-remediation-design.md",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "e31bc38d43730c7ee6e7db352cd30ee285cacebd038250960fdd8f53c1aebe7e",
+      "corroboration": []
+    },
+    "changes_public_contract": {
+      "value": true,
+      "source_type": "approved_implementation_plan",
+      "source_ref": "docs/superpowers/plans/2026-07-30-a3-process-affine-operation-registry.md",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "e31bc38d43730c7ee6e7db352cd30ee285cacebd038250960fdd8f53c1aebe7e",
+      "corroboration": []
+    },
+    "adds_external_dependency": {
+      "value": false,
+      "source_type": "approved_implementation_plan",
+      "source_ref": "docs/superpowers/plans/2026-07-30-a3-process-affine-operation-registry.md",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "e31bc38d43730c7ee6e7db352cd30ee285cacebd038250960fdd8f53c1aebe7e",
+      "corroboration": []
+    },
+    "deploys_to_production": {
+      "value": false,
+      "source_type": "approved_scope_analysis",
+      "source_ref": "docs/superpowers/plans/2026-07-30-enforcement-core-plan-index.md",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "e31bc38d43730c7ee6e7db352cd30ee285cacebd038250960fdd8f53c1aebe7e",
+      "corroboration": []
+    },
+    "instruction_system_change": {
+      "value": false,
+      "source_type": "approved_scope_analysis",
+      "source_ref": "docs/superpowers/plans/2026-07-30-a3-process-affine-operation-registry.md",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "e31bc38d43730c7ee6e7db352cd30ee285cacebd038250960fdd8f53c1aebe7e",
+      "corroboration": []
+    }
+  },
+  "clarifications": [],
+  "exceptions": [],
+  "authority_constraints": [],
+  "evidence": {
+    "evaluation_passed": {
+      "satisfied": true,
+      "source_ref": "docs/spec-driven-dev/changes/a3-process-affine-operation-registry/evidence.md",
+      "hashes": {
+        "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa",
+        "context_hash": "15b3e95fe8845a50fbf128db0ac7c70afc79a54fa8f4b8c8f75c4f0907025cdc",
+        "change_hash": "e31bc38d43730c7ee6e7db352cd30ee285cacebd038250960fdd8f53c1aebe7e"
+      }
+    },
+    "spec_complete": {
+      "satisfied": true,
+      "source_ref": "docs/superpowers/specs/2026-07-30-enforcement-core-security-remediation-design.md",
+      "hashes": {
+        "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa",
+        "context_hash": "15b3e95fe8845a50fbf128db0ac7c70afc79a54fa8f4b8c8f75c4f0907025cdc",
+        "change_hash": "e31bc38d43730c7ee6e7db352cd30ee285cacebd038250960fdd8f53c1aebe7e"
+      }
+    },
+    "material_clarifications_resolved": {
+      "satisfied": true,
+      "source_ref": "docs/spec-driven-dev/changes/a3-process-affine-operation-registry/evidence.md",
+      "hashes": {
+        "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa",
+        "context_hash": "15b3e95fe8845a50fbf128db0ac7c70afc79a54fa8f4b8c8f75c4f0907025cdc",
+        "change_hash": "e31bc38d43730c7ee6e7db352cd30ee285cacebd038250960fdd8f53c1aebe7e"
+      }
+    },
+    "plan_complete": {
+      "satisfied": true,
+      "source_ref": "docs/superpowers/plans/2026-07-30-a3-process-affine-operation-registry.md",
+      "hashes": {
+        "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa",
+        "context_hash": "15b3e95fe8845a50fbf128db0ac7c70afc79a54fa8f4b8c8f75c4f0907025cdc",
+        "change_hash": "e31bc38d43730c7ee6e7db352cd30ee285cacebd038250960fdd8f53c1aebe7e"
+      }
+    },
+    "instruction_context_valid": {
+      "satisfied": true,
+      "source_ref": "docs/spec-driven-dev/changes/a3-process-affine-operation-registry/context.json",
+      "hashes": {
+        "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa",
+        "context_hash": "15b3e95fe8845a50fbf128db0ac7c70afc79a54fa8f4b8c8f75c4f0907025cdc",
+        "change_hash": "e31bc38d43730c7ee6e7db352cd30ee285cacebd038250960fdd8f53c1aebe7e"
+      }
+    },
+    "tasks_trace_to_acceptance": {
+      "satisfied": true,
+      "source_ref": "docs/superpowers/plans/2026-07-30-a3-process-affine-operation-registry.md",
+      "hashes": {
+        "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa",
+        "context_hash": "15b3e95fe8845a50fbf128db0ac7c70afc79a54fa8f4b8c8f75c4f0907025cdc",
+        "change_hash": "e31bc38d43730c7ee6e7db352cd30ee285cacebd038250960fdd8f53c1aebe7e"
+      }
+    },
+    "artifact_analysis_clean": {
+      "satisfied": true,
+      "source_ref": "docs/superpowers/plans/2026-07-30-enforcement-core-plan-index.md",
+      "hashes": {
+        "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa",
+        "context_hash": "15b3e95fe8845a50fbf128db0ac7c70afc79a54fa8f4b8c8f75c4f0907025cdc",
+        "change_hash": "e31bc38d43730c7ee6e7db352cd30ee285cacebd038250960fdd8f53c1aebe7e"
+      }
+    },
+    "implementation_authorized": {
+      "satisfied": true,
+      "source_ref": "docs/spec-driven-dev/changes/a3-process-affine-operation-registry/evidence.md",
+      "hashes": {
+        "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa",
+        "context_hash": "15b3e95fe8845a50fbf128db0ac7c70afc79a54fa8f4b8c8f75c4f0907025cdc",
+        "change_hash": "e31bc38d43730c7ee6e7db352cd30ee285cacebd038250960fdd8f53c1aebe7e"
+      }
+    },
+    "implementation_tasks_complete": {
+      "satisfied": true,
+      "source_ref": "docs/spec-driven-dev/changes/a3-process-affine-operation-registry/evidence.md",
+      "hashes": {
+        "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa",
+        "context_hash": "4742fbed6c81a689d34897596292a0b5b547a06a505689461daac28aa3704f38",
+        "change_hash": "e31bc38d43730c7ee6e7db352cd30ee285cacebd038250960fdd8f53c1aebe7e"
+      }
+    },
+    "local_validation_passed": {
+      "satisfied": true,
+      "source_ref": "docs/spec-driven-dev/changes/a3-process-affine-operation-registry/evidence.md",
+      "hashes": {
+        "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa",
+        "context_hash": "2e70d65357cbed8dcf4bc69889eefb9f99e4685aa7ef0c93269691f125c2ba14",
+        "change_hash": "e31bc38d43730c7ee6e7db352cd30ee285cacebd038250960fdd8f53c1aebe7e"
+      }
+    },
+    "required_reviews_passed": {
+      "satisfied": true,
+      "source_ref": "docs/spec-driven-dev/changes/a3-process-affine-operation-registry/evidence.md",
+      "hashes": {
+        "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa",
+        "context_hash": "6ecf47607750833e5f5e9442b580f77ca06a4534b40199b2877c526d7d61f3ff",
+        "change_hash": "e31bc38d43730c7ee6e7db352cd30ee285cacebd038250960fdd8f53c1aebe7e"
+      }
+    },
+    "required_ci_passed": {
+      "satisfied": true,
+      "source_ref": "docs/spec-driven-dev/changes/a3-process-affine-operation-registry/evidence.md",
+      "hashes": {
+        "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa",
+        "context_hash": "6ecf47607750833e5f5e9442b580f77ca06a4534b40199b2877c526d7d61f3ff",
+        "change_hash": "e31bc38d43730c7ee6e7db352cd30ee285cacebd038250960fdd8f53c1aebe7e"
+      }
+    },
+    "convergence_passed": {
+      "satisfied": true,
+      "source_ref": "docs/spec-driven-dev/changes/a3-process-affine-operation-registry/evidence.md",
+      "hashes": {
+        "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa",
+        "context_hash": "98aa45727d2464b8bb7831ebace0b8a350a932f51de6257b9463bb7e81717fa0",
+        "change_hash": "e31bc38d43730c7ee6e7db352cd30ee285cacebd038250960fdd8f53c1aebe7e"
+      }
+    }
+  },
+  "resources": {
+    "repair_attempts": 2,
+    "ci_reruns": 0,
+    "elapsed_minutes": 0
+  },
+  "open_escalation": null,
+  "responses": []
+}
