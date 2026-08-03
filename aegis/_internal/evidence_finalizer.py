@@ -19,13 +19,24 @@ from typing import Any, Literal, Protocol
 from jsonschema import Draft7Validator
 
 from aegis._internal.attempts import AttemptEnvelope, AttemptFactory
+from aegis._internal.chain_linker import (
+    ChainCoordinates,
+    ChainLinker,
+    ChainLinkRequest,
+    ChainReservation,
+    validate_chain_coordinates,
+)
 from aegis._internal.canonicalization import (
     CANONICALIZATION_PROFILE_V2,
     CanonicalizationError,
     canonicalize_v2,
     normalize_json_v2,
 )
-from aegis._internal.errors import AuditSinkError, EvidenceFinalizationError
+from aegis._internal.errors import (
+    AuditSinkError,
+    ChainLinkError,
+    EvidenceFinalizationError,
+)
 from aegis._internal.evidence_diagnostics import EvidenceDiagnostics
 from aegis._internal.evidence_profiles import build_content_checksum_v2
 from aegis._internal.outcomes import FailureRecord, TerminalClass
@@ -55,6 +66,15 @@ _FINALIZATION_FIELDS = frozenset(
         "workflow_schema_version",
     }
 )
+_CHAIN_FIELDS = frozenset(
+    {
+        "chain_id",
+        "chain_index",
+        "previous_audit_checksum",
+        "reservation_id",
+    }
+)
+_CHAIN_LINK_TIMEOUT_SECONDS = 1.0
 
 
 class SchemaValidator(Protocol):
@@ -152,6 +172,7 @@ class EvidenceFinalizerConfig:
     sink: AuditSink
     signer: FinalizerSigner | None
     schema_validator: SchemaValidator
+    chain_linker: ChainLinker | None = None
     failure_mode: Literal["raise"] = "raise"
     clock: Callable[[], int | float] = time.time
     delivery_capability: _DeliveryCapability = field(
@@ -168,6 +189,11 @@ class EvidenceFinalizerConfig:
             raise ValueError("invalid evidence delivery capability")
         if not hasattr(self.schema_validator, "validate"):
             raise TypeError("schema_validator must provide validate()")
+        if self.chain_linker is not None and (
+            not callable(getattr(self.chain_linker, "reserve", None))
+            or not callable(getattr(self.chain_linker, "reconcile", None))
+        ):
+            raise TypeError("chain_linker must provide reserve() and reconcile()")
 
 
 def _json_checksum(value: object) -> str:
@@ -190,12 +216,91 @@ class EvidenceFinalizer:
             raise TypeError("config must be EvidenceFinalizerConfig")
         self._config = config
 
+    @staticmethod
+    def _abort_without_masking(reservation: object) -> None:
+        try:
+            abort = getattr(reservation, "abort")
+            abort()
+        except Exception:  # noqa: BLE001 - preserve the primary failure
+            logger.error("Chain reservation abort failed")
+
+    def _reserve_if_required(
+        self,
+        draft: EvidenceDraft,
+    ) -> tuple[ChainReservation | None, ChainCoordinates | None]:
+        linker = self._config.chain_linker
+        if draft.artifact_type == "workflow":
+            if draft.chain_eligible:
+                raise EvidenceFinalizationError(
+                    "Workflow evidence is not eligible for invocation chaining"
+                )
+            return None, None
+        if linker is None:
+            return None, None
+        if not draft.chain_eligible:
+            raise ChainLinkError(
+                "Configured invocation chaining cannot be bypassed",
+                code="CHAIN_ARTIFACT_INELIGIBLE",
+            )
+        raw_correlation = draft.metadata.get("correlation_id")
+        correlation_id = (
+            raw_correlation if isinstance(raw_correlation, str) else None
+        )
+        request = ChainLinkRequest(
+            attempt_id=draft.attempt.attempt_id,
+            artifact_type="invocation",
+            correlation_id=correlation_id,
+        )
+        try:
+            reservation = linker.reserve(
+                request,
+                timeout=_CHAIN_LINK_TIMEOUT_SECONDS,
+            )
+        except ChainLinkError:
+            raise
+        except Exception as exc:
+            raise ChainLinkError(
+                "Configured chain linker is unavailable",
+                code="CHAIN_LINK_UNAVAILABLE",
+            ) from exc
+        try:
+            coordinates = validate_chain_coordinates(reservation.coordinates)
+        except ChainLinkError:
+            self._abort_without_masking(reservation)
+            raise
+        except Exception as exc:
+            self._abort_without_masking(reservation)
+            raise ChainLinkError(
+                "Configured chain linker returned invalid coordinates",
+                code="CHAIN_COORDINATES_INVALID",
+            ) from exc
+        return reservation, coordinates
+
+    @staticmethod
+    def _commit_reservation(
+        reservation: ChainReservation,
+        content_checksum: str,
+    ) -> None:
+        try:
+            reservation.commit(content_checksum)
+        except ChainLinkError:
+            raise
+        except Exception as exc:
+            raise ChainLinkError(
+                "Acknowledged chain reservation commit failed",
+                code="CHAIN_LINK_COMMIT_FAILED",
+            ) from exc
+
     def _build_invocation(self, draft: EvidenceDraft) -> dict[str, Any]:
         body = _plain_json(draft.body)
         supplied = sorted(_FINALIZATION_FIELDS.intersection(body))
         if supplied:
             raise EvidenceFinalizationError(
                 "Evidence draft contains finalization-owned fields"
+            )
+        if _CHAIN_FIELDS.intersection(body):
+            raise EvidenceFinalizationError(
+                "Invocation chain coordinates are finalizer-owned"
             )
         metadata = body.pop("metadata", {})
         if type(metadata) is not dict:
@@ -260,6 +365,10 @@ class EvidenceFinalizer:
             raise EvidenceFinalizationError(
                 "Evidence draft contains finalization-owned fields"
             )
+        if _CHAIN_FIELDS.intersection(body):
+            raise EvidenceFinalizationError(
+                "Workflow evidence cannot carry invocation chain coordinates"
+            )
         metadata = body.pop("metadata", {})
         if type(metadata) is not dict:
             raise EvidenceFinalizationError("Evidence metadata must be an object")
@@ -314,12 +423,24 @@ class EvidenceFinalizer:
             raise EvidenceFinalizationError("Evidence draft is invalid")
         if not draft._claim.claim():
             raise EvidenceFinalizationError("Evidence draft was already finalized")
+        reservation: ChainReservation | None = None
+        emission_acknowledged = False
         try:
+            reservation, coordinates = self._reserve_if_required(draft)
             built = (
                 self._build_invocation(draft)
                 if draft.artifact_type == "invocation"
                 else self._build_workflow(draft)
             )
+            if coordinates is not None:
+                built.update(
+                    chain_id=coordinates.chain_id,
+                    chain_index=coordinates.chain_index,
+                    previous_audit_checksum=(
+                        coordinates.previous_audit_checksum
+                    ),
+                    reservation_id=coordinates.reservation_id,
+                )
             normalized = normalize_json_v2(built)
             checksummed = build_content_checksum_v2(normalized)
             signed = self._sign_or_mark_unsigned(checksummed, draft)
@@ -327,14 +448,23 @@ class EvidenceFinalizer:
             if type(normalized_final) is not dict:  # pragma: no cover
                 raise EvidenceFinalizationError("Final evidence is not an object")
             self._config.schema_validator.validate(normalized_final)
-        except (AuditSinkError, EvidenceFinalizationError):
+            self._emit_acknowledged(normalized_final)
+            emission_acknowledged = True
+            if reservation is not None:
+                self._commit_reservation(
+                    reservation,
+                    normalized_final["checksum"],
+                )
+            return copy.deepcopy(normalized_final)
+        except (AuditSinkError, ChainLinkError, EvidenceFinalizationError):
             raise
         except Exception as exc:
             raise EvidenceFinalizationError(
                 "Evidence normalization or schema validation failed"
             ) from exc
-        self._emit_acknowledged(normalized_final)
-        return copy.deepcopy(normalized_final)
+        finally:
+            if reservation is not None and not emission_acknowledged:
+                self._abort_without_masking(reservation)
 
 
 # Compatibility bridge for pre-B2 artifact builders. Delivery and all
@@ -348,7 +478,14 @@ _CURRENT_ATTEMPT: ContextVar[AttemptEnvelope | None] = ContextVar(
     default=None,
 )
 _CURRENT_RUNTIME: ContextVar[
-    tuple[object, object, str | None, EvidenceDiagnostics | None] | None
+    tuple[
+        object,
+        object,
+        str | None,
+        EvidenceDiagnostics | None,
+        ChainLinker | None,
+    ]
+    | None
 ] = (
     ContextVar("aegis_current_evidence_runtime", default=None)
 )
@@ -388,11 +525,12 @@ def evidence_attempt(
     signer: object = None,
     failure_mode: str | None = None,
     diagnostics: EvidenceDiagnostics | None = None,
+    chain_linker: ChainLinker | None = None,
 ):
     """Bind one preallocated attempt to all finalization in this call path."""
     attempt_token = _CURRENT_ATTEMPT.set(attempt)
     runtime_token = _CURRENT_RUNTIME.set(
-        (sink, signer, failure_mode, diagnostics)
+        (sink, signer, failure_mode, diagnostics, chain_linker)
     )
     try:
         yield
@@ -485,6 +623,7 @@ def finalize_legacy_invocation_artifact(
     sink: object = _LEGACY_SINK_UNSET,
     failure_mode: str | None = None,
     signer: ArtifactSigner | FinalizerSigner | None = None,
+    chain_linker: ChainLinker | None = None,
 ) -> dict[str, Any]:
     """Finalize a detached legacy builder result through the v2 boundary."""
     runtime = _CURRENT_RUNTIME.get()
@@ -494,6 +633,7 @@ def finalize_legacy_invocation_artifact(
             runtime_signer,
             runtime_failure_mode,
             runtime_diagnostics,
+            runtime_chain_linker,
         ) = runtime
         if sink is _LEGACY_SINK_UNSET:
             sink = runtime_sink
@@ -501,6 +641,8 @@ def finalize_legacy_invocation_artifact(
             signer = runtime_signer  # type: ignore[assignment]
         if failure_mode is None:
             failure_mode = runtime_failure_mode
+        if chain_linker is None:
+            chain_linker = runtime_chain_linker
     else:
         runtime_diagnostics = None
     detached = copy.deepcopy(dict(artifact))
@@ -553,6 +695,7 @@ def finalize_legacy_invocation_artifact(
                 sink=_legacy_sink(sink, failure_mode),
                 signer=_legacy_finalizer_signer(signer),
                 schema_validator=_audit_validator(),
+                chain_linker=chain_linker,
             )
         )
         finalized = finalizer.finalize(

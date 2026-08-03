@@ -39,11 +39,13 @@ def valid_prefix():
         chain_id="chain-1",
         chain_index=7,
         previous_audit_checksum="f" * 64,
+        reservation_id="reservation-7",
     )
     second = finalized_artifact(
         chain_id="chain-1",
         chain_index=8,
         previous_audit_checksum=first["checksum"],
+        reservation_id="reservation-8",
     )
     return [first, second]
 

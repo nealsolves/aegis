@@ -190,3 +190,19 @@ def test_invocation_link_request_accepts_bounded_optional_correlation():
     assert request.attempt_id == 9
     assert request.artifact_type == "invocation"
     assert request.correlation_id == "workflow-correlation-9"
+
+
+def test_host_linker_contract_is_available_from_the_stable_package():
+    import aegis
+
+    expected = {
+        "ChainCoordinates",
+        "ChainLinkError",
+        "ChainLinker",
+        "ChainLinkRequest",
+        "ChainReservation",
+    }
+
+    assert expected <= set(aegis.__all__)
+    for name in expected:
+        assert getattr(aegis, name) is not None

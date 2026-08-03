@@ -31,7 +31,13 @@ from aegis._internal.utils import canonical_json_bytes
 # checksum field itself) covers chain_id / chain_index / previous_audit_checksum
 # and is a separate, chain-integrity concern — not the lineage identity.
 _CHAIN_FIELDS = frozenset(
-    {"chain_id", "chain_index", "previous_audit_checksum", "checksum"}
+    {
+        "chain_id",
+        "chain_index",
+        "previous_audit_checksum",
+        "reservation_id",
+        "checksum",
+    }
 )
 
 
@@ -40,7 +46,8 @@ def _artifact_checksum(artifact: dict[str, Any]) -> str:
     Derive the stable content-only node key for an artifact.
 
     Returns sha256(canonical_json(artifact_without_chain_fields)) where chain
-    fields are: chain_id, chain_index, previous_audit_checksum, checksum.
+    fields are: chain_id, chain_index, previous_audit_checksum,
+    reservation_id, checksum.
 
     This value is invariant with respect to AuditChain.append(): stripping
     chain fields that were not present before chaining (or were present but

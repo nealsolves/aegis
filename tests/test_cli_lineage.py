@@ -308,7 +308,8 @@ def test_lineage_node_key_is_content_hash(tmp_path, capsys):
     """The lineage node key is sha256(artifact-without-chain-fields).
 
     AuditChain stamps artifact['checksum'] with a chain-integrity hash that
-    includes chain_id/chain_index/previous_audit_checksum.  That value differs
+    includes chain_id/chain_index/previous_audit_checksum/reservation_id. That
+    value differs
     from the content key, so callers must use _artifact_checksum(artifact) (or
     lineage.checksum_of()) — not artifact['checksum'] — when populating
     derived_from_audit_checksums.
@@ -324,6 +325,7 @@ def test_lineage_node_key_is_content_hash(tmp_path, capsys):
     parent["chain_id"] = "some-chain"
     parent["chain_index"] = 0
     parent["previous_audit_checksum"] = None
+    parent["reservation_id"] = "reservation-0"
     parent["checksum"] = "e" * 64  # chain-integrity hash, ≠ parent_key
 
     child = _make_artifact(

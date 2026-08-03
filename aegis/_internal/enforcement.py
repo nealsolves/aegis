@@ -33,6 +33,7 @@ import warnings
 
 from aegis._internal.audit import DEFAULT_REDACTION_PATTERNS
 from aegis._internal.attempts import AttemptFactory
+from aegis._internal.chain_linker import ChainLinker
 from aegis._internal.evidence_diagnostics import EvidenceDiagnostics
 
 from aegis._internal.policy_loader import (
@@ -109,6 +110,17 @@ _MODULE_EVIDENCE_DIAGNOSTICS = EvidenceDiagnostics()
 _MODULE_OPERATION_REGISTRY = OperationRegistry()
 
 
+def _validate_chain_linker(
+    chain_linker: ChainLinker | None,
+) -> ChainLinker | None:
+    if chain_linker is not None and (
+        not callable(getattr(chain_linker, "reserve", None))
+        or not callable(getattr(chain_linker, "reconcile", None))
+    ):
+        raise TypeError("chain_linker must provide reserve() and reconcile()")
+    return chain_linker
+
+
 class _ModuleEnforcementRuntime:
     def __init__(self) -> None:
         import threading
@@ -116,6 +128,7 @@ class _ModuleEnforcementRuntime:
         self._lock = threading.Lock()
         self._sink: AuditSink | None = None
         self._signer: ArtifactSigner | None = None
+        self._chain_linker: ChainLinker | None = None
         self._sealed = False
 
     def configure(
@@ -123,6 +136,7 @@ class _ModuleEnforcementRuntime:
         *,
         sink: AuditSink,
         signer: ArtifactSigner | None,
+        chain_linker: ChainLinker | None,
     ) -> None:
         if not isinstance(sink, AuditSink):
             raise TypeError("sink must be an AuditSink")
@@ -131,18 +145,22 @@ class _ModuleEnforcementRuntime:
                 raise RuntimeError("module enforcement runtime is sealed")
             self._sink = sink
             self._signer = signer
+            self._chain_linker = _validate_chain_linker(chain_linker)
 
-    def begin(self) -> tuple[AuditSink, ArtifactSigner | None]:
+    def begin(
+        self,
+    ) -> tuple[AuditSink, ArtifactSigner | None, ChainLinker | None]:
         with self._lock:
             self._sealed = True
             if self._sink is None:
                 raise EvidenceConfigurationError()
-            return self._sink, self._signer
+            return self._sink, self._signer, self._chain_linker
 
     def reset_for_test(self) -> None:
         with self._lock:
             self._sink = None
             self._signer = None
+            self._chain_linker = None
             self._sealed = False
 
 
@@ -153,9 +171,14 @@ def configure_module_enforcement(
     *,
     sink: AuditSink,
     signer: ArtifactSigner | None = None,
+    chain_linker: ChainLinker | None = None,
 ) -> None:
     """Configure the private module runtime once, before governed traffic."""
-    _MODULE_RUNTIME.configure(sink=sink, signer=signer)
+    _MODULE_RUNTIME.configure(
+        sink=sink,
+        signer=signer,
+        chain_linker=chain_linker,
+    )
 
 
 def _reset_module_enforcement_for_test() -> None:
@@ -201,8 +224,13 @@ def _evidence_attempt_boundary(entry_point: str, mode: str):
                     runtime_signer = owner._signer
                     runtime_failure_mode = owner._on_sink_failure
                     runtime_diagnostics = owner._evidence_diagnostics
+                    runtime_chain_linker = owner._chain_linker
                 else:
-                    runtime_sink, runtime_signer = _MODULE_RUNTIME.begin()
+                    (
+                        runtime_sink,
+                        runtime_signer,
+                        runtime_chain_linker,
+                    ) = _MODULE_RUNTIME.begin()
                     runtime_failure_mode = "raise"
                     runtime_diagnostics = _MODULE_EVIDENCE_DIAGNOSTICS
                 try:
@@ -212,6 +240,7 @@ def _evidence_attempt_boundary(entry_point: str, mode: str):
                         signer=runtime_signer,
                         failure_mode=runtime_failure_mode,
                         diagnostics=runtime_diagnostics,
+                        chain_linker=runtime_chain_linker,
                     ):
                         return await function(*args, **kwargs)
                 except _EvidenceAbort as abort:
@@ -235,8 +264,13 @@ def _evidence_attempt_boundary(entry_point: str, mode: str):
                 runtime_signer = owner._signer
                 runtime_failure_mode = owner._on_sink_failure
                 runtime_diagnostics = owner._evidence_diagnostics
+                runtime_chain_linker = owner._chain_linker
             else:
-                runtime_sink, runtime_signer = _MODULE_RUNTIME.begin()
+                (
+                    runtime_sink,
+                    runtime_signer,
+                    runtime_chain_linker,
+                ) = _MODULE_RUNTIME.begin()
                 runtime_failure_mode = "raise"
                 runtime_diagnostics = _MODULE_EVIDENCE_DIAGNOSTICS
             try:
@@ -246,6 +280,7 @@ def _evidence_attempt_boundary(entry_point: str, mode: str):
                     signer=runtime_signer,
                     failure_mode=runtime_failure_mode,
                     diagnostics=runtime_diagnostics,
+                    chain_linker=runtime_chain_linker,
                 ):
                     return function(*args, **kwargs)
             except _EvidenceAbort as abort:
@@ -2139,6 +2174,7 @@ class AEGIS:
         strict_mode: bool = False,
         redaction_patterns: list[tuple[str, re.Pattern[str]]] | None = None,
         signer: ArtifactSigner | None = None,
+        chain_linker: ChainLinker | None = None,
         custom_gates: list[EnforcementGate] | None = None,
         policy_loader: PolicyLoaderBase | None = None,
         risk_config: dict[str, Any] | None = None,
@@ -2149,6 +2185,7 @@ class AEGIS:
         :param strict_mode: Enable strict governance validation
         :param redaction_patterns: Custom redaction patterns
         :param signer: Artifact signer for signing audit artifacts
+        :param chain_linker: Host-owned invocation chain placement provider
         :param custom_gates: Custom enforcement gates
         :param policy_loader: Custom policy loader implementation
         :param risk_config: Risk scoring configuration override
@@ -2170,6 +2207,7 @@ class AEGIS:
             else DEFAULT_REDACTION_PATTERNS
         )
         self._signer = signer
+        self._chain_linker = _validate_chain_linker(chain_linker)
         self._custom_gates = list(custom_gates or [])
         self._policy_loader = policy_loader
         self._risk_config = risk_config

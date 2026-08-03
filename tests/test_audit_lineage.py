@@ -549,7 +549,8 @@ def test_lineage_key_stable_across_audit_chain_append():
 
     # Chain the parent — must not change its effective lineage key
     chain = AuditChain()
-    chain.append(parent)
+    with pytest.warns(DeprecationWarning, match="AuditChain.append"):
+        chain.append(parent)
 
     # Generate child referencing the pre-chain key
     child_invocation = dict(invocation, input={"step": 2})
