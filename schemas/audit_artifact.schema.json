@@ -94,8 +94,6 @@
         {
           "if": {
             "anyOf": [
-              {"required": ["session_id"]},
-              {"required": ["step_id"]},
               {"required": ["step_index"]},
               {"required": ["workflow_policy_digest"]}
             ]

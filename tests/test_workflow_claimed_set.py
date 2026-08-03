@@ -270,7 +270,7 @@ def test_both_workflow_schemas_bound_claim_size(session):
 
 
 def test_both_audit_schemas_require_complete_workflow_correlation():
-    """Any session marker must activate the full bounded quartet contract."""
+    """Any workflow marker must activate the full bounded quartet contract."""
     emitted = []
     governance = AEGIS(sink=CallbackAuditSink(emitted.append))
     session = governance.open_session(session_id="audit-correlation-schema")

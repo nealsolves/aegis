@@ -136,7 +136,7 @@ def test_invalid_session_post_metadata_is_consumed_before_validation(monkeypatch
     session.cancel()
 
 
-def test_session_wrapper_fields_are_consumed_before_validation(monkeypatch):
+def test_session_wrapper_fields_are_rejected_before_consumption(monkeypatch):
     events = []
     original_consume = OperationRegistry.consume
 
@@ -158,8 +158,14 @@ def test_session_wrapper_fields_are_consumed_before_validation(monkeypatch):
     with pytest.raises(InvocationValidationError):
         session.enforce_step_post_call(forged, _output())
 
-    assert events[:2] == ["consume", "validate"]
-    session.cancel()
+    assert events == []
+    assert handle.operation_id in session._pending_results
+    assert session.enforce_step_post_call(
+        handle,
+        _output(),
+    )["enforcement_result"] == "PASS"
+    assert events == ["consume"]
+    session.complete()
 
 
 def test_invalid_session_post_metadata_uses_signed_instance_evidence_boundary():
@@ -227,7 +233,7 @@ def test_malformed_session_handle_is_typed_audited_and_non_consuming():
     session.complete()
 
 
-def test_forged_session_metadata_consumes_with_one_fail_artifact():
+def test_forged_session_metadata_preserves_the_genuine_handle():
     artifacts = []
     runtime = AEGIS(sink=CallbackAuditSink(artifacts.append))
     session = runtime.open_session()
@@ -240,7 +246,9 @@ def test_forged_session_metadata_consumes_with_one_fail_artifact():
     assert exc_info.value.code == "OPERATION_SESSION_METADATA_MISMATCH"
     assert exc_info.value.audit_artifact is not None
     assert len(artifacts) == 1
-    with pytest.raises(InvocationValidationError) as replay:
-        session.enforce_step_post_call(handle, _output())
-    assert replay.value.code == "OPERATION_NOT_ACTIVE"
-    session.cancel()
+    assert session.enforce_step_post_call(
+        handle,
+        _output(),
+    )["enforcement_result"] == "PASS"
+    assert len(artifacts) == 2
+    session.complete()

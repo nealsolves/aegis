@@ -88,10 +88,11 @@ def test_forged_wrapper_rejected():
         with pytest.raises(InvocationValidationError) as exc_info:
             session.enforce_step_post_call(forged, dict(_GOOD_OUTPUT))
         assert exc_info.value.code == "OPERATION_SESSION_METADATA_MISMATCH"
-        with pytest.raises(InvocationValidationError) as replay:
-            session.enforce_step_post_call(real_token, dict(_GOOD_OUTPUT))
-        assert replay.value.code == "OPERATION_NOT_ACTIVE"
-        session.cancel()
+        assert session.enforce_step_post_call(
+            real_token,
+            dict(_GOOD_OUTPUT),
+        )["enforcement_result"] == "PASS"
+        session.complete()
 
 
 # ---------------------------------------------------------------------------

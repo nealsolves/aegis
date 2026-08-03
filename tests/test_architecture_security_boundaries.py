@@ -1724,7 +1724,7 @@ def test_workflow_correlation_schema_condition_is_nonvacuous() -> None:
             for branch in condition["if"]["anyOf"]
             for required in branch["required"]
         }
-        assert triggers == quartet
+        assert triggers == {"step_index", "workflow_policy_digest"}
         assert set(condition["then"]["required"]) == quartet
 
 
