@@ -38,5 +38,8 @@ Change ID: `b3-publish-authorization`
 
 ## Outcome
 
-Authorization validated. Remote outcome and restored-state validation are
-pending.
+The remote operation did not begin. `gh auth status` reported that the active
+`nealsolves` GitHub token is invalid, so the required publishing prerequisite
+failed before any push or PR creation. The temporary control and fixture diffs
+were restored to their committed disabled values. Restored-state validation
+passed, and no branch data was sent to a remote.
