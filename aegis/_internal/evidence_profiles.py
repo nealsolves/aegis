@@ -18,7 +18,7 @@ from aegis._internal.errors import AIGCError
 
 _CHECKSUM_RE = re.compile(r"^[a-f0-9]{64}$")
 _EXCLUDED_CHECKSUM_FIELDS = frozenset(
-    {"checksum", "signature", "signature_metadata"}
+    {"checksum", "signature", "signature_metadata", "signature_status"}
 )
 
 

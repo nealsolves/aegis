@@ -282,7 +282,7 @@ def test_aigc_instance_config_properties():
     aegis = AIGC(strict_mode=True, on_sink_failure="raise")
     assert aegis.strict_mode is True
     assert aegis.on_sink_failure == "raise"
-    assert aegis.sink is None
+    assert aegis.sink is not None
 
 
 async def test_aigc_instance_enforce_async_passes():

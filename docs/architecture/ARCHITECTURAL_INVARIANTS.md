@@ -68,11 +68,15 @@ Examples:
 * tool constraint violation
 * schema violation
 
-Audit sink failures are configurable: `"raise"` mode propagates sink errors
-as `AuditSinkError`; `"log"` mode (default) logs a warning and allows
-enforcement to complete. The enforcement pipeline itself is always fail-closed.
+V2 evidence delivery is fail-closed. Every public attempt allocates bounded
+identity before parsing input, and every terminal artifact crosses the single
+evidence finalizer. A sink exception raises
+`AuditSinkError(code="AUDIT_DELIVERY_FAILED")`; it cannot return an allow-class
+result. Legacy best-effort behavior is isolated from, and cannot configure, an
+instance or module v2 runtime.
 
-The system must never degrade into permissive mode for governance gates.
+The system must never degrade into permissive mode for governance gates or
+evidence delivery.
 
 Core governance gates (role, precondition, tool, schema, postcondition) are
 always fail-closed. Below the fixed critical ceiling, risk scoring has two
@@ -214,15 +218,15 @@ Example:
 ```python
 AEGIS(
     sink=JsonFileAuditSink("audit.jsonl"),
-    on_sink_failure="log",
+    on_sink_failure="raise",
     strict_mode=True,
     redaction_patterns=None,
 )
 ```
 
-The global `enforce_invocation()` function and `set_audit_sink()` registry
-remain available for backward compatibility. New integrations should prefer
-instance-scoped `AEGIS.enforce()`.
+Module-level enforcement uses a private runtime configured once with
+`configure_module_enforcement(...)`. The first attempt atomically seals that
+runtime. The deprecated `set_audit_sink()` registry is not consulted by v2.
 
 ---
 
@@ -351,14 +355,17 @@ observe. They are observers, not participants.
 
 ## 18. External Signature Trust Boundary
 
-Metadata-aware signing is additive and opt-in. It must not change the legacy
-`ArtifactSigner`, `HMACSigner`, `sign_artifact()`, `verify_artifact()`, or
-`AEGIS(signer=...)` contracts.
+Metadata-aware signing is the finalizer-owned v2 path. Legacy byte signers are
+adapted behind the finalizer protocol; both invocation and workflow evidence
+use domain-separated payloads.
 
 The following rules are invariant:
 
 * `signature_metadata` is strict, versioned, and entirely covered by the
   metadata-aware signature.
+* invocation signatures use `aegis.invocation.v2`; workflow signatures use
+  `aegis.workflow.v2`
+* missing signers produce explicit `signature_status: "unsigned"`
 * signer identity and receipt must agree on algorithm, encoding, opaque key
   reference, and exact immutable key version before the artifact is mutated
 * AEGIS keeps untouched core identity and metadata snapshots and gives signer

@@ -104,6 +104,20 @@ def test_authorization_functions_do_not_read_raw_policy_mappings() -> None:
     assert violations == []
 
 
+def test_v2_sink_surface_has_no_mutable_delivery_controls() -> None:
+    import aegis
+    import aegis.sinks as sinks
+
+    forbidden = {
+        "emit_to_sink",
+        "get_sink_failure_mode",
+        "set_sink_failure_mode",
+    }
+    assert forbidden.isdisjoint(sinks.__all__)
+    assert all(not hasattr(sinks, name) for name in forbidden)
+    assert all(not hasattr(aegis, name) for name in forbidden)
+
+
 def test_policy_loads_are_confined_to_immediate_compile_helper() -> None:
     """A new direct load_policy call would create an uncompiled authority path."""
     violations: list[str] = []

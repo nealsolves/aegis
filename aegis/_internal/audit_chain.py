@@ -7,10 +7,8 @@ import uuid
 import warnings
 from typing import Any
 
-from aegis._internal.evidence_profiles import (
-    EvidenceProfileError,
-    build_content_checksum_v2,
-)
+from aegis._internal.evidence_finalizer import finalize_legacy_invocation_artifact
+from aegis._internal.evidence_profiles import EvidenceProfileError
 from aegis._internal.verification import (
     ChainVerificationReport,
     verify_chain_detailed,
@@ -43,20 +41,30 @@ class AuditChain:
                 "A finalized signature cannot be moved into a chain",
                 code="EVIDENCE_FINALIZATION_FIELDS_PRESENT",
             )
-        unsigned = {
+        chained_body = {
             key: value
             for key, value in artifact.items()
-            if key not in {"checksum", "signature", "signature_metadata"}
+            if key not in {
+                "checksum",
+                "signature",
+                "signature_metadata",
+                "signature_status",
+            }
         }
-        unsigned.update(
+        chained_body.update(
             chain_id=self._chain_id,
             chain_index=len(self._artifacts),
             previous_audit_checksum=self._last_checksum,
         )
-        finalized = build_content_checksum_v2(unsigned)
-        finalized["signature"] = None
+        finalize_legacy_invocation_artifact(
+            chained_body,
+            entry_point="audit_chain.append",
+            mode="offline_chain",
+            sink=None,
+            failure_mode="raise",
+        )
         artifact.clear()
-        artifact.update(finalized)
+        artifact.update(chained_body)
         self._last_checksum = artifact["checksum"]
         self._artifacts.append(artifact)
         logger.debug(

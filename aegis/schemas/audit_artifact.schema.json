@@ -232,6 +232,8 @@
     "timestamp",
     "context",
     "metadata",
-    "checksum"
+    "checksum",
+    "signature_status",
+    "signature"
   ]
 }

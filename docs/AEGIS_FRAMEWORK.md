@@ -211,6 +211,15 @@ governance semantics.
 defaults to `pre_call_enforcement=True`. Call sites that relied on unified mode
 must pass `pre_call_enforcement=False` explicitly (emits `DeprecationWarning`).
 
+#### Current v2 evidence hardening
+
+The current source contract makes evidence delivery part of the authorization
+result. An `AEGIS` instance requires an acknowledged sink and accepts only
+fail-closed delivery; module and decorator APIs require one-time
+`configure_module_enforcement(...)` setup before their first attempt. Every
+terminal invocation and workflow artifact crosses the same checksum, signing,
+schema-validation, and delivery finalizer.
+
 ### Inbound and outbound control
 
 Control operates in both directions:

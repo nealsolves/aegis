@@ -17,7 +17,7 @@ import json
 from pathlib import Path
 
 import pytest
-from jsonschema import validate, ValidationError
+from jsonschema import validate
 
 from aegis._internal.audit import generate_audit_artifact, AUDIT_SCHEMA_VERSION
 
@@ -89,9 +89,10 @@ def test_enforcement_mode_split_pre_call_only_valid(audit_schema: dict) -> None:
 
 def test_enforcement_mode_invalid_rejected(audit_schema: dict) -> None:
     """metadata.enforcement_mode with an unrecognised value must fail validation."""
-    artifact = _make_artifact(metadata={"enforcement_mode": "invalid_value"})
-    with pytest.raises(ValidationError):
-        validate(instance=artifact, schema=audit_schema)
+    from aegis._internal.errors import EvidenceFinalizationError
+
+    with pytest.raises(EvidenceFinalizationError):
+        _make_artifact(metadata={"enforcement_mode": "invalid_value"})
 
 
 def test_pre_call_gates_evaluated_valid(audit_schema: dict) -> None:

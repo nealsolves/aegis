@@ -30,6 +30,13 @@ class AIGCError(Exception):
         self.audit_artifact: dict | None = None
 
 
+class EvidenceConfigurationError(AIGCError, ValueError):
+    """Raised before authorization when v2 evidence delivery is unavailable."""
+
+    def __init__(self, message: str = "V2 evidence sink is required") -> None:
+        super().__init__(message, code="V2_SINK_REQUIRED", details={})
+
+
 class SignatureMetadataError(AIGCError):
     """Raised when signature metadata does not meet its contract."""
 

@@ -37,6 +37,7 @@ def _artifact() -> dict:
         "context": {},
         "metadata": {},
         "risk_score": None,
+        "signature_status": "unsigned",
         "signature": None,
         "checksum": "c" * 64,
     }
@@ -58,6 +59,7 @@ def _signature_metadata() -> dict:
 
 def _metadata_aware_artifact() -> dict:
     artifact = _artifact()
+    artifact["signature_status"] = "signed"
     artifact["signature"] = "aabb"
     artifact["signature_metadata"] = _signature_metadata()
     return artifact
@@ -74,6 +76,7 @@ def _validate_with_schema(schema_path: Path, artifact: dict) -> None:
 
 def test_signature_without_metadata_remains_schema_valid():
     artifact = _artifact()
+    artifact["signature_status"] = "signed"
     artifact["signature"] = "legacy-signature"
 
     _validate(artifact)

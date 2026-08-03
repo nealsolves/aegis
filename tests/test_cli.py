@@ -159,6 +159,8 @@ def _make_workflow_artifact(tmp_path: Path, status: str = "COMPLETED") -> Path:
         "invocation_audit_checksums": checksums,
         "failure_summary": None,
         "metadata": {},
+        "signature_status": "unsigned",
+        "signature": None,
     }
     p = tmp_path / "wf.json"
     p.write_text(json.dumps(artifact), encoding="utf-8")
@@ -185,6 +187,7 @@ def _make_audit_artifact(tmp_path: Path, enforcement_result: str = "PASS") -> Pa
         "context": {},
         "metadata": {},
         "risk_score": None,
+        "signature_status": "unsigned",
         "signature": None,
         "provenance": None,
         "chain_id": None,
@@ -319,6 +322,7 @@ class TestWorkflowDoctorCLI:
             "context": {},
             "metadata": {},
             "risk_score": None,
+            "signature_status": "unsigned",
             "signature": None,
             "provenance": None,
             "chain_id": None,
@@ -351,6 +355,7 @@ class TestWorkflowDoctorCLI:
             "context": {},
             "metadata": {},
             "risk_score": None,
+            "signature_status": "unsigned",
             "signature": None,
             "provenance": None,
             "chain_id": None,

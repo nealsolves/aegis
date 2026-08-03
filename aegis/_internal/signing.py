@@ -244,6 +244,12 @@ def verify_artifact(
     :param signer: Signer implementation (must match the signing key)
     :return: True if signature is valid, False otherwise
     """
+    if artifact.get("signature_status") == "signed":
+        return verify_finalized_artifact(
+            artifact,
+            signer,
+            domain=FINALIZER_INVOCATION_DOMAIN,
+        )
     signature = artifact.get("signature")
     if signature is None:
         logger.warning("Artifact has no signature to verify")

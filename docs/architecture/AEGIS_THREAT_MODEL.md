@@ -347,12 +347,12 @@ running after a core gate has already evaluated and recorded a failure.
 
 **Risk:** audit artifact lost
 
-**Mitigation:** Sink failure behavior is configurable via `on_sink_failure`:
-
-* `"raise"` (recommended for compliance-sensitive deployments): sink failure causes enforcement failure (fail-closed).
-* `"log"` (default): sink failure is logged as a warning; enforcement result is preserved.
-
-The `AEGIS(sink=..., on_sink_failure="raise")` instance-scoped configuration is the preferred integration path. Global sink registration is a deprecated compatibility path.
+**Mitigation:** V2 enforcement requires an acknowledged sink. Successful
+synchronous `emit()` return is acknowledgement; any exception raises
+`AuditSinkError(code="AUDIT_DELIVERY_FAILED")` and blocks both allow- and
+deny-class completion. `AEGIS(sink=...)` and the sealed module runtime accept
+only fail-closed delivery. Mutable global failure-mode controls are outside the
+v2 public surface.
 
 ---
 

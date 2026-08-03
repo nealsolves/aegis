@@ -6,6 +6,8 @@
     "workflow_schema_version",
     "canonicalization_profile",
     "checksum",
+    "signature_status",
+    "signature",
     "artifact_type",
     "session_id",
     "status",

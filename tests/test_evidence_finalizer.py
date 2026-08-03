@@ -15,6 +15,10 @@ from aegis._internal.errors import (
     AuditSinkError,
     EvidenceFinalizationError,
 )
+from aegis._internal.evidence_profiles import (
+    ContentIntegrity,
+    verify_content_checksum_v2,
+)
 from aegis._internal.outcomes import FailureRecord, TerminalClass
 from aegis._internal.sinks import AuditSink
 
@@ -172,6 +176,7 @@ def test_unsigned_finalization_is_explicit_and_schema_valid():
     assert artifact["signature_status"] == "unsigned"
     assert artifact["signature"] is None
     assert "signature_metadata" not in artifact
+    assert verify_content_checksum_v2(artifact) is ContentIntegrity.VALID
     assert sink.artifact == artifact
 
 
