@@ -15,6 +15,11 @@ Section 3.8 additionally documents #44 contracts implemented in the current
 source tree after `0.9.0b1`. Those APIs are not in the published `0.9.0b1`
 wheel or tag, and no later published version is assigned yet.
 
+Section 3.10 documents the B4 workflow claimed-set extension as
+current-source-only. It is not in the published
+`aegis-ai-governance==0.9.0b1` wheel or tag, and no later published version is
+assigned.
+
 Source, tags, and release artifacts for versions before `0.9.0` remain in
 [`nealsolves/aigc`](https://github.com/nealsolves/aigc). This repository is the
 AEGIS `0.9.0`-and-later development home.
@@ -125,7 +130,7 @@ violation. No silent fallbacks. No best-effort checks.
 
 This section builds a single, realistic integration from the ground up: a governed analytics
 service that uses the full pre-split governance stack (M2 plus production runtime features).
-The additive v0.3.2 split-enforcement APIs are covered separately in Section 3.15. Each
+The additive v0.3.2 split-enforcement APIs are covered separately in Section 3.16. Each
 subsection extends the same example rather than introducing a separate one.
 
 ### 2.1 Policy with guards, tool constraints, and risk scoring
@@ -1075,6 +1080,9 @@ completeness remains `unproven`. Policies, guards, providers, invocation
 context, and artifacts cannot construct or imply this capability.
 
 ### 3.10 Workflow claimed-set verification
+
+**Current-source-only B4 API:** This section describes the current source tree,
+not `aegis-ai-governance==0.9.0b1`. No later published version is assigned.
 
 Every `GovernanceSession` attempt is assigned a gapless `step_index` before
 authorization gates run. Finalization requires exactly one terminal invocation

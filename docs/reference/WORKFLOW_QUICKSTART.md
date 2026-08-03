@@ -52,6 +52,10 @@ Steps:   2
 Session: <uuid>
 ```
 
+> **Current-source-only B4 API:** The workflow claimed-set material below is in
+> the current source tree, not `aegis-ai-governance==0.9.0b1`. No later
+> published version is assigned.
+
 ## What just happened
 
 The starter script exercised the full workflow governance lifecycle in six actions:
@@ -75,8 +79,10 @@ The starter script exercised the full workflow governance lifecycle in six actio
 
 5. **`enforce_step_post_call`** (Step 2) — Post-call governance for the second step.
 
-6. **`session.complete()`** — Marks the workflow as successfully finished.
-   Transitions the session to `COMPLETED` and emits the workflow artifact.
+6. **`session.complete()`** — Marks the workflow as successfully finished and
+   transitions the session to `COMPLETED`. `session.complete()` only transitions;
+   the workflow artifact is emitted by `session.finalize()` or context-manager
+   exit.
 
 After the `with` block exits, `session.workflow_artifact` holds the completed
 workflow record with `status: COMPLETED`, a step checksum list, the session UUID

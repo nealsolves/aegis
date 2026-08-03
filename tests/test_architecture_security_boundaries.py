@@ -1107,8 +1107,322 @@ def test_registry_consumption_is_one_atomic_pop() -> None:
     assert all(call.func.attr not in {"get", "__contains__"} for call in calls)
 
 
+def _self_attribute_name(node: ast.AST) -> str | None:
+    if (
+        isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "self"
+    ):
+        return node.attr
+    return None
+
+
+def _method_assignments(function: ast.FunctionDef) -> dict[str, ast.AST]:
+    assignments: dict[str, ast.AST] = {}
+    for node in ast.walk(function):
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+            continue
+        for target in _assigned_names(node):
+            assignments[target] = node.value
+    return assignments
+
+
+def _expression_origins(
+    expression: ast.AST,
+    assignments: dict[str, ast.AST],
+    *,
+    seen: set[str] | None = None,
+) -> set[str]:
+    if isinstance(expression, ast.Attribute):
+        name = _self_attribute_name(expression)
+        if name == "_attempts":
+            return {"attempts"}
+        if name == "_steps":
+            return {"steps"}
+    if isinstance(expression, ast.Name) and expression.id in assignments:
+        visited = set() if seen is None else set(seen)
+        if expression.id in visited:
+            return set()
+        visited.add(expression.id)
+        return _expression_origins(
+            assignments[expression.id],
+            assignments,
+            seen=visited,
+        )
+    origins: set[str] = set()
+    for child in ast.iter_child_nodes(expression):
+        origins.update(_expression_origins(child, assignments, seen=seen))
+    return origins
+
+
+def _ancestor_with_lock(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> bool:
+    parent = parents.get(node)
+    while parent is not None:
+        if isinstance(parent, ast.With) and any(
+            _self_attribute_name(item.context_expr) == "_attempt_lock"
+            for item in parent.items
+        ):
+            return True
+        parent = parents.get(parent)
+    return False
+
+
+def _is_terminal_not_none(expression: ast.AST) -> bool:
+    return (
+        isinstance(expression, ast.Compare)
+        and len(expression.ops) == 1
+        and isinstance(expression.ops[0], ast.IsNot)
+        and len(expression.comparators) == 1
+        and isinstance(expression.comparators[0], ast.Constant)
+        and expression.comparators[0].value is None
+        and isinstance(expression.left, ast.Attribute)
+        and isinstance(expression.left.value, ast.Name)
+        and expression.left.value.id == "record"
+        and expression.left.attr == "terminal"
+    )
+
+
+def _workflow_claim_boundary_violations(source: str) -> set[str]:
+    """Return violations for workflow-claim allocation and provenance rules."""
+    tree = ast.parse(source)
+    session_class = next(
+        (
+            node
+            for node in tree.body
+            if isinstance(node, ast.ClassDef) and node.name == "GovernanceSession"
+        ),
+        None,
+    )
+    if session_class is None:
+        return {"session-class-missing"}
+    methods = {
+        node.name: node
+        for node in session_class.body
+        if isinstance(node, ast.FunctionDef)
+    }
+    required = {"_allocate_step_index", "enforce_step_pre_call", "_do_finalize"}
+    if not required <= methods.keys():
+        return {"workflow-method-missing"}
+
+    violations: set[str] = set()
+    allocate = methods["_allocate_step_index"]
+    increments = [
+        node
+        for node in ast.walk(allocate)
+        if isinstance(node, ast.AugAssign)
+        and _self_attribute_name(node.target) == "_next_step_index"
+        and isinstance(node.op, ast.Add)
+    ]
+    parents, _ = _parent_maps(allocate)
+    if len(increments) != 1 or not _ancestor_with_lock(increments[0], parents):
+        violations.add("step-index-not-locked")
+
+    pre_call = methods["enforce_step_pre_call"]
+    allocation_calls = [
+        node
+        for node in ast.walk(pre_call)
+        if isinstance(node, ast.Call)
+        and _self_attribute_name(node.func) == "_allocate_step_index"
+    ]
+    if len(allocation_calls) != 1:
+        violations.add("step-index-allocation-missing")
+    else:
+        allocation_line = allocation_calls[0].lineno
+        if any(
+            isinstance(node, ast.Call)
+            and _self_attribute_name(node.func) is not None
+            and node.lineno < allocation_line
+            for node in ast.walk(pre_call)
+        ):
+            violations.add("pre-allocation-call")
+
+    finalize = methods["_do_finalize"]
+    assignments = _method_assignments(finalize)
+    allocated_count = assignments.get("allocated_count")
+    allocated_assignments = [
+        node
+        for node in ast.walk(finalize)
+        if isinstance(node, (ast.Assign, ast.AnnAssign))
+        and "allocated_count" in _assigned_names(node)
+    ]
+    finalize_parents, _ = _parent_maps(finalize)
+    if (
+        allocated_count is None
+        or _self_attribute_name(allocated_count) != "_next_step_index"
+        or len(allocated_assignments) != 1
+        or not _ancestor_with_lock(allocated_assignments[0], finalize_parents)
+    ):
+        violations.add("allocated-count-not-locked")
+
+    records = assignments.get("records")
+    if records is None or "attempts" not in _expression_origins(records, assignments):
+        violations.add("records-not-terminal-attempts")
+    if records is not None and "steps" in _expression_origins(records, assignments):
+        violations.add("claim-from-steps")
+    record_comprehensions = [
+        node
+        for node in ast.walk(records) if isinstance(node, ast.GeneratorExp)
+    ] if records is not None else []
+    if (
+        len(record_comprehensions) != 1
+        or len(record_comprehensions[0].generators) != 1
+        or record_comprehensions[0].generators[0].ifs != [
+            next(
+                (
+                    test
+                    for test in record_comprehensions[0].generators[0].ifs
+                    if _is_terminal_not_none(test)
+                ),
+                None,
+            )
+        ]
+    ):
+        violations.add("records-excludes-terminal-classes")
+
+    artifacts = [
+        node
+        for node in ast.walk(finalize)
+        if isinstance(node, ast.Dict)
+        and any(
+            isinstance(key, ast.Constant)
+            and key.value in {"step_count", "invocations"}
+            for key in node.keys
+        )
+    ]
+    artifact = next(
+        (
+            node
+            for node in artifacts
+            if {
+                key.value
+                for key in node.keys
+                if isinstance(key, ast.Constant)
+            } >= {"step_count", "invocations"}
+        ),
+        None,
+    )
+    if artifact is None:
+        return violations | {"workflow-claim-missing"}
+    fields = {
+        key.value: value
+        for key, value in zip(artifact.keys, artifact.values)
+        if isinstance(key, ast.Constant) and isinstance(key.value, str)
+    }
+    step_count = fields["step_count"]
+    if not isinstance(step_count, ast.Name) or step_count.id != "allocated_count":
+        violations.add("step-count-not-allocation")
+
+    invocations = fields["invocations"]
+    if not isinstance(invocations, ast.ListComp) or len(invocations.generators) != 1:
+        violations.add("workflow-claim-invalid")
+        return violations
+    generator = invocations.generators[0]
+    if generator.ifs:
+        violations.add("claim-filtered")
+    claim_origins = _expression_origins(invocations, assignments)
+    if "steps" in claim_origins:
+        violations.add("claim-from-steps")
+    if "attempts" not in claim_origins:
+        violations.add("claim-not-terminal-attempts")
+    return violations
+
+
+_WORKFLOW_CLAIM_FIXTURE = """
+class GovernanceSession:
+    def _allocate_step_index(self, step_id, attempt_id):
+        with self._attempt_lock:
+            index = self._next_step_index
+            self._next_step_index += 1
+            self._attempts[index] = SessionAttempt(index, step_id, attempt_id, None)
+            return index
+
+    def enforce_step_pre_call(self, invocation):
+        attempt = self._aigc._attempt_factory.allocate("pre", "workflow", invocation)
+        step_index = self._allocate_step_index("step", attempt.attempt_id)
+        return self._enforce_step_pre_call_attempt(invocation, attempt, step_index)
+
+    def _do_finalize(self):
+        with self._attempt_lock:
+            allocated_count = self._next_step_index
+            records = tuple(
+                record
+                for _, record in sorted(self._attempts.items())
+                if record.terminal is not None
+            )
+        artifact = {
+            "step_count": allocated_count,
+            "invocations": [
+                {"step_index": record.step_index, "checksum": record.invocation_checksum}
+                for record in records
+            ],
+        }
+"""
+
+
+def test_workflow_claim_fitness_rejects_preallocation_authorization_gate() -> None:
+    source = _WORKFLOW_CLAIM_FIXTURE.replace(
+        "        attempt = self._aigc._attempt_factory.allocate",
+        "        self._assert_accepting_new_step()\n"
+        "        attempt = self._aigc._attempt_factory.allocate",
+    )
+
+    assert "pre-allocation-call" in _workflow_claim_boundary_violations(source)
+
+
+def test_workflow_claim_fitness_rejects_success_only_claim_filter() -> None:
+    source = _WORKFLOW_CLAIM_FIXTURE.replace(
+        "                for record in records\n",
+        "                for record in records\n"
+        "                if record.terminal in {TerminalClass.ALLOW, TerminalClass.WARN}\n",
+    )
+
+    assert "claim-filtered" in _workflow_claim_boundary_violations(source)
+
+
+def test_workflow_claim_fitness_rejects_step_count_from_terminal_records() -> None:
+    source = _WORKFLOW_CLAIM_FIXTURE.replace(
+        '"step_count": allocated_count',
+        '"step_count": len(records)',
+    )
+
+    assert "step-count-not-allocation" in _workflow_claim_boundary_violations(source)
+
+
+def test_workflow_claim_fitness_rejects_aliased_legacy_steps_claim_source() -> None:
+    source = _WORKFLOW_CLAIM_FIXTURE.replace(
+        "        artifact = {",
+        "        surviving_steps = self._steps\n        artifact = {",
+    ).replace("for record in records", "for record in surviving_steps")
+
+    assert "claim-from-steps" in _workflow_claim_boundary_violations(source)
+
+
+def test_b4_claimed_set_docs_are_source_only_and_finalize_explicitly() -> None:
+    public = (_ROOT / "docs" / "PUBLIC_INTEGRATION_CONTRACT.md").read_text(
+        encoding="utf-8"
+    )
+    cli = (_ROOT / "docs" / "reference" / "WORKFLOW_CLI.md").read_text(
+        encoding="utf-8"
+    )
+    quickstart = (_ROOT / "docs" / "reference" / "WORKFLOW_QUICKSTART.md").read_text(
+        encoding="utf-8"
+    )
+
+    for text in (public, cli, quickstart):
+        normalized = " ".join(text.lower().replace(">", "").split())
+        assert "current-source-only" in normalized
+        assert "aegis-ai-governance==0.9.0b1" in normalized
+        assert "no later published version is assigned" in normalized
+    normalized_quickstart = " ".join(quickstart.split())
+    assert "`session.complete()` only transitions" in normalized_quickstart
+    assert "`session.finalize()` or context-manager exit" in normalized_quickstart
+
+
 def test_workflow_claims_are_locked_terminal_attempt_evidence() -> None:
     """Workflow signatures must cover every allocated terminal attempt, not survivors."""
+    assert _workflow_claim_boundary_violations(
+        _SESSION.read_text(encoding="utf-8")
+    ) == set()
     tree = ast.parse(_SESSION.read_text(encoding="utf-8"), filename=str(_SESSION))
     session_class = next(
         node

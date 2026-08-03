@@ -21,6 +21,10 @@ when checksums are unresolved (unresolved checksums are advisory, not errors);
 exit code `1` means the input file was not found, was unreadable, or contained
 no workflow artifacts.
 
+The B4 workflow claimed-set material below is current-source-only. It is not in
+the published `aegis-ai-governance==0.9.0b1` wheel or tag, and no later
+published version is assigned.
+
 Workflow artifacts include the final workflow content checksum, `step_count`,
 and ordered `invocations` index/checksum pairs. A configured workflow signature
 covers those claim fields. The CLI does not verify a workflow claimed set or
