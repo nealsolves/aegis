@@ -204,7 +204,12 @@ def _attempt_invocation(
     return object()
 
 
-def _evidence_attempt_boundary(entry_point: str, mode: str):
+def _evidence_attempt_boundary(
+    entry_point: str,
+    mode: str,
+    *,
+    inherit_outer_attempt: bool = False,
+):
     """Allocate attempt identity before a public entry parses its arguments."""
     def decorate(function):
         if asyncio.iscoroutinefunction(function):
@@ -241,6 +246,7 @@ def _evidence_attempt_boundary(entry_point: str, mode: str):
                         failure_mode=runtime_failure_mode,
                         diagnostics=runtime_diagnostics,
                         chain_linker=runtime_chain_linker,
+                        inherit_outer_attempt=inherit_outer_attempt,
                     ):
                         return await function(*args, **kwargs)
                 except _EvidenceAbort as abort:
@@ -281,6 +287,7 @@ def _evidence_attempt_boundary(entry_point: str, mode: str):
                     failure_mode=runtime_failure_mode,
                     diagnostics=runtime_diagnostics,
                     chain_linker=runtime_chain_linker,
+                    inherit_outer_attempt=inherit_outer_attempt,
                 ):
                     return function(*args, **kwargs)
             except _EvidenceAbort as abort:
@@ -2267,7 +2274,7 @@ class AEGIS:
         """
         import uuid as _uuid
         from aegis._internal.session import GovernanceSession
-        sid = session_id or str(_uuid.uuid4())
+        sid = str(_uuid.uuid4()) if session_id is None else session_id
         return GovernanceSession(self, sid, policy_file, metadata)
 
     @_evidence_attempt_boundary("AEGIS.enforce", "unified")
@@ -2563,7 +2570,11 @@ class AEGIS:
             risk_config=self._risk_config,
         )
 
-    @_evidence_attempt_boundary("AEGIS.enforce_post_call", "split_post_call")
+    @_evidence_attempt_boundary(
+        "AEGIS.enforce_post_call",
+        "split_post_call",
+        inherit_outer_attempt=True,
+    )
     def _enforce_consumed_post_call(
         self,
         record: OperationRecord,
@@ -2580,7 +2591,11 @@ class AEGIS:
             risk_config=self._risk_config,
         )
 
-    @_evidence_attempt_boundary("AEGIS.enforce_post_call", "split_post_call")
+    @_evidence_attempt_boundary(
+        "AEGIS.enforce_post_call",
+        "split_post_call",
+        inherit_outer_attempt=True,
+    )
     def _reject_consumed_post_call(
         self,
         exc: InvocationValidationError,

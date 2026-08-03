@@ -10,7 +10,8 @@ import time
 import unicodedata
 import uuid
 from collections.abc import Mapping as MappingABC
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
+from enum import Enum
 from functools import wraps
 from typing import TYPE_CHECKING, Any, NoReturn
 
@@ -22,6 +23,10 @@ from aegis._internal.errors import (
     SessionStateError,
 )
 from aegis._internal.audit import checksum as _audit_checksum
+from aegis._internal.canonicalization import (
+    CanonicalizationError,
+    normalize_json_v2,
+)
 from aegis._internal.evidence_finalizer import (
     _EvidenceAbort,
     _frozen_mapping,
@@ -117,6 +122,22 @@ class SessionPreCallResult:
     step_index: int = -1
 
 
+class AttemptFinalizationState(str, Enum):
+    """Closed lifecycle for one allocated workflow attempt."""
+
+    ALLOCATED = "allocated"
+    FINALIZING = "finalizing"
+    TERMINAL = "terminal"
+
+
+class _AttemptCapability:
+    __slots__ = ()
+
+
+class _FinalizationCapability:
+    __slots__ = ()
+
+
 @dataclass(frozen=True, slots=True)
 class SessionAttempt:
     """One allocated workflow attempt, retained in per-session order."""
@@ -126,6 +147,118 @@ class SessionAttempt:
     attempt_id: int
     invocation_checksum: str | None
     terminal: TerminalClass | None = None
+    state: AttemptFinalizationState = AttemptFinalizationState.ALLOCATED
+    participant_id: str | None = None
+    workflow_policy_digest: str | None = None
+    role: str = "unknown"
+    capability: object = field(
+        default_factory=_AttemptCapability,
+        repr=False,
+        compare=False,
+    )
+    finalization_capability: object | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
+
+    def __post_init__(self) -> None:
+        if (
+            self.state is AttemptFinalizationState.ALLOCATED
+            and self.invocation_checksum is not None
+            and self.terminal is not None
+        ):
+            object.__setattr__(
+                self,
+                "state",
+                AttemptFinalizationState.TERMINAL,
+            )
+
+
+class _SessionTerminalReservation:
+    """Opaque reserve/commit acknowledgement for one invocation emission."""
+
+    __slots__ = (
+        "_session",
+        "_step_index",
+        "_attempt_capability",
+        "_finalization_capability",
+        "_checksum",
+        "_terminal",
+        "_lock",
+        "_resolved",
+    )
+
+    def __init__(
+        self,
+        session: "GovernanceSession",
+        step_index: int,
+        attempt_capability: object,
+        finalization_capability: object,
+        checksum: str,
+        terminal: TerminalClass,
+    ) -> None:
+        self._session = session
+        self._step_index = step_index
+        self._attempt_capability = attempt_capability
+        self._finalization_capability = finalization_capability
+        self._checksum = checksum
+        self._terminal = terminal
+        self._lock = threading.Lock()
+        self._resolved = False
+
+    def commit(self, content_checksum: str) -> None:
+        with self._lock:
+            if self._resolved:
+                raise SessionStateError(
+                    "Terminal reservation is already resolved",
+                    code="SESSION_ATTEMPT_CONFLICT",
+                )
+            if content_checksum != self._checksum:
+                raise SessionStateError(
+                    "Terminal reservation checksum changed",
+                    code="SESSION_ATTEMPT_CONFLICT",
+                )
+            self._session._commit_terminal_reservation(
+                self._step_index,
+                self._attempt_capability,
+                self._finalization_capability,
+                self._checksum,
+                self._terminal,
+            )
+            self._resolved = True
+
+    def abort(self) -> None:
+        with self._lock:
+            if self._resolved:
+                return
+            self._session._abort_terminal_reservation(
+                self._step_index,
+                self._attempt_capability,
+                self._finalization_capability,
+            )
+            self._resolved = True
+
+
+class _SessionTerminalRecorder:
+    __slots__ = ("_session", "_step_index")
+
+    def __init__(self, session: "GovernanceSession", step_index: int) -> None:
+        self._session = session
+        self._step_index = step_index
+
+    def reserve(
+        self,
+        artifact: MappingABC[str, Any],
+        terminal: TerminalClass,
+        origin: object,
+    ) -> _SessionTerminalReservation:
+        return self._session._reserve_terminal_attempt(
+            self._step_index,
+            artifact,
+            terminal,
+            origin,
+        )
 
 
 def _inner_result(session_result: SessionPreCallResult) -> Any:
@@ -149,6 +282,48 @@ def _inner_result(session_result: SessionPreCallResult) -> Any:
 def _checksum(artifact: dict) -> str:
     """Return a v2 content checksum or hash a non-artifact JSON value with v2."""
     return _audit_checksum(artifact)
+
+
+_MAX_WORKFLOW_IDENTITY_LENGTH = 512
+
+
+def _safe_workflow_identity(value: object) -> tuple[str, bool]:
+    """Return a bounded v2 string plus whether the caller value was valid."""
+    if (
+        type(value) is str
+        and bool(value.strip())
+        and len(value) <= _MAX_WORKFLOW_IDENTITY_LENGTH
+    ):
+        try:
+            normalized = normalize_json_v2(value)
+        except CanonicalizationError:
+            pass
+        else:
+            if type(normalized) is str:
+                return normalized, True
+    return "unknown", False
+
+
+def _safe_attempt_failure(exc: BaseException) -> tuple[str, str]:
+    """Map internal exceptions to bounded evidence without copying raw text."""
+    raw_code = getattr(exc, "code", None)
+    code = (
+        raw_code
+        if isinstance(raw_code, str)
+        and raw_code
+        and len(raw_code) <= 128
+        and raw_code.isascii()
+        else "INTERNAL_ENFORCEMENT_ERROR"
+    )
+    if isinstance(exc, AIGCError):
+        return code, "Governance enforcement denied the workflow attempt"
+    if type(exc).__name__ == "CancelledError":
+        return "WORKFLOW_ATTEMPT_CANCELED", (
+            "Workflow attempt was canceled before completion"
+        )
+    return "INTERNAL_ENFORCEMENT_ERROR", (
+        "Workflow attempt failed during internal enforcement"
+    )
 
 
 def _compute_policy_file(
@@ -502,8 +677,16 @@ class GovernanceSession:
         policy_file: str | None,
         metadata: dict | None,
     ) -> None:
+        normalized_session_id, session_id_valid = _safe_workflow_identity(
+            session_id
+        )
+        if not session_id_valid:
+            raise InvocationValidationError(
+                "session_id must be a non-empty bounded v2 string",
+                code="WORKFLOW_SESSION_ID_INVALID",
+            )
         self._aigc = aegis
-        self._session_id = session_id
+        self._session_id = normalized_session_id
         self._policy_file = policy_file
         self._metadata = dict(metadata or {})
         self._lifecycle_lock = threading.RLock()
@@ -632,16 +815,27 @@ class GovernanceSession:
         participant = self._participants_by_id.get(participant_id)
         return dict(participant) if participant is not None else None
 
-    def _allocate_step_index(self, step_id: str, attempt_id: int) -> int:
+    def _allocate_step_index(
+        self,
+        step_id: str,
+        attempt_id: int,
+        *,
+        participant_id: str | None = None,
+        workflow_policy_digest: str | None = None,
+        role: str = "unknown",
+    ) -> int:
         """Atomically reserve a permanent index for one workflow attempt."""
         with self._attempt_lock:
             index = self._next_step_index
             self._next_step_index += 1
             self._attempts[index] = SessionAttempt(
-                index,
-                step_id,
-                attempt_id,
-                None,
+                step_index=index,
+                step_id=step_id,
+                attempt_id=attempt_id,
+                invocation_checksum=None,
+                participant_id=participant_id,
+                workflow_policy_digest=workflow_policy_digest,
+                role=role,
             )
             return index
 
@@ -685,7 +879,16 @@ class GovernanceSession:
                         "step_index": step_index,
                     },
                 )
-            if current.terminal is not None:
+            if current.state is AttemptFinalizationState.FINALIZING:
+                raise SessionStateError(
+                    "Session attempt finalization is already in progress",
+                    code="SESSION_ATTEMPT_FINALIZING",
+                    details={
+                        "session_id": self._session_id,
+                        "step_index": step_index,
+                    },
+                )
+            if current.state is AttemptFinalizationState.TERMINAL:
                 duplicate = (
                     current.invocation_checksum == invocation_checksum
                     and current.terminal is terminal
@@ -702,13 +905,166 @@ class GovernanceSession:
                         "step_index": step_index,
                     },
                 )
-            self._attempts[step_index] = SessionAttempt(
-                step_index=current.step_index,
-                step_id=current.step_id,
-                attempt_id=current.attempt_id,
+            finalization_capability = _FinalizationCapability()
+            self._attempts[step_index] = replace(
+                current,
+                state=AttemptFinalizationState.FINALIZING,
+                finalization_capability=finalization_capability,
+            )
+            self._attempts[step_index] = replace(
+                current,
                 invocation_checksum=invocation_checksum,
                 terminal=terminal,
+                state=AttemptFinalizationState.TERMINAL,
+                finalization_capability=None,
             )
+
+    def _reserve_terminal_attempt(
+        self,
+        step_index: int,
+        artifact: MappingABC[str, Any],
+        terminal: TerminalClass,
+        origin: object,
+    ) -> _SessionTerminalReservation:
+        """Validate origin/correlation and reserve before sink emission."""
+        if type(terminal) is not TerminalClass:
+            raise SessionStateError(
+                "Terminal attempt class is invalid",
+                code="SESSION_ATTEMPT_CONFLICT",
+            )
+        checksum = artifact.get("checksum")
+        context = artifact.get("context")
+        with self._attempt_lock:
+            current = self._attempts.get(step_index)
+            if current is None:
+                raise SessionStateError(
+                    "Terminal artifact references an unknown session attempt",
+                    code="SESSION_ATTEMPT_UNKNOWN",
+                )
+            if origin is not current.capability:
+                raise SessionStateError(
+                    "Terminal artifact origin does not own this session attempt",
+                    code="SESSION_ATTEMPT_ORIGIN_MISMATCH",
+                )
+            if current.state is AttemptFinalizationState.FINALIZING:
+                raise SessionStateError(
+                    "Session attempt finalization is already in progress",
+                    code="SESSION_ATTEMPT_FINALIZING",
+                )
+            if current.state is AttemptFinalizationState.TERMINAL:
+                duplicate = (
+                    current.invocation_checksum == checksum
+                    and current.terminal is terminal
+                )
+                raise SessionStateError(
+                    "Session attempt already has a terminal artifact",
+                    code=(
+                        "SESSION_ATTEMPT_DUPLICATE"
+                        if duplicate
+                        else "SESSION_ATTEMPT_CONFLICT"
+                    ),
+                )
+            participant_matches = (
+                context.get("participant_id") == current.participant_id
+                if current.participant_id is not None
+                else "participant_id" not in context
+            ) if type(context) is dict else False
+            correlation_matches = (
+                type(artifact) is dict
+                and artifact.get("audit_schema_version") == "2.0"
+                and "workflow_schema_version" not in artifact
+                and type(context) is dict
+                and context.get("session_id") == self._session_id
+                and context.get("step_id") == current.step_id
+                and type(context.get("step_index")) is int
+                and context.get("step_index") == current.step_index
+                and participant_matches
+                and (
+                    current.workflow_policy_digest is None
+                    or context.get("workflow_policy_digest")
+                    == current.workflow_policy_digest
+                )
+                and (
+                    current.role == "unknown"
+                    or artifact.get("role") == current.role
+                )
+            )
+            if not correlation_matches:
+                raise SessionStateError(
+                    "Terminal artifact does not match its allocated origin",
+                    code="SESSION_ATTEMPT_ORIGIN_MISMATCH",
+                )
+            if (
+                not isinstance(checksum, str)
+                or len(checksum) != 64
+                or any(char not in "0123456789abcdef" for char in checksum)
+            ):
+                raise SessionStateError(
+                    "Terminal attempt checksum is invalid",
+                    code="SESSION_ATTEMPT_CONFLICT",
+                )
+            finalization_capability = _FinalizationCapability()
+            self._attempts[step_index] = replace(
+                current,
+                state=AttemptFinalizationState.FINALIZING,
+                finalization_capability=finalization_capability,
+            )
+        return _SessionTerminalReservation(
+            self,
+            step_index,
+            origin,
+            finalization_capability,
+            checksum,
+            terminal,
+        )
+
+    def _commit_terminal_reservation(
+        self,
+        step_index: int,
+        attempt_capability: object,
+        finalization_capability: object,
+        invocation_checksum: str,
+        terminal: TerminalClass,
+    ) -> None:
+        with self._attempt_lock:
+            current = self._attempts.get(step_index)
+            if (
+                current is None
+                or current.capability is not attempt_capability
+                or current.finalization_capability is not finalization_capability
+                or current.state is not AttemptFinalizationState.FINALIZING
+            ):
+                raise SessionStateError(
+                    "Terminal reservation no longer owns the session attempt",
+                    code="SESSION_ATTEMPT_CONFLICT",
+                )
+            self._attempts[step_index] = replace(
+                current,
+                invocation_checksum=invocation_checksum,
+                terminal=terminal,
+                state=AttemptFinalizationState.TERMINAL,
+                finalization_capability=None,
+            )
+
+    def _abort_terminal_reservation(
+        self,
+        step_index: int,
+        attempt_capability: object,
+        finalization_capability: object,
+    ) -> None:
+        with self._attempt_lock:
+            current = self._attempts.get(step_index)
+            if current is None or current.capability is not attempt_capability:
+                return
+            if (
+                current.state is AttemptFinalizationState.FINALIZING
+                and current.finalization_capability is finalization_capability
+            ):
+                self._attempts[step_index] = replace(
+                    current,
+                    state=AttemptFinalizationState.ALLOCATED,
+                    finalization_capability=None,
+                )
 
     def finalized_attempts(self) -> tuple[SessionAttempt, ...]:
         """Return immutable terminal records in allocated index order."""
@@ -716,10 +1072,17 @@ class GovernanceSession:
             return tuple(
                 record
                 for _, record in sorted(self._attempts.items())
-                if record.terminal is not None
+                if record.state is AttemptFinalizationState.TERMINAL
             )
 
     def _attempt_finalization_scope(self, step_index: int, attempt: Any):
+        with self._attempt_lock:
+            record = self._attempts.get(step_index)
+            if record is None or record.attempt_id != attempt.attempt_id:
+                raise SessionStateError(
+                    "Evidence attempt does not own the allocated step index",
+                    code="SESSION_ATTEMPT_ORIGIN_MISMATCH",
+                )
         return evidence_attempt(
             attempt,
             sink=self._aigc._sink,
@@ -727,9 +1090,8 @@ class GovernanceSession:
             failure_mode=self._aigc._on_sink_failure,
             diagnostics=self._aigc._evidence_diagnostics,
             chain_linker=self._aigc._chain_linker,
-            terminal_recorder=lambda checksum, terminal: (
-                self.record_terminal_attempt(step_index, checksum, terminal)
-            ),
+            terminal_recorder=_SessionTerminalRecorder(self, step_index),
+            terminal_origin=record.capability,
         )
 
     def _finalize_rejected_attempt(
@@ -740,7 +1102,7 @@ class GovernanceSession:
         participant_id: str | None,
         attempt: Any,
         step_index: int,
-        exc: Exception,
+        exc: BaseException,
     ) -> None:
         """Emit terminal evidence for a rejection before an operation is issued."""
         context = _plain_json(attempt.context)
@@ -755,7 +1117,7 @@ class GovernanceSession:
             )
         if participant_id is not None:
             context["participant_id"] = participant_id
-        code = getattr(exc, "code", type(exc).__name__)
+        code, message = _safe_attempt_failure(exc)
         terminal = (
             TerminalClass.DENY
             if isinstance(exc, AIGCError)
@@ -769,14 +1131,14 @@ class GovernanceSession:
             "context": context,
             "enforcement_result": "FAIL",
             "failures": [
-                {"code": str(code), "message": str(exc)[:1024], "field": None}
+                {"code": code, "message": message, "field": None}
             ],
             "failure_gate": (
                 "invocation_validation"
                 if isinstance(exc, AIGCError)
                 else "wrapped_function_error"
             ),
-            "failure_reason": str(exc)[:1024],
+            "failure_reason": message,
             "metadata": {"enforcement_mode": "split_pre_call_only"},
         }
         finalized = finalize_legacy_invocation_artifact(
@@ -1107,7 +1469,7 @@ class GovernanceSession:
             records = tuple(
                 record
                 for _, record in sorted(self._attempts.items())
-                if record.terminal is not None
+                if record.state is AttemptFinalizationState.TERMINAL
             )
         if len(records) != allocated_count:
             raise SessionStateError(
@@ -1241,10 +1603,11 @@ class GovernanceSession:
     def _finalize_internal_phase_b_failure(
         self,
         entry: dict[str, Any],
-        exc: Exception,
+        exc: BaseException,
     ) -> None:
         """Terminalize an unexpected Phase B failure after handle consumption."""
         attempt = entry["attempt"]
+        code, message = _safe_attempt_failure(exc)
         artifact = {
             "policy_file": attempt.policy_file,
             "model_provider": attempt.model_provider,
@@ -1254,13 +1617,13 @@ class GovernanceSession:
             "enforcement_result": "FAIL",
             "failures": [
                 {
-                    "code": type(exc).__name__,
-                    "message": str(exc)[:1024],
+                    "code": code,
+                    "message": message,
                     "field": None,
                 }
             ],
             "failure_gate": "wrapped_function_error",
-            "failure_reason": str(exc)[:1024],
+            "failure_reason": message,
             "metadata": {"enforcement_mode": "split"},
         }
         try:
@@ -1326,11 +1689,13 @@ class GovernanceSession:
             record = self._aigc._operation_registry.consume(
                 _operation_handle(_inner_result(session_result)),
             )
-        except InvocationValidationError as exc:
+        except BaseException as exc:
             self._aigc._operation_registry.cancel_operation(operation_id)
             self._pending_results.pop(operation_id, None)
             self._adapter_step_states.pop(operation_id, None)
-            self._aigc._reject_consumed_post_call(exc)
+            if isinstance(exc, InvocationValidationError):
+                self._aigc._reject_consumed_post_call(exc)
+            raise
 
         self._pending_results.pop(operation_id, None)
         self._adapter_step_states.pop(operation_id, None)
@@ -1470,20 +1835,59 @@ class GovernanceSession:
         :param participant_id: Optional participant identifier
         :return: SessionPreCallResult token (pass to enforce_step_post_call)
         """
-        resolved_step_id = step_id or str(uuid.uuid4())
+        raw_step_id: object = (
+            str(uuid.uuid4()) if step_id is None else step_id
+        )
+        resolved_step_id, step_id_valid = _safe_workflow_identity(raw_step_id)
+        if participant_id is None:
+            resolved_participant_id = None
+            participant_id_valid = True
+        else:
+            (
+                resolved_participant_id,
+                participant_id_valid,
+            ) = _safe_workflow_identity(participant_id)
         attempt = self._aigc._attempt_factory.allocate(
             "GovernanceSession.enforce_step_pre_call",
             "workflow",
             invocation,
         )
-        step_index = self._allocate_step_index(resolved_step_id, attempt.attempt_id)
+        step_index = self._allocate_step_index(
+            resolved_step_id,
+            attempt.attempt_id,
+            participant_id=resolved_participant_id,
+            workflow_policy_digest=(
+                self._compiled_policy.policy_digest
+                if self._compiled_policy is not None
+                else None
+            ),
+            role=attempt.role,
+        )
         with self._attempt_finalization_scope(step_index, attempt):
             try:
+                if not step_id_valid or not participant_id_valid:
+                    raise InvocationValidationError(
+                        "Workflow step identity must be a non-empty bounded "
+                        "v2 string",
+                        code="WORKFLOW_STEP_IDENTITY_INVALID",
+                    )
+                try:
+                    normalized_invocation = normalize_json_v2(invocation)
+                except (MemoryError, RecursionError) as exc:
+                    raise InvocationValidationError(
+                        "Invocation exceeds the v2 normalization boundary",
+                        code="INVOCATION_CANONICALIZATION_FAILED",
+                    ) from exc
+                if type(normalized_invocation) is not dict:
+                    raise InvocationValidationError(
+                        "Invocation must be a plain v2 JSON object",
+                        code="INVOCATION_CANONICALIZATION_FAILED",
+                    )
                 return self._enforce_step_pre_call_attempt(
-                    invocation,
-                    step_id=step_id,
+                    normalized_invocation,
+                    step_id=(resolved_step_id if step_id is not None else None),
                     resolved_step_id=resolved_step_id,
-                    participant_id=participant_id,
+                    participant_id=resolved_participant_id,
                     attempt=attempt,
                     step_index=step_index,
                 )
@@ -1493,16 +1897,24 @@ class GovernanceSession:
                     error.__cause__ = None
                     raise error
                 with self._attempt_lock:
-                    finalized = self._attempts[step_index].terminal is not None
-                if not finalized and isinstance(exc, Exception):
-                    self._finalize_rejected_attempt(
-                        invocation,
-                        resolved_step_id=resolved_step_id,
-                        participant_id=participant_id,
-                        attempt=attempt,
-                        step_index=step_index,
-                        exc=exc,
+                    finalization_started = (
+                        self._attempts[step_index].state
+                        is not AttemptFinalizationState.ALLOCATED
                     )
+                if not finalization_started:
+                    try:
+                        self._finalize_rejected_attempt(
+                            invocation,
+                            resolved_step_id=resolved_step_id,
+                            participant_id=resolved_participant_id,
+                            attempt=attempt,
+                            step_index=step_index,
+                            exc=exc,
+                        )
+                    except _EvidenceAbort as abort:
+                        error = abort.error
+                        error.__cause__ = None
+                        raise error
                 raise
 
     def _enforce_step_pre_call_attempt(
@@ -1855,6 +2267,7 @@ class GovernanceSession:
         ctx["step_id"] = resolved_step_id
         ctx["step_index"] = step_index
         ctx.pop("workflow_policy_digest", None)
+        ctx.pop("participant_id", None)
         correlation_policy = self._compiled_policy
         if correlation_policy is None:
             from aegis._internal.enforcement import _compile_cached_policy
@@ -2055,12 +2468,16 @@ class GovernanceSession:
                 # finalization attempt.  A fallback emission would double-count
                 # the same delivery/finalization failure.
                 raise
-            except Exception as exc:
+            except BaseException as exc:
                 with self._attempt_lock:
-                    finalized = (
-                        self._attempts[entry["step_index"]].terminal is not None
+                    finalization_started = (
+                        self._attempts[entry["step_index"]].state
+                        is not AttemptFinalizationState.ALLOCATED
                     )
-                if not finalized:
+                if not finalization_started:
+                    self._aigc._operation_registry.cancel_operation(operation_id)
+                    self._pending_results.pop(operation_id, None)
+                    self._adapter_step_states.pop(operation_id, None)
                     self._finalize_internal_phase_b_failure(entry, exc)
                 raise
 
