@@ -4,6 +4,7 @@ GovernanceSession and SessionPreCallResult — v0.9.0 workflow primitives.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import threading
 import time
@@ -119,7 +120,14 @@ class SessionPreCallResult:
     correlation_id: str
     policy_digest: str
     canonicalization_profile: str
-    step_index: int = -1
+    step_index: int
+
+    def __post_init__(self) -> None:
+        if type(self.step_index) is not int or self.step_index < 0:
+            raise InvocationValidationError(
+                "Session operation handle step_index is invalid",
+                code="OPERATION_HANDLE_INVALID",
+            )
 
 
 class AttemptFinalizationState(str, Enum):
@@ -285,6 +293,7 @@ def _checksum(artifact: dict) -> str:
 
 
 _MAX_WORKFLOW_IDENTITY_LENGTH = 512
+_POLICY_CORRELATION_DOMAIN = b"aegis-workflow-policy-correlation-v1\x00"
 
 
 def _safe_workflow_identity(value: object) -> tuple[str, bool]:
@@ -324,6 +333,17 @@ def _safe_attempt_failure(exc: BaseException) -> tuple[str, str]:
     return "INTERNAL_ENFORCEMENT_ERROR", (
         "Workflow attempt failed during internal enforcement"
     )
+
+
+def _precompilation_policy_digest(state: str, policy_file: str) -> str:
+    """Commit to AEGIS's pre-compilation policy state without raw disclosure."""
+    payload = (
+        _POLICY_CORRELATION_DOMAIN
+        + state.encode("ascii")
+        + b"\x00"
+        + policy_file.encode("utf-8")
+    )
+    return hashlib.sha256(payload).hexdigest()
 
 
 def _compute_policy_file(
@@ -815,6 +835,41 @@ class GovernanceSession:
         participant = self._participants_by_id.get(participant_id)
         return dict(participant) if participant is not None else None
 
+    def _resolve_policy_correlation_digest(self, policy_file: str) -> str:
+        """Resolve compiled authority or a stable pre-compilation commitment."""
+        if self._compiled_policy is not None:
+            return self._compiled_policy.policy_digest
+        if policy_file == "unknown":
+            return _precompilation_policy_digest("policyless", "unknown")
+        from aegis._internal.enforcement import _compile_cached_policy
+
+        try:
+            compiled = _compile_cached_policy(
+                policy_file,
+                cache=self._aigc._policy_cache,
+                loader=self._aigc._policy_loader,
+            )
+        except BaseException:
+            return _precompilation_policy_digest("unresolved", policy_file)
+        return compiled.policy_digest
+
+    def _bind_policy_correlation_digest(
+        self,
+        step_index: int,
+        digest: str,
+    ) -> None:
+        with self._attempt_lock:
+            current = self._attempts[step_index]
+            if current.state is not AttemptFinalizationState.ALLOCATED:
+                raise SessionStateError(
+                    "Policy correlation must be bound before finalization",
+                    code="SESSION_ATTEMPT_CONFLICT",
+                )
+            self._attempts[step_index] = replace(
+                current,
+                workflow_policy_digest=digest,
+            )
+
     def _allocate_step_index(
         self,
         step_id: str,
@@ -1111,10 +1166,16 @@ class GovernanceSession:
             step_id=resolved_step_id,
             step_index=step_index,
         )
-        if self._compiled_policy is not None:
-            context["workflow_policy_digest"] = (
-                self._compiled_policy.policy_digest
+        with self._attempt_lock:
+            workflow_policy_digest = self._attempts[
+                step_index
+            ].workflow_policy_digest
+        if workflow_policy_digest is None:  # pragma: no cover - allocation invariant
+            raise SessionStateError(
+                "Workflow policy correlation was not bound",
+                code="SESSION_ATTEMPT_ORIGIN_MISMATCH",
             )
+        context["workflow_policy_digest"] = workflow_policy_digest
         if participant_id is not None:
             context["participant_id"] = participant_id
         code, message = _safe_attempt_failure(exc)
@@ -1649,11 +1710,20 @@ class GovernanceSession:
                 details={"received_type": type(session_result).__name__},
             )
         if (
-            not isinstance(session_result.operation_id, str)
+            not isinstance(session_result.session_id, str)
+            or not isinstance(session_result.step_id, str)
+            or (
+                session_result.participant_id is not None
+                and not isinstance(session_result.participant_id, str)
+            )
+            or not isinstance(session_result.operation_id, str)
             or not isinstance(session_result.issuer_id, str)
             or type(session_result.process_id) is not int
+            or not isinstance(session_result.correlation_id, str)
             or not isinstance(session_result.policy_digest, str)
             or not isinstance(session_result.canonicalization_profile, str)
+            or type(session_result.step_index) is not int
+            or session_result.step_index < 0
         ):
             raise InvocationValidationError(
                 "Session operation handle fields are invalid",
@@ -1856,12 +1926,11 @@ class GovernanceSession:
             resolved_step_id,
             attempt.attempt_id,
             participant_id=resolved_participant_id,
-            workflow_policy_digest=(
-                self._compiled_policy.policy_digest
-                if self._compiled_policy is not None
-                else None
-            ),
             role=attempt.role,
+        )
+        self._bind_policy_correlation_digest(
+            step_index,
+            self._resolve_policy_correlation_digest(attempt.policy_file),
         )
         with self._attempt_finalization_scope(step_index, attempt):
             try:
@@ -2268,22 +2337,16 @@ class GovernanceSession:
         ctx["step_index"] = step_index
         ctx.pop("workflow_policy_digest", None)
         ctx.pop("participant_id", None)
-        correlation_policy = self._compiled_policy
-        if correlation_policy is None:
-            from aegis._internal.enforcement import _compile_cached_policy
-
-            policy_file = enriched.get("policy_file")
-            if isinstance(policy_file, str) and policy_file:
-                try:
-                    correlation_policy = _compile_cached_policy(
-                        policy_file,
-                        cache=self._aigc._policy_cache,
-                        loader=self._aigc._policy_loader,
-                    )
-                except AIGCError:
-                    pass
-        if correlation_policy is not None:
-            ctx["workflow_policy_digest"] = correlation_policy.policy_digest
+        with self._attempt_lock:
+            workflow_policy_digest = self._attempts[
+                step_index
+            ].workflow_policy_digest
+        if workflow_policy_digest is None:  # pragma: no cover - allocation invariant
+            raise SessionStateError(
+                "Workflow policy correlation was not bound",
+                code="SESSION_ATTEMPT_ORIGIN_MISMATCH",
+            )
+        ctx["workflow_policy_digest"] = workflow_policy_digest
         if participant_id is not None:
             ctx["participant_id"] = participant_id
         enriched["context"] = ctx
@@ -2314,7 +2377,11 @@ class GovernanceSession:
             enriched,
             policy=self._compiled_policy,
         )
-        ctx["workflow_policy_digest"] = effective_policy.policy_digest
+        if effective_policy.policy_digest != workflow_policy_digest:
+            raise SessionStateError(
+                "Workflow policy changed after attempt correlation",
+                code="SESSION_ATTEMPT_ORIGIN_MISMATCH",
+            )
         inner_result = self._aigc._enforce_pre_call_compiled(
             enriched,
             effective_policy,
@@ -2448,6 +2515,22 @@ class GovernanceSession:
             )
             self._emit_post_validation_failure(exc)
             raise exc
+        if (
+            session_result.session_id != self._session_id
+            or session_result.step_id != entry["step_id"]
+            or session_result.participant_id != entry["participant_id"]
+            or session_result.step_index != entry["step_index"]
+        ):
+            exc = InvocationValidationError(
+                "Session operation metadata does not match minted values",
+                code="OPERATION_SESSION_METADATA_MISMATCH",
+                details={
+                    "session_id": self._session_id,
+                    "registered_step_id": entry["step_id"],
+                },
+            )
+            self._emit_post_validation_failure(exc)
+            raise exc
         with self._attempt_finalization_scope(
             entry["step_index"],
             entry["attempt"],
@@ -2500,6 +2583,7 @@ class GovernanceSession:
             session_result.session_id != self._session_id
             or session_result.step_id != entry["step_id"]
             or session_result.participant_id != entry["participant_id"]
+            or session_result.step_index != entry["step_index"]
         ):
             self._aigc._reject_consumed_post_call(
                 InvocationValidationError(

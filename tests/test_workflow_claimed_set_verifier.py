@@ -392,3 +392,158 @@ def test_public_imports_are_stable_and_identical():
     assert WorkflowClaimStatus is ModuleWorkflowClaimStatus
     assert WorkflowVerificationReport is ModuleWorkflowVerificationReport
     assert verify_workflow_claim is module_verify_workflow_claim
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["session_id", "step_id", "step_index", "workflow_policy_digest"],
+)
+def test_partial_workflow_correlation_is_rejected_by_verifier(
+    evidence_set,
+    field,
+):
+    """Removing any quartet member must invalidate an otherwise matching claim."""
+    workflow, invocations = evidence_set
+    changed_invocations = copy.deepcopy(invocations)
+    changed_invocations[0]["context"].pop(field)
+    changed_invocations[0] = _refinalize_unsigned(changed_invocations[0])
+    changed_workflow = copy.deepcopy(workflow)
+    changed_workflow["invocations"][0]["checksum"] = (
+        changed_invocations[0]["checksum"]
+    )
+    changed_workflow = _refinalize_unsigned(changed_workflow)
+
+    report = verify_workflow_claim(changed_workflow, changed_invocations)
+
+    assert report.claim_status is WorkflowClaimStatus.INVALID
+    assert "INVOCATION_CORRELATION_INVALID" in _error_codes(report)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda artifact: artifact.update(
+            canonicalization_profile="aegis-json-v2"
+        ),
+        lambda artifact: artifact.update(checksum="0" * 64),
+        lambda artifact: artifact.update(audit_schema_version="2.0"),
+        lambda artifact: artifact.update(step_count=0, invocations=[]),
+    ],
+    ids=["v2-profile", "v2-checksum", "audit-discriminator", "v2-claim"],
+)
+def test_legacy_hybrid_cannot_select_legacy_workflow_rules(mutation):
+    """A 1.x marker cannot authorize contradictory v2 workflow features."""
+    hybrid = {
+        "workflow_schema_version": "1.4",
+        "artifact_type": "workflow",
+        "session_id": "legacy-session",
+        "signature": None,
+    }
+    mutation(hybrid)
+
+    report = verify_workflow_claim(hybrid, [])
+
+    assert report.claim_status is not WorkflowClaimStatus.LEGACY
+    assert report.completeness is Completeness.UNPROVEN
+
+
+def test_infinite_invocation_iterable_stops_at_hard_document_limit(evidence_set):
+    """Replacing bounded iteration with list() would never return."""
+    workflow, _ = evidence_set
+
+    def infinite():
+        while True:
+            yield {"context": {}}
+
+    report = verify_workflow_claim(workflow, infinite())
+
+    assert report.claim_status is WorkflowClaimStatus.NOT_EVALUATED
+    assert "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED" in _error_codes(report)
+
+
+def test_verifier_never_calls_untrusted_length_hint(evidence_set):
+    """Manual incremental consumption must ignore hostile sizing hooks."""
+    workflow, invocations = evidence_set
+
+    class HostileLengthHint:
+        def __iter__(self):
+            return iter(invocations)
+
+        def __length_hint__(self):
+            raise AssertionError("length hint must not be called")
+
+    report = verify_workflow_claim(workflow, HostileLengthHint())
+
+    assert report.claim_status is WorkflowClaimStatus.VALID
+
+
+@pytest.mark.parametrize("failure", [MemoryError, RecursionError, RuntimeError])
+def test_exceptional_invocation_iterable_returns_typed_report(
+    evidence_set,
+    failure,
+):
+    """Iterator failures, including resource failures, must not escape."""
+    workflow, _ = evidence_set
+
+    class BrokenIterable:
+        def __iter__(self):
+            raise failure("iterator failed")
+
+    report = verify_workflow_claim(workflow, BrokenIterable())
+
+    assert report.claim_status is WorkflowClaimStatus.NOT_EVALUATED
+    assert "WORKFLOW_INVOCATIONS_INPUT_INVALID" in _error_codes(report)
+
+
+def test_cyclic_workflow_returns_typed_budget_report(evidence_set):
+    """Recursive input must be rejected before checksum/signature traversal."""
+    workflow, invocations = evidence_set
+    cyclic = copy.deepcopy(workflow)
+    cyclic["metadata"]["cycle"] = cyclic
+
+    report = verify_workflow_claim(cyclic, invocations)
+
+    assert report.claim_status is WorkflowClaimStatus.NOT_EVALUATED
+    assert "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED" in _error_codes(report)
+
+
+def test_deep_workflow_returns_typed_budget_report(evidence_set):
+    """Nesting deeper than the verifier budget must not reach recursion."""
+    workflow, invocations = evidence_set
+    changed = copy.deepcopy(workflow)
+    nested = changed["metadata"]
+    for _ in range(40):
+        nested["next"] = {}
+        nested = nested["next"]
+
+    report = verify_workflow_claim(changed, invocations)
+
+    assert report.claim_status is WorkflowClaimStatus.NOT_EVALUATED
+    assert "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED" in _error_codes(report)
+
+
+def test_oversized_workflow_returns_typed_budget_report(evidence_set):
+    """Verification bytes must be bounded before canonical serialization."""
+    workflow, invocations = evidence_set
+    changed = copy.deepcopy(workflow)
+    changed["metadata"]["oversized"] = "x" * (4 * 1024 * 1024 + 1)
+
+    report = verify_workflow_claim(changed, invocations)
+
+    assert report.claim_status is WorkflowClaimStatus.NOT_EVALUATED
+    assert "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED" in _error_codes(report)
+
+
+def test_verification_error_collection_has_hard_ceiling(evidence_set):
+    """A hostile supplied set cannot force an unbounded error tuple."""
+    workflow, invocations = evidence_set
+    hostile = []
+    for index in range(150):
+        artifact = copy.deepcopy(invocations[0])
+        artifact["context"]["step_index"] = index + 1
+        hostile.append(_refinalize_unsigned(artifact))
+
+    report = verify_workflow_claim(workflow, hostile)
+
+    assert report.claim_status is WorkflowClaimStatus.INVALID
+    assert 1 <= len(report.errors) <= 100

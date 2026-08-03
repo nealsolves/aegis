@@ -25,6 +25,96 @@ from aegis._internal.verification import (
 
 
 _HEX64_RE = re.compile(r"^[a-f0-9]{64}$")
+_CORRELATION_FIELDS = frozenset(
+    {"session_id", "step_id", "step_index", "workflow_policy_digest"}
+)
+MAX_WORKFLOW_CLAIM_ENTRIES = 10_000
+MAX_WORKFLOW_SUPPLIED_ARTIFACTS = 10_000
+MAX_WORKFLOW_VERIFICATION_BYTES = 4 * 1024 * 1024
+MAX_WORKFLOW_VERIFICATION_DEPTH = 32
+MAX_WORKFLOW_VERIFICATION_ERRORS = 100
+
+
+class _VerificationBudgetExceeded(Exception):
+    pass
+
+
+class _BoundedErrors(list[VerificationError]):
+    def append(self, error: VerificationError) -> None:
+        if len(self) < MAX_WORKFLOW_VERIFICATION_ERRORS:
+            super().append(error)
+
+
+def _measure_json_document(value: object, *, byte_limit: int) -> int:
+    """Measure one JSON document iteratively under byte/depth/cycle bounds."""
+    total = 0
+    seen_containers: set[int] = set()
+    stack: list[tuple[object, int]] = [(value, 0)]
+    while stack:
+        current, depth = stack.pop()
+        if depth > MAX_WORKFLOW_VERIFICATION_DEPTH:
+            raise _VerificationBudgetExceeded
+        if current is None or isinstance(current, bool):
+            total += 5
+        elif isinstance(current, str):
+            if len(current) > byte_limit - total:
+                raise _VerificationBudgetExceeded
+            total += len(current.encode("utf-8")) + 2
+        elif isinstance(current, int) and not isinstance(current, bool):
+            total += 32
+        elif isinstance(current, float):
+            total += 32
+        elif type(current) is list:
+            identity = id(current)
+            if identity in seen_containers:
+                raise _VerificationBudgetExceeded
+            seen_containers.add(identity)
+            total += 2 + len(current)
+            for item in reversed(current):
+                stack.append((item, depth + 1))
+        elif type(current) is dict:
+            identity = id(current)
+            if identity in seen_containers:
+                raise _VerificationBudgetExceeded
+            seen_containers.add(identity)
+            total += 2 + len(current)
+            for key, item in current.items():
+                if type(key) is not str:
+                    raise _VerificationBudgetExceeded
+                if len(key) > byte_limit - total:
+                    raise _VerificationBudgetExceeded
+                total += len(key.encode("utf-8")) + 3
+                stack.append((item, depth + 1))
+        else:
+            raise _VerificationBudgetExceeded
+        if total > byte_limit:
+            raise _VerificationBudgetExceeded
+    return total
+
+
+def _within_document_budget(
+    value: object,
+    errors: list[VerificationError],
+    *,
+    remaining_bytes: int,
+) -> int | None:
+    try:
+        return _measure_json_document(value, byte_limit=remaining_bytes)
+    except (
+        _VerificationBudgetExceeded,
+        MemoryError,
+        RecursionError,
+        UnicodeError,
+        ValueError,
+        OverflowError,
+    ):
+        errors.append(
+            _error(
+                "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
+                "Workflow verification input exceeds a configured limit",
+            )
+        )
+        return None
 
 
 class WorkflowClaimStatus(str, Enum):
@@ -65,12 +155,22 @@ def _legacy_workflow(workflow: dict[str, Any]) -> bool:
         isinstance(version, str)
         and version.startswith("1.")
         and "audit_schema_version" not in workflow
+        and workflow.get("artifact_type") == "workflow"
+        and workflow.get("checksum") in {None, ""}
+        and workflow.get("canonicalization_profile")
+        in {None, "aegis-canonical-json-v1"}
+        and workflow.get("signature") in {None, ""}
+        and "signature_metadata" not in workflow
+        and "step_count" not in workflow
+        and "invocations" not in workflow
     )
 
 
 def _materialize_invocations(
     invocations: object,
     errors: list[VerificationError],
+    *,
+    consumed_bytes: int,
 ) -> list[object] | None:
     if (
         isinstance(invocations, (str, bytes, bytearray, Mapping))
@@ -84,7 +184,7 @@ def _materialize_invocations(
         )
         return None
     try:
-        return list(invocations)
+        iterator = iter(invocations)
     except Exception:
         errors.append(
             _error(
@@ -93,6 +193,38 @@ def _materialize_invocations(
             )
         )
         return None
+    supplied: list[object] = []
+    total_bytes = consumed_bytes
+    while True:
+        try:
+            artifact = next(iterator)
+        except StopIteration:
+            return supplied
+        except Exception:
+            errors.append(
+                _error(
+                    "WORKFLOW_INVOCATIONS_INPUT_INVALID",
+                    "Invocations could not be consumed as an ordered iterable",
+                )
+            )
+            return None
+        if len(supplied) >= MAX_WORKFLOW_SUPPLIED_ARTIFACTS:
+            errors.append(
+                _error(
+                    "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
+                    "Supplied invocation count exceeds the verifier limit",
+                )
+            )
+            return None
+        measured = _within_document_budget(
+            artifact,
+            errors,
+            remaining_bytes=MAX_WORKFLOW_VERIFICATION_BYTES - total_bytes,
+        )
+        if measured is None:
+            return None
+        total_bytes += measured
+        supplied.append(artifact)
 
 
 def _validate_claim(
@@ -119,6 +251,24 @@ def _validate_claim(
         return None
     assert isinstance(step_count, int)
     assert isinstance(claim, list)
+    if len(claim) != step_count:
+        errors.append(
+            _error(
+                "WORKFLOW_CLAIM_COUNT_MISMATCH",
+                f"Claim contains {len(claim)} entries for step_count={step_count}",
+            )
+        )
+    if (
+        step_count > MAX_WORKFLOW_CLAIM_ENTRIES
+        or len(claim) > MAX_WORKFLOW_CLAIM_ENTRIES
+    ):
+        errors.append(
+            _error(
+                "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
+                "Workflow claim exceeds the verifier entry limit",
+            )
+        )
+        return None
     typed_claim: list[dict[str, Any]] = []
     for index, item in enumerate(claim):
         if (
@@ -139,13 +289,6 @@ def _validate_claim(
             )
             continue
         typed_claim.append(item)
-    if len(claim) != step_count:
-        errors.append(
-            _error(
-                "WORKFLOW_CLAIM_COUNT_MISMATCH",
-                f"Claim contains {len(claim)} entries for step_count={step_count}",
-            )
-        )
     if len(typed_claim) == len(claim) and any(
         item["step_index"] != expected_index
         for expected_index, item in enumerate(typed_claim)
@@ -159,16 +302,57 @@ def _validate_claim(
     return step_count, typed_claim
 
 
+def _valid_workflow_correlation(context: object) -> bool:
+    if type(context) is not dict or not _CORRELATION_FIELDS.issubset(context):
+        return False
+    return (
+        isinstance(context.get("session_id"), str)
+        and 1 <= len(context["session_id"]) <= 512
+        and isinstance(context.get("step_id"), str)
+        and 1 <= len(context["step_id"]) <= 512
+        and type(context.get("step_index")) is int
+        and context["step_index"] >= 0
+        and isinstance(context.get("workflow_policy_digest"), str)
+        and _HEX64_RE.fullmatch(context["workflow_policy_digest"]) is not None
+        and (
+            "participant_id" not in context
+            or (
+                isinstance(context["participant_id"], str)
+                and 1 <= len(context["participant_id"]) <= 512
+            )
+        )
+    )
+
+
 def _select_session_invocations(
     supplied: list[object],
     session_id: str,
+    errors: list[VerificationError],
 ) -> list[object]:
     selected: list[object] = []
-    for artifact in supplied:
+    for position, artifact in enumerate(supplied):
         if type(artifact) is not dict:
             continue
         context = artifact.get("context")
-        if type(context) is dict and context.get("session_id") == session_id:
+        correlation_markers = (
+            _CORRELATION_FIELDS.intersection(context)
+            if type(context) is dict
+            else set()
+        )
+        if correlation_markers and not _valid_workflow_correlation(context):
+            errors.append(
+                _error(
+                    "INVOCATION_CORRELATION_INVALID",
+                    f"Supplied invocation at position {position} has invalid "
+                    "workflow correlation",
+                    position,
+                )
+            )
+            continue
+        if (
+            _valid_workflow_correlation(context)
+            and context.get("session_id") == session_id
+        ):
             selected.append(artifact)
     return selected
 
@@ -203,12 +387,25 @@ def _compare_selected(
                     position,
                 )
             )
-        if not _audit_validator().is_valid(artifact):
+        try:
+            schema_valid = _audit_validator().is_valid(artifact)
+        except Exception:
+            schema_valid = False
+        if not schema_valid:
             errors.append(
                 _error(
                     "INVOCATION_SCHEMA_INVALID",
                     f"Supplied invocation at position {position} does not "
                     "match the v2 audit artifact schema",
+                    position,
+                )
+            )
+        if not _valid_workflow_correlation(context):
+            errors.append(
+                _error(
+                    "INVOCATION_CORRELATION_INVALID",
+                    f"Supplied invocation at position {position} has invalid "
+                    "workflow correlation",
                     position,
                 )
             )
@@ -259,7 +456,7 @@ def verify_workflow_claim(
     that type exists, the only accepted checkpoint value is ``None`` and
     completeness cannot be promoted beyond ``UNPROVEN``.
     """
-    errors: list[VerificationError] = []
+    errors: list[VerificationError] = _BoundedErrors()
     if type(workflow) is not dict:
         errors.append(
             _error("WORKFLOW_INPUT_INVALID", "Workflow must be a plain JSON object")
@@ -270,7 +467,28 @@ def verify_workflow_claim(
             errors,
         )
 
-    signature_status, _ = _verify_signatures((workflow,), None, errors)
+    workflow_bytes = _within_document_budget(
+        workflow,
+        errors,
+        remaining_bytes=MAX_WORKFLOW_VERIFICATION_BYTES,
+    )
+    if workflow_bytes is None:
+        return _report(
+            WorkflowClaimStatus.NOT_EVALUATED,
+            SignatureStatus.INDETERMINATE,
+            errors,
+        )
+
+    try:
+        signature_status, _ = _verify_signatures((workflow,), None, errors)
+    except Exception:
+        errors.append(
+            _error(
+                "SIGNATURE_VERIFICATION_ERROR",
+                "Workflow signature metadata could not be evaluated",
+            )
+        )
+        signature_status = SignatureStatus.INDETERMINATE
     if expected_checkpoint is not None:
         errors.append(
             _error(
@@ -287,7 +505,11 @@ def verify_workflow_claim(
     if _legacy_workflow(workflow):
         return _report(WorkflowClaimStatus.LEGACY, signature_status, errors)
 
-    if verify_content_checksum_v2(workflow) is not ContentIntegrity.VALID:
+    try:
+        content_status = verify_content_checksum_v2(workflow)
+    except Exception:
+        content_status = ContentIntegrity.NOT_EVALUATED
+    if content_status is not ContentIntegrity.VALID:
         errors.append(
             _error(
                 "WORKFLOW_CONTENT_INVALID",
@@ -296,7 +518,14 @@ def verify_workflow_claim(
         )
         return _report(WorkflowClaimStatus.INVALID, signature_status, errors)
 
-    if not _workflow_validator().is_valid(workflow):
+    initial_error_count = len(errors)
+    validated = _validate_claim(workflow, errors)
+
+    try:
+        workflow_schema_valid = _workflow_validator().is_valid(workflow)
+    except Exception:
+        workflow_schema_valid = False
+    if not workflow_schema_valid:
         errors.append(
             _error(
                 "WORKFLOW_SCHEMA_INVALID",
@@ -305,7 +534,14 @@ def verify_workflow_claim(
         )
         return _report(WorkflowClaimStatus.INVALID, signature_status, errors)
 
-    supplied = _materialize_invocations(invocations, errors)
+    if validated is None:
+        return _report(WorkflowClaimStatus.INVALID, signature_status, errors)
+
+    supplied = _materialize_invocations(
+        invocations,
+        errors,
+        consumed_bytes=workflow_bytes,
+    )
     if supplied is None:
         return _report(
             WorkflowClaimStatus.NOT_EVALUATED,
@@ -313,14 +549,10 @@ def verify_workflow_claim(
             errors,
         )
 
-    initial_error_count = len(errors)
-    validated = _validate_claim(workflow, errors)
-    if validated is None:
-        return _report(WorkflowClaimStatus.INVALID, signature_status, errors)
     step_count, claim = validated
     session_id = workflow["session_id"]
     assert isinstance(session_id, str)
-    selected = _select_session_invocations(supplied, session_id)
+    selected = _select_session_invocations(supplied, session_id, errors)
     _compare_selected(selected, step_count, claim, errors)
     claim_status = (
         WorkflowClaimStatus.VALID

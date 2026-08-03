@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from jsonschema import Draft7Validator
 
-from aegis import AEGIS, HMACSigner, SessionStateError
+from aegis import AEGIS, CallbackAuditSink, HMACSigner, SessionStateError
 from aegis._internal.evidence_profiles import (
     ContentIntegrity,
     verify_content_checksum_v2,
@@ -238,3 +238,61 @@ def test_both_workflow_schemas_require_the_gap_representable_claim(session):
             {"step_index": 1, "checksum": "a" * 64}
         ]
         assert list(validator.iter_errors(gap_representable)) == []
+
+
+def test_both_workflow_schemas_bound_claim_size(session):
+    """Removing schema maxima would let callers hand verifiers unbounded claims."""
+    artifact = session.finalize()
+    schema_paths = (
+        ROOT / "schemas/workflow_artifact.schema.json",
+        ROOT / "aegis/schemas/workflow_artifact.schema.json",
+    )
+
+    for schema_path in schema_paths:
+        validator = Draft7Validator(
+            json.loads(schema_path.read_text(encoding="utf-8"))
+        )
+        oversized_count = copy.deepcopy(artifact)
+        oversized_count["step_count"] = 10_001
+        assert any(
+            error.validator == "maximum"
+            for error in validator.iter_errors(oversized_count)
+        )
+
+        oversized_claim = copy.deepcopy(artifact)
+        oversized_claim["invocations"] = [
+            {"step_index": 0, "checksum": "0" * 64}
+        ] * 10_001
+        assert any(
+            error.validator == "maxItems"
+            for error in validator.iter_errors(oversized_claim)
+        )
+
+
+def test_both_audit_schemas_require_complete_workflow_correlation():
+    """Any session marker must activate the full bounded quartet contract."""
+    emitted = []
+    governance = AEGIS(sink=CallbackAuditSink(emitted.append))
+    session = governance.open_session(session_id="audit-correlation-schema")
+    handle = session.enforce_step_pre_call(_invocation(), step_id="s1")
+    artifact = session.enforce_step_post_call(handle, GOOD_OUTPUT)
+    session.finalize(status="COMPLETED")
+    schema_paths = (
+        ROOT / "schemas/audit_artifact.schema.json",
+        ROOT / "aegis/schemas/audit_artifact.schema.json",
+    )
+
+    for schema_path in schema_paths:
+        validator = Draft7Validator(
+            json.loads(schema_path.read_text(encoding="utf-8"))
+        )
+        assert list(validator.iter_errors(artifact)) == []
+        for field in (
+            "session_id",
+            "step_id",
+            "step_index",
+            "workflow_policy_digest",
+        ):
+            partial = copy.deepcopy(artifact)
+            partial["context"].pop(field)
+            assert list(validator.iter_errors(partial))
