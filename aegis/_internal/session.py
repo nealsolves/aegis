@@ -16,12 +16,15 @@ from typing import TYPE_CHECKING, Any, NoReturn
 
 from aegis._internal.errors import (
     AIGCError,
+    AuditSinkError,
+    EvidenceFinalizationError,
     InvocationValidationError,
     SessionStateError,
 )
 from aegis._internal.audit import checksum as _audit_checksum
 from aegis._internal.evidence_finalizer import (
     _EvidenceAbort,
+    _frozen_mapping,
     _plain_json,
     evidence_attempt,
     finalize_legacy_invocation_artifact,
@@ -1092,6 +1095,8 @@ class GovernanceSession:
                 f"Invalid workflow artifact status: {status!r}",
                 details={"session_id": self._session_id, "status": status},
             )
+        if status == "COMPLETED" and self._state != STATE_COMPLETED:
+            self.complete()
         return self._do_finalize(status=status)
 
     def _do_finalize(self, *, status: str | None = None) -> dict[str, Any]:
@@ -1176,11 +1181,12 @@ class GovernanceSession:
     def _cancel_pending_operations(self) -> None:
         """Burn and terminally finalize every still-live session operation."""
         pending = tuple(self._pending_results.items())
-        self._pending_results.clear()
-        self._adapter_step_states.clear()
-        for operation_id, entry in pending:
+        for operation_id, _entry in pending:
             self._aigc._operation_registry.cancel_operation(operation_id)
+        for operation_id, entry in pending:
             self._finalize_canceled_entry(entry)
+            self._pending_results.pop(operation_id, None)
+            self._adapter_step_states.pop(operation_id, None)
 
     def _finalize_canceled_entry(self, entry: dict[str, Any]) -> None:
         """Finalize terminal canceled evidence after its handle is burned."""
@@ -1215,6 +1221,42 @@ class GovernanceSession:
                 error = abort.error
                 error.__cause__ = None
                 raise error
+
+    def _finalize_internal_phase_b_failure(
+        self,
+        entry: dict[str, Any],
+        exc: Exception,
+    ) -> None:
+        """Terminalize an unexpected Phase B failure after handle consumption."""
+        attempt = entry["attempt"]
+        artifact = {
+            "policy_file": attempt.policy_file,
+            "model_provider": attempt.model_provider,
+            "model_identifier": attempt.model_identifier,
+            "role": attempt.role,
+            "context": _plain_json(entry["context"]),
+            "enforcement_result": "FAIL",
+            "failures": [
+                {
+                    "code": type(exc).__name__,
+                    "message": str(exc)[:1024],
+                    "field": None,
+                }
+            ],
+            "failure_gate": "wrapped_function_error",
+            "failure_reason": str(exc)[:1024],
+            "metadata": {"enforcement_mode": "split"},
+        }
+        try:
+            finalize_legacy_invocation_artifact(
+                artifact,
+                attempt=attempt,
+                terminal=TerminalClass.EXECUTION_FAILURE,
+            )
+        except _EvidenceAbort as abort:
+            error = abort.error
+            error.__cause__ = None
+            raise error
 
     # ------------------------------------------------------------------
     # Step enforcement
@@ -1385,13 +1427,14 @@ class GovernanceSession:
         self._assert_owns(session_result)
 
         operation_id = session_result.operation_id
-        entry = self._pending_results.pop(operation_id, None)
-        self._adapter_step_states.pop(operation_id, None)
+        entry = self._pending_results.get(operation_id)
         if entry is None:
             return
 
         self._aigc._operation_registry.cancel_operation(operation_id)
         self._finalize_canceled_entry(entry)
+        self._pending_results.pop(operation_id, None)
+        self._adapter_step_states.pop(operation_id, None)
 
         if rollback_authorization and self._authorized_step_count > 0:
             self._authorized_step_count -= 1
@@ -1920,7 +1963,7 @@ class GovernanceSession:
             "tool_calls_count": _tool_calls_this_step,
             "step_index": step_index,
             "attempt": attempt,
-            "context": _plain_json(ctx),
+            "context": _frozen_mapping(ctx),
         }
 
         # Increment only after all checks pass — pre-call rejection must not
@@ -1991,6 +2034,19 @@ class GovernanceSession:
                 error = abort.error
                 error.__cause__ = None
                 raise error
+            except (AuditSinkError, EvidenceFinalizationError):
+                # The instance evidence boundary already diagnosed this one
+                # finalization attempt.  A fallback emission would double-count
+                # the same delivery/finalization failure.
+                raise
+            except Exception as exc:
+                with self._attempt_lock:
+                    finalized = (
+                        self._attempts[entry["step_index"]].terminal is not None
+                    )
+                if not finalized:
+                    self._finalize_internal_phase_b_failure(entry, exc)
+                raise
 
     def _enforce_step_post_call_attempt(
         self,

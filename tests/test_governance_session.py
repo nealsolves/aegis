@@ -156,6 +156,23 @@ def test_canceled_attempt_delivery_failure_prevents_workflow_claim():
     assert governance.evidence_diagnostics().evidence_delivery_failures_total == 1
 
 
+def test_explicit_completed_status_cannot_bypass_pending_approval():
+    """Explicit COMPLETED must enforce the same readiness guard as complete()."""
+    emitted = []
+    session = AIGC(
+        sink=aegis.CallbackAuditSink(emitted.append),
+    ).open_session(session_id="explicit-completed-pending-approval")
+    session.pause(approval_id="pending-review")
+
+    with pytest.raises(SessionStateError):
+        session.finalize(status="COMPLETED")
+
+    assert session.state == "PAUSED"
+    assert session.workflow_artifact is None
+    assert session._approval_records[0]["status"] == "pending"
+    assert emitted == []
+
+
 def test_session_token_rejected_by_module_enforce_post_call():
     """SessionPreCallResult passed to module-level enforce_post_call raises."""
     from aegis import enforce_post_call
