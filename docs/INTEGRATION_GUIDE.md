@@ -321,9 +321,13 @@ as in unified mode.
 
 ### `PreCallResult` handoff contract
 
-`enforce_pre_call` returns a `PreCallResult` token. It carries all phase-A state
-needed for phase B (loaded policy, resolved guards, gate results, timestamps).
-Treat it as an opaque handle — do not inspect or copy its internals.
+`enforce_pre_call` returns an opaque `PreCallResult` identity handle. All
+phase-A authorization state stays in the issuing runtime's private operation
+registry. Use the handle exactly once, in the same process and through the same
+module runtime or `AEGIS` instance that issued it. Copies and pickle
+round-trips retain the same one-shot identity; they do not transfer or
+duplicate authorization. Handles cannot be renewed or recovered after a
+restart—run `enforce_pre_call` again for each new operation.
 
 ### Completing enforcement with `enforce_post_call`
 

@@ -1,10 +1,15 @@
 # ADR-0009: Split Enforcement Model
 
 Date: 2026-04-04
-Status: Accepted
+Status: Superseded in part by ADR-0014
 Owners: Neal
 
 ---
+
+> ADR-0014 replaces this ADR's PreCallResult representation, mutable
+> _consumed lifecycle, undefined concurrency scope, and portable pickle
+> authorization contract. The phase split and artifact semantics below remain
+> historical context and continue to apply where not superseded.
 
 ## Context
 

@@ -1211,12 +1211,18 @@ The `invocation` dict passed to `enforce_pre_call` uses the same shape as
 `enforce_invocation` **except** that the `output` key is omitted — it is not
 available until after the model call.
 
-**`PreCallResult` contract:** `PreCallResult` is a logically immutable handoff
-token produced by `enforce_pre_call`. It carries the loaded policy, resolved
-guards, gate state, and phase-A timestamps needed for phase B. It is not a
-public data carrier — do not inspect its internals. It is single-use: calling
-`enforce_post_call` a second time with the same token raises
-`InvocationValidationError`.
+**`PreCallResult` contract:** `PreCallResult` is an immutable, opaque identity
+handle produced by `enforce_pre_call`. Authorization state remains in the
+issuing runtime's private operation registry. A handle is single-use,
+process-affine, and issuer-instance-affine. Call `enforce_post_call` in the
+same process and through the same module or `AEGIS` instance that issued it.
+Every attempted Phase B consumption burns an authenticated handle, including
+output-validation failures.
+
+Copying, deep-copying, or pickling a handle copies the same operation identity;
+it never duplicates or transfers authorization. A second use raises
+`InvocationValidationError`. There is no renewal API: obtain a fresh handle by
+running `enforce_pre_call` at the start of each operation.
 
 **`AEGIS` instance methods:**
 
@@ -1228,7 +1234,8 @@ await aegis.enforce_post_call_async(pre_result, output)
 ```
 
 These have the same contract as the module-level functions and respect the
-instance's sink, signer, gates, and policy loader configuration.
+instance's sink, signer, gates, policy loader configuration, and private
+operation registry. Handles cannot be exchanged between instances.
 
 **Decorator default (v0.3.3+):**
 

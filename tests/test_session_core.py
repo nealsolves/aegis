@@ -7,6 +7,8 @@ run before public exports are wired.
 
 from __future__ import annotations
 
+import dataclasses
+
 import pytest
 
 from aegis._internal.enforcement import AIGC
@@ -17,7 +19,6 @@ from aegis._internal.session import (
     STATE_OPEN,
     STATE_PAUSED,
     GovernanceSession,
-    SessionPreCallResult,
     _compute_policy_file,
 )
 from aegis._internal.sinks import CallbackAuditSink
@@ -63,11 +64,13 @@ def test_token_has_no_inner_attribute():
         session.complete()
 
 
-def test_token_is_session_token_sentinel():
+def test_session_handle_has_no_legacy_token_state():
     a = _aigc()
     with a.open_session() as session:
         token = session.enforce_step_pre_call(dict(_BASE_INV))
-        assert getattr(token, "_IS_SESSION_TOKEN", False) is True
+        assert "_IS_SESSION_TOKEN" not in token.__slots__
+        assert "_token_id" not in token.__slots__
+        assert "_consumed" not in token.__slots__
         session.enforce_step_post_call(token, dict(_GOOD_OUTPUT))
         session.complete()
 
@@ -77,22 +80,18 @@ def test_token_is_session_token_sentinel():
 # ---------------------------------------------------------------------------
 
 def test_forged_wrapper_rejected():
-    """Copying a real _token_id into a forged wrapper with a different step_id raises."""
+    """Copying a real operation identity with different metadata fails closed."""
     a = _aigc()
     with a.open_session() as session:
         real_token = session.enforce_step_pre_call(dict(_BASE_INV), step_id="real-step")
-        # Build a forged token: same _token_id, different step_id
-        forged = SessionPreCallResult(
-            session_id=real_token.session_id,
-            step_id="injected-step",
-            participant_id=real_token.participant_id,
-            _token_id=real_token._token_id,
-        )
-        with pytest.raises(InvocationValidationError, match="forged wrapper"):
+        forged = dataclasses.replace(real_token, step_id="injected-step")
+        with pytest.raises(InvocationValidationError) as exc_info:
             session.enforce_step_post_call(forged, dict(_GOOD_OUTPUT))
-        # real token still unconsumed — clean up
-        session.enforce_step_post_call(real_token, dict(_GOOD_OUTPUT))
-        session.complete()
+        assert exc_info.value.code == "OPERATION_SESSION_METADATA_MISMATCH"
+        with pytest.raises(InvocationValidationError) as replay:
+            session.enforce_step_post_call(real_token, dict(_GOOD_OUTPUT))
+        assert replay.value.code == "OPERATION_NOT_ACTIVE"
+        session.cancel()
 
 
 # ---------------------------------------------------------------------------
@@ -107,10 +106,10 @@ def test_token_consumed_on_non_serializable_output_failure():
         non_serializable = {"value": float("inf")}
         with pytest.raises(Exception):  # InvocationValidationError or similar
             session.enforce_step_post_call(token, non_serializable)
-        assert token._consumed
-        assert token._token_id not in session._pending_results
-        with pytest.raises(InvocationValidationError, match="Token already consumed"):
+        assert token.operation_id not in session._pending_results
+        with pytest.raises(InvocationValidationError) as replay:
             session.enforce_step_post_call(token, dict(_GOOD_OUTPUT))
+        assert replay.value.code == "OPERATION_NOT_ACTIVE"
         session.cancel()
 
 
@@ -121,21 +120,20 @@ def test_token_consumed_on_schema_validation_failure():
         token = session.enforce_step_pre_call(dict(_BASE_INV))
         with pytest.raises(Exception):  # SchemaValidationError
             session.enforce_step_post_call(token, {"result": "answer"})
-        assert token._consumed
-        assert token._token_id not in session._pending_results
-        with pytest.raises(InvocationValidationError, match="Token already consumed"):
+        assert token.operation_id not in session._pending_results
+        with pytest.raises(InvocationValidationError) as replay:
             session.enforce_step_post_call(token, dict(_GOOD_OUTPUT))
+        assert replay.value.code == "OPERATION_NOT_ACTIVE"
         session.cancel()
 
 
 def test_token_consumed_on_success():
-    """After successful completion: token removed from _pending_results, _consumed True."""
+    """After successful completion the operation is no longer pending."""
     a = _aigc()
     with a.open_session() as session:
         token = session.enforce_step_pre_call(dict(_BASE_INV))
         session.enforce_step_post_call(token, dict(_GOOD_OUTPUT))
-        assert token._consumed
-        assert token._token_id not in session._pending_results
+        assert token.operation_id not in session._pending_results
         session.complete()
 
 
@@ -148,6 +146,15 @@ def test_second_completion_rejected():
         with pytest.raises(InvocationValidationError):
             session.enforce_step_post_call(token, dict(_GOOD_OUTPUT))
         session.complete()
+
+
+def test_session_post_call_rejects_wrong_handle_type_with_typed_error():
+    a = _aigc()
+    with a.open_session() as session:
+        with pytest.raises(InvocationValidationError) as exc_info:
+            session.enforce_step_post_call(object(), dict(_GOOD_OUTPUT))
+        assert exc_info.value.code == "OPERATION_HANDLE_INVALID"
+        session.cancel()
 
 
 # ---------------------------------------------------------------------------

@@ -85,10 +85,16 @@ class GovernanceViolationError(AIGCError):
 class InvocationValidationError(GovernanceViolationError):
     """Raised when invocation payload does not match the required contract."""
 
-    def __init__(self, message: str, *, details: dict | None = None):
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "INVOCATION_VALIDATION_ERROR",
+        details: dict | None = None,
+    ):
         super().__init__(
             message,
-            code="INVOCATION_VALIDATION_ERROR",
+            code=code,
             details=details,
         )
 

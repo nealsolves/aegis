@@ -12,6 +12,9 @@ import pytest
 _ROOT = Path(__file__).resolve().parents[1]
 _ENFORCEMENT = _ROOT / "aegis" / "_internal" / "enforcement.py"
 _SESSION = _ROOT / "aegis" / "_internal" / "session.py"
+_OPERATION_REGISTRY = (
+    _ROOT / "aegis" / "_internal" / "operation_registry.py"
+)
 _TOOLS = _ROOT / "aegis" / "_internal" / "tools.py"
 _RISK = _ROOT / "aegis" / "_internal" / "risk_scoring.py"
 _GATES = _ROOT / "aegis" / "_internal" / "gates.py"
@@ -1041,3 +1044,64 @@ class CompiledSchema:
 """
 
     assert _fitness_violations(source, module_name="enforcement") == []
+
+
+def test_split_handles_expose_only_opaque_identity_fields() -> None:
+    tree = ast.parse(_ENFORCEMENT.read_text(encoding="utf-8"))
+    result_class = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "PreCallResult"
+    )
+    fields = {
+        node.target.id
+        for node in result_class.body
+        if isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+    }
+
+    assert fields == {
+        "operation_id",
+        "issuer_id",
+        "process_id",
+        "correlation_id",
+        "policy_digest",
+        "canonicalization_profile",
+    }
+
+
+def test_legacy_portable_split_authority_is_absent() -> None:
+    production = (
+        _ENFORCEMENT.read_text(encoding="utf-8")
+        + _SESSION.read_text(encoding="utf-8")
+    )
+    for forbidden in (
+        "_consumed_token_registry",
+        "_EnforcementToken",
+        "_ENFORCEMENT_TOKEN",
+        "_token_hmac",
+        "_origin",
+        "_consumed_token_ids",
+        "_IS_SESSION_TOKEN",
+        "_reconstruct_precall_result",
+        "_compiled_policy_to_dto",
+    ):
+        assert forbidden not in production
+
+
+def test_registry_consumption_is_one_atomic_pop() -> None:
+    tree = ast.parse(_OPERATION_REGISTRY.read_text(encoding="utf-8"))
+    consume = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "consume"
+    )
+    calls = [
+        node
+        for node in ast.walk(consume)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+    ]
+
+    assert sum(call.func.attr == "pop" for call in calls) == 1
+    assert all(call.func.attr not in {"get", "__contains__"} for call in calls)

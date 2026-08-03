@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Callable
 
 import pytest
 
@@ -12,12 +11,10 @@ from aegis._internal.cli import _lint_policy
 from aegis._internal.compiled_policy import CompiledPolicyOverlay
 from aegis._internal.enforcement import (
     AEGIS,
-    _reconstruct_precall_result,
     enforce_post_call,
     enforce_pre_call,
 )
 from aegis._internal.errors import (
-    InvocationValidationError,
     SchemaValidationError,
 )
 from aegis._internal.guards import evaluate_compiled_guards
@@ -86,53 +83,40 @@ def _pre_invocation(policy_file: Path) -> dict:
     }
 
 
-def test_split_dto_schema_tampering_cannot_bypass_phase_b(tmp_path: Path) -> None:
-    """Changing the serialized compiled schema must fail before Phase B use."""
-    policy_file = tmp_path / "policy.yaml"
-    _split_policy(policy_file)
-    issued = enforce_pre_call(_pre_invocation(policy_file))
-    state = issued.__getstate__()
-    state["_compiled_policy_dto"]["output_schema"]["required"] = []
-
-    with pytest.raises(InvocationValidationError, match="compiled policy"):
-        tampered = _reconstruct_precall_result(state)
-        enforce_post_call(tampered, {})
-
-
-@pytest.mark.parametrize(
-    "mutate",
-    [
-        lambda dto: dto["roles"].append("admin"),
-        lambda dto: dto["conditions"].update(forged={"type": "boolean"}),
-        lambda dto: dto["tools"][0].update(max_calls=200),
-        lambda dto: dto["retry"].update(max_retries=10),
-        lambda dto: dto["risk"].update(threshold=1.0),
-        lambda dto: dto["preconditions"][0].update(declared_type="string"),
-        lambda dto: dto["postconditions"].clear(),
-        lambda dto: dto["guards"][0].update(condition="always"),
-        lambda dto: dto["workflow"].update(max_steps=200),
-        lambda dto: dto.update(source_identity="forged"),
-        lambda dto: dto.update(declared_policy_version="forged"),
-        lambda dto: dto.update(policy_contract_version="forged"),
-        lambda dto: dto.update(pattern_engine="forged"),
-        lambda dto: dto.update(canonicalization_profile="forged"),
-        lambda dto: dto.update(output_schema_program_digest="0" * 64),
-        lambda dto: dto["output_schema_pattern_sources"].append(".*"),
-    ],
-)
-def test_every_compiled_dto_field_is_bound_to_authenticated_content(
+def test_opaque_handle_cannot_expose_or_replace_the_phase_b_schema(
     tmp_path: Path,
-    mutate: Callable[[dict], None],
 ) -> None:
-    """Canonical DTO authentication must cover every authorization field."""
     policy_file = tmp_path / "policy.yaml"
     _split_policy(policy_file)
     issued = enforce_pre_call(_pre_invocation(policy_file))
-    state = issued.__getstate__()
-    mutate(state["_compiled_policy_dto"])
 
-    with pytest.raises(InvocationValidationError, match="compiled policy"):
-        _reconstruct_precall_result(state)
+    assert "_compiled_policy" not in issued.__slots__
+    assert "output_schema" not in issued.__slots__
+    with pytest.raises(SchemaValidationError):
+        enforce_post_call(issued, {})
+
+
+def test_public_handle_contains_no_compiled_authorization_fields(
+    tmp_path: Path,
+) -> None:
+    policy_file = tmp_path / "policy.yaml"
+    _split_policy(policy_file)
+    issued = enforce_pre_call(_pre_invocation(policy_file))
+
+    forbidden = {
+        "roles",
+        "conditions",
+        "tools",
+        "retry",
+        "risk",
+        "preconditions",
+        "postconditions",
+        "guards",
+        "workflow",
+        "output_schema",
+        "_compiled_policy",
+    }
+    assert forbidden.isdisjoint(issued.__slots__)
 
 
 def test_authorization_objects_keep_no_policy_shaped_snapshots(

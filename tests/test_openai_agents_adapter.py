@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import sys
 import types
 import unittest.mock as mock
@@ -645,7 +646,6 @@ def test_prepare_step_cleans_up_session_state_when_setup_fails():
         assert session._pending_results == {}
         assert session._adapter_step_states == {}
         assert session._authorized_step_count == 0
-        assert len(session._consumed_token_ids) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -681,7 +681,7 @@ def test_authorize_step_tool_call_records_evidence():
     with a.open_session(policy_file=None) as session:
         session_result = session.enforce_step_pre_call(_BASE_INV)
         # Register fake adapter state
-        session._adapter_step_states[session_result._token_id] = {
+        session._adapter_step_states[session_result.operation_id] = {
             "adapter_step_key": "test-key",
             "dynamic_tool_calls_count": 0,
             "dynamic_tool_calls": [],
@@ -692,7 +692,7 @@ def test_authorize_step_tool_call_records_evidence():
             tool_name="my_tool",
             tool_call_id="call-1",
         )
-        state = session._adapter_step_states[session_result._token_id]
+        state = session._adapter_step_states[session_result.operation_id]
         assert state["dynamic_tool_calls_count"] == 1
         assert state["dynamic_tool_calls"][0]["tool_name"] == "my_tool"
         assert session._total_tool_calls_consumed == 1
@@ -703,7 +703,7 @@ def test_authorize_step_tool_call_increments_session_counter():
     a = AEGIS()
     with a.open_session(policy_file=None) as session:
         r = session.enforce_step_pre_call(_BASE_INV)
-        session._adapter_step_states[r._token_id] = {
+        session._adapter_step_states[r.operation_id] = {
             "adapter_step_key": "k", "dynamic_tool_calls_count": 0,
             "dynamic_tool_calls": [], "checkpoint_id": None,
         }
@@ -723,7 +723,7 @@ def test_authorize_step_tool_call_enforces_allowed_tools():
 
     with a.open_session(policy_file=None) as session:
         r = session.enforce_step_pre_call(invocation)
-        session._adapter_step_states[r._token_id] = {
+        session._adapter_step_states[r.operation_id] = {
             "adapter_step_key": "k",
             "dynamic_tool_calls_count": 0,
             "dynamic_tool_calls": [],
@@ -734,7 +734,7 @@ def test_authorize_step_tool_call_enforces_allowed_tools():
             session.authorize_step_tool_call(r, tool_name="unlisted_tool")
 
         assert session._total_tool_calls_consumed == 0
-        assert session._adapter_step_states[r._token_id]["dynamic_tool_calls"] == []
+        assert session._adapter_step_states[r.operation_id]["dynamic_tool_calls"] == []
 
 
 def test_authorize_step_tool_call_enforces_per_tool_max_calls():
@@ -748,7 +748,7 @@ def test_authorize_step_tool_call_enforces_per_tool_max_calls():
 
     with a.open_session(policy_file=None) as session:
         r = session.enforce_step_pre_call(invocation)
-        session._adapter_step_states[r._token_id] = {
+        session._adapter_step_states[r.operation_id] = {
             "adapter_step_key": "k",
             "dynamic_tool_calls_count": 0,
             "dynamic_tool_calls": [],
@@ -760,7 +760,7 @@ def test_authorize_step_tool_call_enforces_per_tool_max_calls():
         with pytest.raises(ToolConstraintViolationError, match="max is 2"):
             session.authorize_step_tool_call(r, tool_name="search_knowledge_base")
 
-        state = session._adapter_step_states[r._token_id]
+        state = session._adapter_step_states[r.operation_id]
         assert session._total_tool_calls_consumed == 2
         assert state["dynamic_tool_calls_count"] == 2
         assert [tc["name"] for tc in state["dynamic_tool_calls"]] == [
@@ -780,7 +780,12 @@ def test_authorize_step_tool_call_rejects_unregistered_token():
             session_id=session.session_id,
             step_id="step-x",
             participant_id=None,
-            _token_id="not-registered",
+            operation_id="not-registered",
+            issuer_id="0" * 32,
+            process_id=os.getpid(),
+            correlation_id="not-registered",
+            policy_digest="0" * 64,
+            canonicalization_profile="forged",
         )
         with pytest.raises(WorkflowSessionTokenInvalidError, match="not registered"):
             session.authorize_step_tool_call(fake, tool_name="tool")
@@ -827,7 +832,7 @@ def test_authorized_step_count_not_rolled_back_on_phase_b_failure():
         # This is the documented semantics: authorized != completed.
         assert session._authorized_step_count == 1
         # Token is consumed and cannot be reused.
-        assert r._token_id in session._consumed_token_ids
+        assert r.operation_id not in session._pending_results
 
 
 # ---------------------------------------------------------------------------
@@ -1049,7 +1054,12 @@ def _make_prepared_step(session: Any, token_id: str, adapter_step_key: str) -> A
         session_id=session.session_id,
         step_id="step-test",
         participant_id=None,
-        _token_id=token_id,
+        operation_id=token_id,
+        issuer_id="0" * 32,
+        process_id=os.getpid(),
+        correlation_id=token_id,
+        policy_digest="0" * 64,
+        canonicalization_profile="test",
     )
     session._adapter_step_states[token_id] = {
         "adapter_step_key": adapter_step_key,
@@ -1144,16 +1154,16 @@ def test_record_approval_decision_deny_invalidates_prepared_step():
 
             token = prepared._session_result
             assert session.state == "PAUSED"
-            assert token._consumed is True
-            assert token._token_id not in session._pending_results
-            assert token._token_id not in session._adapter_step_states
+            assert token.operation_id not in session._pending_results
+            assert token.operation_id not in session._adapter_step_states
 
-            with pytest.raises(InvocationValidationError, match="Token already consumed"):
+            with pytest.raises(InvocationValidationError) as replay:
                 adapter.complete_step(
                     prepared,
                     run_result=None,
                     output={"result": "ok", "confidence": 0.9},
                 )
+            assert replay.value.code == "OPERATION_NOT_ACTIVE"
 
 
 def test_record_approval_decision_rejects_checkpoint_mismatch():
@@ -1242,11 +1252,11 @@ def test_complete_step_requires_trace_summary_when_policy_demands_it():
                 )
 
         token = prepared._session_result
-        assert token._consumed is True
-        assert token._token_id not in session._pending_results
-        assert token._token_id not in session._adapter_step_states
-        with pytest.raises(InvocationValidationError, match="Token already consumed"):
+        assert token.operation_id not in session._pending_results
+        assert token.operation_id not in session._adapter_step_states
+        with pytest.raises(InvocationValidationError) as replay:
             session.enforce_step_post_call(token, {"result": "ok", "confidence": 0.9})
+        assert replay.value.code == "OPERATION_NOT_ACTIVE"
 
 
 def test_complete_step_allows_required_trace_when_summary_present():
