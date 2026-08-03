@@ -130,6 +130,11 @@ def _make_valid_workflow_artifact(
         "finalized_at": 1700000100,
         "steps": [{"step_id": f"step-{i}", "invocation_artifact_checksum": checksums[i]} for i in range(steps)],
         "invocation_audit_checksums": checksums,
+        "step_count": steps,
+        "invocations": [
+            {"step_index": index, "checksum": checksum}
+            for index, checksum in enumerate(checksums)
+        ],
         "failure_summary": failure_summary,
         "approval_checkpoints": [],
         "validator_hook_evidence": [],

@@ -74,6 +74,7 @@ _CHAIN_FIELDS = frozenset(
         "reservation_id",
     }
 )
+_WORKFLOW_CLAIM_FIELDS = frozenset({"step_count", "invocations"})
 _CHAIN_LINK_TIMEOUT_SECONDS = 1.0
 
 
@@ -368,6 +369,11 @@ class EvidenceFinalizer:
         if _CHAIN_FIELDS.intersection(body):
             raise EvidenceFinalizationError(
                 "Workflow evidence cannot carry invocation chain coordinates"
+            )
+        missing_claim = sorted(_WORKFLOW_CLAIM_FIELDS.difference(body))
+        if missing_claim:
+            raise EvidenceFinalizationError(
+                "Workflow evidence claimed set is incomplete"
             )
         metadata = body.pop("metadata", {})
         if type(metadata) is not dict:

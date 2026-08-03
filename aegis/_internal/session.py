@@ -1105,21 +1105,29 @@ class GovernanceSession:
         with self._attempt_lock:
             allocated_count = self._next_step_index
             records = tuple(
-                record for _, record in sorted(self._attempts.items())
+                record
+                for _, record in sorted(self._attempts.items())
+                if record.terminal is not None
             )
-        if (
-            len(records) != allocated_count
-            or any(record.terminal is None for record in records)
-        ):
+        if len(records) != allocated_count:
             raise SessionStateError(
                 "Every allocated session attempt requires terminal evidence",
                 code="SESSION_ATTEMPT_INCOMPLETE",
                 details={
                     "session_id": self._session_id,
                     "allocated_attempt_count": allocated_count,
-                    "terminal_attempt_count": sum(
-                        record.terminal is not None for record in records
-                    ),
+                    "terminal_attempt_count": len(records),
+                },
+            )
+        indices = [record.step_index for record in records]
+        if indices != list(range(allocated_count)):
+            raise SessionStateError(
+                "Session attempt indices must be gapless and unique",
+                code="SESSION_ATTEMPT_GAP",
+                details={
+                    "session_id": self._session_id,
+                    "allocated_attempt_count": allocated_count,
+                    "terminal_attempt_indices": indices,
                 },
             )
         evidence_attempt = self._aigc._attempt_factory.allocate(
@@ -1157,6 +1165,14 @@ class GovernanceSession:
             "steps": list(self._steps),
             "invocation_audit_checksums": [
                 s["invocation_artifact_checksum"] for s in self._steps
+            ],
+            "step_count": allocated_count,
+            "invocations": [
+                {
+                    "step_index": record.step_index,
+                    "checksum": record.invocation_checksum,
+                }
+                for record in records
             ],
             "failure_summary": self._failure_summary,
             "approval_checkpoints": list(self._approval_records),

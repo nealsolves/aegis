@@ -13,7 +13,9 @@
     "status",
     "started_at",
     "steps",
-    "invocation_audit_checksums"
+    "invocation_audit_checksums",
+    "step_count",
+    "invocations"
   ],
   "properties": {
     "workflow_schema_version": {"type": "string", "const": "2.0"},
@@ -35,6 +37,19 @@
     "invocation_audit_checksums": {
       "type": "array",
       "items": {"type": "string"}
+    },
+    "step_count": {"type": "integer", "minimum": 0},
+    "invocations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["step_index", "checksum"],
+        "properties": {
+          "step_index": {"type": "integer", "minimum": 0},
+          "checksum": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+        },
+        "additionalProperties": false
+      }
     },
     "failure_summary": {"type": ["object", "null"]},
     "approval_checkpoints": {

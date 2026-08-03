@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from aegis import AEGIS, CallbackAuditSink, HMACSigner
+from aegis import AEGIS, CallbackAuditSink, EvidenceFinalizationError, HMACSigner
+from aegis._internal.evidence_finalizer import finalize_legacy_workflow_artifact
 from aegis._internal.evidence_profiles import (
     ContentIntegrity,
     verify_content_checksum_v2,
@@ -42,6 +43,14 @@ def test_workflow_terminal_states_are_signed_and_emitted_exactly_once(
     assert artifact["signature_metadata"]["canonicalization_profile"] == (
         "aegis-json-v2"
     )
+    assert artifact["step_count"] == 0
+    assert artifact["invocations"] == []
+    assert not {
+        "chain_id",
+        "chain_index",
+        "previous_audit_checksum",
+        "reservation_id",
+    }.intersection(artifact)
     assert verify_content_checksum_v2(artifact) is ContentIntegrity.VALID
     assert verify_finalized_artifact(
         artifact,
@@ -85,3 +94,31 @@ def test_unsigned_workflow_status_is_explicit_and_integrity_valid():
     assert "signature_metadata" not in artifact
     assert verify_content_checksum_v2(artifact) is ContentIntegrity.VALID
     assert emitted == [artifact]
+
+
+def test_workflow_finalizer_rejects_a_body_without_the_claim_before_emission():
+    """Permitting a claimless draft would let an internal caller sign an omission."""
+    emitted = []
+    claimless = {
+        "artifact_type": "workflow",
+        "session_id": "claimless-workflow",
+        "policy_file": None,
+        "status": "INCOMPLETE",
+        "started_at": 1,
+        "finalized_at": 2,
+        "steps": [],
+        "invocation_audit_checksums": [],
+        "failure_summary": None,
+        "approval_checkpoints": [],
+        "validator_hook_evidence": [],
+        "metadata": {},
+    }
+
+    with pytest.raises(EvidenceFinalizationError, match="claimed set"):
+        finalize_legacy_workflow_artifact(
+            claimless,
+            sink=CallbackAuditSink(emitted.append),
+            signer=HMACSigner(b"workflow-test-key"),
+        )
+
+    assert emitted == []
