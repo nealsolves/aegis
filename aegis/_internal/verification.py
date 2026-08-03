@@ -51,6 +51,7 @@ _FINALIZER_SIGNATURE_METADATA_FIELDS = frozenset(
         "signed_at",
     }
 )
+_LEGACY_HMAC_KEY_REFERENCE = "local://legacy-artifact-signer"
 
 
 def _is_bounded_chain_identifier(value: object) -> bool:
@@ -444,6 +445,16 @@ def _valid_finalizer_signature_metadata(
     except Exception:
         return False
     signed_at = metadata.get("signed_at")
+    legacy_hmac_identity_valid = (
+        identity.key_reference != _LEGACY_HMAC_KEY_REFERENCE
+        or (
+            identity.algorithm == "HMAC-SHA256"
+            and identity.signature_encoding is SignatureEncoding.HEX
+            and identity.key_version == "1"
+            and isinstance(artifact.get("signature"), str)
+            and len(artifact["signature"]) == 64
+        )
+    )
     return (
         set(metadata) == _FINALIZER_SIGNATURE_METADATA_FIELDS
         and artifact.get("signature_status") == "signed"
@@ -458,6 +469,7 @@ def _valid_finalizer_signature_metadata(
         and isinstance(signed_at, int)
         and signed_at >= 0
         and isinstance(identity, SignerIdentity)
+        and legacy_hmac_identity_valid
     )
 
 

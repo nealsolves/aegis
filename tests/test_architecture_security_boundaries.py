@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import json
 from pathlib import Path
 import re
 
@@ -12,6 +13,9 @@ import pytest
 _ROOT = Path(__file__).resolve().parents[1]
 _ENFORCEMENT = _ROOT / "aegis" / "_internal" / "enforcement.py"
 _SESSION = _ROOT / "aegis" / "_internal" / "session.py"
+_EVIDENCE_FINALIZER = (
+    _ROOT / "aegis" / "_internal" / "evidence_finalizer.py"
+)
 _OPERATION_REGISTRY = (
     _ROOT / "aegis" / "_internal" / "operation_registry.py"
 )
@@ -1086,7 +1090,7 @@ def test_legacy_portable_split_authority_is_absent() -> None:
         "_reconstruct_precall_result",
         "_compiled_policy_to_dto",
     ):
-        assert forbidden not in production
+        assert re.search(rf"\b{re.escape(forbidden)}\b", production) is None
 
 
 def test_registry_consumption_is_one_atomic_pop() -> None:
@@ -1247,18 +1251,20 @@ def _ancestor_with_lock(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> bool:
     return False
 
 
-def _is_terminal_not_none(expression: ast.AST) -> bool:
+def _is_terminal_state_guard(expression: ast.AST) -> bool:
     return (
         isinstance(expression, ast.Compare)
         and len(expression.ops) == 1
-        and isinstance(expression.ops[0], ast.IsNot)
+        and isinstance(expression.ops[0], ast.Is)
         and len(expression.comparators) == 1
-        and isinstance(expression.comparators[0], ast.Constant)
-        and expression.comparators[0].value is None
+        and isinstance(expression.comparators[0], ast.Attribute)
+        and isinstance(expression.comparators[0].value, ast.Name)
+        and expression.comparators[0].value.id == "AttemptFinalizationState"
+        and expression.comparators[0].attr == "TERMINAL"
         and isinstance(expression.left, ast.Attribute)
         and isinstance(expression.left.value, ast.Name)
         and expression.left.value.id == "record"
-        and expression.left.attr == "terminal"
+        and expression.left.attr == "state"
     )
 
 
@@ -1404,7 +1410,7 @@ def _workflow_claim_boundary_violations(source: str) -> set[str]:
                 (
                     test
                     for test in record_comprehensions[0].generators[0].ifs
-                    if _is_terminal_not_none(test)
+                    if _is_terminal_state_guard(test)
                 ),
                 None,
             )
@@ -1439,7 +1445,7 @@ class GovernanceSession:
             records = tuple(
                 record
                 for _, record in sorted(self._attempts.items())
-                if record.terminal is not None
+                if record.state is AttemptFinalizationState.TERMINAL
             )
         artifact = {
             "step_count": allocated_count,
@@ -1539,7 +1545,7 @@ def test_workflow_claim_fitness_rejects_records_rebound_after_artifact() -> None
         "        records = tuple(\n"
         "            record\n"
         "            for _, record in sorted(self._attempts.items())\n"
-        "            if record.terminal is not None\n"
+        "            if record.state is AttemptFinalizationState.TERMINAL\n"
         "        )\n",
     )
 
@@ -1558,7 +1564,7 @@ def test_workflow_claim_fitness_ignores_nested_records_rebinding() -> None:
         "            records = tuple(\n"
         "                record\n"
         "                for _, record in sorted(self._attempts.items())\n"
-        "                if record.terminal is not None\n"
+        "                if record.state is AttemptFinalizationState.TERMINAL\n"
         "            )\n"
         "        artifact = {",
     )
@@ -1610,6 +1616,147 @@ def test_workflow_claims_are_locked_terminal_attempt_evidence() -> None:
     assert _workflow_claim_boundary_violations(
         _SESSION.read_text(encoding="utf-8")
     ) == set()
+
+
+def test_terminal_attempt_state_machine_surrounds_acknowledged_delivery() -> None:
+    """The same-index race must close before emission and commit after ack."""
+    session_tree = ast.parse(_SESSION.read_text(encoding="utf-8"))
+    state_class = next(
+        node
+        for node in session_tree.body
+        if isinstance(node, ast.ClassDef)
+        and node.name == "AttemptFinalizationState"
+    )
+    states = {
+        node.value.value
+        for node in state_class.body
+        if isinstance(node, ast.Assign)
+        and isinstance(node.value, ast.Constant)
+    }
+    assert states == {"allocated", "finalizing", "terminal"}
+
+    finalizer_tree = ast.parse(
+        _EVIDENCE_FINALIZER.read_text(encoding="utf-8")
+    )
+    finalize = next(
+        node
+        for node in ast.walk(finalizer_tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "finalize"
+    )
+    reserve = next(
+        node
+        for node in ast.walk(finalize)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "reserve"
+        and isinstance(node.func.value, ast.Attribute)
+        and node.func.value.attr == "recorder"
+    )
+    emit = next(
+        node
+        for node in ast.walk(finalize)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "_emit_acknowledged"
+    )
+    commit = next(
+        node
+        for node in ast.walk(finalize)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "commit"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "terminal_reservation"
+    )
+    assert reserve.lineno < emit.lineno < commit.lineno
+
+
+def test_session_attempt_scope_binds_unforgeable_origin_recorder() -> None:
+    """Session terminal claims must be authorized by the allocated capability."""
+    tree = ast.parse(_SESSION.read_text(encoding="utf-8"))
+    scope = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "_attempt_finalization_scope"
+    )
+    boundary = next(
+        node
+        for node in ast.walk(scope)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "evidence_attempt"
+    )
+    keywords = {keyword.arg: keyword.value for keyword in boundary.keywords}
+    recorder = keywords["terminal_recorder"]
+    origin = keywords["terminal_origin"]
+    assert (
+        isinstance(recorder, ast.Call)
+        and isinstance(recorder.func, ast.Name)
+        and recorder.func.id == "_SessionTerminalRecorder"
+    )
+    assert (
+        isinstance(origin, ast.Attribute)
+        and isinstance(origin.value, ast.Name)
+        and origin.value.id == "record"
+        and origin.attr == "capability"
+    )
+
+
+def test_workflow_correlation_schema_condition_is_nonvacuous() -> None:
+    """Any workflow marker must require the complete authoritative quartet."""
+    quartet = {
+        "session_id",
+        "step_id",
+        "step_index",
+        "workflow_policy_digest",
+    }
+    schema_paths = (
+        _ROOT / "schemas" / "audit_artifact.schema.json",
+        _ROOT / "aegis" / "schemas" / "audit_artifact.schema.json",
+    )
+    assert schema_paths[0].read_bytes() == schema_paths[1].read_bytes()
+    for path in schema_paths:
+        schema = json.loads(path.read_text(encoding="utf-8"))
+        condition = schema["properties"]["context"]["allOf"][0]
+        triggers = {
+            required
+            for branch in condition["if"]["anyOf"]
+            for required in branch["required"]
+        }
+        assert triggers == quartet
+        assert set(condition["then"]["required"]) == quartet
+
+
+def test_all_five_b4_docs_freeze_assurance_and_verifier_budgets() -> None:
+    assurance = (
+        "Workflow-signed proves integrity and order of the claimed supplied set. "
+        "It does not prove the host disclosed every invocation. Completeness "
+        "remains unproven until a trusted checkpoint binds the expected head/count."
+    )
+    budget = (
+        "The verifier bounds claims and supplied artifacts to 10,000 entries "
+        "each, measured input to 4 MiB, nesting to 32 levels, and reports to "
+        "100 errors. Exceeding an input budget fails closed with "
+        "`WORKFLOW_VERIFICATION_LIMIT_EXCEEDED`."
+    )
+    docs = (
+        _ROOT / "docs/architecture/AEGIS_THREAT_MODEL.md",
+        _ROOT / "docs/architecture/ARCHITECTURAL_INVARIANTS.md",
+        _ROOT / "docs/PUBLIC_INTEGRATION_CONTRACT.md",
+        _ROOT / "docs/reference/WORKFLOW_CLI.md",
+        _ROOT / "docs/reference/WORKFLOW_QUICKSTART.md",
+    )
+
+    for path in docs:
+        collapsed = " ".join(path.read_text(encoding="utf-8").split())
+        assert collapsed.count(assurance) == 1, path
+        assert collapsed.count(budget) == 1, path
+        assert "#46" in collapsed, path
+
+
+def test_workflow_claim_provenance_uses_locked_terminal_state() -> None:
+    """The concrete production AST must retain the claimed-set data flow."""
     tree = ast.parse(_SESSION.read_text(encoding="utf-8"), filename=str(_SESSION))
     session_class = next(
         node
@@ -1698,16 +1845,18 @@ def test_workflow_claims_are_locked_terminal_attempt_evidence() -> None:
         and isinstance(node.left, ast.Attribute)
         and isinstance(node.left.value, ast.Name)
         and node.left.value.id == "record"
-        and node.left.attr == "terminal"
+        and node.left.attr == "state"
     ]
     assert len(terminal_guards) == 1
     terminal_guard = terminal_guards[0]
     assert (
         len(terminal_guard.ops) == 1
-        and isinstance(terminal_guard.ops[0], ast.IsNot)
+        and isinstance(terminal_guard.ops[0], ast.Is)
         and len(terminal_guard.comparators) == 1
-        and isinstance(terminal_guard.comparators[0], ast.Constant)
-        and terminal_guard.comparators[0].value is None
+        and isinstance(terminal_guard.comparators[0], ast.Attribute)
+        and isinstance(terminal_guard.comparators[0].value, ast.Name)
+        and terminal_guard.comparators[0].value.id == "AttemptFinalizationState"
+        and terminal_guard.comparators[0].attr == "TERMINAL"
     )
 
     invocations_assignment = next(
