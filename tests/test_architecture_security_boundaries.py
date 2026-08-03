@@ -1105,3 +1105,133 @@ def test_registry_consumption_is_one_atomic_pop() -> None:
 
     assert sum(call.func.attr == "pop" for call in calls) == 1
     assert all(call.func.attr not in {"get", "__contains__"} for call in calls)
+
+
+def test_workflow_claims_are_locked_terminal_attempt_evidence() -> None:
+    """Workflow signatures must cover every allocated terminal attempt, not survivors."""
+    tree = ast.parse(_SESSION.read_text(encoding="utf-8"), filename=str(_SESSION))
+    session_class = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "GovernanceSession"
+    )
+    methods = {
+        node.name: node
+        for node in session_class.body
+        if isinstance(node, ast.FunctionDef)
+    }
+
+    allocate = methods["_allocate_step_index"]
+    increments = [
+        node
+        for node in ast.walk(allocate)
+        if isinstance(node, ast.AugAssign)
+        and isinstance(node.target, ast.Attribute)
+        and isinstance(node.target.value, ast.Name)
+        and node.target.value.id == "self"
+        and node.target.attr == "_next_step_index"
+        and isinstance(node.op, ast.Add)
+    ]
+    assert len(increments) == 1
+    parents, _ = _parent_maps(allocate)
+    ancestors = []
+    parent = parents.get(increments[0])
+    while parent is not None:
+        ancestors.append(parent)
+        parent = parents.get(parent)
+    assert any(
+        isinstance(parent, ast.With)
+        and any(
+            isinstance(item.context_expr, ast.Attribute)
+            and isinstance(item.context_expr.value, ast.Name)
+            and item.context_expr.value.id == "self"
+            and item.context_expr.attr == "_attempt_lock"
+            for item in parent.items
+        )
+        for parent in ancestors
+    )
+
+    pre_call = methods["enforce_step_pre_call"]
+    calls = [
+        node
+        for node in ast.walk(pre_call)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name) and node.func.value.id == "self"
+    ]
+    allocation_call = next(
+        call for call in calls if call.func.attr == "_allocate_step_index"
+    )
+    authorization_call = next(
+        call for call in calls if call.func.attr == "_enforce_step_pre_call_attempt"
+    )
+    assert allocation_call.lineno < authorization_call.lineno
+
+    finalize = methods["_do_finalize"]
+    records_assignment = next(
+        node
+        for node in ast.walk(finalize)
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "records"
+            for target in node.targets
+        )
+    )
+    assert any(
+        isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "self"
+        and node.attr == "_attempts"
+        for node in ast.walk(records_assignment)
+    )
+    assert not any(
+        isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "self"
+        and node.attr == "_steps"
+        for node in ast.walk(records_assignment)
+    )
+    terminal_guards = [
+        node
+        for node in ast.walk(records_assignment)
+        if isinstance(node, ast.Compare)
+        and isinstance(node.left, ast.Attribute)
+        and isinstance(node.left.value, ast.Name)
+        and node.left.value.id == "record"
+        and node.left.attr == "terminal"
+    ]
+    assert len(terminal_guards) == 1
+    terminal_guard = terminal_guards[0]
+    assert (
+        len(terminal_guard.ops) == 1
+        and isinstance(terminal_guard.ops[0], ast.IsNot)
+        and len(terminal_guard.comparators) == 1
+        and isinstance(terminal_guard.comparators[0], ast.Constant)
+        and terminal_guard.comparators[0].value is None
+    )
+
+    invocations_assignment = next(
+        node
+        for node in ast.walk(finalize)
+        if isinstance(node, ast.Dict)
+        and any(
+            isinstance(key, ast.Constant) and key.value == "invocations"
+            for key in node.keys
+        )
+    )
+    invocations_value = invocations_assignment.values[
+        next(
+            index
+            for index, key in enumerate(invocations_assignment.keys)
+            if isinstance(key, ast.Constant) and key.value == "invocations"
+        )
+    ]
+    assert isinstance(invocations_value, ast.ListComp)
+    assert isinstance(invocations_value.generators[0].iter, ast.Name)
+    assert invocations_value.generators[0].iter.id == "records"
+    assert not any(
+        isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "self"
+        and node.attr == "_steps"
+        for node in ast.walk(invocations_value)
+    )

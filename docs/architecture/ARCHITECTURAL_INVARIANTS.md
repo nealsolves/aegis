@@ -409,7 +409,33 @@ checksums.
 
 ---
 
-## 19. Single Compiled Policy Interpretation
+## 19. Workflow Claimed-Set Evidence
+
+Each workflow attempt receives a permanent, gapless `step_index` under the
+session attempt lock before authorization gates run. Finalization requires
+exactly one terminal invocation artifact per allocated attempt. The workflow
+artifact's `step_count` and ordered `invocations` entries pair each index with
+that terminal invocation artifact's v2 content checksum; these claim fields are
+covered by the workflow content checksum and any configured workflow signature.
+
+`steps` remains a convenience summary for workflow timelines and may omit a
+rejected attempt. It is never the source of the signed claimed set. Workflow
+artifacts are separate evidence and are not invocation-chain artifacts.
+
+`verify_workflow_claim(workflow, invocations, *, expected_checkpoint=None)` checks
+the supplied ordered invocation set independently of signature verification.
+Its `claim_status`, `signature_status`, and `completeness` axes are deliberately
+separate. A signed workflow without a trusted verifier has
+`signature_status=INDETERMINATE`; a non-`None` checkpoint is rejected with
+`WORKFLOW_CHECKPOINT_UNSUPPORTED` until #46 defines trusted checkpoints.
+
+Workflow-signed proves integrity and order of the claimed supplied set. It does
+not prove the host disclosed every invocation. Completeness remains unproven
+until a trusted checkpoint binds the expected head/count.
+
+---
+
+## 20. Single Compiled Policy Interpretation
 
 Policy loading, workflow lint, unified enforcement, split enforcement, async
 entry points, instance methods, adapters, and sessions share one compiler
@@ -438,7 +464,7 @@ The following rules are invariant:
 
 ---
 
-## 20. Closed Extension Outcomes and Detached Gate Inputs
+## 21. Closed Extension Outcomes and Detached Gate Inputs
 
 Custom gates receive detached, recursively immutable projections built from an
 explicit compiler-field allowlist. No supplied argument may expose a live

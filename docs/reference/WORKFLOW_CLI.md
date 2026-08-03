@@ -21,6 +21,14 @@ when checksums are unresolved (unresolved checksums are advisory, not errors);
 exit code `1` means the input file was not found, was unreadable, or contained
 no workflow artifacts.
 
+Workflow artifacts include the final workflow content checksum, `step_count`,
+and ordered `invocations` index/checksum pairs. A configured workflow signature
+covers those claim fields. The CLI does not verify a workflow claimed set or
+accept a trusted checkpoint. Trace and export correlation is advisory and cannot establish that the supplied evidence
+is complete. Workflow-signed proves integrity and order of the claimed supplied
+set. It does not prove the host disclosed every invocation. Completeness remains
+unproven until a trusted checkpoint binds the expected head/count.
+
 ---
 
 ## `aegis policy init`
@@ -167,7 +175,8 @@ Each step in `steps[]` includes:
 
 `unresolved_checksums` indicates sink failures or an incomplete export — the
 invocation artifacts referenced by those steps were not present in the JSONL
-file. Investigate with `aegis workflow doctor`.
+file. Investigate with `aegis workflow doctor`. A resolved trace is not a
+claimed-set verification or checkpoint-backed completeness proof.
 
 Examples:
 
@@ -265,7 +274,8 @@ artifacts.
 
 `integrity.unresolved_invocation_checksums` lists any invocation artifacts
 referenced by workflow steps that were not found in the input JSONL. Investigate
-missing evidence with `aegis workflow doctor`.
+missing evidence with `aegis workflow doctor`. This export does not verify the
+signed workflow claim and does not establish completeness.
 
 Examples:
 

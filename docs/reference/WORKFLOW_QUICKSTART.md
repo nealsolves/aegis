@@ -79,8 +79,20 @@ The starter script exercised the full workflow governance lifecycle in six actio
    Transitions the session to `COMPLETED` and emits the workflow artifact.
 
 After the `with` block exits, `session.workflow_artifact` holds the completed
-workflow record with `status: COMPLETED`, a step checksum list, and the session
-UUID that correlates all invocation artifacts.
+workflow record with `status: COMPLETED`, a step checksum list, the session UUID
+that correlates invocation artifacts, a final workflow content checksum, and a
+claimed set: signed `step_count` plus ordered `invocations` index/checksum pairs
+when a signer is configured. Every allocated attempt has exactly one terminal
+invocation artifact; the `steps` list is a convenience summary rather than the
+signed claimed set. Workflow artifacts are separate from invocation chains.
+
+Workflow-signed proves integrity and order of the claimed supplied set. It does
+not prove the host disclosed every invocation. Completeness remains unproven
+until a trusted checkpoint binds the expected head/count. The public
+`verify_workflow_claim(workflow, invocations)` helper checks claim matching with
+independent claim, signature, and completeness results. A signed workflow is
+`INDETERMINATE` without a trusted verifier, and trusted checkpoints are not
+available until #46.
 
 ## Next steps
 

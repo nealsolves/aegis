@@ -1074,7 +1074,58 @@ workflow-schema feature. Authorized results are explicitly `legacy` and
 completeness remains `unproven`. Policies, guards, providers, invocation
 context, and artifacts cannot construct or imply this capability.
 
-### 3.10 Policy date validation
+### 3.10 Workflow claimed-set verification
+
+Every `GovernanceSession` attempt is assigned a gapless `step_index` before
+authorization gates run. Finalization requires exactly one terminal invocation
+artifact for every allocated attempt, including denied, canceled, and
+execution-failure attempts. The v2 workflow artifact carries stable #46 inputs:
+
+- `checksum` — the workflow's final v2 content checksum;
+- `step_count` — the signed count of allocated terminal attempts when a signer
+  is configured; and
+- `invocations` — the ordered pairs of `step_index` and invocation content
+  checksum.
+
+The workflow content checksum covers those claim fields. A configured workflow
+signature covers them as well; unsigned workflows explicitly report
+`signature_status: "unsigned"`.
+
+`steps` and `invocation_audit_checksums` remain timeline conveniences. They are
+not the claimed set and a workflow artifact cannot stand in for an invocation
+artifact. Workflow artifacts also never join invocation audit chains.
+
+Use `verify_workflow_claim` to compare a workflow claim with an ordered iterable
+of candidate invocation artifacts:
+
+```python
+from aegis import verify_workflow_claim
+
+report = verify_workflow_claim(workflow_artifact, invocation_artifacts)
+print(report.claim_status.value)      # valid | invalid | legacy | not_evaluated
+print(report.signature_status.value)  # evaluated independently
+print(report.completeness.value)      # unproven
+```
+
+Only artifacts whose `context.session_id` matches the workflow are selected.
+The verifier requires the exact count, gapless ordered indices, valid v2
+invocation profiles and content checksums, and matching claimed checksums. It
+does not sort the input; provide the artifacts in workflow index order. Extra
+artifacts from another session are ignored, while extra, missing, duplicate, or
+reordered artifacts for the workflow invalidate `claim_status`.
+
+`claim_status` validates the workflow's claimed supplied set. It does not
+promote `signature_status`, and signature verification has no trusted verifier
+argument in this API: a signed workflow is `INDETERMINATE` without one.
+`completeness` is always `UNPROVEN` in this release. Passing any non-`None`
+`expected_checkpoint` fails closed with `WORKFLOW_CHECKPOINT_UNSUPPORTED` and
+returns a `NOT_EVALUATED` claim; #46 owns the future trusted checkpoint contract.
+
+Workflow-signed proves integrity and order of the claimed supplied set. It does
+not prove the host disclosed every invocation. Completeness remains unproven
+until a trusted checkpoint binds the expected head/count.
+
+### 3.11 Policy date validation
 
 Policies can declare temporal validity:
 
@@ -1100,7 +1151,7 @@ from datetime import date
 evidence = validate_policy_dates(policy, clock=lambda: date(2025, 6, 15))
 ```
 
-### 3.11 Pluggable policy loaders
+### 3.12 Pluggable policy loaders
 
 Load policies from sources other than the filesystem:
 
@@ -1132,7 +1183,7 @@ All loaded policies pass through the same schema validation, date validation, an
 resolution regardless of source. The `AEGIS` instance caches loaded policies in a per-instance,
 thread-safe LRU cache.
 
-### 3.12 Policy testing framework
+### 3.13 Policy testing framework
 
 Test policies in isolation without a running LLM:
 
@@ -1151,7 +1202,7 @@ assert suite.all_passed(results)
 
 See Section 2.8 for a complete example.
 
-### 3.13 OpenTelemetry integration
+### 3.14 OpenTelemetry integration
 
 AEGIS emits OpenTelemetry spans and events when OTel is installed. The enforcement pipeline
 instruments itself automatically — each gate execution and enforcement result is recorded as
@@ -1173,7 +1224,7 @@ if is_otel_available():
     print("OTel spans will be emitted during enforcement")
 ```
 
-### 3.14 AEGIS instance configuration
+### 3.15 AEGIS instance configuration
 
 The `AEGIS` class bundles all configuration into an immutable, thread-safe instance:
 
@@ -1198,7 +1249,7 @@ artifact = await aegis.enforce_async(invocation)
 The instance owns its policy cache and never mutates global state. Multiple `AEGIS` instances
 can coexist in the same process with different configurations.
 
-### 3.15 Split enforcement (v0.3.2+)
+### 3.16 Split enforcement (v0.3.2+)
 
 Split enforcement divides the pipeline into two phases so that authorization
 gates run before the model call and output-side gates run after it. This
@@ -1266,7 +1317,7 @@ this emits `DeprecationWarning` and will be removed in a future release. The
 direct split APIs (`enforce_pre_call`, `enforce_post_call`) and unified API
 (`enforce_invocation`, `enforce_invocation_async`) are unchanged.
 
-### 3.16 Provenance metadata (v0.3.3+)
+### 3.17 Provenance metadata (v0.3.3+)
 
 `generate_audit_artifact()` accepts an optional `provenance` keyword argument.
 When supplied, the artifact's top-level `provenance` field contains a sparse
@@ -1293,7 +1344,7 @@ invocation context dict.
 
 ---
 
-### 3.17 AuditLineage (v0.3.3+)
+### 3.18 AuditLineage (v0.3.3+)
 
 `AuditLineage` is available as `from aegis import AuditLineage`.
 
@@ -1334,7 +1385,7 @@ Use `lineage.checksum_of(artifact)` or the return value of `add_artifact()` inst
 
 ---
 
-### 3.18 RiskHistory (v0.3.3+)
+### 3.19 RiskHistory (v0.3.3+)
 
 `RiskHistory` tracks risk scores over time for a named entity and exposes a
 `trajectory()` signal — advisory only, does not affect enforcement.
@@ -1367,7 +1418,7 @@ Custom band: `RiskHistory("my-agent", stability_band=0.10)`
 
 ---
 
-### 3.19 Planned extension points (not yet available)
+### 3.20 Planned extension points (not yet available)
 
 The following extension mechanisms appear in architecture documentation but are **not yet
 implemented** in the current SDK. Do not attempt to import them:
