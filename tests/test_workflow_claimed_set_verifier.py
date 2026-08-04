@@ -551,6 +551,44 @@ def test_oversized_workflow_returns_typed_budget_report(evidence_set):
     assert "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED" in _error_codes(report)
 
 
+@pytest.mark.parametrize(
+    "container",
+    [
+        [None] * 5,
+        {str(index): None for index in range(5)},
+    ],
+    ids=["list", "mapping"],
+)
+def test_container_node_budget_is_checked_before_child_expansion(
+    container,
+    monkeypatch,
+):
+    """Hostile wide containers must fail before a count-sized stack is built."""
+    monkeypatch.setattr(
+        workflow_verification_module,
+        "MAX_WORKFLOW_VERIFICATION_NODES",
+        4,
+        raising=False,
+    )
+
+    if type(container) is list:
+        def unexpected_reversed(_value):
+            raise AssertionError("children expanded before node-budget check")
+
+        monkeypatch.setattr(
+            workflow_verification_module,
+            "reversed",
+            unexpected_reversed,
+            raising=False,
+        )
+
+    with pytest.raises(workflow_verification_module._VerificationBudgetExceeded):
+        workflow_verification_module._measure_json_document(
+            container,
+            byte_limit=1024,
+        )
+
+
 def test_verification_error_collection_has_hard_ceiling(evidence_set):
     """A hostile supplied set cannot force an unbounded error tuple."""
     workflow, invocations = evidence_set

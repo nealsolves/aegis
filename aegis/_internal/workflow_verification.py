@@ -35,6 +35,7 @@ MAX_WORKFLOW_CLAIM_ENTRIES = 10_000
 MAX_WORKFLOW_SUPPLIED_ARTIFACTS = 10_000
 MAX_WORKFLOW_VERIFICATION_BYTES = 4 * 1024 * 1024
 MAX_WORKFLOW_VERIFICATION_DEPTH = 32
+MAX_WORKFLOW_VERIFICATION_NODES = 65_536
 MAX_WORKFLOW_VERIFICATION_ERRORS = 100
 
 
@@ -51,6 +52,7 @@ class _BoundedErrors(list[VerificationError]):
 def _measure_json_document(value: object, *, byte_limit: int) -> int:
     """Measure one JSON document iteratively under byte/depth/cycle bounds."""
     total = 0
+    scheduled_nodes = 1
     seen_containers: set[int] = set()
     stack: list[tuple[object, int]] = [(value, 0)]
     while stack:
@@ -73,6 +75,13 @@ def _measure_json_document(value: object, *, byte_limit: int) -> int:
                 raise _VerificationBudgetExceeded
             seen_containers.add(identity)
             total += 2 + len(current)
+            if (
+                total > byte_limit
+                or len(current)
+                > MAX_WORKFLOW_VERIFICATION_NODES - scheduled_nodes
+            ):
+                raise _VerificationBudgetExceeded
+            scheduled_nodes += len(current)
             for item in reversed(current):
                 stack.append((item, depth + 1))
         elif type(current) is dict:
@@ -81,12 +90,20 @@ def _measure_json_document(value: object, *, byte_limit: int) -> int:
                 raise _VerificationBudgetExceeded
             seen_containers.add(identity)
             total += 2 + len(current)
-            for key, item in current.items():
+            if (
+                total > byte_limit
+                or len(current)
+                > MAX_WORKFLOW_VERIFICATION_NODES - scheduled_nodes
+            ):
+                raise _VerificationBudgetExceeded
+            scheduled_nodes += len(current)
+            for key in current:
                 if type(key) is not str:
                     raise _VerificationBudgetExceeded
                 if len(key) > byte_limit - total:
                     raise _VerificationBudgetExceeded
                 total += len(key.encode("utf-8")) + 3
+            for item in current.values():
                 stack.append((item, depth + 1))
         else:
             raise _VerificationBudgetExceeded
