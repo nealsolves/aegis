@@ -589,6 +589,38 @@ def test_container_node_budget_is_checked_before_child_expansion(
         )
 
 
+def test_depth_budget_is_checked_before_child_expansion(monkeypatch):
+    """A container at the depth ceiling must not queue deeper children."""
+    monkeypatch.setattr(
+        workflow_verification_module,
+        "MAX_WORKFLOW_VERIFICATION_DEPTH",
+        1,
+    )
+    real_reversed = reversed
+    expansion_count = 0
+
+    def track_reversed(value):
+        nonlocal expansion_count
+        expansion_count += 1
+        if expansion_count > 1:
+            raise AssertionError("depth-exceeding children were expanded")
+        return real_reversed(value)
+
+    monkeypatch.setattr(
+        workflow_verification_module,
+        "reversed",
+        track_reversed,
+        raising=False,
+    )
+
+    with pytest.raises(workflow_verification_module._VerificationBudgetExceeded):
+        workflow_verification_module._measure_json_document(
+            [[None]],
+            byte_limit=1024,
+        )
+    assert expansion_count == 1
+
+
 def test_verification_error_collection_has_hard_ceiling(evidence_set):
     """A hostile supplied set cannot force an unbounded error tuple."""
     workflow, invocations = evidence_set

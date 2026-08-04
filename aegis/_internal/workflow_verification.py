@@ -78,6 +78,7 @@ def _measure_json_document(value: object, *, byte_limit: int) -> int:
             total += 2 + len(current)
             if (
                 total > byte_limit
+                or (current and depth >= MAX_WORKFLOW_VERIFICATION_DEPTH)
                 or len(current)
                 > MAX_WORKFLOW_VERIFICATION_NODES - scheduled_nodes
             ):
@@ -93,6 +94,7 @@ def _measure_json_document(value: object, *, byte_limit: int) -> int:
             total += 2 + len(current)
             if (
                 total > byte_limit
+                or (current and depth >= MAX_WORKFLOW_VERIFICATION_DEPTH)
                 or len(current)
                 > MAX_WORKFLOW_VERIFICATION_NODES - scheduled_nodes
             ):
@@ -104,6 +106,8 @@ def _measure_json_document(value: object, *, byte_limit: int) -> int:
                 if len(key) > byte_limit - total:
                     raise _VerificationBudgetExceeded
                 total += len(key.encode("utf-8")) + 3
+                if total > byte_limit:
+                    raise _VerificationBudgetExceeded
             for item in current.values():
                 stack.append((item, depth + 1))
         else:

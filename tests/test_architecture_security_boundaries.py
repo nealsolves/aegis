@@ -1779,6 +1779,20 @@ def test_all_five_b4_docs_freeze_assurance_and_verifier_budgets() -> None:
         assert "#46" in collapsed, path
 
 
+def test_workflow_verifier_checks_mapping_bytes_before_value_expansion() -> None:
+    """Mapping-key bytes must be rejected before values enter the work stack."""
+    source = (
+        _ROOT / "aegis/_internal/workflow_verification.py"
+    ).read_text(encoding="utf-8")
+    mapping_branch = source.split("elif type(current) is dict:", 1)[1]
+    key_preflight = mapping_branch.split(
+        "for item in current.values():",
+        1,
+    )[0]
+
+    assert "if total > byte_limit:" in key_preflight
+
+
 def test_workflow_claim_provenance_uses_locked_terminal_state() -> None:
     """The concrete production AST must retain the claimed-set data flow."""
     tree = ast.parse(_SESSION.read_text(encoding="utf-8"), filename=str(_SESSION))
