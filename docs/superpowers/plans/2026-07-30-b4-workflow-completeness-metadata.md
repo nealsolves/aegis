@@ -348,3 +348,106 @@ Run:
 ```
 
 Expected: both commands exit `0`; B1–B4 are frozen and #46 may implement trusted checkpoint binding without reopening workflow evidence semantics.
+
+## Scoped-review repair cycle (authorized 2026-08-03)
+
+> **For agentic workers:** REQUIRED SUB-SKILL: execute these tasks inline with
+> `superpowers:executing-plans` and strict `superpowers:test-driven-development`.
+
+**Goal:** Close the four scoped-review blockers while fixing the admitted
+workflow-attempt ceiling at exactly 1,024.
+
+**Architecture:** Treat 1,024 as an atomic pre-allocation admission boundary,
+share the runtime limit between production components, and fitness-check schema
+literals against it. Align correlation triggering with the audit schema,
+enforce traversal budgets before child expansion, and keep exception text out
+of signed workflow state.
+
+**Tech stack:** Python 3, pytest, JSON Schema, AEGIS v2 canonicalization and
+typed verification results.
+
+### Repair Task 1: Align workflow-correlation selection
+
+**Files:**
+- Modify: `aegis/_internal/workflow_verification.py`
+- Modify: `tests/test_workflow_claimed_set_verifier.py`
+
+- [ ] Add a regression in which a valid workflow claim is supplied beside a
+  schema-valid generic invocation containing only `session_id`; require the
+  valid claim to remain `VALID`.
+- [ ] Add incomplete triggered-correlation mutants for `step_index` and
+  `workflow_policy_digest`; require `INVOCATION_CORRELATION_INVALID`.
+- [ ] Run the focused tests and observe the generic-artifact regression fail for
+  the current partial-correlation behavior.
+- [ ] Introduce a trigger-field set containing only `step_index` and
+  `workflow_policy_digest`; validate the quartet only after a trigger appears.
+- [ ] Re-run the focused tests and commit the green change.
+
+### Repair Task 2: Bound verifier traversal before expansion
+
+**Files:**
+- Modify: `aegis/_internal/workflow_verification.py`
+- Modify: `tests/test_workflow_claimed_set_verifier.py`
+- Modify: `tests/test_architecture_security_boundaries.py`
+
+- [ ] Add lowered-budget tests proving an oversized exact list and dictionary
+  produce a typed budget error before child expansion.
+- [ ] Add an architecture mutant that moves the budget check after child-stack
+  extension and prove the fitness test rejects it.
+- [ ] Run the tests and observe the new cases fail.
+- [ ] Add an explicit node budget and preflight container cardinality/minimum
+  byte checks before enqueuing children; keep error accumulation bounded.
+- [ ] Re-run focused adversarial and fitness tests and commit the green change.
+
+### Repair Task 3: Enforce the 1,024 admitted-attempt ceiling
+
+**Files:**
+- Create: `aegis/_internal/workflow_limits.py`
+- Modify: `aegis/_internal/session.py`
+- Modify: `aegis/_internal/workflow_verification.py`
+- Modify: `aegis/schemas/policy_dsl.schema.json`
+- Modify: `schemas/policy_dsl.schema.json`
+- Modify: `aegis/schemas/workflow_artifact.schema.json`
+- Modify: `schemas/workflow_artifact.schema.json`
+- Modify: `tests/test_session_step_index.py`
+- Modify: `tests/test_workflow_claimed_set.py`
+- Modify: `tests/test_architecture_security_boundaries.py`
+
+- [ ] Add a boundary regression with `_next_step_index == 1_024`; the next
+  public pre-call must raise typed `SESSION_ATTEMPT_LIMIT_EXCEEDED`, leave the
+  count unchanged, allocate no attempt envelope, and emit no partial terminal.
+- [ ] Add schema and fitness tests requiring all four schema maxima and the
+  runtime constant to equal exactly 1,024.
+- [ ] Run the tests and observe the producer/schema mismatch fail.
+- [ ] Add `MAX_WORKFLOW_ATTEMPTS = 1_024` to the focused limits module, check it
+  under `_attempt_lock` before increment/allocation, and use it in verification.
+- [ ] Set policy `workflow.max_steps.maximum`, workflow `step_count.maximum`,
+  and workflow `invocations.maxItems` to 1,024 in both schema copies.
+- [ ] Re-run boundary, schema-parity, policy compiler, and B4 tests; commit green.
+
+### Repair Task 4: Sanitize exception-path workflow summaries
+
+**Files:**
+- Modify: `aegis/_internal/session.py`
+- Modify: `tests/test_session_attempt_terminal_records.py`
+- Modify: `tests/test_b4_final_correctness.py`
+
+- [ ] Add a context-manager regression that raises
+  `RuntimeError("\\ud800")` after an admitted Phase B failure; require one
+  terminal invocation, one valid workflow artifact, `FINALIZED`, and propagation
+  of the original exception.
+- [ ] Run the regression and observe missing workflow finalization.
+- [ ] Replace raw exception text with bounded `exception_type` and stable
+  `reason_code="SESSION_BODY_EXCEPTION"`; do not retain diagnostic message text
+  in signed workflow state.
+- [ ] Re-run exception, finalizer, and B4 end-to-end tests; commit green.
+
+### Repair completion and renewed review
+
+- [ ] Run the B4 focused portfolio and full pytest suite.
+- [ ] Run `flake8 aegis`, `git diff --check`, schema-copy parity, and package
+  build.
+- [ ] Update lifecycle evidence with RED/GREEN commands and hashes.
+- [ ] Obtain a new scoped security review, then a distinct high-risk convergence
+  review. Advance beyond `IMPLEMENTING` only if both report no load-bearing
+  residuals.

@@ -1401,3 +1401,35 @@ The architecture is ready for an implementation plan only when:
   controls;
 - the required RE2 dependency passes the declared Python/OS CI matrix;
 - #38, #39, #42, #46, and #47 have the dependency order recorded above.
+
+## 15. B4 scoped-review repair clarification (2026-08-03)
+
+The repository owner authorized a second B4 repair cycle and selected an exact
+hard workflow admission ceiling of `MAX_WORKFLOW_ATTEMPTS = 1_024`.
+
+This ceiling is an admission boundary, not a normal operating target. A public
+step request that arrives after 1,024 attempts have already been allocated is
+rejected atomically with `SESSION_ATTEMPT_LIMIT_EXCEEDED` before a new attempt
+envelope or `step_index` is allocated. Consequently, every *admitted* workflow
+attempt remains gaplessly indexed and terminally represented. Policy
+`workflow.max_steps` may be lower, but may not exceed 1,024. Runtime constants,
+both policy-schema copies, and both workflow-artifact schema copies must remain
+fitness-checked for exact agreement.
+
+Workflow-correlation detection uses `step_index` or
+`workflow_policy_digest` as the trigger. Generic invocation context such as a
+standalone `session_id` is not partial workflow correlation and is ignored when
+selecting the claimed session set. Once either trigger is present, the complete
+bounded correlation quartet remains mandatory and mismatches fail closed.
+
+Verifier resource handling is bounded before expansion. Exact list and mapping
+containers must be rejected before their children are pushed when their
+cardinality, minimum encoded size, node budget, byte budget, or depth budget
+cannot be satisfied. Traversal memory must be bounded independently of hostile
+container length, and every exhaustion path returns a typed verification
+result.
+
+Exception-path workflow summaries never include raw `str(exc)`. Signed workflow
+state records a stable reason code and a validated bounded exception type. The
+original exception still propagates after exactly-once invocation and workflow
+finalization, including exceptions whose messages contain invalid Unicode.
