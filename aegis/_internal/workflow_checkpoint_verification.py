@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass
 
 from aegis._internal.canonicalization import canonicalize_v2
@@ -42,9 +43,13 @@ class PreparedWorkflowCheckpoint:
 
 @dataclass(frozen=True, slots=True)
 class DetachedWorkflowCheckpointInput:
-    """An early core-owned snapshot of one exact typed checkpoint."""
+    """Frozen presence, type policy, and data for one checkpoint input."""
 
+    supplied: bool
+    exact_type: bool
     snapshot: object
+    measurement: object
+    measurement_failed: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,39 +98,53 @@ def _measurement_value(value: object) -> object:
 
 def detach_workflow_checkpoint_input(
     expected_checkpoint: object | None,
-) -> DetachedWorkflowCheckpointInput | None:
-    """Detach an exact typed checkpoint before caller-controlled iteration."""
-    if type(expected_checkpoint) is not TrustedWorkflowCheckpoint:
-        return None
+    budget: VerificationBudget,
+) -> DetachedWorkflowCheckpointInput:
+    """Freeze checkpoint input policy before caller-controlled iteration."""
+    if expected_checkpoint is None:
+        return DetachedWorkflowCheckpointInput(False, False, None, None, False)
+    if type(expected_checkpoint) is TrustedWorkflowCheckpoint:
+        snapshot = _typed_checkpoint_snapshot(expected_checkpoint)
+        return DetachedWorkflowCheckpointInput(
+            True,
+            True,
+            snapshot,
+            snapshot,
+            False,
+        )
+
+    measurement = _measurement_value(expected_checkpoint)
+    probe = VerificationBudget(
+        remaining_bytes=budget.remaining_bytes,
+        remaining_nodes=budget.remaining_nodes,
+    )
+    try:
+        probe.measure(measurement)
+        measurement = deepcopy(measurement)
+    except Exception:
+        return DetachedWorkflowCheckpointInput(True, False, None, None, True)
     return DetachedWorkflowCheckpointInput(
-        _typed_checkpoint_snapshot(expected_checkpoint)
+        True,
+        False,
+        None,
+        measurement,
+        False,
     )
 
 
 def prepare_workflow_checkpoint_input(
-    expected_checkpoint: object | None,
+    detached: DetachedWorkflowCheckpointInput,
     budget: VerificationBudget,
     errors: BoundedVerificationErrors,
-    *,
-    detached: DetachedWorkflowCheckpointInput | None = None,
 ) -> PreparedWorkflowCheckpoint | None:
     """Measure and reparse only one exact workflow checkpoint record."""
-    if expected_checkpoint is None:
+    if not detached.supplied:
         return None
 
-    if type(expected_checkpoint) is TrustedWorkflowCheckpoint:
-        snapshot = (
-            detached.snapshot
-            if detached is not None
-            else _typed_checkpoint_snapshot(expected_checkpoint)
-        )
-        measurement = snapshot
-    else:
-        snapshot = None
-        measurement = _measurement_value(expected_checkpoint)
-
     try:
-        budget.measure(measurement)
+        if detached.measurement_failed:
+            raise VerificationInputError
+        budget.measure(detached.measurement)
     except VerificationInputError:
         errors.append(
             _error(
@@ -143,7 +162,7 @@ def prepare_workflow_checkpoint_input(
         )
         return None
 
-    if snapshot is None:
+    if not detached.exact_type or detached.snapshot is None:
         errors.append(
             _error(
                 "CHECKPOINT_RECORD_INVALID",
@@ -154,7 +173,7 @@ def prepare_workflow_checkpoint_input(
         return None
 
     try:
-        checkpoint = TrustedWorkflowCheckpoint.from_dict(snapshot)
+        checkpoint = TrustedWorkflowCheckpoint.from_dict(detached.snapshot)
         canonical_record = canonicalize_v2(
             TrustedWorkflowCheckpoint.to_dict(checkpoint)
         ).data

@@ -915,6 +915,89 @@ def test_invocation_iterator_cannot_downgrade_host_selected_anchor(
     )
 
 
+def test_invocation_iterator_cannot_suppress_frozen_checkpoint_by_subclassing(
+    workflow_checkpoint,
+    verifier,
+):
+    class WorkflowCheckpointSubclass(TrustedWorkflowCheckpoint):
+        __slots__ = ()
+
+    replacement_workflow, replacement_invocations = _evidence_set(
+        session_id="replacement-session"
+    )
+
+    def mutating_invocations():
+        object.__setattr__(
+            workflow_checkpoint,
+            "__class__",
+            WorkflowCheckpointSubclass,
+        )
+        yield from replacement_invocations
+
+    report = verify_workflow_claim(
+        replacement_workflow,
+        mutating_invocations(),
+        expected_checkpoint=workflow_checkpoint,
+        checkpoint_verifier=verifier,
+    )
+
+    assert type(workflow_checkpoint) is WorkflowCheckpointSubclass
+    assert report.claim_status is WorkflowClaimStatus.VALID
+    assert report.completeness is Completeness.CONTRADICTED
+    assert report.checkpoint_anchor_status is AnchorStatus.INVALID
+    assert verifier.call_count == 1
+    result = report.checkpoint_results[0]
+    assert type(result.checkpoint) is TrustedWorkflowCheckpoint
+    assert result.scope_id == "verified-session"
+    assert result.binding_status is CheckpointBindingStatus.CONFLICT
+    assert result.signature_result is not None
+    assert result.signature_result.anchor_status is AnchorStatus.ANCHORED
+
+
+def test_invocation_iterator_cannot_admit_initial_checkpoint_subclass(
+    evidence_set,
+    workflow_checkpoint,
+    verifier,
+):
+    class WorkflowCheckpointSubclass(TrustedWorkflowCheckpoint):
+        __slots__ = ()
+
+    workflow, invocations = evidence_set
+    object.__setattr__(
+        workflow_checkpoint,
+        "__class__",
+        WorkflowCheckpointSubclass,
+    )
+
+    def mutating_invocations():
+        object.__setattr__(
+            workflow_checkpoint,
+            "__class__",
+            TrustedWorkflowCheckpoint,
+        )
+        yield from invocations
+
+    report = verify_workflow_claim(
+        workflow,
+        mutating_invocations(),
+        expected_checkpoint=workflow_checkpoint,
+        checkpoint_verifier=verifier,
+    )
+
+    assert type(workflow_checkpoint) is TrustedWorkflowCheckpoint
+    assert report.claim_status is WorkflowClaimStatus.VALID
+    assert report.completeness is Completeness.UNPROVEN
+    assert report.checkpoint_signature_status is (
+        CheckpointSignatureStatus.INDETERMINATE
+    )
+    assert report.checkpoint_anchor_status is AnchorStatus.INVALID
+    assert report.checkpoint_results == ()
+    assert [error.code for error in report.errors] == [
+        "CHECKPOINT_RECORD_INVALID"
+    ]
+    assert verifier.call_count == 0
+
+
 def test_artifact_signature_verifier_cannot_mutate_b4_or_binding_snapshot(
     evidence_set,
     workflow_checkpoint,
@@ -1563,6 +1646,138 @@ def test_workflow_claim_ceiling_stops_content_and_both_provider_axes(
     assert report.checkpoint_results == ()
     assert [error.code for error in report.errors] == [
         "WORKFLOW_CLAIM_COUNT_MISMATCH",
+        "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("overflow", "malformed_sibling", "invalid_code"),
+    [
+        pytest.param(
+            "claim_entries",
+            None,
+            "WORKFLOW_STEP_COUNT_INVALID",
+            id="claim-null-step-count",
+        ),
+        pytest.param(
+            "claim_entries",
+            True,
+            "WORKFLOW_STEP_COUNT_INVALID",
+            id="claim-boolean-step-count",
+        ),
+        pytest.param(
+            "claim_entries",
+            "1025",
+            "WORKFLOW_STEP_COUNT_INVALID",
+            id="claim-string-step-count",
+        ),
+        pytest.param(
+            "claim_entries",
+            {},
+            "WORKFLOW_STEP_COUNT_INVALID",
+            id="claim-object-step-count",
+        ),
+        pytest.param(
+            "step_count",
+            None,
+            "WORKFLOW_CLAIM_INVALID",
+            id="step-count-null-claim",
+        ),
+        pytest.param(
+            "step_count",
+            False,
+            "WORKFLOW_CLAIM_INVALID",
+            id="step-count-boolean-claim",
+        ),
+        pytest.param(
+            "step_count",
+            "invalid",
+            "WORKFLOW_CLAIM_INVALID",
+            id="step-count-string-claim",
+        ),
+        pytest.param(
+            "step_count",
+            {},
+            "WORKFLOW_CLAIM_INVALID",
+            id="step-count-object-claim",
+        ),
+    ],
+)
+def test_definite_workflow_ceiling_is_independent_of_malformed_sibling(
+    evidence_set,
+    workflow_checkpoint,
+    monkeypatch,
+    overflow,
+    malformed_sibling,
+    invalid_code,
+):
+    workflow, _ = evidence_set
+    changed = deepcopy(workflow)
+    if overflow == "claim_entries":
+        changed["invocations"] = [
+            {"step_index": index, "checksum": "a" * 64}
+            for index in range(1_025)
+        ]
+        changed["step_count"] = malformed_sibling
+    else:
+        changed["step_count"] = 1_025
+        changed["invocations"] = malformed_sibling
+    changed = _refinalize_unsigned(changed)
+    invocation_consumptions = 0
+    content_calls = 0
+    artifact_calls = 0
+    checkpoint_verifier = DeterministicExternalVerifier()
+    verify_content = workflow_verification_module.verify_content_checksum_v2
+
+    def supplied_invocations():
+        nonlocal invocation_consumptions
+        invocation_consumptions += 1
+        yield from ()
+
+    def content_verifier(value):
+        nonlocal content_calls
+        content_calls += 1
+        return verify_content(value)
+
+    def artifact_verifier(*_args, **_kwargs):
+        nonlocal artifact_calls
+        artifact_calls += 1
+        return SignatureStatus.UNSIGNED, None
+
+    monkeypatch.setattr(
+        workflow_verification_module,
+        "verify_content_checksum_v2",
+        content_verifier,
+    )
+    monkeypatch.setattr(
+        workflow_verification_module,
+        "_verify_signatures",
+        artifact_verifier,
+    )
+
+    report = verify_workflow_claim(
+        changed,
+        supplied_invocations(),
+        expected_checkpoint=workflow_checkpoint,
+        checkpoint_verifier=checkpoint_verifier,
+    )
+
+    assert (
+        invocation_consumptions,
+        content_calls,
+        artifact_calls,
+        checkpoint_verifier.call_count,
+    ) == (0, 0, 0, 0)
+    assert report.claim_status is WorkflowClaimStatus.INVALID
+    assert report.signature_status is SignatureStatus.INDETERMINATE
+    assert report.completeness is Completeness.UNPROVEN
+    assert report.checkpoint_signature_status is (
+        CheckpointSignatureStatus.NOT_EVALUATED
+    )
+    assert report.checkpoint_anchor_status is AnchorStatus.NOT_EVALUATED
+    assert report.checkpoint_results == ()
+    assert [error.code for error in report.errors] == [
+        invalid_code,
         "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
     ]
 

@@ -273,14 +273,33 @@ def _reject_oversized_workflow_claim(
 ) -> bool:
     step_count = workflow.get("step_count")
     claim = workflow.get("invocations")
-    if type(step_count) is not int or type(claim) is not list:
+    step_count_valid = type(step_count) is int and step_count >= 0
+    claim_type_valid = type(claim) is list
+    step_count_oversized = (
+        type(step_count) is int
+        and step_count > MAX_WORKFLOW_CLAIM_ENTRIES
+    )
+    claim_oversized = (
+        claim_type_valid
+        and len(claim) > MAX_WORKFLOW_CLAIM_ENTRIES
+    )
+    if not step_count_oversized and not claim_oversized:
         return False
-    if (
-        step_count <= MAX_WORKFLOW_CLAIM_ENTRIES
-        and len(claim) <= MAX_WORKFLOW_CLAIM_ENTRIES
-    ):
-        return False
-    if len(claim) != step_count:
+    if not step_count_valid:
+        errors.append(
+            _error(
+                "WORKFLOW_STEP_COUNT_INVALID",
+                "Workflow step_count is invalid",
+            )
+        )
+    if not claim_type_valid:
+        errors.append(
+            _error(
+                "WORKFLOW_CLAIM_INVALID",
+                "Workflow invocations claim is invalid",
+            )
+        )
+    if step_count_valid and claim_type_valid and len(claim) != step_count:
         errors.append(
             _error(
                 "WORKFLOW_CLAIM_COUNT_MISMATCH",
@@ -497,7 +516,10 @@ def _verify_workflow_claim(
             errors,
         )
 
-    detached_checkpoint = detach_workflow_checkpoint_input(expected_checkpoint)
+    detached_checkpoint = detach_workflow_checkpoint_input(
+        expected_checkpoint,
+        budget,
+    )
     supplied = _materialize_invocations(
         invocations,
         errors,
@@ -511,10 +533,9 @@ def _verify_workflow_claim(
         )
 
     prepared_checkpoint = prepare_workflow_checkpoint_input(
-        expected_checkpoint,
+        detached_checkpoint,
         budget,
         errors,
-        detached=detached_checkpoint,
     )
     if any(
         error.code == "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED"
@@ -594,7 +615,7 @@ def _verify_workflow_claim(
                 )
 
     checkpoint_evaluation = None
-    if expected_checkpoint is not None:
+    if detached_checkpoint.supplied:
         if prepared_checkpoint is None:
             checkpoint_evaluation = invalid_workflow_checkpoint_evaluation()
         else:
