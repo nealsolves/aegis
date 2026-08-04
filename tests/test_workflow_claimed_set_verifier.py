@@ -8,6 +8,7 @@ import pytest
 
 from aegis import (
     AEGIS,
+    AnchorStatus,
     CallbackAuditSink,
     Completeness,
     HMACSigner,
@@ -16,6 +17,7 @@ from aegis import (
     WorkflowVerificationReport,
     verify_workflow_claim,
 )
+from aegis.checkpoints import CheckpointSignatureStatus
 from aegis._internal.evidence_profiles import build_content_checksum_v2
 from aegis._internal import workflow_verification as workflow_verification_module
 from aegis._internal import verification_limits as verification_limits_module
@@ -102,6 +104,9 @@ def test_valid_supplied_set_matches_the_workflow_claim(evidence_set):
         signature_status=SignatureStatus.UNSIGNED,
         completeness=Completeness.UNPROVEN,
         errors=(),
+        checkpoint_signature_status=CheckpointSignatureStatus.NOT_EVALUATED,
+        checkpoint_anchor_status=AnchorStatus.NOT_EVALUATED,
+        checkpoint_results=(),
     )
 
 
@@ -310,7 +315,7 @@ def test_valid_claim_without_checkpoint_never_proves_completeness(evidence_set):
     assert report.completeness is Completeness.UNPROVEN
 
 
-def test_non_json_checkpoint_placeholder_fails_in_aggregate_preflight(evidence_set):
+def test_malformed_singular_checkpoint_does_not_suppress_b4(evidence_set):
     workflow, invocations = evidence_set
 
     report = verify_workflow_claim(
@@ -319,9 +324,14 @@ def test_non_json_checkpoint_placeholder_fails_in_aggregate_preflight(evidence_s
         expected_checkpoint=object(),
     )
 
-    assert report.claim_status is WorkflowClaimStatus.NOT_EVALUATED
+    assert report.claim_status is WorkflowClaimStatus.VALID
     assert report.completeness is Completeness.UNPROVEN
-    assert _error_codes(report) == {"WORKFLOW_VERIFICATION_LIMIT_EXCEEDED"}
+    assert report.checkpoint_signature_status is (
+        CheckpointSignatureStatus.INDETERMINATE
+    )
+    assert report.checkpoint_anchor_status is AnchorStatus.INVALID
+    assert report.checkpoint_results == ()
+    assert _error_codes(report) == {"CHECKPOINT_RECORD_INVALID"}
 
 
 def test_invalid_workflow_content_cannot_produce_a_valid_claim(evidence_set):

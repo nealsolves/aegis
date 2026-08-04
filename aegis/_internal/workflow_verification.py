@@ -3,10 +3,15 @@
 from __future__ import annotations
 
 import re
+from copy import deepcopy
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+from aegis._internal.checkpoint_models import (
+    CheckpointSignatureStatus,
+    CheckpointVerificationResult,
+)
 from aegis._internal.evidence_profiles import (
     ContentIntegrity,
     verify_content_checksum_v2,
@@ -15,7 +20,7 @@ from aegis._internal.evidence_finalizer import (
     _audit_validator,
     _workflow_validator,
 )
-from aegis._internal.signature_models import SignatureStatus
+from aegis._internal.signature_models import AnchorStatus, SignatureStatus
 from aegis._internal.verification import _verify_signatures
 from aegis._internal.verification_contracts import Completeness, VerificationError
 from aegis._internal.verification_limits import (
@@ -26,6 +31,12 @@ from aegis._internal.verification_limits import (
     materialize_bounded_iterable,
 )
 from aegis._internal.workflow_limits import MAX_WORKFLOW_ATTEMPTS
+from aegis._internal.workflow_checkpoint_verification import (
+    CheckpointEvaluation,
+    evaluate_workflow_checkpoint,
+    invalid_workflow_checkpoint_evaluation,
+    prepare_workflow_checkpoint_input,
+)
 
 
 _HEX64_RE = re.compile(r"^[a-f0-9]{64}$")
@@ -56,6 +67,11 @@ class WorkflowVerificationReport:
     signature_status: SignatureStatus
     completeness: Completeness
     errors: tuple[VerificationError, ...]
+    checkpoint_signature_status: CheckpointSignatureStatus = (
+        CheckpointSignatureStatus.NOT_EVALUATED
+    )
+    checkpoint_anchor_status: AnchorStatus = AnchorStatus.NOT_EVALUATED
+    checkpoint_results: tuple[CheckpointVerificationResult, ...] = ()
 
 
 def _error(code: str, message: str, index: int | None = None) -> VerificationError:
@@ -66,12 +82,23 @@ def _report(
     claim_status: WorkflowClaimStatus,
     signature_status: SignatureStatus,
     errors: list[VerificationError],
+    checkpoint_evaluation: CheckpointEvaluation | None = None,
 ) -> WorkflowVerificationReport:
+    if checkpoint_evaluation is None:
+        checkpoint_evaluation = CheckpointEvaluation(
+            signature_status=CheckpointSignatureStatus.NOT_EVALUATED,
+            anchor_status=AnchorStatus.NOT_EVALUATED,
+            completeness=Completeness.UNPROVEN,
+            results=(),
+        )
     return WorkflowVerificationReport(
         claim_status=claim_status,
         signature_status=signature_status,
-        completeness=Completeness.UNPROVEN,
+        completeness=checkpoint_evaluation.completeness,
         errors=tuple(errors),
+        checkpoint_signature_status=checkpoint_evaluation.signature_status,
+        checkpoint_anchor_status=checkpoint_evaluation.anchor_status,
+        checkpoint_results=checkpoint_evaluation.results,
     )
 
 
@@ -139,7 +166,29 @@ def _materialize_invocations(
                 )
             )
             return None
-    return supplied
+    try:
+        # The documents above charge every child.  This bounded core-owned
+        # string charges the remaining JSON list overhead exactly: two bytes,
+        # one comma per item, and one container node.
+        budget.measure("x" * len(supplied))
+    except VerificationInputError:
+        errors.append(
+            _error(
+                "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
+                "Workflow verification input exceeds a configured limit",
+            )
+        )
+        return None
+    try:
+        return deepcopy(supplied)
+    except Exception:
+        errors.append(
+            _error(
+                "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
+                "Workflow verification input exceeds a configured limit",
+            )
+        )
+        return None
 
 
 def _validate_claim(
@@ -363,14 +412,10 @@ def _verify_workflow_claim(
     workflow: object,
     invocations: object,
     *,
-    expected_checkpoint: None = None,
+    expected_checkpoint: object | None = None,
+    checkpoint_verifier: object | None = None,
 ) -> WorkflowVerificationReport:
-    """Compare one workflow claim with an ordered, session-filtered artifact set.
-
-    Issue #46 owns the future ``TrustedWorkflowCheckpoint`` contract. Until
-    that type exists, the only accepted checkpoint value is ``None`` and
-    completeness cannot be promoted beyond ``UNPROVEN``.
-    """
+    """Compare one workflow claim with an ordered, session-filtered artifact set."""
     errors: list[VerificationError] = BoundedVerificationErrors()
     if type(workflow) is not dict:
         errors.append(
@@ -388,7 +433,21 @@ def _verify_workflow_claim(
     )
     try:
         budget.measure(workflow)
+        workflow_snapshot = deepcopy(workflow)
+        workflow_signature_snapshot = deepcopy(workflow_snapshot)
     except VerificationInputError:
+        errors.append(
+            _error(
+                "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
+                "Workflow verification input exceeds a configured limit",
+            )
+        )
+        return _report(
+            WorkflowClaimStatus.NOT_EVALUATED,
+            SignatureStatus.INDETERMINATE,
+            errors,
+        )
+    except Exception:
         errors.append(
             _error(
                 "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
@@ -413,24 +472,27 @@ def _verify_workflow_claim(
             errors,
         )
 
-    if expected_checkpoint is not None:
-        try:
-            budget.measure(expected_checkpoint)
-        except VerificationInputError:
-            errors.append(
-                _error(
-                    "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
-                    "Workflow verification input exceeds a configured limit",
-                )
-            )
-            return _report(
-                WorkflowClaimStatus.NOT_EVALUATED,
-                SignatureStatus.INDETERMINATE,
-                errors,
-            )
+    prepared_checkpoint = prepare_workflow_checkpoint_input(
+        expected_checkpoint,
+        budget,
+        errors,
+    )
+    if any(
+        error.code == "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED"
+        for error in errors
+    ):
+        return _report(
+            WorkflowClaimStatus.NOT_EVALUATED,
+            SignatureStatus.INDETERMINATE,
+            errors,
+        )
 
     try:
-        signature_status, _ = _verify_signatures((workflow,), None, errors)
+        signature_status, _ = _verify_signatures(
+            (workflow_signature_snapshot,),
+            None,
+            errors,
+        )
     except Exception:
         errors.append(
             _error(
@@ -439,72 +501,86 @@ def _verify_workflow_claim(
             )
         )
         signature_status = SignatureStatus.INDETERMINATE
+    workflow_content_valid = False
+    if _legacy_workflow(workflow_snapshot):
+        claim_status = WorkflowClaimStatus.LEGACY
+    else:
+        try:
+            content_status = verify_content_checksum_v2(workflow_snapshot)
+        except Exception:
+            content_status = ContentIntegrity.NOT_EVALUATED
+        workflow_content_valid = content_status is ContentIntegrity.VALID
+        if not workflow_content_valid:
+            errors.append(
+                _error(
+                    "WORKFLOW_CONTENT_INVALID",
+                    "Workflow checksum or v2 content profile is invalid",
+                )
+            )
+            claim_status = WorkflowClaimStatus.INVALID
+        else:
+            initial_error_count = len(errors)
+            validated = _validate_claim(workflow_snapshot, errors)
+
+            try:
+                workflow_schema_valid = _workflow_validator().is_valid(
+                    workflow_snapshot
+                )
+            except Exception:
+                workflow_schema_valid = False
+            if not workflow_schema_valid:
+                errors.append(
+                    _error(
+                        "WORKFLOW_SCHEMA_INVALID",
+                        "Workflow does not match the v2 workflow artifact schema",
+                    )
+                )
+                claim_status = WorkflowClaimStatus.INVALID
+            elif validated is None:
+                claim_status = WorkflowClaimStatus.INVALID
+            else:
+                step_count, claim = validated
+                session_id = workflow_snapshot["session_id"]
+                assert isinstance(session_id, str)
+                selected = _select_session_invocations(
+                    supplied,
+                    session_id,
+                    errors,
+                )
+                _compare_selected(selected, step_count, claim, errors)
+                claim_status = (
+                    WorkflowClaimStatus.VALID
+                    if len(errors) == initial_error_count
+                    else WorkflowClaimStatus.INVALID
+                )
+
+    checkpoint_evaluation = None
     if expected_checkpoint is not None:
-        errors.append(
-            _error(
-                "WORKFLOW_CHECKPOINT_UNSUPPORTED",
-                "Trusted workflow checkpoints are unavailable until issue #46",
+        if prepared_checkpoint is None:
+            checkpoint_evaluation = invalid_workflow_checkpoint_evaluation()
+        else:
+            checkpoint_evaluation = evaluate_workflow_checkpoint(
+                prepared_checkpoint,
+                workflow_snapshot,
+                workflow_content_valid=workflow_content_valid,
+                claim_valid=claim_status is WorkflowClaimStatus.VALID,
+                verifier=checkpoint_verifier,  # type: ignore[arg-type]
+                errors=errors,
             )
-        )
-        return _report(
-            WorkflowClaimStatus.NOT_EVALUATED,
-            signature_status,
-            errors,
-        )
-
-    if _legacy_workflow(workflow):
-        return _report(WorkflowClaimStatus.LEGACY, signature_status, errors)
-
-    try:
-        content_status = verify_content_checksum_v2(workflow)
-    except Exception:
-        content_status = ContentIntegrity.NOT_EVALUATED
-    if content_status is not ContentIntegrity.VALID:
-        errors.append(
-            _error(
-                "WORKFLOW_CONTENT_INVALID",
-                "Workflow checksum or v2 content profile is invalid",
-            )
-        )
-        return _report(WorkflowClaimStatus.INVALID, signature_status, errors)
-
-    initial_error_count = len(errors)
-    validated = _validate_claim(workflow, errors)
-
-    try:
-        workflow_schema_valid = _workflow_validator().is_valid(workflow)
-    except Exception:
-        workflow_schema_valid = False
-    if not workflow_schema_valid:
-        errors.append(
-            _error(
-                "WORKFLOW_SCHEMA_INVALID",
-                "Workflow does not match the v2 workflow artifact schema",
-            )
-        )
-        return _report(WorkflowClaimStatus.INVALID, signature_status, errors)
-
-    if validated is None:
-        return _report(WorkflowClaimStatus.INVALID, signature_status, errors)
-
-    step_count, claim = validated
-    session_id = workflow["session_id"]
-    assert isinstance(session_id, str)
-    selected = _select_session_invocations(supplied, session_id, errors)
-    _compare_selected(selected, step_count, claim, errors)
-    claim_status = (
-        WorkflowClaimStatus.VALID
-        if len(errors) == initial_error_count
-        else WorkflowClaimStatus.INVALID
+    return _report(
+        claim_status,
+        signature_status,
+        errors,
+        checkpoint_evaluation,
     )
-    return _report(claim_status, signature_status, errors)
 
 
 def verify_workflow_claim(
     workflow: object,
     invocations: object,
     *,
-    expected_checkpoint: None = None,
+    expected_checkpoint: object | None = None,
+    checkpoint_verifier: object | None = None,
 ) -> WorkflowVerificationReport:
     """Return a typed report for every catchable verifier failure."""
     try:
@@ -512,6 +588,7 @@ def verify_workflow_claim(
             workflow,
             invocations,
             expected_checkpoint=expected_checkpoint,
+            checkpoint_verifier=checkpoint_verifier,
         )
     except (MemoryError, RecursionError):
         errors: list[VerificationError] = BoundedVerificationErrors()
