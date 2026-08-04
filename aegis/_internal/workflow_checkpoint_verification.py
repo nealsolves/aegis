@@ -41,6 +41,13 @@ class PreparedWorkflowCheckpoint:
 
 
 @dataclass(frozen=True, slots=True)
+class DetachedWorkflowCheckpointInput:
+    """An early core-owned snapshot of one exact typed checkpoint."""
+
+    snapshot: object
+
+
+@dataclass(frozen=True, slots=True)
 class CheckpointEvaluation:
     """Checkpoint axes returned to workflow verification."""
 
@@ -84,17 +91,34 @@ def _measurement_value(value: object) -> object:
     return None
 
 
+def detach_workflow_checkpoint_input(
+    expected_checkpoint: object | None,
+) -> DetachedWorkflowCheckpointInput | None:
+    """Detach an exact typed checkpoint before caller-controlled iteration."""
+    if type(expected_checkpoint) is not TrustedWorkflowCheckpoint:
+        return None
+    return DetachedWorkflowCheckpointInput(
+        _typed_checkpoint_snapshot(expected_checkpoint)
+    )
+
+
 def prepare_workflow_checkpoint_input(
     expected_checkpoint: object | None,
     budget: VerificationBudget,
     errors: BoundedVerificationErrors,
+    *,
+    detached: DetachedWorkflowCheckpointInput | None = None,
 ) -> PreparedWorkflowCheckpoint | None:
     """Measure and reparse only one exact workflow checkpoint record."""
     if expected_checkpoint is None:
         return None
 
     if type(expected_checkpoint) is TrustedWorkflowCheckpoint:
-        snapshot = _typed_checkpoint_snapshot(expected_checkpoint)
+        snapshot = (
+            detached.snapshot
+            if detached is not None
+            else _typed_checkpoint_snapshot(expected_checkpoint)
+        )
         measurement = snapshot
     else:
         snapshot = None

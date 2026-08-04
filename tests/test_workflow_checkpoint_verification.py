@@ -142,6 +142,17 @@ def _forge_workflow_checkpoint(
     return forged
 
 
+def _replace_workflow_checkpoint_slots(
+    target: TrustedWorkflowCheckpoint,
+    replacement: TrustedWorkflowCheckpoint,
+) -> None:
+    for field in TrustedWorkflowCheckpoint.__dataclass_fields__:
+        vars(TrustedWorkflowCheckpoint)[field].__set__(
+            target,
+            getattr(replacement, field),
+        )
+
+
 def _checkpoint_for_key(
     workflow: dict[str, object],
     key_version: str,
@@ -825,6 +836,85 @@ def test_invocation_iterator_cannot_replace_measured_workflow(
     )
 
 
+def test_invocation_iterator_cannot_replace_host_selected_checkpoint_for_proof(
+    workflow_checkpoint,
+    verifier,
+):
+    replacement_workflow, replacement_invocations = _evidence_set(
+        session_id="replacement-session"
+    )
+    replacement_checkpoint = create_workflow_checkpoint(
+        replacement_workflow,
+        DeterministicExternalSigner(),
+        checkpointed_at=1_725_000_001,
+    )
+    original_checkpoint = workflow_checkpoint.to_dict()
+
+    def mutating_invocations():
+        _replace_workflow_checkpoint_slots(
+            workflow_checkpoint,
+            replacement_checkpoint,
+        )
+        yield from replacement_invocations
+
+    report = verify_workflow_claim(
+        replacement_workflow,
+        mutating_invocations(),
+        expected_checkpoint=workflow_checkpoint,
+        checkpoint_verifier=verifier,
+    )
+
+    assert workflow_checkpoint.session_id == "replacement-session"
+    assert report.claim_status is WorkflowClaimStatus.VALID
+    assert report.completeness is Completeness.CONTRADICTED
+    assert report.checkpoint_anchor_status is AnchorStatus.INVALID
+    result = report.checkpoint_results[0]
+    assert result.checkpoint.to_dict() == original_checkpoint
+    assert result.scope_id == "verified-session"
+    assert result.binding_status is CheckpointBindingStatus.CONFLICT
+    assert result.signature_result is not None
+    assert result.signature_result.anchor_status is AnchorStatus.ANCHORED
+
+
+def test_invocation_iterator_cannot_downgrade_host_selected_anchor(
+    evidence_set,
+    workflow_checkpoint,
+    verifier,
+):
+    workflow, invocations = evidence_set
+    unanchored_checkpoint = _checkpoint_for_key(
+        workflow,
+        "version/historical",
+    )
+
+    def mutating_invocations():
+        _replace_workflow_checkpoint_slots(
+            workflow_checkpoint,
+            unanchored_checkpoint,
+        )
+        yield from invocations
+
+    report = verify_workflow_claim(
+        workflow,
+        mutating_invocations(),
+        expected_checkpoint=workflow_checkpoint,
+        checkpoint_verifier=verifier,
+    )
+
+    assert workflow_checkpoint.signature_metadata.key_version == (
+        "version/historical"
+    )
+    assert report.claim_status is WorkflowClaimStatus.VALID
+    assert report.completeness is Completeness.CHECKPOINT_PROVEN
+    assert report.checkpoint_anchor_status is AnchorStatus.ANCHORED
+    result = report.checkpoint_results[0]
+    assert result.binding_status is CheckpointBindingStatus.MATCHED
+    assert result.signature_result is not None
+    assert result.signature_result.signature_metadata.key_version == (
+        "version/current"
+    )
+
+
 def test_artifact_signature_verifier_cannot_mutate_b4_or_binding_snapshot(
     evidence_set,
     workflow_checkpoint,
@@ -1398,36 +1488,83 @@ def test_supplied_collection_node_overhead_is_charged_before_providers(
     assert verifier.call_count == 0
 
 
-def test_claim_entry_overflow_remains_b4_authoritative_with_checkpoint(
+@pytest.mark.parametrize(
+    "overflow",
+    ["claim_entries", "step_count"],
+)
+def test_workflow_claim_ceiling_stops_content_and_both_provider_axes(
     evidence_set,
     workflow_checkpoint,
     verifier,
+    monkeypatch,
+    overflow,
 ):
     workflow, _ = evidence_set
     changed = deepcopy(workflow)
-    changed["step_count"] = 1_025
-    changed["invocations"] = [
-        {"step_index": index, "checksum": "a" * 64}
-        for index in range(1_025)
-    ]
+    if overflow == "claim_entries":
+        changed["invocations"] = [
+            {"step_index": index, "checksum": "a" * 64}
+            for index in range(1_025)
+        ]
+    else:
+        changed["step_count"] = 1_025
     changed = _refinalize_unsigned(changed)
+    invocation_consumptions = 0
+    content_calls = 0
+    artifact_calls = 0
+    verify_content = workflow_verification_module.verify_content_checksum_v2
+
+    def supplied_invocations():
+        nonlocal invocation_consumptions
+        invocation_consumptions += 1
+        yield from ()
+
+    def content_verifier(value):
+        nonlocal content_calls
+        content_calls += 1
+        return verify_content(value)
+
+    def artifact_verifier(*_args, **_kwargs):
+        nonlocal artifact_calls
+        artifact_calls += 1
+        return SignatureStatus.UNSIGNED, None
+
+    monkeypatch.setattr(
+        workflow_verification_module,
+        "verify_content_checksum_v2",
+        content_verifier,
+    )
+    monkeypatch.setattr(
+        workflow_verification_module,
+        "_verify_signatures",
+        artifact_verifier,
+    )
 
     report = verify_workflow_claim(
         changed,
-        (),
+        supplied_invocations(),
         expected_checkpoint=workflow_checkpoint,
         checkpoint_verifier=verifier,
     )
 
+    assert (
+        invocation_consumptions,
+        content_calls,
+        artifact_calls,
+        verifier.call_count,
+    ) == (0, 0, 0, 0)
     assert report.claim_status is WorkflowClaimStatus.INVALID
-    assert report.completeness is Completeness.CONTRADICTED
-    assert report.checkpoint_results[0].binding_status is (
-        CheckpointBindingStatus.CONFLICT
+    assert report.signature_status is SignatureStatus.INDETERMINATE
+    assert report.completeness is Completeness.UNPROVEN
+    assert report.checkpoint_signature_status is (
+        CheckpointSignatureStatus.NOT_EVALUATED
     )
-    assert verifier.call_count == 1
-    assert "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED" in {
-        error.code for error in report.errors
-    }
+    assert report.checkpoint_anchor_status is AnchorStatus.NOT_EVALUATED
+    assert report.checkpoint_results == ()
+    assert [error.code for error in report.errors] == [
+        "WORKFLOW_CLAIM_COUNT_MISMATCH",
+        "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
+    ]
 
 
 def test_error_cap_does_not_skip_singular_checkpoint_evaluation(

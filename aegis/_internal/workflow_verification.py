@@ -33,6 +33,7 @@ from aegis._internal.verification_limits import (
 from aegis._internal.workflow_limits import MAX_WORKFLOW_ATTEMPTS
 from aegis._internal.workflow_checkpoint_verification import (
     CheckpointEvaluation,
+    detach_workflow_checkpoint_input,
     evaluate_workflow_checkpoint,
     invalid_workflow_checkpoint_evaluation,
     prepare_workflow_checkpoint_input,
@@ -266,6 +267,35 @@ def _validate_claim(
     return step_count, typed_claim
 
 
+def _reject_oversized_workflow_claim(
+    workflow: dict[str, Any],
+    errors: list[VerificationError],
+) -> bool:
+    step_count = workflow.get("step_count")
+    claim = workflow.get("invocations")
+    if type(step_count) is not int or type(claim) is not list:
+        return False
+    if (
+        step_count <= MAX_WORKFLOW_CLAIM_ENTRIES
+        and len(claim) <= MAX_WORKFLOW_CLAIM_ENTRIES
+    ):
+        return False
+    if len(claim) != step_count:
+        errors.append(
+            _error(
+                "WORKFLOW_CLAIM_COUNT_MISMATCH",
+                f"Claim contains {len(claim)} entries for step_count={step_count}",
+            )
+        )
+    errors.append(
+        _error(
+            "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
+            "Workflow claim exceeds the verifier entry limit",
+        )
+    )
+    return True
+
+
 def _valid_workflow_correlation(context: object) -> bool:
     if type(context) is not dict or not _CORRELATION_FIELDS.issubset(context):
         return False
@@ -460,6 +490,14 @@ def _verify_workflow_claim(
             errors,
         )
 
+    if _reject_oversized_workflow_claim(workflow_snapshot, errors):
+        return _report(
+            WorkflowClaimStatus.INVALID,
+            SignatureStatus.INDETERMINATE,
+            errors,
+        )
+
+    detached_checkpoint = detach_workflow_checkpoint_input(expected_checkpoint)
     supplied = _materialize_invocations(
         invocations,
         errors,
@@ -476,6 +514,7 @@ def _verify_workflow_claim(
         expected_checkpoint,
         budget,
         errors,
+        detached=detached_checkpoint,
     )
     if any(
         error.code == "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED"
