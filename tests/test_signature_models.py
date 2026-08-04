@@ -145,6 +145,17 @@ def test_metadata_rejects_raw_string_enums(field, value):
         _metadata(**{field: value})
 
 
+def test_metadata_rejects_noncanonical_evidence_type_instance():
+    forged_payload_type = str.__new__(EvidenceType, "audit_artifact")
+
+    assert forged_payload_type == EvidenceType.AUDIT_ARTIFACT
+    assert forged_payload_type is not EvidenceType.AUDIT_ARTIFACT
+    with pytest.raises(SignatureMetadataError) as error:
+        _metadata(payload_type=forged_payload_type)
+
+    assert error.value.details == {"field": "payload_type"}
+
+
 @pytest.mark.parametrize("field, value", [
     ("algorithm", ""), ("algorithm", "x" * 129), ("algorithm", "bad algorithm"),
     ("key_reference", ""), ("key_reference", "x" * 513), ("key_reference", "bad\x00key"),
@@ -216,6 +227,37 @@ def test_identity_models_accept_exact_allowed_boundary_characters():
 def test_metadata_requires_supported_contract_values(field, value):
     with pytest.raises(SignatureMetadataError):
         _metadata(**{field: value})
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("signing_profile", []),
+        ("signing_profile", {}),
+        ("canonicalization_version", []),
+        ("canonicalization_version", {}),
+    ],
+)
+def test_metadata_rejects_unhashable_profile_discriminators(field, value):
+    with pytest.raises(SignatureMetadataError):
+        _metadata(**{field: value})
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("signing_profile", []),
+        ("signing_profile", {}),
+        ("canonicalization_version", []),
+        ("canonicalization_version", {}),
+    ],
+)
+def test_metadata_from_dict_rejects_unhashable_profile_discriminators(field, value):
+    metadata = _metadata().to_dict()
+    metadata[field] = value
+
+    with pytest.raises(SignatureMetadataError):
+        SignatureMetadata.from_dict(metadata)
 
 
 @pytest.mark.parametrize("payload_type,profile,canonicalization", CHECKPOINT_CASES)

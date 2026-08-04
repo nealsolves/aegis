@@ -317,6 +317,40 @@ def _metadata_artifact(
     }
 
 
+@pytest.mark.parametrize(
+    "payload_type,signing_profile,canonicalization_version",
+    [
+        (
+            EvidenceType.CHAIN_CHECKPOINT,
+            "aegis-chain-checkpoint-v1",
+            "aegis-json-v2",
+        ),
+        (
+            EvidenceType.WORKFLOW_CHECKPOINT,
+            "aegis-workflow-checkpoint-v1",
+            "aegis-json-v2",
+        ),
+    ],
+)
+def test_detailed_audit_verification_rejects_checkpoint_metadata_before_provider_invocation(
+    payload_type, signing_profile, canonicalization_version
+):
+    artifact = _metadata_artifact()
+    artifact["signature_metadata"] = _metadata(
+        payload_type=payload_type,
+        signing_profile=signing_profile,
+        canonicalization_version=canonicalization_version,
+    ).to_dict()
+    snapshot = deepcopy(artifact)
+    verifier = RecordingExternalVerifier(object())
+
+    with pytest.raises(SignatureMetadataError):
+        verify_artifact_detailed(artifact, verifier=verifier)
+
+    assert verifier.calls == []
+    assert artifact == snapshot
+
+
 def _unchecked_outcome(
     signature_status: object,
     anchor_status: object,

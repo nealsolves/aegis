@@ -478,6 +478,13 @@ def verify_artifact_detailed(
             "signature is invalid", details={"field": "signature"}
         )
 
+    if (
+        metadata.payload_type is not EvidenceType.AUDIT_ARTIFACT
+        or metadata.signing_profile != SIGNING_PROFILE
+        or metadata.canonicalization_version != CANONICALIZATION_VERSION
+    ):
+        raise SignatureMetadataError("signature metadata is invalid", details={})
+
     payload = _metadata_signing_payload(dict(artifact), metadata)
     if verifier is None:
         return ArtifactVerificationResult(

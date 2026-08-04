@@ -236,6 +236,10 @@ class SignatureMetadata:
 
     def __post_init__(self) -> None:
         _require_enum(self.payload_type, EvidenceType, "payload_type", SignatureMetadataError)
+        if not any(self.payload_type is evidence_type for evidence_type in EvidenceType):
+            raise SignatureMetadataError(
+                "payload_type must be a EvidenceType", details={"field": "payload_type"}
+            )
         _validate_identity_fields(
             self.algorithm,
             self.signature_encoding,
@@ -246,6 +250,15 @@ class SignatureMetadata:
         if self.schema_version != SIGNATURE_METADATA_SCHEMA_VERSION:
             raise SignatureMetadataError(
                 "schema_version is unsupported", details={"field": "schema_version"}
+            )
+        if type(self.signing_profile) is not str:
+            raise SignatureMetadataError(
+                "signing_profile is invalid", details={"field": "signing_profile"}
+            )
+        if type(self.canonicalization_version) is not str:
+            raise SignatureMetadataError(
+                "canonicalization_version is invalid",
+                details={"field": "canonicalization_version"},
             )
         if (
             self.payload_type,
