@@ -74,33 +74,62 @@ Fresh repair-wave validation was green:
 The ignored execution report is retained locally at
 `.superpowers/sdd/2026-07-30-b4-workflow-completeness-metadata/final-fix-report.md`.
 
-## Open scoped re-review blockers
+## Scoped repair authorization and blocker closure
 
-The required single scoped re-review did not authorize lifecycle advancement.
-It reproduced four load-bearing residuals in the final repair delta:
+The repository owner selected the exact shared boundary
+`MAX_WORKFLOW_ATTEMPTS = 1_024` and authorized the scoped fixes on 2026-08-03.
+The design and ordered plan were amended before implementation. The repair was
+then completed as small red-green commits:
 
-1. `_select_session_invocations` treats a generic `session_id` as partial B4
-   workflow correlation even though the audit schema uses `step_index` or
-   `workflow_policy_digest` as the workflow-correlation trigger. A schema-valid
-   unrelated invocation can therefore invalidate an otherwise valid supplied
-   workflow set instead of being ignored.
-2. `_measure_json_document` pushes every child of an exact list or dictionary
-   before enforcing its byte budget, allowing count-sized memory amplification
-   before the typed resource-limit result.
-3. Workflow schemas cap `step_count` and `invocations` at 10,000, but the
-   producer allocates without the same cap. A 10,001-attempt session reaches
-   finalization and fails schema validation without emitting a workflow
-   artifact.
-4. Exception-path session finalization copies raw `str(exc_val)` into
-   `failure_summary`. Invalid Unicode can pass into strict v2 normalization,
-   emit the invocation terminal exactly once, but strand the workflow in
-   `FAILED` without a workflow artifact.
+- `dc3e16e` — distinguish generic session context from workflow correlation;
+- `8f76f99` — preflight workflow verification width;
+- `dd64f3e` — enforce the atomic 1,024-attempt admission boundary before
+  attempt-envelope and step-index allocation, and synchronize both schema
+  copies, verifier limits, tests, and public documentation;
+- `cee54bd` — sanitize exception-path workflow summaries without copying raw
+  exception messages into signed evidence;
+- `2b44e44` — reject excessive depth and dictionary-key byte budgets before
+  expanding child values;
+- `a15fa23` — make the byte-preflight architecture test sensitive to guard
+  ordering rather than merely guard presence;
+- `4eba16b` — make workflow verification total for catchable hostile scalar
+  inputs while preserving process-control `BaseException` propagation.
 
-The scoped reviewer reran the focused portfolio (245 passed) and nevertheless
-returned `Ready: No`. These findings were adjudicated as real contract and
-availability failures, not test-only discrepancies. Under the high-risk review
-protocol no second unreviewed repair wave was started. The change remains in
-`IMPLEMENTING`; `implementation_tasks_complete`, validation, required-review,
-CI, and convergence evidence are intentionally absent.
+Request 1,025 is rejected with `SESSION_ATTEMPT_LIMIT_EXCEEDED` while the
+attempt factory counter and step-index allocator remain unchanged. The shared
+1,024 boundary now governs producer admission, policy and workflow schemas, and
+verifier claim/supplied limits. A concurrent boundary probe admitted exactly
+one request at index 1,023 and rejected the competing request without allocating
+a second envelope.
+
+## Final validation and review
+
+Fresh validation from final production commit `4eba16b` was green:
+
+- exact B4 completion portfolio: 181 passed in 1.78 seconds;
+- full pytest suite: 3,906 passed with 20 known warnings in 38.07 seconds;
+- `flake8 aegis`: clean;
+- `git diff --check`: clean;
+- root and packaged audit, workflow, and policy schemas: byte-identical;
+- source distribution and wheel build: successful.
+
+The warnings are pre-existing deprecation and policy warnings and do not affect
+B4 acceptance. Remote CI is disabled for this local-only change; the required
+CI gate is represented by the complete local validation portfolio and package
+build, with `ci_reruns` remaining zero.
+
+The distinct scoped security closure review and independent whole-branch
+convergence review both reported no critical, important, or minor findings and
+returned `Ready: Yes`. The latter initially found the hostile scalar-subclass
+escape; commit `4eba16b` fixed it, and the reviewer verified the closure.
+
+All implementation, validation, required-review, CI-equivalent, and convergence
+gates are satisfied. B4's implementation lifecycle may advance to `COMPLETE`.
+The policy engine authorized each edge from `IMPLEMENTING` through `COMPLETE`;
+the exact transition fields and decision hashes are recorded in
+`lifecycle-transitions.json`.
+This does not claim runtime completeness assurance: that assurance remains
+`UNPROVEN` by design until downstream checkpoint work in #46 binds trusted
+completeness evidence.
 
 No push, pull request, release, deployment, or other remote action occurred.

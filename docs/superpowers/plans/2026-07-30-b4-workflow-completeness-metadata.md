@@ -36,7 +36,7 @@ completeness as unproven until #46 supplies an external checkpoint.
 - Produces: `SessionAttempt(step_index, step_id, attempt_id, terminal_artifact_checksum | None)`
 - `GovernanceSession._allocate_step_index() -> int`
 
-- [ ] **Step 1: Write concurrent allocation tests**
+- [x] **Step 1: Write concurrent allocation tests**
 
 ```python
 def test_concurrent_step_indices_are_gapless_and_unique(session, invocations):
@@ -48,13 +48,13 @@ def test_concurrent_step_indices_are_gapless_and_unique(session, invocations):
 
 Also prove rejected Phase A attempts retain an index and indices follow start/allocation order, not completion order.
 
-- [ ] **Step 2: Run and verify no index contract exists**
+- [x] **Step 2: Run and verify no index contract exists**
 
 Run: `.venv/bin/pytest tests/test_session_step_index.py tests/test_pr11_session_replay_concurrency.py -v`
 
 Expected: FAIL.
 
-- [ ] **Step 3: Implement locked allocation**
+- [x] **Step 3: Implement locked allocation**
 
 ```python
 @dataclass(frozen=True, slots=True)
@@ -76,7 +76,7 @@ def _allocate_step_index(self, step_id: str, attempt_id: int) -> int:
 
 Call immediately after minimum `AttemptEnvelope` allocation and before sequence, transition, hook, role, or risk gates.
 
-- [ ] **Step 4: Bind index into invocation correlation metadata**
+- [x] **Step 4: Bind index into invocation correlation metadata**
 
 Every terminal invocation draft includes `session_id`, `step_id`, `step_index`, and workflow policy digest before checksum/signing.
 
@@ -84,7 +84,7 @@ Run: `.venv/bin/pytest tests/test_session_step_index.py tests/test_pr11_session_
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add aegis/_internal/session.py tests/test_session_step_index.py tests/test_pr11_session_replay_concurrency.py
@@ -103,7 +103,7 @@ git commit -m "feat: allocate atomic workflow step indices"
 - Produces: `GovernanceSession.record_terminal_attempt(step_index, invocation_checksum, terminal)`
 - Session finalization reads immutable attempt records sorted by index.
 
-- [ ] **Step 1: Write omission and out-of-order tests**
+- [x] **Step 1: Write omission and out-of-order tests**
 
 ```python
 def test_session_cannot_complete_with_allocated_unfinalized_attempt(session):
@@ -126,19 +126,19 @@ def test_no_session_status_can_hide_an_allocated_attempt(session, status):
     assert exc.value.code == "SESSION_ATTEMPT_INCOMPLETE"
 ```
 
-- [ ] **Step 2: Run and verify `_steps` can omit attempts**
+- [x] **Step 2: Run and verify `_steps` can omit attempts**
 
 Run: `.venv/bin/pytest tests/test_session_attempt_terminal_records.py tests/test_governance_session.py -v`
 
 Expected: FAIL.
 
-- [ ] **Step 3: Record finalizer callbacks atomically**
+- [x] **Step 3: Record finalizer callbacks atomically**
 
 After successful invocation evidence emission, the finalizer calls the session-owned recorder with the final v2 checksum. Duplicate, unknown, or conflicting records fail closed.
 Allow `SessionStateError` to accept a specific `code` keyword while retaining
 `WORKFLOW_INVALID_TRANSITION` as its default.
 
-- [ ] **Step 4: Define session terminal behavior**
+- [x] **Step 4: Define session terminal behavior**
 
 Every session status requires all allocated attempts to have a terminal
 invocation artifact. `COMPLETED` additionally requires no failed/canceled
@@ -154,7 +154,7 @@ Run: `.venv/bin/pytest tests/test_session_attempt_terminal_records.py tests/test
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add aegis/_internal/session.py aegis/_internal/evidence_finalizer.py tests/test_session_attempt_terminal_records.py tests/test_governance_session.py
@@ -173,7 +173,7 @@ git commit -m "fix: require terminal records for workflow attempts"
 **Interfaces:**
 - Workflow body contains `step_count: int` and `invocations: list[{"step_index": int, "checksum": str}]`.
 
-- [ ] **Step 1: Write signed-count/order tests**
+- [x] **Step 1: Write signed-count/order tests**
 
 ```python
 def test_workflow_claims_every_attempt_in_index_order(finalized_session):
@@ -192,13 +192,13 @@ def test_allocated_index_one_cannot_be_relabelled_as_single_step(session):
 
 Mutate count, reorder pairs, remove a failure attempt, duplicate an index, and assert checksum/signature verification fails.
 
-- [ ] **Step 2: Run and verify current summary lacks the claim**
+- [x] **Step 2: Run and verify current summary lacks the claim**
 
 Run: `.venv/bin/pytest tests/test_workflow_claimed_set.py tests/test_workflow_evidence_signing.py -v`
 
 Expected: FAIL.
 
-- [ ] **Step 3: Build the workflow draft from finalized attempt records**
+- [x] **Step 3: Build the workflow draft from finalized attempt records**
 
 ```python
 allocated_count = self._next_step_index
@@ -219,7 +219,7 @@ claim. The builder never derives `step_count` from `len(records)` without first
 proving it equals the immutable allocated count and the indices are exactly
 `0..allocated_count-1`.
 
-- [ ] **Step 4: Update both schema copies and parity tests**
+- [x] **Step 4: Update both schema copies and parity tests**
 
 Require gap-representable fields structurally; semantic gaplessness remains verifier logic.
 
@@ -227,7 +227,7 @@ Run: `.venv/bin/pytest tests/test_workflow_claimed_set.py tests/test_workflow_ev
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add aegis/_internal/session.py aegis/_internal/evidence_finalizer.py schemas/workflow_artifact.schema.json aegis/schemas/workflow_artifact.schema.json tests/test_workflow_claimed_set.py tests/test_workflow_evidence_signing.py
@@ -248,17 +248,17 @@ git commit -m "feat: sign workflow invocation claimed sets"
 - Produces: `verify_workflow_claim(workflow, invocations, *, expected_checkpoint=None) -> WorkflowVerificationReport`
 - Reuses B1 `Completeness`.
 
-- [ ] **Step 1: Write supplied-set verification tests**
+- [x] **Step 1: Write supplied-set verification tests**
 
 Test valid set, missing index, duplicate index, wrong session ID, wrong checksum, reordered set, extra supplied artifact, legacy workflow, and valid set without checkpoint.
 
-- [ ] **Step 2: Run and verify verifier is absent**
+- [x] **Step 2: Run and verify verifier is absent**
 
 Run: `.venv/bin/pytest tests/test_workflow_claimed_set_verifier.py -v`
 
 Expected: FAIL on import.
 
-- [ ] **Step 3: Implement independent verification axes**
+- [x] **Step 3: Implement independent verification axes**
 
 Define the result before implementing comparison:
 
@@ -283,7 +283,7 @@ Verify workflow content/signature first; select invocation artifacts by
 to the signed pair. Return `Completeness.UNPROVEN` when no trusted checkpoint
 is supplied.
 
-- [ ] **Step 4: Reserve #46 upgrade point**
+- [x] **Step 4: Reserve #46 upgrade point**
 
 Accept no ad-hoc boolean anchor. Define a typed `TrustedWorkflowCheckpoint` protocol import guarded behind #46; until that type exists, `expected_checkpoint` must be `None`.
 
@@ -291,7 +291,7 @@ Run: `.venv/bin/pytest tests/test_workflow_claimed_set_verifier.py tests/test_ty
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add aegis/_internal/workflow_verification.py aegis/workflow_verification.py aegis/__init__.py aegis/_internal/verification.py tests/test_workflow_claimed_set_verifier.py
@@ -311,27 +311,27 @@ git commit -m "feat: verify workflow claimed sets"
 **Interfaces:**
 - Produces stable #46 inputs: invocation content checksum, workflow final checksum, signed step count, ordered claimed set, typed completeness.
 
-- [ ] **Step 1: Add a workflow fitness test**
+- [x] **Step 1: Add a workflow fitness test**
 
 Fail if session code increments step indices without a lock, signs only successful steps, or builds workflow claims from `_steps` rather than terminal attempt records.
 
-- [ ] **Step 2: Run the boundary test**
+- [x] **Step 2: Run the boundary test**
 
 Run: `.venv/bin/pytest tests/test_architecture_security_boundaries.py -v`
 
 Expected: PASS only after Tasks 1–4.
 
-- [ ] **Step 3: Update exact assurance language**
+- [x] **Step 3: Update exact assurance language**
 
 Document: “Workflow-signed proves integrity and order of the claimed supplied set. It does not prove the host disclosed every invocation. Completeness remains unproven until a trusted checkpoint binds the expected head/count.”
 
-- [ ] **Step 4: Run B4 and docs truth suites**
+- [x] **Step 4: Run B4 and docs truth suites**
 
 Run: `.venv/bin/pytest tests/test_session_step_index.py tests/test_session_attempt_terminal_records.py tests/test_workflow_claimed_set.py tests/test_workflow_claimed_set_verifier.py tests/test_architecture_security_boundaries.py tests/test_doc_parity_v090_truth.py -v`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add docs/architecture/AEGIS_THREAT_MODEL.md docs/architecture/ARCHITECTURAL_INVARIANTS.md docs/PUBLIC_INTEGRATION_CONTRACT.md docs/reference/WORKFLOW_CLI.md docs/reference/WORKFLOW_QUICKSTART.md tests/test_architecture_security_boundaries.py
@@ -372,16 +372,16 @@ typed verification results.
 - Modify: `aegis/_internal/workflow_verification.py`
 - Modify: `tests/test_workflow_claimed_set_verifier.py`
 
-- [ ] Add a regression in which a valid workflow claim is supplied beside a
+- [x] Add a regression in which a valid workflow claim is supplied beside a
   schema-valid generic invocation containing only `session_id`; require the
   valid claim to remain `VALID`.
-- [ ] Add incomplete triggered-correlation mutants for `step_index` and
+- [x] Add incomplete triggered-correlation mutants for `step_index` and
   `workflow_policy_digest`; require `INVOCATION_CORRELATION_INVALID`.
-- [ ] Run the focused tests and observe the generic-artifact regression fail for
+- [x] Run the focused tests and observe the generic-artifact regression fail for
   the current partial-correlation behavior.
-- [ ] Introduce a trigger-field set containing only `step_index` and
+- [x] Introduce a trigger-field set containing only `step_index` and
   `workflow_policy_digest`; validate the quartet only after a trigger appears.
-- [ ] Re-run the focused tests and commit the green change.
+- [x] Re-run the focused tests and commit the green change.
 
 ### Repair Task 2: Bound verifier traversal before expansion
 
@@ -390,14 +390,14 @@ typed verification results.
 - Modify: `tests/test_workflow_claimed_set_verifier.py`
 - Modify: `tests/test_architecture_security_boundaries.py`
 
-- [ ] Add lowered-budget tests proving an oversized exact list and dictionary
+- [x] Add lowered-budget tests proving an oversized exact list and dictionary
   produce a typed budget error before child expansion.
-- [ ] Add an architecture mutant that moves the budget check after child-stack
+- [x] Add an architecture mutant that moves the budget check after child-stack
   extension and prove the fitness test rejects it.
-- [ ] Run the tests and observe the new cases fail.
-- [ ] Add an explicit node budget and preflight container cardinality/minimum
+- [x] Run the tests and observe the new cases fail.
+- [x] Add an explicit node budget and preflight container cardinality/minimum
   byte checks before enqueuing children; keep error accumulation bounded.
-- [ ] Re-run focused adversarial and fitness tests and commit the green change.
+- [x] Re-run focused adversarial and fitness tests and commit the green change.
 
 ### Repair Task 3: Enforce the 1,024 admitted-attempt ceiling
 
@@ -413,17 +413,17 @@ typed verification results.
 - Modify: `tests/test_workflow_claimed_set.py`
 - Modify: `tests/test_architecture_security_boundaries.py`
 
-- [ ] Add a boundary regression with `_next_step_index == 1_024`; the next
+- [x] Add a boundary regression with `_next_step_index == 1_024`; the next
   public pre-call must raise typed `SESSION_ATTEMPT_LIMIT_EXCEEDED`, leave the
   count unchanged, allocate no attempt envelope, and emit no partial terminal.
-- [ ] Add schema and fitness tests requiring all four schema maxima and the
+- [x] Add schema and fitness tests requiring all four schema maxima and the
   runtime constant to equal exactly 1,024.
-- [ ] Run the tests and observe the producer/schema mismatch fail.
-- [ ] Add `MAX_WORKFLOW_ATTEMPTS = 1_024` to the focused limits module, check it
+- [x] Run the tests and observe the producer/schema mismatch fail.
+- [x] Add `MAX_WORKFLOW_ATTEMPTS = 1_024` to the focused limits module, check it
   under `_attempt_lock` before increment/allocation, and use it in verification.
-- [ ] Set policy `workflow.max_steps.maximum`, workflow `step_count.maximum`,
+- [x] Set policy `workflow.max_steps.maximum`, workflow `step_count.maximum`,
   and workflow `invocations.maxItems` to 1,024 in both schema copies.
-- [ ] Re-run boundary, schema-parity, policy compiler, and B4 tests; commit green.
+- [x] Re-run boundary, schema-parity, policy compiler, and B4 tests; commit green.
 
 ### Repair Task 4: Sanitize exception-path workflow summaries
 
@@ -432,22 +432,22 @@ typed verification results.
 - Modify: `tests/test_session_attempt_terminal_records.py`
 - Modify: `tests/test_b4_final_correctness.py`
 
-- [ ] Add a context-manager regression that raises
+- [x] Add a context-manager regression that raises
   `RuntimeError("\\ud800")` after an admitted Phase B failure; require one
   terminal invocation, one valid workflow artifact, `FINALIZED`, and propagation
   of the original exception.
-- [ ] Run the regression and observe missing workflow finalization.
-- [ ] Replace raw exception text with bounded `exception_type` and stable
+- [x] Run the regression and observe missing workflow finalization.
+- [x] Replace raw exception text with bounded `exception_type` and stable
   `reason_code="SESSION_BODY_EXCEPTION"`; do not retain diagnostic message text
   in signed workflow state.
-- [ ] Re-run exception, finalizer, and B4 end-to-end tests; commit green.
+- [x] Re-run exception, finalizer, and B4 end-to-end tests; commit green.
 
 ### Repair completion and renewed review
 
-- [ ] Run the B4 focused portfolio and full pytest suite.
-- [ ] Run `flake8 aegis`, `git diff --check`, schema-copy parity, and package
+- [x] Run the B4 focused portfolio and full pytest suite.
+- [x] Run `flake8 aegis`, `git diff --check`, schema-copy parity, and package
   build.
-- [ ] Update lifecycle evidence with RED/GREEN commands and hashes.
-- [ ] Obtain a new scoped security review, then a distinct high-risk convergence
+- [x] Update lifecycle evidence with RED/GREEN commands and hashes.
+- [x] Obtain a new scoped security review, then a distinct high-risk convergence
   review. Advance beyond `IMPLEMENTING` only if both report no load-bearing
   residuals.
