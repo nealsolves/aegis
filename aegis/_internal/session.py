@@ -1299,9 +1299,12 @@ class GovernanceSession:
         if exc_type is not None:
             # Exception path: move to FAILED and record context
             if self._state not in TERMINAL_STATES:
+                safe_exception_type, _ = _safe_workflow_identity(
+                    exc_type.__name__
+                )
                 self._failure_summary = {
-                    "exception_type": exc_type.__name__,
-                    "message": str(exc_val),
+                    "exception_type": safe_exception_type,
+                    "reason_code": "SESSION_BODY_EXCEPTION",
                 }
                 self._state = STATE_FAILED
             # Suppress sink errors here — original exception must take precedence

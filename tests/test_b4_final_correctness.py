@@ -162,6 +162,50 @@ def test_every_noncompleted_path_emits_one_signed_verifiable_claim(
     assert report.completeness is Completeness.UNPROVEN
 
 
+def test_invalid_unicode_exception_still_finalizes_workflow(monkeypatch):
+    """Raw exception text must not poison signed exception-path evidence."""
+    emitted: list[dict] = []
+    governance = AEGIS(sink=CallbackAuditSink(emitted.append))
+    session = governance.open_session(session_id="unsafe-exception-summary")
+
+    def fail_phase_b(_record, _output):
+        raise RuntimeError("\ud800")
+
+    monkeypatch.setattr(
+        governance,
+        "_enforce_consumed_post_call",
+        fail_phase_b,
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        with session:
+            handle = session.enforce_step_pre_call(
+                _invocation(),
+                step_id="step-0",
+            )
+            session.enforce_step_post_call(handle, GOOD_OUTPUT)
+
+    invocations = [
+        artifact
+        for artifact in emitted
+        if artifact.get("audit_schema_version") == "2.0"
+    ]
+    workflows = [
+        artifact
+        for artifact in emitted
+        if artifact.get("workflow_schema_version") == "2.0"
+    ]
+    assert str(exc_info.value) == "\ud800"
+    assert len(invocations) == 1
+    assert len(workflows) == 1
+    assert session.state == "FINALIZED"
+    assert session.workflow_artifact == workflows[0]
+    assert workflows[0]["failure_summary"] == {
+        "exception_type": "RuntimeError",
+        "reason_code": "SESSION_BODY_EXCEPTION",
+    }
+
+
 def _change(field: str, value: object):
     def mutate(metadata: dict) -> None:
         metadata[field] = value

@@ -1142,6 +1142,10 @@ A session admits at most 1,024 workflow attempts. A later request fails before
 attempt-envelope or step-index allocation with
 `SESSION_ATTEMPT_LIMIT_EXCEEDED`.
 
+Exception-path workflow summaries contain only a bounded `exception_type` and
+stable `SESSION_BODY_EXCEPTION` reason code; raw exception messages are not
+signed.
+
 ### 3.11 Policy date validation
 
 Policies can declare temporal validity:

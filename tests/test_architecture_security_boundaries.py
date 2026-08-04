@@ -1757,6 +1757,11 @@ def test_all_five_b4_docs_freeze_assurance_and_verifier_budgets() -> None:
         "fails before attempt-envelope or step-index allocation with "
         "`SESSION_ATTEMPT_LIMIT_EXCEEDED`."
     )
+    exception_summary = (
+        "Exception-path workflow summaries contain only a bounded "
+        "`exception_type` and stable `SESSION_BODY_EXCEPTION` reason code; "
+        "raw exception messages are not signed."
+    )
     docs = (
         _ROOT / "docs/architecture/AEGIS_THREAT_MODEL.md",
         _ROOT / "docs/architecture/ARCHITECTURAL_INVARIANTS.md",
@@ -1770,6 +1775,7 @@ def test_all_five_b4_docs_freeze_assurance_and_verifier_budgets() -> None:
         assert collapsed.count(assurance) == 1, path
         assert collapsed.count(budget) == 1, path
         assert collapsed.count(admission) == 1, path
+        assert collapsed.count(exception_summary) == 1, path
         assert "#46" in collapsed, path
 
 
