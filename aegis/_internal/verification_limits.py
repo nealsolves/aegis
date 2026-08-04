@@ -18,7 +18,7 @@ class VerificationInputError(Exception):
 
 
 class _IterableConsumptionError(VerificationInputError):
-    """Raised when caller iteration fails independently of configured limits."""
+    """Raised when caller iterable handling fails outside configured limits."""
 
 
 def materialize_bounded_iterable(
@@ -30,17 +30,17 @@ def materialize_bounded_iterable(
     """Consume an iterable with one bounded lookahead and no sizing hooks."""
     if type(max_items) is not int or max_items < 0:
         raise VerificationInputError
-    if isinstance(value, (str, bytes, bytearray)) or (
-        reject_mappings and isinstance(value, Mapping)
-    ):
-        raise VerificationInputError
-
-    iterator_failed = False
+    iterable_input_failed = False
     try:
-        iterator = iter(value)
+        if isinstance(value, (str, bytes, bytearray)) or (
+            reject_mappings and isinstance(value, Mapping)
+        ):
+            iterable_input_failed = True
+        else:
+            iterator = iter(value)
     except Exception:
-        iterator_failed = True
-    if iterator_failed:
+        iterable_input_failed = True
+    if iterable_input_failed:
         raise _IterableConsumptionError
 
     items: list[object] = []

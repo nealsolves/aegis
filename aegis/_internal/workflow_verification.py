@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
@@ -99,16 +98,6 @@ def _materialize_invocations(
     *,
     budget: VerificationBudget,
 ) -> list[object] | None:
-    if (
-        isinstance(invocations, (str, bytes, bytearray, Mapping))
-    ):
-        errors.append(
-            _error(
-                "WORKFLOW_INVOCATIONS_INPUT_INVALID",
-                "Invocations must be supplied as an ordered iterable",
-            )
-        )
-        return None
     try:
         supplied = materialize_bounded_iterable(
             invocations,

@@ -170,6 +170,61 @@ def test_bounded_materialization_reads_only_one_element_past_the_limit():
     assert over_limit.next_calls == 4
 
 
+@pytest.mark.parametrize(
+    "failure",
+    [
+        pytest.param(
+            import_module(
+                "aegis._internal.verification_limits"
+            ).VerificationInputError,
+            id="forged-limit-error",
+        ),
+        pytest.param(UnicodeError, id="unicode-error"),
+        pytest.param(MemoryError, id="memory-error"),
+    ],
+)
+def test_bounded_materialization_sanitizes_hostile_classification(failure):
+    limits = import_module("aegis._internal.verification_limits")
+
+    class HostileClassification:
+        @property
+        def __class__(self):
+            raise failure("secret-marker-from-classification")
+
+        def __iter__(self):
+            return iter(())
+
+    with pytest.raises(limits.VerificationInputError) as raised:
+        limits.materialize_bounded_iterable(
+            HostileClassification(),
+            max_items=3,
+        )
+
+    assert str(raised.value) == ""
+    assert raised.value.__cause__ is None
+    assert raised.value.__context__ is None
+    assert "secret-marker" not in repr(raised.value)
+
+
+@pytest.mark.parametrize("failure", [KeyboardInterrupt, SystemExit])
+def test_bounded_materialization_preserves_noncatchable_classification(failure):
+    limits = import_module("aegis._internal.verification_limits")
+
+    class HostileClassification:
+        @property
+        def __class__(self):
+            raise failure("noncatchable-marker")
+
+        def __iter__(self):
+            return iter(())
+
+    with pytest.raises(failure, match="noncatchable-marker"):
+        limits.materialize_bounded_iterable(
+            HostileClassification(),
+            max_items=3,
+        )
+
+
 def test_bounded_verification_errors_drop_every_error_after_the_hundredth():
     contracts = import_module("aegis._internal.verification_contracts")
     limits = import_module("aegis._internal.verification_limits")

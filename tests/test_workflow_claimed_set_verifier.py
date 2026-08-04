@@ -521,6 +521,86 @@ def test_exceptional_invocation_iterable_returns_typed_report(
     assert "WORKFLOW_INVOCATIONS_INPUT_INVALID" in _error_codes(report)
 
 
+@pytest.mark.parametrize(
+    "failure",
+    [
+        pytest.param(
+            verification_limits_module.VerificationInputError,
+            id="forged-limit-error",
+        ),
+        pytest.param(UnicodeError, id="unicode-error"),
+        pytest.param(MemoryError, id="memory-error"),
+    ],
+)
+def test_hostile_invocation_classification_uses_sanitized_input_invalid_route(
+    evidence_set,
+    monkeypatch,
+    failure,
+):
+    workflow, _ = evidence_set
+    signature_calls = 0
+
+    class HostileClassification:
+        @property
+        def __class__(self):
+            raise failure("secret-marker-from-classification")
+
+        def __iter__(self):
+            return iter(())
+
+    def record_signature_call(*_args, **_kwargs):
+        nonlocal signature_calls
+        signature_calls += 1
+        return SignatureStatus.UNSIGNED, None
+
+    monkeypatch.setattr(
+        workflow_verification_module,
+        "_verify_signatures",
+        record_signature_call,
+    )
+
+    report = verify_workflow_claim(workflow, HostileClassification())
+
+    assert report.claim_status is WorkflowClaimStatus.NOT_EVALUATED
+    assert _error_codes(report) == {"WORKFLOW_INVOCATIONS_INPUT_INVALID"}
+    assert "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED" not in _error_codes(report)
+    assert "secret-marker" not in repr(report.errors)
+    assert signature_calls == 0
+
+
+@pytest.mark.parametrize("failure", [KeyboardInterrupt, SystemExit])
+def test_noncatchable_invocation_classification_propagates(
+    evidence_set,
+    monkeypatch,
+    failure,
+):
+    workflow, _ = evidence_set
+    signature_calls = 0
+
+    class HostileClassification:
+        @property
+        def __class__(self):
+            raise failure("noncatchable-marker")
+
+        def __iter__(self):
+            return iter(())
+
+    def record_signature_call(*_args, **_kwargs):
+        nonlocal signature_calls
+        signature_calls += 1
+        return SignatureStatus.UNSIGNED, None
+
+    monkeypatch.setattr(
+        workflow_verification_module,
+        "_verify_signatures",
+        record_signature_call,
+    )
+
+    with pytest.raises(failure, match="noncatchable-marker"):
+        verify_workflow_claim(workflow, HostileClassification())
+    assert signature_calls == 0
+
+
 def test_cyclic_workflow_returns_typed_budget_report(evidence_set):
     """Recursive input must be rejected before checksum/signature traversal."""
     workflow, invocations = evidence_set
