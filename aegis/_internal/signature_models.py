@@ -19,6 +19,9 @@ from aegis._internal.errors import (
 SIGNATURE_METADATA_SCHEMA_VERSION = "1"
 SIGNING_PROFILE = "aegis-signature-v1"
 CANONICALIZATION_VERSION = "aegis-canonical-json-v1"
+CHAIN_CHECKPOINT_SIGNING_PROFILE = "aegis-chain-checkpoint-v1"
+WORKFLOW_CHECKPOINT_SIGNING_PROFILE = "aegis-workflow-checkpoint-v1"
+CHECKPOINT_CANONICALIZATION_VERSION = "aegis-json-v2"
 MAX_SIGNATURE_LENGTH = 16_384
 MAX_VERIFICATION_MESSAGE_LENGTH = 1_024
 
@@ -30,6 +33,23 @@ _HEX_PATTERN = re.compile(r"[0-9a-f]+")
 
 class EvidenceType(str, Enum):
     AUDIT_ARTIFACT = "audit_artifact"
+    CHAIN_CHECKPOINT = "chain_checkpoint"
+    WORKFLOW_CHECKPOINT = "workflow_checkpoint"
+
+
+_SIGNATURE_METADATA_PROFILES = frozenset({
+    (EvidenceType.AUDIT_ARTIFACT, SIGNING_PROFILE, CANONICALIZATION_VERSION),
+    (
+        EvidenceType.CHAIN_CHECKPOINT,
+        CHAIN_CHECKPOINT_SIGNING_PROFILE,
+        CHECKPOINT_CANONICALIZATION_VERSION,
+    ),
+    (
+        EvidenceType.WORKFLOW_CHECKPOINT,
+        WORKFLOW_CHECKPOINT_SIGNING_PROFILE,
+        CHECKPOINT_CANONICALIZATION_VERSION,
+    ),
+})
 
 
 class SignatureEncoding(str, Enum):
@@ -227,18 +247,14 @@ class SignatureMetadata:
             raise SignatureMetadataError(
                 "schema_version is unsupported", details={"field": "schema_version"}
             )
-        if self.signing_profile != SIGNING_PROFILE:
+        if (
+            self.payload_type,
+            self.signing_profile,
+            self.canonicalization_version,
+        ) not in _SIGNATURE_METADATA_PROFILES:
             raise SignatureMetadataError(
-                "signing_profile is unsupported", details={"field": "signing_profile"}
-            )
-        if self.canonicalization_version != CANONICALIZATION_VERSION:
-            raise SignatureMetadataError(
-                "canonicalization_version is unsupported",
-                details={"field": "canonicalization_version"},
-            )
-        if self.payload_type is not EvidenceType.AUDIT_ARTIFACT:
-            raise SignatureMetadataError(
-                "payload_type is unsupported", details={"field": "payload_type"}
+                "signature metadata profile is unsupported",
+                details={},
             )
         if (
             isinstance(self.signed_at, bool)

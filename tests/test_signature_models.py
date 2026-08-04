@@ -1,6 +1,7 @@
 """Contract tests for typed signature and trust-anchor values."""
 
 from dataclasses import FrozenInstanceError
+from itertools import product
 
 import pytest
 
@@ -14,10 +15,13 @@ from aegis._internal.errors import (
 from aegis._internal.signature_models import (
     ALLOWED_VERIFICATION_OUTCOMES,
     CANONICALIZATION_VERSION,
+    CHECKPOINT_CANONICALIZATION_VERSION,
+    CHAIN_CHECKPOINT_SIGNING_PROFILE,
     MAX_SIGNATURE_LENGTH,
     MAX_VERIFICATION_MESSAGE_LENGTH,
     SIGNATURE_METADATA_SCHEMA_VERSION,
     SIGNING_PROFILE,
+    WORKFLOW_CHECKPOINT_SIGNING_PROFILE,
     AnchorStatus,
     ArtifactVerificationResult,
     EvidenceType,
@@ -49,6 +53,20 @@ def _metadata(**changes):
     return SignatureMetadata(**value)
 
 
+CHECKPOINT_CASES = (
+    (
+        EvidenceType.CHAIN_CHECKPOINT,
+        "aegis-chain-checkpoint-v1",
+        "aegis-json-v2",
+    ),
+    (
+        EvidenceType.WORKFLOW_CHECKPOINT,
+        "aegis-workflow-checkpoint-v1",
+        "aegis-json-v2",
+    ),
+)
+
+
 def test_contract_error_codes_are_stable():
     cases = [
         (SignatureMetadataError, "SIGNATURE_METADATA_INVALID"),
@@ -67,7 +85,12 @@ def test_constants_and_enum_values_are_stable():
     assert SIGNATURE_METADATA_SCHEMA_VERSION == "1"
     assert SIGNING_PROFILE == "aegis-signature-v1"
     assert CANONICALIZATION_VERSION == "aegis-canonical-json-v1"
+    assert CHAIN_CHECKPOINT_SIGNING_PROFILE == "aegis-chain-checkpoint-v1"
+    assert WORKFLOW_CHECKPOINT_SIGNING_PROFILE == "aegis-workflow-checkpoint-v1"
+    assert CHECKPOINT_CANONICALIZATION_VERSION == "aegis-json-v2"
     assert EvidenceType.AUDIT_ARTIFACT.value == "audit_artifact"
+    assert EvidenceType.CHAIN_CHECKPOINT.value == "chain_checkpoint"
+    assert EvidenceType.WORKFLOW_CHECKPOINT.value == "workflow_checkpoint"
     assert SignatureEncoding.HEX.value == "hex"
     assert SignatureEncoding.BASE64.value == "base64"
     assert {item.value for item in SignatureStatus} == {
@@ -193,6 +216,71 @@ def test_identity_models_accept_exact_allowed_boundary_characters():
 def test_metadata_requires_supported_contract_values(field, value):
     with pytest.raises(SignatureMetadataError):
         _metadata(**{field: value})
+
+
+@pytest.mark.parametrize("payload_type,profile,canonicalization", CHECKPOINT_CASES)
+def test_metadata_accepts_only_closed_checkpoint_tuple(
+    payload_type, profile, canonicalization
+):
+    metadata = _metadata(
+        payload_type=payload_type,
+        signing_profile=profile,
+        canonicalization_version=canonicalization,
+    )
+    assert SignatureMetadata.from_dict(metadata.to_dict()) == metadata
+
+
+@pytest.mark.parametrize("payload_type,profile,canonicalization", [
+    (EvidenceType.AUDIT_ARTIFACT, "aegis-chain-checkpoint-v1", "aegis-json-v2"),
+    (EvidenceType.CHAIN_CHECKPOINT, "aegis-signature-v1", "aegis-json-v2"),
+    (EvidenceType.CHAIN_CHECKPOINT, "aegis-chain-checkpoint-v1",
+     "aegis-canonical-json-v1"),
+    (EvidenceType.WORKFLOW_CHECKPOINT, "aegis-chain-checkpoint-v1", "aegis-json-v2"),
+])
+def test_metadata_rejects_cross_profile_tuple(
+    payload_type, profile, canonicalization
+):
+    with pytest.raises(SignatureMetadataError):
+        _metadata(
+            payload_type=payload_type,
+            signing_profile=profile,
+            canonicalization_version=canonicalization,
+        )
+
+
+def test_metadata_accepts_exactly_the_closed_signature_profile_matrix():
+    payload_types = tuple(EvidenceType)
+    signing_profiles = (
+        SIGNING_PROFILE,
+        CHAIN_CHECKPOINT_SIGNING_PROFILE,
+        WORKFLOW_CHECKPOINT_SIGNING_PROFILE,
+    )
+    canonicalization_versions = (
+        CANONICALIZATION_VERSION,
+        CHECKPOINT_CANONICALIZATION_VERSION,
+    )
+    supported = {
+        (EvidenceType.AUDIT_ARTIFACT, "aegis-signature-v1", "aegis-canonical-json-v1"),
+        *CHECKPOINT_CASES,
+    }
+
+    for metadata_tuple in product(
+        payload_types, signing_profiles, canonicalization_versions
+    ):
+        payload_type, profile, canonicalization = metadata_tuple
+        if metadata_tuple in supported:
+            assert _metadata(
+                payload_type=payload_type,
+                signing_profile=profile,
+                canonicalization_version=canonicalization,
+            ).payload_type is payload_type
+        else:
+            with pytest.raises(SignatureMetadataError):
+                _metadata(
+                    payload_type=payload_type,
+                    signing_profile=profile,
+                    canonicalization_version=canonicalization,
+                )
 
 
 def test_metadata_serializes_all_fields_in_declared_order_and_round_trips():

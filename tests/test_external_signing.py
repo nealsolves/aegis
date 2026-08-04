@@ -60,6 +60,17 @@ def _metadata(**changes: object) -> SignatureMetadata:
 def test_metadata_signing_payload_matches_frozen_profile():
     artifact = {"audit_schema_version": "1.4", "signature": None}
     metadata = _metadata()
+    assert metadata.to_dict() == {
+        "schema_version": "1",
+        "signing_profile": "aegis-signature-v1",
+        "canonicalization_version": "aegis-canonical-json-v1",
+        "payload_type": "audit_artifact",
+        "algorithm": "HSM-SHA256",
+        "signature_encoding": "hex",
+        "key_reference": "audit-key",
+        "key_version": "version/7",
+        "signed_at": 123,
+    }
     expected_json = (
         b'{"audit_schema_version":"1.4","signature_metadata":{'
         b'"algorithm":"HSM-SHA256",'
