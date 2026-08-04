@@ -36,6 +36,7 @@ from aegis._internal.errors import (
     AuditSinkError,
     ChainLinkError,
     EvidenceFinalizationError,
+    SessionStateError,
 )
 from aegis._internal.evidence_diagnostics import EvidenceDiagnostics
 from aegis._internal.evidence_profiles import build_content_checksum_v2
@@ -74,11 +75,31 @@ _CHAIN_FIELDS = frozenset(
         "reservation_id",
     }
 )
+_WORKFLOW_CLAIM_FIELDS = frozenset({"step_count", "invocations"})
 _CHAIN_LINK_TIMEOUT_SECONDS = 1.0
 
 
 class SchemaValidator(Protocol):
     def validate(self, artifact: object) -> None: ...
+
+
+class TerminalReservation(Protocol):
+    """One pre-emission reservation for a session terminal record."""
+
+    def commit(self, content_checksum: str) -> None: ...
+
+    def abort(self) -> None: ...
+
+
+class TerminalRecorder(Protocol):
+    """Origin-bound session callback used before acknowledged delivery."""
+
+    def reserve(
+        self,
+        artifact: Mapping[str, Any],
+        terminal: TerminalClass,
+        origin: object,
+    ) -> TerminalReservation: ...
 
 
 class _DraftClaim:
@@ -369,6 +390,11 @@ class EvidenceFinalizer:
             raise EvidenceFinalizationError(
                 "Workflow evidence cannot carry invocation chain coordinates"
             )
+        missing_claim = sorted(_WORKFLOW_CLAIM_FIELDS.difference(body))
+        if missing_claim:
+            raise EvidenceFinalizationError(
+                "Workflow evidence claimed set is incomplete"
+            )
         metadata = body.pop("metadata", {})
         if type(metadata) is not dict:
             raise EvidenceFinalizationError("Evidence metadata must be an object")
@@ -424,6 +450,7 @@ class EvidenceFinalizer:
         if not draft._claim.claim():
             raise EvidenceFinalizationError("Evidence draft was already finalized")
         reservation: ChainReservation | None = None
+        terminal_reservation: TerminalReservation | None = None
         emission_acknowledged = False
         try:
             reservation, coordinates = self._reserve_if_required(draft)
@@ -448,6 +475,14 @@ class EvidenceFinalizer:
             if type(normalized_final) is not dict:  # pragma: no cover
                 raise EvidenceFinalizationError("Final evidence is not an object")
             self._config.schema_validator.validate(normalized_final)
+            if draft.artifact_type == "invocation":
+                binding = _CURRENT_TERMINAL_RECORDER.get()
+                if binding is not None:
+                    terminal_reservation = binding.recorder.reserve(
+                        normalized_final,
+                        draft.terminal,
+                        binding.origin,
+                    )
             self._emit_acknowledged(normalized_final)
             emission_acknowledged = True
             if reservation is not None:
@@ -455,8 +490,15 @@ class EvidenceFinalizer:
                     reservation,
                     normalized_final["checksum"],
                 )
+            if terminal_reservation is not None:
+                terminal_reservation.commit(normalized_final["checksum"])
             return copy.deepcopy(normalized_final)
-        except (AuditSinkError, ChainLinkError, EvidenceFinalizationError):
+        except (
+            AuditSinkError,
+            ChainLinkError,
+            EvidenceFinalizationError,
+            SessionStateError,
+        ):
             raise
         except Exception as exc:
             raise EvidenceFinalizationError(
@@ -465,6 +507,8 @@ class EvidenceFinalizer:
         finally:
             if reservation is not None and not emission_acknowledged:
                 self._abort_without_masking(reservation)
+            if terminal_reservation is not None and not emission_acknowledged:
+                self._abort_without_masking(terminal_reservation)
 
 
 # Compatibility bridge for pre-B2 artifact builders. Delivery and all
@@ -475,6 +519,21 @@ _LEGACY_SINK_UNSET = object()
 _LEGACY_ATTEMPTS = AttemptFactory()
 _CURRENT_ATTEMPT: ContextVar[AttemptEnvelope | None] = ContextVar(
     "aegis_current_evidence_attempt",
+    default=None,
+)
+_TERMINAL_RECORDER_UNSET = object()
+
+
+@dataclass(frozen=True, slots=True)
+class _TerminalRecorderBinding:
+    recorder: TerminalRecorder
+    origin: object
+
+
+_CURRENT_TERMINAL_RECORDER: ContextVar[
+    _TerminalRecorderBinding | None
+] = ContextVar(
+    "aegis_current_terminal_recorder",
     default=None,
 )
 _CURRENT_RUNTIME: ContextVar[
@@ -526,15 +585,43 @@ def evidence_attempt(
     failure_mode: str | None = None,
     diagnostics: EvidenceDiagnostics | None = None,
     chain_linker: ChainLinker | None = None,
+    terminal_recorder: TerminalRecorder | None | object = (
+        _TERMINAL_RECORDER_UNSET
+    ),
+    terminal_origin: object | None = None,
+    inherit_outer_attempt: bool = False,
 ):
     """Bind one preallocated attempt to all finalization in this call path."""
-    attempt_token = _CURRENT_ATTEMPT.set(attempt)
+    if terminal_recorder is not _TERMINAL_RECORDER_UNSET:
+        if terminal_recorder is not None and terminal_origin is None:
+            raise TypeError("terminal_origin is required with terminal_recorder")
+    outer_attempt = _CURRENT_ATTEMPT.get()
+    bound_attempt = (
+        outer_attempt
+        if inherit_outer_attempt and outer_attempt is not None
+        else attempt
+    )
+    attempt_token = _CURRENT_ATTEMPT.set(bound_attempt)
     runtime_token = _CURRENT_RUNTIME.set(
         (sink, signer, failure_mode, diagnostics, chain_linker)
     )
+    recorder_token = None
+    if terminal_recorder is not _TERMINAL_RECORDER_UNSET:
+        binding = (
+            None
+            if terminal_recorder is None
+            else _TerminalRecorderBinding(terminal_recorder, terminal_origin)
+        )
+        recorder_token = _CURRENT_TERMINAL_RECORDER.set(binding)
+    elif not inherit_outer_attempt:
+        # Public/nested enforcement owns a new attempt and must not inherit an
+        # unrelated session recorder from ambient ContextVar state.
+        recorder_token = _CURRENT_TERMINAL_RECORDER.set(None)
     try:
         yield
     finally:
+        if recorder_token is not None:
+            _CURRENT_TERMINAL_RECORDER.reset(recorder_token)
         _CURRENT_RUNTIME.reset(runtime_token)
         _CURRENT_ATTEMPT.reset(attempt_token)
 
@@ -624,6 +711,7 @@ def finalize_legacy_invocation_artifact(
     failure_mode: str | None = None,
     signer: ArtifactSigner | FinalizerSigner | None = None,
     chain_linker: ChainLinker | None = None,
+    terminal: TerminalClass | None = None,
 ) -> dict[str, Any]:
     """Finalize a detached legacy builder result through the v2 boundary."""
     runtime = _CURRENT_RUNTIME.get()
@@ -681,11 +769,15 @@ def finalize_legacy_invocation_artifact(
                     ),
                 )
             )
-    terminal = (
-        TerminalClass.ALLOW
-        if detached.get("enforcement_result") == "PASS"
-        else TerminalClass.DENY
-    )
+    selected_terminal = terminal
+    if selected_terminal is None:
+        selected_terminal = (
+            TerminalClass.ALLOW
+            if detached.get("enforcement_result") == "PASS"
+            else TerminalClass.DENY
+        )
+    elif type(selected_terminal) is not TerminalClass:
+        raise TypeError("terminal must be a TerminalClass")
     for field_name in _FINALIZATION_FIELDS:
         detached.pop(field_name, None)
     detached.pop("enforcement_result", None)
@@ -701,7 +793,7 @@ def finalize_legacy_invocation_artifact(
         finalized = finalizer.finalize(
             EvidenceDraft(
                 attempt=envelope,
-                terminal=terminal,
+                terminal=selected_terminal,
                 artifact_type="invocation",
                 body=detached,
                 failures=tuple(failures),
@@ -733,6 +825,10 @@ def finalize_legacy_invocation_artifact(
                 exc.code,
             )
             raise _EvidenceAbort(exc) from exc
+        raise
+    except SessionStateError:
+        # Session reserve/commit failures are already bounded, typed evidence
+        # ownership decisions and must retain their public reason code.
         raise
     except Exception as exc:
         bounded = EvidenceFinalizationError(

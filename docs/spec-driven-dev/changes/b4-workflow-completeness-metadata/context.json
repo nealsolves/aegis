@@ -1,0 +1,202 @@
+{
+  "schema_version": 1,
+  "change_id": "b4-workflow-completeness-metadata",
+  "workflow_family": "feature",
+  "action": "local_implementation",
+  "current_state": "COMPLETE",
+  "change_hash": "b6ae65f7cfe65b9266927e35908d8cef09ad56ab1eff9fa463bee201cc43c9c4",
+  "facts": {
+    "documentation_only": {
+      "value": false,
+      "source_type": "approved_implementation_plan",
+      "source_ref": "docs/superpowers/plans/2026-07-30-b4-workflow-completeness-metadata.md",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "b6ae65f7cfe65b9266927e35908d8cef09ad56ab1eff9fa463bee201cc43c9c4",
+      "corroboration": []
+    },
+    "modifies_runtime_code": {
+      "value": true,
+      "source_type": "approved_implementation_plan",
+      "source_ref": "docs/superpowers/plans/2026-07-30-b4-workflow-completeness-metadata.md",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "b6ae65f7cfe65b9266927e35908d8cef09ad56ab1eff9fa463bee201cc43c9c4",
+      "corroboration": []
+    },
+    "modifies_authorization": {
+      "value": true,
+      "source_type": "approved_security_design",
+      "source_ref": "docs/superpowers/specs/2026-07-30-enforcement-core-security-remediation-design.md",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "b6ae65f7cfe65b9266927e35908d8cef09ad56ab1eff9fa463bee201cc43c9c4",
+      "corroboration": []
+    },
+    "changes_public_contract": {
+      "value": true,
+      "source_type": "approved_implementation_plan",
+      "source_ref": "docs/superpowers/plans/2026-07-30-b4-workflow-completeness-metadata.md",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "b6ae65f7cfe65b9266927e35908d8cef09ad56ab1eff9fa463bee201cc43c9c4",
+      "corroboration": []
+    },
+    "adds_external_dependency": {
+      "value": false,
+      "source_type": "approved_implementation_plan",
+      "source_ref": "docs/superpowers/plans/2026-07-30-b4-workflow-completeness-metadata.md",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "b6ae65f7cfe65b9266927e35908d8cef09ad56ab1eff9fa463bee201cc43c9c4",
+      "corroboration": []
+    },
+    "deploys_to_production": {
+      "value": false,
+      "source_type": "approved_scope_analysis",
+      "source_ref": "docs/superpowers/plans/2026-07-30-enforcement-core-plan-index.md",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "b6ae65f7cfe65b9266927e35908d8cef09ad56ab1eff9fa463bee201cc43c9c4",
+      "corroboration": []
+    },
+    "instruction_system_change": {
+      "value": false,
+      "source_type": "approved_scope_analysis",
+      "source_ref": "docs/superpowers/plans/2026-07-30-b4-workflow-completeness-metadata.md",
+      "extractor": "codex-repository-fact-extractor-v1",
+      "confidence": 1.0,
+      "observed_at_change": "b6ae65f7cfe65b9266927e35908d8cef09ad56ab1eff9fa463bee201cc43c9c4",
+      "corroboration": []
+    }
+  },
+  "clarifications": [],
+  "exceptions": [],
+  "authority_constraints": [],
+  "evidence": {
+    "evaluation_passed": {
+      "satisfied": true,
+      "source_ref": "docs/spec-driven-dev/changes/b4-workflow-completeness-metadata/evidence.md",
+      "hashes": {
+        "policy_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "context_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "change_hash": "b6ae65f7cfe65b9266927e35908d8cef09ad56ab1eff9fa463bee201cc43c9c4"
+      }
+    },
+    "spec_complete": {
+      "satisfied": true,
+      "source_ref": "docs/superpowers/specs/2026-07-30-enforcement-core-security-remediation-design.md",
+      "hashes": {
+        "policy_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "context_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "change_hash": "b6ae65f7cfe65b9266927e35908d8cef09ad56ab1eff9fa463bee201cc43c9c4"
+      }
+    },
+    "material_clarifications_resolved": {
+      "satisfied": true,
+      "source_ref": "docs/spec-driven-dev/changes/b4-workflow-completeness-metadata/evidence.md",
+      "hashes": {
+        "policy_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "context_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "change_hash": "b6ae65f7cfe65b9266927e35908d8cef09ad56ab1eff9fa463bee201cc43c9c4"
+      }
+    },
+    "plan_complete": {
+      "satisfied": true,
+      "source_ref": "docs/superpowers/plans/2026-07-30-b4-workflow-completeness-metadata.md",
+      "hashes": {
+        "policy_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "context_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "change_hash": "b6ae65f7cfe65b9266927e35908d8cef09ad56ab1eff9fa463bee201cc43c9c4"
+      }
+    },
+    "instruction_context_valid": {
+      "satisfied": true,
+      "source_ref": "docs/spec-driven-dev/changes/b4-workflow-completeness-metadata/context.json",
+      "hashes": {
+        "policy_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "context_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "change_hash": "b6ae65f7cfe65b9266927e35908d8cef09ad56ab1eff9fa463bee201cc43c9c4"
+      }
+    },
+    "tasks_trace_to_acceptance": {
+      "satisfied": true,
+      "source_ref": "docs/superpowers/plans/2026-07-30-b4-workflow-completeness-metadata.md",
+      "hashes": {
+        "policy_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "context_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "change_hash": "b6ae65f7cfe65b9266927e35908d8cef09ad56ab1eff9fa463bee201cc43c9c4"
+      }
+    },
+    "artifact_analysis_clean": {
+      "satisfied": true,
+      "source_ref": "docs/superpowers/plans/2026-07-30-enforcement-core-plan-index.md",
+      "hashes": {
+        "policy_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "context_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "change_hash": "b6ae65f7cfe65b9266927e35908d8cef09ad56ab1eff9fa463bee201cc43c9c4"
+      }
+    },
+    "implementation_authorized": {
+      "satisfied": true,
+      "source_ref": "docs/spec-driven-dev/changes/b4-workflow-completeness-metadata/evidence.md",
+      "hashes": {
+        "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa",
+        "context_hash": "1175cdf91de5667eaa2edc712cb68b4e0a64ea4d0bf1400e16f8ed1b0d9df7ee",
+        "change_hash": "b6ae65f7cfe65b9266927e35908d8cef09ad56ab1eff9fa463bee201cc43c9c4"
+      }
+    },
+    "implementation_tasks_complete": {
+      "satisfied": true,
+      "source_ref": "docs/spec-driven-dev/changes/b4-workflow-completeness-metadata/evidence.md",
+      "hashes": {
+        "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa",
+        "context_hash": "0b95ddfa15d12753055a79ac858ae6e84313fdab1c6046651b8e1c68fc4f0276",
+        "change_hash": "b6ae65f7cfe65b9266927e35908d8cef09ad56ab1eff9fa463bee201cc43c9c4"
+      }
+    },
+    "local_validation_passed": {
+      "satisfied": true,
+      "source_ref": "docs/spec-driven-dev/changes/b4-workflow-completeness-metadata/evidence.md",
+      "hashes": {
+        "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa",
+        "context_hash": "9a598db4cc9ddca4dc328fac9e77eaa8bcd0417a3e815ce3347286842ff50db5",
+        "change_hash": "b6ae65f7cfe65b9266927e35908d8cef09ad56ab1eff9fa463bee201cc43c9c4"
+      }
+    },
+    "required_reviews_passed": {
+      "satisfied": true,
+      "source_ref": "docs/spec-driven-dev/changes/b4-workflow-completeness-metadata/evidence.md",
+      "hashes": {
+        "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa",
+        "context_hash": "36af0b80c4d644ad13f4a79d128c14851bbbf398d8174509a64286acf952276b",
+        "change_hash": "b6ae65f7cfe65b9266927e35908d8cef09ad56ab1eff9fa463bee201cc43c9c4"
+      }
+    },
+    "required_ci_passed": {
+      "satisfied": true,
+      "source_ref": "docs/spec-driven-dev/changes/b4-workflow-completeness-metadata/evidence.md",
+      "hashes": {
+        "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa",
+        "context_hash": "36af0b80c4d644ad13f4a79d128c14851bbbf398d8174509a64286acf952276b",
+        "change_hash": "b6ae65f7cfe65b9266927e35908d8cef09ad56ab1eff9fa463bee201cc43c9c4"
+      }
+    },
+    "convergence_passed": {
+      "satisfied": true,
+      "source_ref": "docs/spec-driven-dev/changes/b4-workflow-completeness-metadata/evidence.md",
+      "hashes": {
+        "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa",
+        "context_hash": "acddcbf401f2fa06b67b35522c04ae0209741a4cdb63ed9e53b11dfebdb0f8c2",
+        "change_hash": "b6ae65f7cfe65b9266927e35908d8cef09ad56ab1eff9fa463bee201cc43c9c4"
+      }
+    }
+  },
+  "resources": {
+    "repair_attempts": 2,
+    "ci_reruns": 0,
+    "elapsed_minutes": 0
+  },
+  "open_escalation": null,
+  "responses": []
+}

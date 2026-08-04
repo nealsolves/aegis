@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "change_id": "b4-workflow-completeness-metadata",
+  "transitions": [
+    {
+      "valid": true,
+      "previous_state": "IMPLEMENTING",
+      "current_state": "VALIDATING",
+      "transition": {
+        "authorized_by_hashes": {
+          "change_hash": "b6ae65f7cfe65b9266927e35908d8cef09ad56ab1eff9fa463bee201cc43c9c4",
+          "context_hash": "0b95ddfa15d12753055a79ac858ae6e84313fdab1c6046651b8e1c68fc4f0276",
+          "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa"
+        },
+        "from": "IMPLEMENTING",
+        "required_evidence": ["implementation_tasks_complete"],
+        "to": "VALIDATING",
+        "workflow_path": "code"
+      },
+      "hashes": {
+        "change_hash": "b6ae65f7cfe65b9266927e35908d8cef09ad56ab1eff9fa463bee201cc43c9c4",
+        "context_hash": "15a9f33b69c0b3660b2681de622d141503ffe9a5d38122c632b7797658b81ff2",
+        "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa"
+      }
+    },
+    {
+      "valid": true,
+      "previous_state": "VALIDATING",
+      "current_state": "REVIEWING",
+      "transition": {
+        "authorized_by_hashes": {
+          "change_hash": "b6ae65f7cfe65b9266927e35908d8cef09ad56ab1eff9fa463bee201cc43c9c4",
+          "context_hash": "9a598db4cc9ddca4dc328fac9e77eaa8bcd0417a3e815ce3347286842ff50db5",
+          "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa"
+        },
+        "from": "VALIDATING",
+        "required_evidence": ["local_validation_passed"],
+        "to": "REVIEWING",
+        "workflow_path": "code"
+      },
+      "hashes": {
+        "change_hash": "b6ae65f7cfe65b9266927e35908d8cef09ad56ab1eff9fa463bee201cc43c9c4",
+        "context_hash": "fe711edff81d4a8e4722d232855a0410abe88d4d7833b8ad8b1ebffc26c73927",
+        "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa"
+      }
+    },
+    {
+      "valid": true,
+      "previous_state": "REVIEWING",
+      "current_state": "CONVERGING",
+      "transition": {
+        "authorized_by_hashes": {
+          "change_hash": "b6ae65f7cfe65b9266927e35908d8cef09ad56ab1eff9fa463bee201cc43c9c4",
+          "context_hash": "36af0b80c4d644ad13f4a79d128c14851bbbf398d8174509a64286acf952276b",
+          "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa"
+        },
+        "from": "REVIEWING",
+        "required_evidence": ["required_reviews_passed", "required_ci_passed"],
+        "to": "CONVERGING",
+        "workflow_path": "code"
+      },
+      "hashes": {
+        "change_hash": "b6ae65f7cfe65b9266927e35908d8cef09ad56ab1eff9fa463bee201cc43c9c4",
+        "context_hash": "bc7da0303cb0023649cb72c97e2a62b7a020ceb62c079f3198fa21bf3f43d41a",
+        "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa"
+      }
+    },
+    {
+      "valid": true,
+      "previous_state": "CONVERGING",
+      "current_state": "COMPLETE",
+      "transition": {
+        "authorized_by_hashes": {
+          "change_hash": "b6ae65f7cfe65b9266927e35908d8cef09ad56ab1eff9fa463bee201cc43c9c4",
+          "context_hash": "acddcbf401f2fa06b67b35522c04ae0209741a4cdb63ed9e53b11dfebdb0f8c2",
+          "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa"
+        },
+        "from": "CONVERGING",
+        "required_evidence": ["convergence_passed"],
+        "to": "COMPLETE",
+        "workflow_path": "code"
+      },
+      "hashes": {
+        "change_hash": "b6ae65f7cfe65b9266927e35908d8cef09ad56ab1eff9fa463bee201cc43c9c4",
+        "context_hash": "f1da10902139d6a2669c8ed44bac4f0a9458f6caf65d1ec095c09a4b848f8f27",
+        "policy_hash": "d0416dab300bbcfbf7fba95bb51b1d1aeda7725d945560d0fbb0ce4f3dc6a3fa"
+      }
+    }
+  ]
+}

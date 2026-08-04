@@ -110,6 +110,11 @@ from aegis.audit_chain import (
     verify_chain,
     verify_chain_detailed,
 )
+from aegis.workflow_verification import (
+    WorkflowClaimStatus,
+    WorkflowVerificationReport,
+    verify_workflow_claim,
+)
 from aegis._internal.evidence_profiles import (
     EvidenceProfileError,
     build_content_checksum_v2,
@@ -244,6 +249,7 @@ __all__ = [
     "VerificationError",
     "VerificationReasonCode",
     "WorkflowApprovalRequiredError",
+    "WorkflowClaimStatus",
     "WorkflowHandoffDeniedError",
     "WorkflowHookDeniedError",
     "WorkflowParticipantMismatchError",
@@ -257,6 +263,7 @@ __all__ = [
     "WorkflowToolBudgetExceededError",
     "WorkflowTransitionDeniedError",
     "WorkflowUnsupportedBindingError",
+    "WorkflowVerificationReport",
     "TRAJECTORY_DEGRADING",
     "TRAJECTORY_IMPROVING",
     "TRAJECTORY_STABLE",
@@ -285,5 +292,6 @@ __all__ = [
     "verify_chain",
     "verify_chain_detailed",
     "verify_content_checksum_v2",
+    "verify_workflow_claim",
     "with_retry",
 ]

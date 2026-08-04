@@ -157,6 +157,11 @@ def _make_workflow_artifact(tmp_path: Path, status: str = "COMPLETED") -> Path:
             {"step_id": "step-1", "invocation_artifact_checksum": checksums[1]},
         ],
         "invocation_audit_checksums": checksums,
+        "step_count": len(checksums),
+        "invocations": [
+            {"step_index": index, "checksum": checksum}
+            for index, checksum in enumerate(checksums)
+        ],
         "failure_summary": None,
         "metadata": {},
         "signature_status": "unsigned",

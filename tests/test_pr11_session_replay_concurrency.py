@@ -128,7 +128,7 @@ def test_pause_resume_interleaving_rejects_new_step_until_resumed():
             session.enforce_step_pre_call(_inv())
         session.enforce_step_post_call(token, GOOD_OUTPUT)
         session.resume(approval_id="pause-1")
-        session.complete()
+        session.cancel()
 
 
 def test_concurrent_phase_b_completion_attempt_is_fail_closed():
@@ -149,6 +149,21 @@ def test_concurrent_phase_b_completion_attempt_is_fail_closed():
             results = list(pool.map(lambda _index: complete_step(), range(2)))
 
         assert sorted(results) == ["OPERATION_NOT_ACTIVE", "PASS"]
+        session.complete()
+
+
+def test_step_indices_follow_allocation_not_phase_b_completion_order():
+    with AEGIS().open_session() as session:
+        first = session.enforce_step_pre_call(_inv(), step_id="first")
+        second = session.enforce_step_pre_call(_inv(), step_id="second")
+
+        second_artifact = session.enforce_step_post_call(second, GOOD_OUTPUT)
+        first_artifact = session.enforce_step_post_call(first, GOOD_OUTPUT)
+
+        assert first.step_index == 0
+        assert second.step_index == 1
+        assert second_artifact["context"]["step_index"] == 1
+        assert first_artifact["context"]["step_index"] == 0
         session.complete()
 
 

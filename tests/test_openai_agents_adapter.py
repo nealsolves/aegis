@@ -786,6 +786,7 @@ def test_authorize_step_tool_call_rejects_unregistered_token():
             correlation_id="not-registered",
             policy_digest="0" * 64,
             canonicalization_profile="forged",
+            step_index=0,
         )
         with pytest.raises(WorkflowSessionTokenInvalidError, match="not registered"):
             session.authorize_step_tool_call(fake, tool_name="tool")
@@ -1060,6 +1061,7 @@ def _make_prepared_step(session: Any, token_id: str, adapter_step_key: str) -> A
         correlation_id=token_id,
         policy_digest="0" * 64,
         canonicalization_profile="test",
+        step_index=0,
     )
     session._adapter_step_states[token_id] = {
         "adapter_step_key": adapter_step_key,

@@ -246,6 +246,7 @@ Model output is treated as untrusted input.
 * replay or replacement of otherwise valid evidence
 * sink acknowledgement followed by a crash before chain-reservation commit
 * storage-write attackers deleting a valid tail or replacing a complete valid chain
+* a host presenting a signed workflow while omitting invocation attempts
 
 **Risks:**
 
@@ -283,6 +284,14 @@ Model output is treated as untrusted input.
   distinctly and can be reconciled by reservation ID against observed sink state
 * supplied-sequence verification checks content and internal continuity without
   promoting either result into a sequence-completeness claim
+* each workflow attempt receives a gapless index under a session lock before
+  authorization gates; every allocated attempt must have exactly one terminal
+  invocation artifact before workflow finalization
+* workflow content and any configured workflow signature cover `step_count` and
+  the ordered `invocations` pairs of allocated index and invocation content
+  checksum; the legacy `steps` summary is not the signed claimed set
+* workflow artifacts are deliberately detached from invocation audit chains;
+  they cannot substitute for invocation evidence during claimed-set verification
 
 The host owns the trust store or key resolver, credentials, secret keys,
 provider transport, retries, timeouts, availability behavior, and storage.
@@ -300,6 +309,23 @@ internally consistent. Roadmap item #46 is the separate control that binds
 trusted heads to v2 content checksums. The bundled `AuditChain` is in-memory and
 does not claim crash persistence; hosts must reconcile the emit/commit crash
 window or provide a persistent linker.
+
+Workflow-signed proves integrity and order of the claimed supplied set. It does
+not prove the host disclosed every invocation. Completeness remains unproven
+until a trusted checkpoint binds the expected head/count.
+
+The verifier bounds claims and supplied artifacts to 1,024 entries each,
+measured input to 4 MiB, nesting to 32 levels, and reports to 100 errors.
+Exceeding an input budget fails closed with
+`WORKFLOW_VERIFICATION_LIMIT_EXCEEDED`.
+
+A session admits at most 1,024 workflow attempts. A later request fails before
+attempt-envelope or step-index allocation with
+`SESSION_ATTEMPT_LIMIT_EXCEEDED`.
+
+Exception-path workflow summaries contain only a bounded `exception_type` and
+stable `SESSION_BODY_EXCEPTION` reason code; raw exception messages are not
+signed.
 
 ---
 

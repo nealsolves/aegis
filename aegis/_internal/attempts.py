@@ -15,6 +15,11 @@ _DEFAULT_MAX_IDENTITY_LENGTH = 512
 _MAX_EVIDENCE_STRING_LENGTH = 4096
 _MAX_COLLECTION_ITEMS = 1000
 _MAX_NESTING_DEPTH = 16
+_SAFE_INTEGER_MAX = 9_007_199_254_740_991
+
+
+def _has_lone_surrogate(value: str) -> bool:
+    return any(0xD800 <= ord(character) <= 0xDFFF for character in value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,7 +43,12 @@ class AttemptEnvelope:
 
 
 def _bounded_string(value: Any, *, limit: int) -> str:
-    if isinstance(value, str) and value.strip() and len(value) <= limit:
+    if (
+        isinstance(value, str)
+        and value.strip()
+        and len(value) <= limit
+        and not _has_lone_surrogate(value)
+    ):
         return value
     return "unknown"
 
@@ -47,10 +57,15 @@ def _freeze_json(value: Any, *, depth: int = 0) -> Any:
     if depth > _MAX_NESTING_DEPTH:
         raise ValueError("JSON value exceeds attempt-envelope nesting bound")
     if value is None or isinstance(value, (str, bool)):
-        if isinstance(value, str) and len(value) > _MAX_EVIDENCE_STRING_LENGTH:
-            raise ValueError("JSON string exceeds attempt-envelope bound")
+        if isinstance(value, str) and (
+            len(value) > _MAX_EVIDENCE_STRING_LENGTH
+            or _has_lone_surrogate(value)
+        ):
+            raise ValueError("JSON string exceeds attempt-envelope domain")
         return value
     if isinstance(value, int) and not isinstance(value, bool):
+        if abs(value) > _SAFE_INTEGER_MAX:
+            raise ValueError("JSON integer exceeds attempt-envelope domain")
         return value
     if isinstance(value, float) and math.isfinite(value):
         return value
@@ -61,6 +76,8 @@ def _freeze_json(value: Any, *, depth: int = 0) -> Any:
         for key, item in value.items():
             if not isinstance(key, str):
                 raise ValueError("JSON object key must be a string")
+            if _has_lone_surrogate(key):
+                raise ValueError("JSON object key is outside the evidence domain")
             frozen[key] = _freeze_json(item, depth=depth + 1)
         return MappingProxyType(frozen)
     if isinstance(value, list):

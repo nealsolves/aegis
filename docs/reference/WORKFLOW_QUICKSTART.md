@@ -52,6 +52,10 @@ Steps:   2
 Session: <uuid>
 ```
 
+> **Current-source-only B4 API:** The workflow claimed-set material below is in
+> the current source tree, not `aegis-ai-governance==0.9.0b1`. No later
+> published version is assigned.
+
 ## What just happened
 
 The starter script exercised the full workflow governance lifecycle in six actions:
@@ -75,12 +79,39 @@ The starter script exercised the full workflow governance lifecycle in six actio
 
 5. **`enforce_step_post_call`** (Step 2) — Post-call governance for the second step.
 
-6. **`session.complete()`** — Marks the workflow as successfully finished.
-   Transitions the session to `COMPLETED` and emits the workflow artifact.
+6. **`session.complete()`** — Marks the workflow as successfully finished and
+   transitions the session to `COMPLETED`. `session.complete()` only transitions;
+   the workflow artifact is emitted by `session.finalize()` or context-manager
+   exit.
 
 After the `with` block exits, `session.workflow_artifact` holds the completed
-workflow record with `status: COMPLETED`, a step checksum list, and the session
-UUID that correlates all invocation artifacts.
+workflow record with `status: COMPLETED`, a step checksum list, the session UUID
+that correlates invocation artifacts, a final workflow content checksum, and a
+claimed set: signed `step_count` plus ordered `invocations` index/checksum pairs
+when a signer is configured. Every allocated attempt has exactly one terminal
+invocation artifact; the `steps` list is a convenience summary rather than the
+signed claimed set. Workflow artifacts are separate from invocation chains.
+
+Workflow-signed proves integrity and order of the claimed supplied set. It does
+not prove the host disclosed every invocation. Completeness remains unproven
+until a trusted checkpoint binds the expected head/count. The public
+`verify_workflow_claim(workflow, invocations)` helper checks claim matching with
+independent claim, signature, and completeness results. A signed workflow is
+`INDETERMINATE` without a trusted verifier, and trusted checkpoints are not
+available until #46.
+
+The verifier bounds claims and supplied artifacts to 1,024 entries each,
+measured input to 4 MiB, nesting to 32 levels, and reports to 100 errors.
+Exceeding an input budget fails closed with
+`WORKFLOW_VERIFICATION_LIMIT_EXCEEDED`.
+
+A session admits at most 1,024 workflow attempts. A later request fails before
+attempt-envelope or step-index allocation with
+`SESSION_ATTEMPT_LIMIT_EXCEEDED`.
+
+Exception-path workflow summaries contain only a bounded `exception_type` and
+stable `SESSION_BODY_EXCEPTION` reason code; raw exception messages are not
+signed.
 
 ## Next steps
 

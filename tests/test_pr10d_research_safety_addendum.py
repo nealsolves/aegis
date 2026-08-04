@@ -132,7 +132,7 @@ def test_external_handoff_blocks_without_declared_approval_or_handoff(tmp_path):
                 step_id="external_send",
                 participant_id="external_sender",
             )
-        session.complete()
+        session.cancel()
 
     assert external_call_made is False
 
@@ -170,7 +170,7 @@ def test_resume_retry_cannot_bypass_required_approval(tmp_path):
             {"result": "published"},
             step_metadata=_governance_metadata("approval_required_after_resume"),
         )
-        session.complete()
+        session.cancel()
 
     artifact = session.workflow_artifact
     assert artifact["approval_checkpoints"][0]["status"] == "approved"
@@ -233,7 +233,7 @@ def test_handoff_loop_is_bounded_by_max_steps_and_linted_when_unbounded(tmp_path
                 step_id="collect-again",
                 participant_id="researcher",
             )
-        session.complete()
+        session.cancel()
 
 
 def test_tool_budget_cannot_be_exceeded_through_step_composition(tmp_path):
@@ -259,7 +259,7 @@ def test_tool_budget_cannot_be_exceeded_through_step_composition(tmp_path):
         session.enforce_step_post_call(token2, {"result": "two"})
         with pytest.raises(aegis.WorkflowToolBudgetExceededError) as exc_info:
             session.enforce_step_pre_call(inv("tc-3"), step_id="step-3")
-        session.complete()
+        session.cancel()
 
     assert exc_info.value.code == "WORKFLOW_TOOL_BUDGET_EXCEEDED"
     assert exc_info.value.details["max_total_tool_calls"] == 2
