@@ -25,10 +25,17 @@ from aegis._internal.signature_models import (
     validate_encoded_signature,
 )
 from aegis._internal.utils import canonical_json_bytes
+from aegis._internal.verification_contracts import Completeness, VerificationError
+from aegis._internal.verification_limits import (
+    BoundedVerificationErrors,
+    VerificationBudget,
+    VerificationInputError,
+)
 
 
 _HEX64_RE = re.compile(r"^[a-f0-9]{64}$")
 _MAX_CHAIN_IDENTIFIER_LENGTH = 512
+_MAX_CHAIN_ARTIFACTS = 1_024
 _CHAIN_FIELDS = frozenset(
     {
         "chain_id",
@@ -67,19 +74,6 @@ class ChainContinuity(str, Enum):
     INVALID = "invalid"
     UNCHAINED = "unchained"
     NOT_EVALUATED = "not_evaluated"
-
-
-class Completeness(str, Enum):
-    UNPROVEN = "unproven"
-    CHECKPOINT_PROVEN = "checkpoint_proven"
-    CONTRADICTED = "contradicted"
-
-
-@dataclass(frozen=True, slots=True)
-class VerificationError:
-    code: str
-    message: str
-    index: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -495,7 +489,7 @@ def verify_chain_detailed(
     legacy_authorization: object | None = None,
 ) -> ChainVerificationReport:
     """Verify supplied evidence without conflating integrity and completeness."""
-    errors: list[VerificationError] = []
+    errors: list[VerificationError] = BoundedVerificationErrors()
     if type(artifacts) is not list:
         error = _error(
             "CHAIN_INPUT_INVALID", "Artifacts must be supplied as a list"
@@ -508,6 +502,40 @@ def verify_chain_detailed(
             completeness=Completeness.UNPROVEN,
             errors=(error,),
         )
+    if len(artifacts) > _MAX_CHAIN_ARTIFACTS:
+        errors.append(
+            _error(
+                "CHAIN_VERIFICATION_LIMIT_EXCEEDED",
+                "Chain verification input exceeds a configured limit",
+            )
+        )
+        return ChainVerificationReport(
+            content_integrity=ContentIntegrity.NOT_EVALUATED,
+            chain_continuity=ChainContinuity.NOT_EVALUATED,
+            signature_status=SignatureStatus.INDETERMINATE,
+            anchor_status=AnchorStatus.NOT_EVALUATED,
+            completeness=Completeness.UNPROVEN,
+            errors=tuple(errors),
+        )
+
+    try:
+        VerificationBudget().measure(artifacts)
+    except VerificationInputError:
+        errors.append(
+            _error(
+                "CHAIN_VERIFICATION_LIMIT_EXCEEDED",
+                "Chain verification input exceeds a configured limit",
+            )
+        )
+        return ChainVerificationReport(
+            content_integrity=ContentIntegrity.NOT_EVALUATED,
+            chain_continuity=ChainContinuity.NOT_EVALUATED,
+            signature_status=SignatureStatus.INDETERMINATE,
+            anchor_status=AnchorStatus.NOT_EVALUATED,
+            completeness=Completeness.UNPROVEN,
+            errors=tuple(errors),
+        )
+
     supplied: Sequence[object] = artifacts
 
     legacy_kind = _legacy_evidence_kind(supplied)

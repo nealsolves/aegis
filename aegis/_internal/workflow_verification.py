@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
@@ -17,10 +17,14 @@ from aegis._internal.evidence_finalizer import (
     _workflow_validator,
 )
 from aegis._internal.signature_models import SignatureStatus
-from aegis._internal.verification import (
-    Completeness,
-    VerificationError,
-    _verify_signatures,
+from aegis._internal.verification import _verify_signatures
+from aegis._internal.verification_contracts import Completeness, VerificationError
+from aegis._internal.verification_limits import (
+    BoundedVerificationErrors,
+    VerificationBudget,
+    VerificationInputError,
+    _IterableConsumptionError,
+    materialize_bounded_iterable,
 )
 from aegis._internal.workflow_limits import MAX_WORKFLOW_ATTEMPTS
 
@@ -38,108 +42,6 @@ MAX_WORKFLOW_VERIFICATION_BYTES = 4 * 1024 * 1024
 MAX_WORKFLOW_VERIFICATION_DEPTH = 32
 MAX_WORKFLOW_VERIFICATION_NODES = 65_536
 MAX_WORKFLOW_VERIFICATION_ERRORS = 100
-
-
-class _VerificationBudgetExceeded(Exception):
-    pass
-
-
-class _BoundedErrors(list[VerificationError]):
-    def append(self, error: VerificationError) -> None:
-        if len(self) < MAX_WORKFLOW_VERIFICATION_ERRORS:
-            super().append(error)
-
-
-def _measure_json_document(value: object, *, byte_limit: int) -> int:
-    """Measure one JSON document iteratively under byte/depth/cycle bounds."""
-    total = 0
-    scheduled_nodes = 1
-    seen_containers: set[int] = set()
-    stack: list[tuple[object, int]] = [(value, 0)]
-    while stack:
-        current, depth = stack.pop()
-        if depth > MAX_WORKFLOW_VERIFICATION_DEPTH:
-            raise _VerificationBudgetExceeded
-        if current is None or type(current) is bool:
-            total += 5
-        elif type(current) is str:
-            if len(current) > byte_limit - total:
-                raise _VerificationBudgetExceeded
-            total += len(current.encode("utf-8")) + 2
-        elif type(current) is int:
-            total += 32
-        elif type(current) is float:
-            total += 32
-        elif type(current) is list:
-            identity = id(current)
-            if identity in seen_containers:
-                raise _VerificationBudgetExceeded
-            seen_containers.add(identity)
-            total += 2 + len(current)
-            if (
-                total > byte_limit
-                or (current and depth >= MAX_WORKFLOW_VERIFICATION_DEPTH)
-                or len(current)
-                > MAX_WORKFLOW_VERIFICATION_NODES - scheduled_nodes
-            ):
-                raise _VerificationBudgetExceeded
-            scheduled_nodes += len(current)
-            for item in reversed(current):
-                stack.append((item, depth + 1))
-        elif type(current) is dict:
-            identity = id(current)
-            if identity in seen_containers:
-                raise _VerificationBudgetExceeded
-            seen_containers.add(identity)
-            total += 2 + len(current)
-            if (
-                total > byte_limit
-                or (current and depth >= MAX_WORKFLOW_VERIFICATION_DEPTH)
-                or len(current)
-                > MAX_WORKFLOW_VERIFICATION_NODES - scheduled_nodes
-            ):
-                raise _VerificationBudgetExceeded
-            scheduled_nodes += len(current)
-            for key in current:
-                if type(key) is not str:
-                    raise _VerificationBudgetExceeded
-                if len(key) > byte_limit - total:
-                    raise _VerificationBudgetExceeded
-                total += len(key.encode("utf-8")) + 3
-                if total > byte_limit:
-                    raise _VerificationBudgetExceeded
-            for item in current.values():
-                stack.append((item, depth + 1))
-        else:
-            raise _VerificationBudgetExceeded
-        if total > byte_limit:
-            raise _VerificationBudgetExceeded
-    return total
-
-
-def _within_document_budget(
-    value: object,
-    errors: list[VerificationError],
-    *,
-    remaining_bytes: int,
-) -> int | None:
-    try:
-        return _measure_json_document(value, byte_limit=remaining_bytes)
-    except (
-        _VerificationBudgetExceeded,
-        MemoryError,
-        RecursionError,
-        UnicodeError,
-        ValueError,
-        OverflowError,
-    ):
-        errors.append(
-            _error(
-                "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
-                "Workflow verification input exceeds a configured limit",
-            )
-        )
-        return None
 
 
 class WorkflowClaimStatus(str, Enum):
@@ -195,11 +97,10 @@ def _materialize_invocations(
     invocations: object,
     errors: list[VerificationError],
     *,
-    consumed_bytes: int,
+    budget: VerificationBudget,
 ) -> list[object] | None:
     if (
         isinstance(invocations, (str, bytes, bytearray, Mapping))
-        or not isinstance(invocations, Iterable)
     ):
         errors.append(
             _error(
@@ -209,7 +110,26 @@ def _materialize_invocations(
         )
         return None
     try:
-        iterator = iter(invocations)
+        supplied = materialize_bounded_iterable(
+            invocations,
+            max_items=MAX_WORKFLOW_SUPPLIED_ARTIFACTS,
+        )
+    except _IterableConsumptionError:
+        errors.append(
+            _error(
+                "WORKFLOW_INVOCATIONS_INPUT_INVALID",
+                "Invocations could not be consumed as an ordered iterable",
+            )
+        )
+        return None
+    except VerificationInputError:
+        errors.append(
+            _error(
+                "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
+                "Supplied invocation count exceeds the verifier limit",
+            )
+        )
+        return None
     except Exception:
         errors.append(
             _error(
@@ -218,38 +138,19 @@ def _materialize_invocations(
             )
         )
         return None
-    supplied: list[object] = []
-    total_bytes = consumed_bytes
-    while True:
+
+    for artifact in supplied:
         try:
-            artifact = next(iterator)
-        except StopIteration:
-            return supplied
-        except Exception:
-            errors.append(
-                _error(
-                    "WORKFLOW_INVOCATIONS_INPUT_INVALID",
-                    "Invocations could not be consumed as an ordered iterable",
-                )
-            )
-            return None
-        if len(supplied) >= MAX_WORKFLOW_SUPPLIED_ARTIFACTS:
+            budget.measure(artifact)
+        except VerificationInputError:
             errors.append(
                 _error(
                     "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
-                    "Supplied invocation count exceeds the verifier limit",
+                    "Workflow verification input exceeds a configured limit",
                 )
             )
             return None
-        measured = _within_document_budget(
-            artifact,
-            errors,
-            remaining_bytes=MAX_WORKFLOW_VERIFICATION_BYTES - total_bytes,
-        )
-        if measured is None:
-            return None
-        total_bytes += measured
-        supplied.append(artifact)
+    return supplied
 
 
 def _validate_claim(
@@ -481,7 +382,7 @@ def _verify_workflow_claim(
     that type exists, the only accepted checkpoint value is ``None`` and
     completeness cannot be promoted beyond ``UNPROVEN``.
     """
-    errors: list[VerificationError] = _BoundedErrors()
+    errors: list[VerificationError] = BoundedVerificationErrors()
     if type(workflow) is not dict:
         errors.append(
             _error("WORKFLOW_INPUT_INVALID", "Workflow must be a plain JSON object")
@@ -492,17 +393,52 @@ def _verify_workflow_claim(
             errors,
         )
 
-    workflow_bytes = _within_document_budget(
-        workflow,
-        errors,
+    budget = VerificationBudget(
         remaining_bytes=MAX_WORKFLOW_VERIFICATION_BYTES,
+        remaining_nodes=MAX_WORKFLOW_VERIFICATION_NODES,
     )
-    if workflow_bytes is None:
+    try:
+        budget.measure(workflow)
+    except VerificationInputError:
+        errors.append(
+            _error(
+                "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
+                "Workflow verification input exceeds a configured limit",
+            )
+        )
         return _report(
             WorkflowClaimStatus.NOT_EVALUATED,
             SignatureStatus.INDETERMINATE,
             errors,
         )
+
+    supplied = _materialize_invocations(
+        invocations,
+        errors,
+        budget=budget,
+    )
+    if supplied is None:
+        return _report(
+            WorkflowClaimStatus.NOT_EVALUATED,
+            SignatureStatus.INDETERMINATE,
+            errors,
+        )
+
+    if expected_checkpoint is not None:
+        try:
+            budget.measure(expected_checkpoint)
+        except VerificationInputError:
+            errors.append(
+                _error(
+                    "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
+                    "Workflow verification input exceeds a configured limit",
+                )
+            )
+            return _report(
+                WorkflowClaimStatus.NOT_EVALUATED,
+                SignatureStatus.INDETERMINATE,
+                errors,
+            )
 
     try:
         signature_status, _ = _verify_signatures((workflow,), None, errors)
@@ -562,18 +498,6 @@ def _verify_workflow_claim(
     if validated is None:
         return _report(WorkflowClaimStatus.INVALID, signature_status, errors)
 
-    supplied = _materialize_invocations(
-        invocations,
-        errors,
-        consumed_bytes=workflow_bytes,
-    )
-    if supplied is None:
-        return _report(
-            WorkflowClaimStatus.NOT_EVALUATED,
-            signature_status,
-            errors,
-        )
-
     step_count, claim = validated
     session_id = workflow["session_id"]
     assert isinstance(session_id, str)
@@ -601,7 +525,7 @@ def verify_workflow_claim(
             expected_checkpoint=expected_checkpoint,
         )
     except (MemoryError, RecursionError):
-        errors: list[VerificationError] = _BoundedErrors()
+        errors: list[VerificationError] = BoundedVerificationErrors()
         errors.append(
             _error(
                 "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
@@ -609,7 +533,7 @@ def verify_workflow_claim(
             )
         )
     except Exception:
-        errors = _BoundedErrors()
+        errors = BoundedVerificationErrors()
         errors.append(
             _error(
                 "WORKFLOW_VERIFICATION_ERROR",

@@ -3,13 +3,68 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from aegis._internal.canonicalization import SAFE_INTEGER_MAX
+from aegis._internal.verification_contracts import VerificationError
+
+
+MAX_VERIFICATION_ERRORS = 100
 
 
 class VerificationInputError(Exception):
     """Raised when untrusted verification input exceeds its safe domain."""
+
+
+class _IterableConsumptionError(VerificationInputError):
+    """Raised when caller iteration fails independently of configured limits."""
+
+
+def materialize_bounded_iterable(
+    value: object,
+    *,
+    max_items: int,
+    reject_mappings: bool = True,
+) -> list[object]:
+    """Consume an iterable with one bounded lookahead and no sizing hooks."""
+    if type(max_items) is not int or max_items < 0:
+        raise VerificationInputError
+    if isinstance(value, (str, bytes, bytearray)) or (
+        reject_mappings and isinstance(value, Mapping)
+    ):
+        raise VerificationInputError
+
+    iterator_failed = False
+    try:
+        iterator = iter(value)
+    except Exception:
+        iterator_failed = True
+    if iterator_failed:
+        raise _IterableConsumptionError
+
+    items: list[object] = []
+    while True:
+        next_failed = False
+        try:
+            item = next(iterator)
+        except StopIteration:
+            return items
+        except Exception:
+            next_failed = True
+        if next_failed:
+            raise _IterableConsumptionError
+        if len(items) >= max_items:
+            raise VerificationInputError
+        items.append(item)
+
+
+class BoundedVerificationErrors(list[VerificationError]):
+    """Retain only the first bounded set of core-owned verification errors."""
+
+    def append(self, error: VerificationError) -> None:
+        if len(self) < MAX_VERIFICATION_ERRORS:
+            super().append(error)
 
 
 def _has_lone_surrogate(value: str) -> bool:

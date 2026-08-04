@@ -412,6 +412,38 @@ def _normalize_external_outcome(
     )
 
 
+def _verify_prepared_payload_detailed(
+    payload: bytes,
+    signature: str,
+    metadata: SignatureMetadata,
+    verifier: ExternalArtifactVerifier | None,
+) -> ArtifactVerificationResult:
+    """Verify already-prepared signing bytes at the provider boundary."""
+    if verifier is None:
+        return ArtifactVerificationResult(
+            SignatureStatus.INDETERMINATE,
+            AnchorStatus.NOT_EVALUATED,
+            VerificationReasonCode.VERIFIER_UNAVAILABLE,
+            _SAFE_REASON_MESSAGES[VerificationReasonCode.VERIFIER_UNAVAILABLE],
+            metadata,
+        )
+
+    outcome: object = None
+    verifier_failed = False
+    disposable_metadata = SignatureMetadata.from_dict(metadata.to_dict())
+    try:
+        outcome = verifier.verify(payload, signature, disposable_metadata)
+    except Exception:
+        verifier_failed = True
+
+    if verifier_failed:
+        raise VerificationContractError(
+            "External verifier failed unexpectedly", details={}
+        )
+
+    return _normalize_external_outcome(outcome, metadata)
+
+
 def verify_artifact_detailed(
     artifact: Mapping[str, Any],
     *,
@@ -486,26 +518,9 @@ def verify_artifact_detailed(
         raise SignatureMetadataError("signature metadata is invalid", details={})
 
     payload = _metadata_signing_payload(dict(artifact), metadata)
-    if verifier is None:
-        return ArtifactVerificationResult(
-            SignatureStatus.INDETERMINATE,
-            AnchorStatus.NOT_EVALUATED,
-            VerificationReasonCode.VERIFIER_UNAVAILABLE,
-            _SAFE_REASON_MESSAGES[VerificationReasonCode.VERIFIER_UNAVAILABLE],
-            metadata,
-        )
-
-    outcome: object = None
-    verifier_failed = False
-    disposable_metadata = SignatureMetadata.from_dict(metadata.to_dict())
-    try:
-        outcome = verifier.verify(payload, signature, disposable_metadata)
-    except Exception:
-        verifier_failed = True
-
-    if verifier_failed:
-        raise VerificationContractError(
-            "External verifier failed unexpectedly", details={}
-        )
-
-    return _normalize_external_outcome(outcome, metadata)
+    return _verify_prepared_payload_detailed(
+        payload,
+        signature,
+        metadata,
+        verifier,
+    )

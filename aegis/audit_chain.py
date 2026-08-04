@@ -13,10 +13,9 @@ from aegis._internal.evidence_profiles import ContentIntegrity
 from aegis._internal.verification import (
     ChainContinuity,
     ChainVerificationReport,
-    Completeness,
-    VerificationError,
     verify_chain_detailed,
 )
+from aegis._internal.verification_contracts import Completeness, VerificationError
 
 __all__ = [
     "AuditChain",

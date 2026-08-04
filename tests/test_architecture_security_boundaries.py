@@ -1820,7 +1820,7 @@ def _mapping_key_byte_preflight_is_ordered(source: str) -> bool:
             for node in key_loop.body
             if isinstance(node, ast.AugAssign)
             and isinstance(node.target, ast.Name)
-            and node.target.id == "total"
+            and node.target.id == "total_bytes"
         ),
         None,
     )
@@ -1838,7 +1838,7 @@ def _mapping_key_byte_preflight_is_ordered(source: str) -> bool:
             )
             and any(
                 isinstance(candidate, ast.Name)
-                and candidate.id == "total"
+                and candidate.id == "total_bytes"
                 for candidate in ast.walk(node.test)
             )
         ),
@@ -1847,27 +1847,27 @@ def _mapping_key_byte_preflight_is_ordered(source: str) -> bool:
     return post_add_guard is not None and post_add_guard.lineno < value_loop.lineno
 
 
-def test_workflow_verifier_checks_mapping_bytes_before_value_expansion() -> None:
+def test_shared_verifier_checks_mapping_bytes_before_value_expansion() -> None:
     """Mapping-key bytes must be rejected before values enter the work stack."""
     source = (
-        _ROOT / "aegis/_internal/workflow_verification.py"
+        _ROOT / "aegis/_internal/verification_limits.py"
     ).read_text(encoding="utf-8")
 
     assert _mapping_key_byte_preflight_is_ordered(source)
 
 
-def test_workflow_verifier_mapping_byte_fitness_rejects_early_guard() -> None:
+def test_shared_verifier_mapping_byte_fitness_rejects_early_guard() -> None:
     """A guard before key measurement cannot protect value expansion."""
     source = (
-        _ROOT / "aegis/_internal/workflow_verification.py"
+        _ROOT / "aegis/_internal/verification_limits.py"
     ).read_text(encoding="utf-8")
     post_add_guard = (
-        "                if total > byte_limit:\n"
-        "                    raise _VerificationBudgetExceeded\n"
+        "                if total_bytes > byte_limit:\n"
+        "                    raise VerificationInputError\n"
     )
     early_guard = (
-        "            if total > byte_limit:\n"
-        "                raise _VerificationBudgetExceeded\n"
+        "            if total_bytes > byte_limit:\n"
+        "                raise VerificationInputError\n"
         "            for key in current:\n"
     )
     mutant = source.replace(post_add_guard, "", 1).replace(
