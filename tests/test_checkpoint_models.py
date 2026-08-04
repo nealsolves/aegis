@@ -987,3 +987,150 @@ def test_fix5_unevaluated_bindings_forbid_provider_results(
     values["binding_status"] = binding_status
     with pytest.raises(CheckpointError):
         CheckpointVerificationResult(**values)
+
+
+def _checkpoint_result_for_outcome(
+    checkpoint: TrustedChainCheckpoint,
+    signature_status: SignatureStatus,
+    anchor_status: AnchorStatus,
+    reason_code: VerificationReasonCode,
+    metadata: SignatureMetadata | None,
+) -> CheckpointVerificationResult:
+    provider_result = ArtifactVerificationResult(
+        signature_status,
+        anchor_status,
+        reason_code,
+        "safe",
+        metadata,
+    )
+    return CheckpointVerificationResult(
+        input_indexes=(0,),
+        checkpoint=checkpoint,
+        scope_id="chain-123",
+        chain_index=2,
+        signature_result=provider_result,
+        binding_status=CheckpointBindingStatus.MATCHED,
+    )
+
+
+def test_fix_round2_anchored_valid_result_requires_metadata(chain_record_dict):
+    checkpoint = TrustedChainCheckpoint.from_dict(chain_record_dict)
+    with pytest.raises(CheckpointError) as raised:
+        _checkpoint_result_for_outcome(
+            checkpoint,
+            SignatureStatus.VALID,
+            AnchorStatus.ANCHORED,
+            VerificationReasonCode.SIGNATURE_VALID_ANCHORED,
+            None,
+        )
+    assert raised.value.code == "CHECKPOINT_INPUT_INVALID"
+    assert raised.value.details == {}
+
+
+@pytest.mark.parametrize(
+    ("signature_status", "anchor_status", "reason_code"),
+    [
+        (
+            SignatureStatus.UNSIGNED,
+            AnchorStatus.NOT_EVALUATED,
+            VerificationReasonCode.UNSIGNED,
+        ),
+        (
+            SignatureStatus.VALID,
+            AnchorStatus.NOT_EVALUATED,
+            VerificationReasonCode.LEGACY_SIGNATURE_VALID,
+        ),
+        (
+            SignatureStatus.VALID,
+            AnchorStatus.UNANCHORED,
+            VerificationReasonCode.LEGACY_SIGNATURE_VALID,
+        ),
+        (
+            SignatureStatus.INVALID,
+            AnchorStatus.NOT_EVALUATED,
+            VerificationReasonCode.LEGACY_SIGNATURE_INVALID,
+        ),
+        (
+            SignatureStatus.INDETERMINATE,
+            AnchorStatus.NOT_EVALUATED,
+            VerificationReasonCode.SIGNATURE_METADATA_MISSING,
+        ),
+    ],
+)
+def test_fix_round2_rejects_checkpoint_context_impossible_outcomes(
+    chain_record_dict, signature_status, anchor_status, reason_code
+):
+    checkpoint = TrustedChainCheckpoint.from_dict(chain_record_dict)
+    with pytest.raises(CheckpointError) as raised:
+        _checkpoint_result_for_outcome(
+            checkpoint,
+            signature_status,
+            anchor_status,
+            reason_code,
+            checkpoint.signature_metadata,
+        )
+    assert raised.value.code == "CHECKPOINT_INPUT_INVALID"
+    assert raised.value.details == {}
+
+
+@pytest.mark.parametrize(
+    ("signature_status", "anchor_status", "reason_code"),
+    [
+        (
+            SignatureStatus.INDETERMINATE,
+            AnchorStatus.NOT_EVALUATED,
+            VerificationReasonCode.VERIFIER_UNAVAILABLE,
+        ),
+        (
+            SignatureStatus.INVALID,
+            AnchorStatus.NOT_EVALUATED,
+            VerificationReasonCode.SIGNATURE_INVALID,
+        ),
+        (
+            SignatureStatus.INVALID,
+            AnchorStatus.NOT_EVALUATED,
+            VerificationReasonCode.ALGORITHM_NOT_ALLOWED,
+        ),
+        (
+            SignatureStatus.UNKNOWN_KEY,
+            AnchorStatus.NOT_EVALUATED,
+            VerificationReasonCode.KEY_UNKNOWN,
+        ),
+        (
+            SignatureStatus.REVOKED,
+            AnchorStatus.NOT_EVALUATED,
+            VerificationReasonCode.KEY_REVOKED,
+        ),
+        (
+            SignatureStatus.VALID,
+            AnchorStatus.UNANCHORED,
+            VerificationReasonCode.SIGNATURE_VALID_UNANCHORED,
+        ),
+        (
+            SignatureStatus.VALID,
+            AnchorStatus.ANCHORED,
+            VerificationReasonCode.SIGNATURE_VALID_ANCHORED,
+        ),
+        (
+            SignatureStatus.VALID,
+            AnchorStatus.INVALID,
+            VerificationReasonCode.ANCHOR_INVALID,
+        ),
+    ],
+)
+def test_fix_round2_accepts_checkpoint_applicable_outcomes_with_matching_metadata(
+    chain_record_dict, signature_status, anchor_status, reason_code
+):
+    checkpoint = TrustedChainCheckpoint.from_dict(chain_record_dict)
+    result = _checkpoint_result_for_outcome(
+        checkpoint,
+        signature_status,
+        anchor_status,
+        reason_code,
+        checkpoint.signature_metadata,
+    )
+    assert result.signature_result.signature_status is signature_status
+    assert result.signature_result.anchor_status is anchor_status
+    assert result.signature_result.reason_code is reason_code
+    assert result.signature_result.signature_metadata == checkpoint.signature_metadata
+    assert result.signature_result.signature_metadata is not checkpoint.signature_metadata

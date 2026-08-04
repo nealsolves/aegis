@@ -40,6 +40,14 @@ _MAX_WORKFLOW_INVOCATIONS = 1_024
 _TERMINAL_WORKFLOW_STATUSES = frozenset(
     {"COMPLETED", "FAILED", "CANCELED", "INCOMPLETE"}
 )
+_CHECKPOINT_IMPOSSIBLE_REASON_CODES = frozenset(
+    {
+        VerificationReasonCode.UNSIGNED,
+        VerificationReasonCode.LEGACY_SIGNATURE_VALID,
+        VerificationReasonCode.LEGACY_SIGNATURE_INVALID,
+        VerificationReasonCode.SIGNATURE_METADATA_MISSING,
+    }
+)
 _HEX64_PATTERN = re.compile(r"[0-9a-f]{64}\Z")
 
 _CHAIN_KEYS = frozenset(
@@ -653,27 +661,27 @@ def _provider_result_snapshot(
         or not _is_exact_enum_member(reason_code, VerificationReasonCode)
         or type(message) is not str
         or len(message) > MAX_VERIFICATION_MESSAGE_LENGTH
+        or source_metadata is None
+        or reason_code in _CHECKPOINT_IMPOSSIBLE_REASON_CODES
     ):
         raise _input_error()
 
-    metadata: SignatureMetadata | None = None
-    if source_metadata is not None:
-        if type(checkpoint) is TrustedChainCheckpoint:
-            expected_profile = CHAIN_CHECKPOINT_SIGNING_PROFILE
-            expected_type = EvidenceType.CHAIN_CHECKPOINT
-        else:
-            expected_profile = WORKFLOW_CHECKPOINT_SIGNING_PROFILE
-            expected_type = EvidenceType.WORKFLOW_CHECKPOINT
-        try:
-            metadata, _ = _metadata_snapshot(
-                source_metadata,
-                expected_profile=expected_profile,
-                expected_type=expected_type,
-            )
-        except CheckpointError:
-            raise _input_error() from None
-        if metadata != checkpoint.signature_metadata:
-            raise _input_error()
+    if type(checkpoint) is TrustedChainCheckpoint:
+        expected_profile = CHAIN_CHECKPOINT_SIGNING_PROFILE
+        expected_type = EvidenceType.CHAIN_CHECKPOINT
+    else:
+        expected_profile = WORKFLOW_CHECKPOINT_SIGNING_PROFILE
+        expected_type = EvidenceType.WORKFLOW_CHECKPOINT
+    try:
+        metadata, _ = _metadata_snapshot(
+            source_metadata,
+            expected_profile=expected_profile,
+            expected_type=expected_type,
+        )
+    except CheckpointError:
+        raise _input_error() from None
+    if metadata != checkpoint.signature_metadata:
+        raise _input_error()
 
     try:
         return ArtifactVerificationResult(
