@@ -60,15 +60,15 @@ def _measure_json_document(value: object, *, byte_limit: int) -> int:
         current, depth = stack.pop()
         if depth > MAX_WORKFLOW_VERIFICATION_DEPTH:
             raise _VerificationBudgetExceeded
-        if current is None or isinstance(current, bool):
+        if current is None or type(current) is bool:
             total += 5
-        elif isinstance(current, str):
+        elif type(current) is str:
             if len(current) > byte_limit - total:
                 raise _VerificationBudgetExceeded
             total += len(current.encode("utf-8")) + 2
-        elif isinstance(current, int) and not isinstance(current, bool):
+        elif type(current) is int:
             total += 32
-        elif isinstance(current, float):
+        elif type(current) is float:
             total += 32
         elif type(current) is list:
             identity = id(current)
@@ -469,7 +469,7 @@ def _compare_selected(
             )
 
 
-def verify_workflow_claim(
+def _verify_workflow_claim(
     workflow: object,
     invocations: object,
     *,
@@ -585,6 +585,42 @@ def verify_workflow_claim(
         else WorkflowClaimStatus.INVALID
     )
     return _report(claim_status, signature_status, errors)
+
+
+def verify_workflow_claim(
+    workflow: object,
+    invocations: object,
+    *,
+    expected_checkpoint: None = None,
+) -> WorkflowVerificationReport:
+    """Return a typed report for every catchable verifier failure."""
+    try:
+        return _verify_workflow_claim(
+            workflow,
+            invocations,
+            expected_checkpoint=expected_checkpoint,
+        )
+    except (MemoryError, RecursionError):
+        errors: list[VerificationError] = _BoundedErrors()
+        errors.append(
+            _error(
+                "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
+                "Workflow verification input exceeds a configured limit",
+            )
+        )
+    except Exception:
+        errors = _BoundedErrors()
+        errors.append(
+            _error(
+                "WORKFLOW_VERIFICATION_ERROR",
+                "Workflow verification could not be evaluated",
+            )
+        )
+    return _report(
+        WorkflowClaimStatus.NOT_EVALUATED,
+        SignatureStatus.INDETERMINATE,
+        errors,
+    )
 
 
 __all__ = [

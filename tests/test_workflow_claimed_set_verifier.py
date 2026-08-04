@@ -524,6 +524,59 @@ def test_cyclic_workflow_returns_typed_budget_report(evidence_set):
     assert "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED" in _error_codes(report)
 
 
+@pytest.mark.parametrize(
+    "hostile",
+    [
+        type(
+            "HostileString",
+            (str,),
+            {"encode": lambda self, *_args, **_kwargs: (_ for _ in ()).throw(
+                RuntimeError("hostile encode")
+            )},
+        )("x"),
+        type("HostileInteger", (int,), {})(1),
+        type("HostileFloat", (float,), {})(1.0),
+    ],
+    ids=["str-subclass", "int-subclass", "float-subclass"],
+)
+def test_hostile_scalar_subclasses_return_typed_budget_report(
+    evidence_set,
+    hostile,
+):
+    workflow, invocations = evidence_set
+    changed = copy.deepcopy(workflow)
+    changed["metadata"]["hostile"] = hostile
+
+    report = verify_workflow_claim(changed, invocations)
+
+    assert report.claim_status is WorkflowClaimStatus.NOT_EVALUATED
+    assert "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED" in _error_codes(report)
+
+
+def test_public_verifier_converts_unexpected_internal_exception(
+    evidence_set,
+    monkeypatch,
+):
+    workflow, invocations = evidence_set
+
+    def fail_unexpectedly(*_args, **_kwargs):
+        raise RuntimeError("private verifier detail")
+
+    monkeypatch.setattr(
+        workflow_verification_module,
+        "_verify_workflow_claim",
+        fail_unexpectedly,
+        raising=False,
+    )
+
+    report = verify_workflow_claim(workflow, invocations)
+
+    assert report.claim_status is WorkflowClaimStatus.NOT_EVALUATED
+    assert report.signature_status is SignatureStatus.INDETERMINATE
+    assert report.completeness is Completeness.UNPROVEN
+    assert _error_codes(report) == {"WORKFLOW_VERIFICATION_ERROR"}
+
+
 def test_deep_workflow_returns_typed_budget_report(evidence_set):
     """Nesting deeper than the verifier budget must not reach recursion."""
     workflow, invocations = evidence_set
