@@ -433,10 +433,14 @@ Workflow-signed proves integrity and order of the claimed supplied set. It does
 not prove the host disclosed every invocation. Completeness remains unproven
 until a trusted checkpoint binds the expected head/count.
 
-The verifier bounds claims and supplied artifacts to 10,000 entries each,
+The verifier bounds claims and supplied artifacts to 1,024 entries each,
 measured input to 4 MiB, nesting to 32 levels, and reports to 100 errors.
 Exceeding an input budget fails closed with
 `WORKFLOW_VERIFICATION_LIMIT_EXCEEDED`.
+
+A session admits at most 1,024 workflow attempts. A later request fails before
+attempt-envelope or step-index allocation with
+`SESSION_ATTEMPT_LIMIT_EXCEEDED`.
 
 ---
 

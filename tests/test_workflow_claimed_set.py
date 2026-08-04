@@ -17,6 +17,11 @@ from aegis._internal.evidence_profiles import (
 from aegis._internal.errors import GovernanceViolationError
 from aegis._internal.outcomes import TerminalClass
 from aegis._internal.session import SessionAttempt
+from aegis._internal.workflow_limits import MAX_WORKFLOW_ATTEMPTS
+from aegis._internal.workflow_verification import (
+    MAX_WORKFLOW_CLAIM_ENTRIES,
+    MAX_WORKFLOW_SUPPLIED_ARTIFACTS,
+)
 from aegis._internal.signing import (
     FINALIZER_WORKFLOW_DOMAIN,
     verify_finalized_artifact,
@@ -253,7 +258,7 @@ def test_both_workflow_schemas_bound_claim_size(session):
             json.loads(schema_path.read_text(encoding="utf-8"))
         )
         oversized_count = copy.deepcopy(artifact)
-        oversized_count["step_count"] = 10_001
+        oversized_count["step_count"] = 1_025
         assert any(
             error.validator == "maximum"
             for error in validator.iter_errors(oversized_count)
@@ -262,11 +267,40 @@ def test_both_workflow_schemas_bound_claim_size(session):
         oversized_claim = copy.deepcopy(artifact)
         oversized_claim["invocations"] = [
             {"step_index": 0, "checksum": "0" * 64}
-        ] * 10_001
+        ] * 1_025
         assert any(
             error.validator == "maxItems"
             for error in validator.iter_errors(oversized_claim)
         )
+
+
+def test_policy_and_workflow_schema_limits_are_exactly_1024():
+    """Policy, producer, artifacts, and verifier must share one hard ceiling."""
+    policy_paths = (
+        ROOT / "schemas/policy_dsl.schema.json",
+        ROOT / "aegis/schemas/policy_dsl.schema.json",
+    )
+    workflow_paths = (
+        ROOT / "schemas/workflow_artifact.schema.json",
+        ROOT / "aegis/schemas/workflow_artifact.schema.json",
+    )
+
+    assert policy_paths[0].read_bytes() == policy_paths[1].read_bytes()
+    assert workflow_paths[0].read_bytes() == workflow_paths[1].read_bytes()
+    assert MAX_WORKFLOW_ATTEMPTS == 1_024
+    assert MAX_WORKFLOW_CLAIM_ENTRIES == MAX_WORKFLOW_ATTEMPTS
+    assert MAX_WORKFLOW_SUPPLIED_ARTIFACTS == MAX_WORKFLOW_ATTEMPTS
+    for path in policy_paths:
+        schema = json.loads(path.read_text(encoding="utf-8"))
+        assert (
+            schema["properties"]["workflow"]["properties"]["max_steps"]
+            ["maximum"]
+            == 1_024
+        )
+    for path in workflow_paths:
+        schema = json.loads(path.read_text(encoding="utf-8"))
+        assert schema["properties"]["step_count"]["maximum"] == 1_024
+        assert schema["properties"]["invocations"]["maxItems"] == 1_024
 
 
 def test_both_audit_schemas_require_complete_workflow_correlation():

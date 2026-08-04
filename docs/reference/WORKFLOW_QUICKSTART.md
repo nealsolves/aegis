@@ -100,10 +100,14 @@ independent claim, signature, and completeness results. A signed workflow is
 `INDETERMINATE` without a trusted verifier, and trusted checkpoints are not
 available until #46.
 
-The verifier bounds claims and supplied artifacts to 10,000 entries each,
+The verifier bounds claims and supplied artifacts to 1,024 entries each,
 measured input to 4 MiB, nesting to 32 levels, and reports to 100 errors.
 Exceeding an input budget fails closed with
 `WORKFLOW_VERIFICATION_LIMIT_EXCEEDED`.
+
+A session admits at most 1,024 workflow attempts. A later request fails before
+attempt-envelope or step-index allocation with
+`SESSION_ATTEMPT_LIMIT_EXCEEDED`.
 
 ## Next steps
 

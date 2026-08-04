@@ -38,10 +38,10 @@
       "type": "array",
       "items": {"type": "string"}
     },
-    "step_count": {"type": "integer", "minimum": 0, "maximum": 10000},
+    "step_count": {"type": "integer", "minimum": 0, "maximum": 1024},
     "invocations": {
       "type": "array",
-      "maxItems": 10000,
+      "maxItems": 1024,
       "items": {
         "type": "object",
         "required": ["step_index", "checksum"],

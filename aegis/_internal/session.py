@@ -38,6 +38,7 @@ from aegis._internal.evidence_finalizer import (
 )
 from aegis._internal.outcomes import TerminalClass
 from aegis._internal.tools import validate_tool_constraints
+from aegis._internal.workflow_limits import MAX_WORKFLOW_ATTEMPTS
 
 if TYPE_CHECKING:
     from aegis._internal.compiled_policy import CompiledPolicy
@@ -881,6 +882,8 @@ class GovernanceSession:
     ) -> int:
         """Atomically reserve a permanent index for one workflow attempt."""
         with self._attempt_lock:
+            if self._next_step_index >= MAX_WORKFLOW_ATTEMPTS:
+                raise self._attempt_limit_error()
             index = self._next_step_index
             self._next_step_index += 1
             self._attempts[index] = SessionAttempt(
@@ -893,6 +896,22 @@ class GovernanceSession:
                 role=role,
             )
             return index
+
+    def _attempt_limit_error(self) -> SessionStateError:
+        return SessionStateError(
+            "Session workflow attempt limit exceeded",
+            code="SESSION_ATTEMPT_LIMIT_EXCEEDED",
+            details={
+                "session_id": self._session_id,
+                "max_workflow_attempts": MAX_WORKFLOW_ATTEMPTS,
+            },
+        )
+
+    def _assert_attempt_capacity(self) -> None:
+        """Reject before allocating an envelope when the session is full."""
+        with self._attempt_lock:
+            if self._next_step_index >= MAX_WORKFLOW_ATTEMPTS:
+                raise self._attempt_limit_error()
 
     def record_terminal_attempt(
         self,
@@ -1905,6 +1924,7 @@ class GovernanceSession:
         :param participant_id: Optional participant identifier
         :return: SessionPreCallResult token (pass to enforce_step_post_call)
         """
+        self._assert_attempt_capacity()
         raw_step_id: object = (
             str(uuid.uuid4()) if step_id is None else step_id
         )

@@ -60,6 +60,30 @@ def test_concurrent_step_indices_are_gapless_and_unique(session, invocations):
     assert indices == list(range(len(handles)))
 
 
+def test_session_rejects_attempt_1025_before_attempt_envelope_allocation():
+    """The hard workflow ceiling is admission, not an unclaimable attempt."""
+    runtime = AEGIS()
+    session = runtime.open_session(session_id="attempt-ceiling-session")
+    session.pause(approval_id="keep-current-path-terminal")
+    with session._attempt_lock:
+        session._next_step_index = 1_024
+    before_attempt_id = runtime._attempt_factory._next_attempt_id
+
+    try:
+        with pytest.raises(SessionStateError) as exc_info:
+            session.enforce_step_pre_call(_invocation(), step_id="over-limit")
+
+        assert exc_info.value.code == "SESSION_ATTEMPT_LIMIT_EXCEEDED"
+        assert runtime._attempt_factory._next_attempt_id == before_attempt_id
+        assert session._next_step_index == 1_024
+        assert 1_024 not in session._attempts
+    finally:
+        with session._attempt_lock:
+            session._next_step_index = 0
+            session._attempts.clear()
+        session.finalize(status="CANCELED")
+
+
 def test_rejected_phase_a_attempt_retains_allocated_index_and_correlation(session):
     """Moving allocation after a Phase A denial would lose attempt zero."""
     with pytest.raises(GovernanceViolationError) as exc_info:

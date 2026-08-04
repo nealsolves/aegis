@@ -215,6 +215,7 @@
         "max_steps": {
           "type": "integer",
           "minimum": 1,
+          "maximum": 1024,
           "description": "Maximum number of authorized workflow steps"
         },
         "max_total_tool_calls": {

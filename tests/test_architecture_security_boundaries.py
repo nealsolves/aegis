@@ -1317,7 +1317,8 @@ def _workflow_claim_boundary_violations(source: str) -> set[str]:
         allocation_line = allocation_calls[0].lineno
         if any(
             isinstance(node, ast.Call)
-            and _bound_self_method(node.func, pre_call_definitions) is not None
+            and _bound_self_method(node.func, pre_call_definitions)
+            not in {None, "_assert_attempt_capacity"}
             and node.lineno < allocation_line
             for node in ast.walk(pre_call)
         ):
@@ -1465,6 +1466,17 @@ def test_workflow_claim_fitness_rejects_preallocation_authorization_gate() -> No
     )
 
     assert "pre-allocation-call" in _workflow_claim_boundary_violations(source)
+
+
+def test_workflow_claim_fitness_allows_only_attempt_capacity_before_allocation(
+) -> None:
+    source = _WORKFLOW_CLAIM_FIXTURE.replace(
+        "        attempt = self._aigc._attempt_factory.allocate",
+        "        self._assert_attempt_capacity()\n"
+        "        attempt = self._aigc._attempt_factory.allocate",
+    )
+
+    assert "pre-allocation-call" not in _workflow_claim_boundary_violations(source)
 
 
 def test_workflow_claim_fitness_rejects_aliased_preallocation_gate() -> None:
@@ -1735,10 +1747,15 @@ def test_all_five_b4_docs_freeze_assurance_and_verifier_budgets() -> None:
         "remains unproven until a trusted checkpoint binds the expected head/count."
     )
     budget = (
-        "The verifier bounds claims and supplied artifacts to 10,000 entries "
+        "The verifier bounds claims and supplied artifacts to 1,024 entries "
         "each, measured input to 4 MiB, nesting to 32 levels, and reports to "
         "100 errors. Exceeding an input budget fails closed with "
         "`WORKFLOW_VERIFICATION_LIMIT_EXCEEDED`."
+    )
+    admission = (
+        "A session admits at most 1,024 workflow attempts. A later request "
+        "fails before attempt-envelope or step-index allocation with "
+        "`SESSION_ATTEMPT_LIMIT_EXCEEDED`."
     )
     docs = (
         _ROOT / "docs/architecture/AEGIS_THREAT_MODEL.md",
@@ -1752,6 +1769,7 @@ def test_all_five_b4_docs_freeze_assurance_and_verifier_budgets() -> None:
         collapsed = " ".join(path.read_text(encoding="utf-8").split())
         assert collapsed.count(assurance) == 1, path
         assert collapsed.count(budget) == 1, path
+        assert collapsed.count(admission) == 1, path
         assert "#46" in collapsed, path
 
 

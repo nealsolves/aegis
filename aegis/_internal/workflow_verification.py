@@ -22,6 +22,7 @@ from aegis._internal.verification import (
     VerificationError,
     _verify_signatures,
 )
+from aegis._internal.workflow_limits import MAX_WORKFLOW_ATTEMPTS
 
 
 _HEX64_RE = re.compile(r"^[a-f0-9]{64}$")
@@ -31,8 +32,8 @@ _CORRELATION_FIELDS = frozenset(
 _CORRELATION_TRIGGER_FIELDS = frozenset(
     {"step_index", "workflow_policy_digest"}
 )
-MAX_WORKFLOW_CLAIM_ENTRIES = 10_000
-MAX_WORKFLOW_SUPPLIED_ARTIFACTS = 10_000
+MAX_WORKFLOW_CLAIM_ENTRIES = MAX_WORKFLOW_ATTEMPTS
+MAX_WORKFLOW_SUPPLIED_ARTIFACTS = MAX_WORKFLOW_ATTEMPTS
 MAX_WORKFLOW_VERIFICATION_BYTES = 4 * 1024 * 1024
 MAX_WORKFLOW_VERIFICATION_DEPTH = 32
 MAX_WORKFLOW_VERIFICATION_NODES = 65_536
