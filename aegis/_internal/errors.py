@@ -242,6 +242,19 @@ class ChainLinkError(AIGCError):
         super().__init__(message, code=code, details=details)
 
 
+class CheckpointError(AIGCError):
+    """Raised when a checkpoint cannot be created or parsed safely."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "CHECKPOINT_INPUT_INVALID",
+        details: dict | None = None,
+    ) -> None:
+        super().__init__(message, code=code, details=details)
+
+
 class RiskThresholdError(AIGCError):
     """Raised when risk score exceeds threshold in strict mode."""
 

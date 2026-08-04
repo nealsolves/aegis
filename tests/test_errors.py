@@ -2,8 +2,11 @@
 
 import pytest
 
+from aegis import checkpoints
+from aegis import errors as public_errors
 from aegis._internal.errors import (
     AIGCError,
+    CheckpointError,
     ConditionResolutionError,
     FeatureNotImplementedError,
     GovernanceViolationError,
@@ -20,6 +23,22 @@ from aegis._internal.errors import (
     WorkflowToolBudgetExceededError,
     WorkflowUnsupportedBindingError,
 )
+
+
+def test_checkpoint_error_has_stable_default_and_caller_selected_codes():
+    default = CheckpointError("safe")
+    selected = CheckpointError(
+        "safe", code="CHECKPOINT_PROFILE_INVALID", details={"field": "profile"}
+    )
+    assert default.code == "CHECKPOINT_INPUT_INVALID"
+    assert default.details == {}
+    assert selected.code == "CHECKPOINT_PROFILE_INVALID"
+    assert selected.details == {"field": "profile"}
+
+
+def test_checkpoint_error_is_exported_from_approved_public_facades():
+    assert checkpoints.CheckpointError is CheckpointError
+    assert public_errors.CheckpointError is CheckpointError
 
 
 def test_feature_not_implemented_error_instantiation():
