@@ -39,9 +39,9 @@ def _measure_json_document(
         if current is None or type(current) is bool:
             total_bytes += 5
         elif type(current) is str:
-            if _has_lone_surrogate(current):
-                raise VerificationInputError
             if len(current) > byte_limit - total_bytes:
+                raise VerificationInputError
+            if _has_lone_surrogate(current):
                 raise VerificationInputError
             total_bytes += len(current.encode("utf-8")) + 2
         elif type(current) is int:
@@ -83,9 +83,11 @@ def _measure_json_document(
                 raise VerificationInputError
             scheduled_nodes += child_count
             for key in current:
-                if type(key) is not str or _has_lone_surrogate(key):
+                if type(key) is not str:
                     raise VerificationInputError
                 if len(key) > byte_limit - total_bytes:
+                    raise VerificationInputError
+                if _has_lone_surrogate(key):
                     raise VerificationInputError
                 total_bytes += len(key.encode("utf-8")) + 3
                 if total_bytes > byte_limit:

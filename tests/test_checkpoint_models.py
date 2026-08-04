@@ -7,6 +7,8 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
+import aegis._internal.checkpoint_models as checkpoint_models_module
+import aegis._internal.verification_limits as verification_limits_module
 from aegis._internal.canonicalization import SAFE_INTEGER_MAX
 from aegis._internal.checkpoint_models import (
     CheckpointBindingStatus,
@@ -94,6 +96,13 @@ def _assert_sanitized_input_error(value: object, parser: object) -> None:
     assert raised.value.details == {}
     assert "secret-marker" not in str(raised.value)
     assert "secret-marker" not in repr(raised.value.details)
+
+
+def _constructor_values(record: object) -> dict[str, object]:
+    return {
+        field: getattr(record, field)
+        for field in record.__dataclass_fields__  # type: ignore[attr-defined]
+    }
 
 
 def test_checkpoint_status_values_are_closed_contracts():
@@ -565,7 +574,7 @@ def test_direct_construction_detaches_valid_metadata_snapshot(chain_record_dict)
 
 
 @pytest.mark.parametrize("record_kind", ["chain", "workflow"])
-def test_record_subclasses_are_rejected_by_direct_construction(
+def test_fix1_valid_record_subclasses_remain_instantiable_for_boundary_tests(
     chain_record_dict, workflow_record_dict, record_kind
 ):
     base_type = TrustedChainCheckpoint if record_kind == "chain" else TrustedWorkflowCheckpoint
@@ -576,11 +585,8 @@ def test_record_subclasses_are_rejected_by_direct_construction(
     parsed = base_type.from_dict(
         chain_record_dict if record_kind == "chain" else workflow_record_dict
     )
-    with pytest.raises(CheckpointError):
-        RecordSubclass(**{
-            field: getattr(parsed, field)
-            for field in parsed.__dataclass_fields__
-        })
+    subclass_record = RecordSubclass(**_constructor_values(parsed))
+    assert isinstance(subclass_record, RecordSubclass)
 
 
 @pytest.mark.parametrize("record_kind", ["chain", "workflow"])
@@ -602,7 +608,7 @@ def test_subclass_parser_is_rejected_without_dynamic_constructor_dispatch(
     assert constructor_called is False
 
 
-def test_record_serialization_does_not_dispatch_to_nested_metadata_override(
+def test_record_serialization_rejects_nested_metadata_subclass_without_dispatch(
     chain_record_dict,
 ):
     class HostileMetadata(SignatureMetadata):
@@ -620,9 +626,8 @@ def test_record_serialization_does_not_dispatch_to_nested_metadata_override(
             field,
             hostile if field == "signature_metadata" else getattr(record, field),
         )
-    assert TrustedChainCheckpoint.to_dict(forged)["signature_metadata"] == chain_record_dict[
-        "signature_metadata"
-    ]
+    with pytest.raises(CheckpointError):
+        TrustedChainCheckpoint.to_dict(forged)
 
 
 def test_forged_typed_record_fails_core_snapshot_reparse(chain_record_dict):
@@ -719,3 +724,266 @@ def test_evaluated_verification_result_requires_signature_result(chain_record_di
             signature_result=None,
             binding_status=CheckpointBindingStatus.CONFLICT,
         )
+
+
+# ---------------------------------------------------------------------------
+# Task 2 review hardening regressions
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("record_kind", ["chain", "workflow"])
+def test_fix1_record_base_constructor_cannot_be_bypassed_by_post_init_override(
+    chain_record_dict, workflow_record_dict, record_kind
+):
+    base_type = TrustedChainCheckpoint if record_kind == "chain" else TrustedWorkflowCheckpoint
+    parsed = base_type.from_dict(
+        chain_record_dict if record_kind == "chain" else workflow_record_dict
+    )
+
+    class HostileRecord(base_type):
+        def __post_init__(self):
+            pass
+
+    values = _constructor_values(parsed)
+    values["chain_length" if record_kind == "chain" else "step_count"] = 99
+    with pytest.raises(CheckpointError):
+        HostileRecord(**values)
+
+
+def test_fix1_result_base_constructor_cannot_be_bypassed_by_post_init_override(
+    verification_result,
+):
+    class HostileResult(CheckpointVerificationResult):
+        def __post_init__(self):
+            pass
+
+    values = _constructor_values(verification_result)
+    values["input_indexes"] = ()
+    with pytest.raises(CheckpointError):
+        HostileResult(**values)
+
+
+def test_fix1_valid_result_subclass_remains_instantiable(verification_result):
+    class ResultSubclass(CheckpointVerificationResult):
+        pass
+
+    result = ResultSubclass(**_constructor_values(verification_result))
+    assert isinstance(result, ResultSubclass)
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["x" * 5, {"x" * 5: None}],
+    ids=["scalar", "dictionary-key"],
+)
+def test_fix2_budget_rejects_over_limit_length_before_surrogate_scan(
+    monkeypatch, value
+):
+    # Instrumentation is necessary because both orders raise the same public
+    # error; this proves the linear scan is never entered for an O(1)-rejectable
+    # length.
+    def unexpected_scan(_value):
+        raise AssertionError("surrogate scan ran before byte bound")
+
+    monkeypatch.setattr(
+        verification_limits_module,
+        "_has_lone_surrogate",
+        unexpected_scan,
+    )
+    with pytest.raises(VerificationInputError):
+        VerificationBudget(remaining_bytes=4).measure(value)
+
+
+def test_fix2_direct_scope_length_precedes_unicode_scan(monkeypatch, chain_record_dict):
+    # A public exception cannot reveal validation order, so intercept only the
+    # character that belongs to the oversized field under test.
+    real_ord = ord
+
+    def guarded_ord(character):
+        if character == "z":
+            raise AssertionError("scope Unicode scan ran before length bound")
+        return real_ord(character)
+
+    monkeypatch.setattr(checkpoint_models_module, "ord", guarded_ord, raising=False)
+    record = TrustedChainCheckpoint.from_dict(chain_record_dict)
+    values = _constructor_values(record)
+    values["chain_id"] = "z" * 513
+    with pytest.raises(CheckpointError):
+        TrustedChainCheckpoint(**values)
+
+
+class _HostileEnumValue:
+    @property
+    def value(self):
+        raise RuntimeError("secret-marker-enum-value")
+
+
+def _forged_metadata(metadata: SignatureMetadata, field: str) -> SignatureMetadata:
+    forged = object.__new__(SignatureMetadata)
+    for name in SignatureMetadata.__dataclass_fields__:
+        object.__setattr__(forged, name, getattr(metadata, name))
+    object.__setattr__(forged, field, _HostileEnumValue())
+    return forged
+
+
+@pytest.mark.parametrize("field", ["payload_type", "signature_encoding"])
+def test_fix3_direct_record_sanitizes_hostile_metadata_value_access(
+    chain_record_dict, field
+):
+    record = TrustedChainCheckpoint.from_dict(chain_record_dict)
+    values = _constructor_values(record)
+    values["signature_metadata"] = _forged_metadata(record.signature_metadata, field)
+    with pytest.raises(CheckpointError) as raised:
+        TrustedChainCheckpoint(**values)
+    assert raised.value.code == "CHECKPOINT_INPUT_INVALID"
+    assert "secret-marker" not in str(raised.value)
+    assert raised.value.details == {}
+
+
+@pytest.mark.parametrize("field", ["payload_type", "signature_encoding"])
+def test_fix3_to_dict_sanitizes_hostile_metadata_value_access(
+    chain_record_dict, field
+):
+    record = TrustedChainCheckpoint.from_dict(chain_record_dict)
+    forged = object.__new__(TrustedChainCheckpoint)
+    for name in TrustedChainCheckpoint.__dataclass_fields__:
+        object.__setattr__(forged, name, getattr(record, name))
+    object.__setattr__(
+        forged,
+        "signature_metadata",
+        _forged_metadata(record.signature_metadata, field),
+    )
+    with pytest.raises(CheckpointError) as raised:
+        TrustedChainCheckpoint.to_dict(forged)
+    assert raised.value.code == "CHECKPOINT_INPUT_INVALID"
+    assert "secret-marker" not in str(raised.value)
+    assert raised.value.details == {}
+
+
+def test_fix3_workflow_to_dict_rejects_hostile_claim_before_iteration(
+    workflow_record_dict,
+):
+    class HostileClaim:
+        iteration_count = 0
+
+        def __iter__(self):
+            self.iteration_count += 1
+            raise RuntimeError("secret-marker-claim")
+
+    record = TrustedWorkflowCheckpoint.from_dict(workflow_record_dict)
+    forged = object.__new__(TrustedWorkflowCheckpoint)
+    for name in TrustedWorkflowCheckpoint.__dataclass_fields__:
+        object.__setattr__(forged, name, getattr(record, name))
+    claim = HostileClaim()
+    object.__setattr__(forged, "invocations", claim)
+    with pytest.raises(CheckpointError) as raised:
+        TrustedWorkflowCheckpoint.to_dict(forged)
+    assert claim.iteration_count == 0
+    assert "secret-marker" not in str(raised.value)
+    assert raised.value.details == {}
+
+
+def test_fix4_result_rejects_forged_exact_checkpoint(verification_result):
+    checkpoint = verification_result.checkpoint
+    forged = object.__new__(TrustedChainCheckpoint)
+    for name in TrustedChainCheckpoint.__dataclass_fields__:
+        object.__setattr__(forged, name, getattr(checkpoint, name))
+    object.__setattr__(forged, "chain_length", 99)
+    values = _constructor_values(verification_result)
+    values["checkpoint"] = forged
+    with pytest.raises(CheckpointError):
+        CheckpointVerificationResult(**values)
+
+
+def test_fix4_result_rejects_forged_exact_provider_result(verification_result):
+    provider_result = verification_result.signature_result
+    forged = object.__new__(ArtifactVerificationResult)
+    for name in ArtifactVerificationResult.__dataclass_fields__:
+        object.__setattr__(forged, name, getattr(provider_result, name))
+    object.__setattr__(forged, "signature_status", _HostileEnumValue())
+    values = _constructor_values(verification_result)
+    values["signature_result"] = forged
+    with pytest.raises(CheckpointError) as raised:
+        CheckpointVerificationResult(**values)
+    assert "secret-marker" not in str(raised.value)
+    assert raised.value.details == {}
+
+
+def test_fix4_result_rejects_provider_metadata_mismatch(verification_result):
+    checkpoint = verification_result.checkpoint
+    metadata_dict = SignatureMetadata.to_dict(checkpoint.signature_metadata)
+    metadata_dict["key_version"] = "different-version"
+    other_metadata = SignatureMetadata.from_dict(metadata_dict)
+    provider_result = ArtifactVerificationResult(
+        SignatureStatus.VALID,
+        AnchorStatus.ANCHORED,
+        VerificationReasonCode.SIGNATURE_VALID_ANCHORED,
+        "safe",
+        other_metadata,
+    )
+    values = _constructor_values(verification_result)
+    values["signature_result"] = provider_result
+    with pytest.raises(CheckpointError):
+        CheckpointVerificationResult(**values)
+
+
+def test_fix4_result_detaches_checkpoint_and_provider_result(verification_result):
+    source_checkpoint = verification_result.checkpoint
+    source_provider_result = verification_result.signature_result
+    detached = CheckpointVerificationResult(**_constructor_values(verification_result))
+    assert detached.checkpoint is not source_checkpoint
+    assert detached.signature_result is not source_provider_result
+    object.__setattr__(source_checkpoint, "chain_id", "secret-marker")
+    object.__setattr__(source_provider_result, "message", "secret-marker")
+    assert detached.checkpoint.chain_id == "chain-123"
+    assert detached.signature_result.message == "Signature is valid and externally anchored"
+
+
+@pytest.mark.parametrize(
+    ("signature_status", "anchor_status", "reason_code"),
+    [
+        (
+            SignatureStatus.INDETERMINATE,
+            AnchorStatus.NOT_EVALUATED,
+            VerificationReasonCode.VERIFIER_UNAVAILABLE,
+        ),
+        (
+            SignatureStatus.INVALID,
+            AnchorStatus.NOT_EVALUATED,
+            VerificationReasonCode.SIGNATURE_INVALID,
+        ),
+    ],
+)
+def test_fix4_result_preserves_valid_unavailable_and_invalid_outcomes(
+    chain_record_dict, signature_status, anchor_status, reason_code
+):
+    checkpoint = TrustedChainCheckpoint.from_dict(chain_record_dict)
+    provider_result = ArtifactVerificationResult(
+        signature_status,
+        anchor_status,
+        reason_code,
+        "safe",
+        checkpoint.signature_metadata,
+    )
+    result = CheckpointVerificationResult(
+        input_indexes=(0,),
+        checkpoint=checkpoint,
+        scope_id="chain-123",
+        chain_index=2,
+        signature_result=provider_result,
+        binding_status=CheckpointBindingStatus.MATCHED,
+    )
+    assert result.signature_result.signature_status is signature_status
+
+
+@pytest.mark.parametrize(
+    "binding_status",
+    [CheckpointBindingStatus.NOT_EVALUATED, CheckpointBindingStatus.OUT_OF_SCOPE],
+)
+def test_fix5_unevaluated_bindings_forbid_provider_results(
+    verification_result, binding_status
+):
+    values = _constructor_values(verification_result)
+    values["binding_status"] = binding_status
+    with pytest.raises(CheckpointError):
+        CheckpointVerificationResult(**values)
