@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 import re
 import hashlib
 from dataclasses import dataclass
@@ -9,6 +10,14 @@ from enum import Enum
 from typing import Any, Iterable, Sequence
 
 from aegis._internal.canonicalization import CANONICALIZATION_PROFILE_V2
+from aegis._internal.chain_checkpoint_verification import (
+    evaluate_chain_checkpoints,
+    prepare_chain_checkpoint_input,
+)
+from aegis._internal.checkpoint_models import (
+    CheckpointSignatureStatus,
+    CheckpointVerificationResult,
+)
 from aegis._internal.evidence_profiles import (
     ContentIntegrity,
     verify_content_checksum_v2,
@@ -29,7 +38,6 @@ from aegis._internal.verification_contracts import Completeness, VerificationErr
 from aegis._internal.verification_limits import (
     BoundedVerificationErrors,
     VerificationBudget,
-    VerificationInputError,
 )
 
 
@@ -84,6 +92,11 @@ class ChainVerificationReport:
     anchor_status: AnchorStatus
     completeness: Completeness
     errors: tuple[VerificationError, ...] = ()
+    checkpoint_signature_status: CheckpointSignatureStatus = (
+        CheckpointSignatureStatus.NOT_EVALUATED
+    )
+    checkpoint_anchor_status: AnchorStatus = AnchorStatus.NOT_EVALUATED
+    checkpoint_results: tuple[CheckpointVerificationResult, ...] = ()
 
     @property
     def internal_valid(self) -> bool:
@@ -487,9 +500,12 @@ def verify_chain_detailed(
     signature_verifier: object | None = None,
     anchor_verifier: object | None = None,
     legacy_authorization: object | None = None,
+    checkpoints: object = (),
+    checkpoint_verifier: object | None = None,
+    expected_chain_id: object | None = None,
 ) -> ChainVerificationReport:
     """Verify supplied evidence without conflating integrity and completeness."""
-    errors: list[VerificationError] = BoundedVerificationErrors()
+    errors = BoundedVerificationErrors()
     if type(artifacts) is not list:
         error = _error(
             "CHAIN_INPUT_INVALID", "Artifacts must be supplied as a list"
@@ -518,25 +534,26 @@ def verify_chain_detailed(
             errors=tuple(errors),
         )
 
-    try:
-        VerificationBudget().measure(artifacts)
-    except VerificationInputError:
-        errors.append(
-            _error(
-                "CHAIN_VERIFICATION_LIMIT_EXCEEDED",
-                "Chain verification input exceeds a configured limit",
-            )
-        )
+    budget = VerificationBudget()
+    checkpoint_errors = BoundedVerificationErrors()
+    prepared_checkpoints = prepare_chain_checkpoint_input(
+        artifacts,
+        checkpoints,
+        expected_chain_id,
+        budget,
+        checkpoint_errors,
+    )
+    if prepared_checkpoints is None:
         return ChainVerificationReport(
             content_integrity=ContentIntegrity.NOT_EVALUATED,
             chain_continuity=ChainContinuity.NOT_EVALUATED,
             signature_status=SignatureStatus.INDETERMINATE,
             anchor_status=AnchorStatus.NOT_EVALUATED,
             completeness=Completeness.UNPROVEN,
-            errors=tuple(errors),
+            errors=tuple(checkpoint_errors),
         )
 
-    supplied: Sequence[object] = artifacts
+    supplied: Sequence[object] = prepared_checkpoints.artifacts
 
     legacy_kind = _legacy_evidence_kind(supplied)
     legacy_mode = (
@@ -562,7 +579,10 @@ def verify_chain_detailed(
     )
     if anchor_verifier is not None:
         try:
-            anchor_status = _apply_anchor_verifier(anchor_verifier, supplied)
+            anchor_status = _apply_anchor_verifier(
+                anchor_verifier,
+                deepcopy(supplied),
+            )
         except Exception:
             errors.append(
                 _error(
@@ -572,11 +592,32 @@ def verify_chain_detailed(
             )
             anchor_status = AnchorStatus.NOT_EVALUATED
 
+    checkpoint_evaluation = evaluate_chain_checkpoints(
+        prepared_checkpoints,
+        prepared_checkpoints.artifacts,
+        content_valid=content is ContentIntegrity.VALID,
+        continuity_valid=continuity is ChainContinuity.VALID,
+        verifier=checkpoint_verifier,  # type: ignore[arg-type]
+        errors=checkpoint_errors,
+    )
+
+    combined_errors = BoundedVerificationErrors()
+    for error in sorted(
+        checkpoint_errors,
+        key=lambda error: -1 if error.index is None else error.index,
+    ):
+        combined_errors.append(error)
+    for error in errors:
+        combined_errors.append(error)
+
     return ChainVerificationReport(
         content_integrity=content,
         chain_continuity=continuity,
         signature_status=signature_status,
         anchor_status=anchor_status,
-        completeness=Completeness.UNPROVEN,
-        errors=tuple(errors),
+        completeness=checkpoint_evaluation.completeness,
+        errors=tuple(combined_errors),
+        checkpoint_signature_status=checkpoint_evaluation.signature_status,
+        checkpoint_anchor_status=checkpoint_evaluation.anchor_status,
+        checkpoint_results=checkpoint_evaluation.results,
     )
