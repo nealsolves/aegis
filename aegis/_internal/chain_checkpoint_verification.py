@@ -303,11 +303,12 @@ def evaluate_chain_checkpoints(
     errors: BoundedVerificationErrors,
 ) -> CheckpointEvaluation:
     """Verify and structurally bind prepared checkpoints to supplied evidence."""
-    scope_id = prepared.expected_chain_id or _derived_chain_id(
+    derived_scope_id = _derived_chain_id(
         artifacts,
         content_valid,
         continuity_valid,
     )
+    scope_id = prepared.expected_chain_id or derived_scope_id
     if scope_id is None:
         results = tuple(
             _result(record, CheckpointBindingStatus.NOT_EVALUATED, None)
@@ -337,7 +338,16 @@ def evaluate_chain_checkpoints(
                 _result(record, CheckpointBindingStatus.OUT_OF_SCOPE, None)
             )
             continue
-        binding_status = _binding_status(checkpoint, artifacts)
+        explicit_scope_conflict = (
+            prepared.expected_chain_id is not None
+            and derived_scope_id is not None
+            and prepared.expected_chain_id != derived_scope_id
+        )
+        binding_status = (
+            CheckpointBindingStatus.CONFLICT
+            if explicit_scope_conflict
+            else _binding_status(checkpoint, artifacts)
+        )
         try:
             signature_result = verify_prepared_checkpoint(record, verifier)
         except Exception:
@@ -352,7 +362,7 @@ def evaluate_chain_checkpoints(
         results.append(_result(record, binding_status, signature_result))
         evaluated.append((signature_result, binding_status))
 
-    if prepared.invalid_record_count or len(evaluated) > 1:
+    if len(evaluated) > 1:
         return CheckpointEvaluation(
             signature_status=CheckpointSignatureStatus.INDETERMINATE,
             anchor_status=AnchorStatus.INVALID,
@@ -361,15 +371,31 @@ def evaluate_chain_checkpoints(
         )
     if not evaluated:
         return CheckpointEvaluation(
-            signature_status=CheckpointSignatureStatus.NOT_EVALUATED,
-            anchor_status=AnchorStatus.NOT_EVALUATED,
+            signature_status=(
+                CheckpointSignatureStatus.INDETERMINATE
+                if prepared.invalid_record_count
+                else CheckpointSignatureStatus.NOT_EVALUATED
+            ),
+            anchor_status=(
+                AnchorStatus.INVALID
+                if prepared.invalid_record_count
+                else AnchorStatus.NOT_EVALUATED
+            ),
             completeness=Completeness.UNPROVEN,
             results=tuple(results),
         )
 
     signature_result, binding_status = evaluated[0]
-    signature_status = _checkpoint_signature_status(signature_result)
-    anchor_status = signature_result.anchor_status
+    signature_status = (
+        CheckpointSignatureStatus.INDETERMINATE
+        if prepared.invalid_record_count
+        else _checkpoint_signature_status(signature_result)
+    )
+    anchor_status = (
+        AnchorStatus.INVALID
+        if prepared.invalid_record_count
+        else signature_result.anchor_status
+    )
     trusted = (
         signature_result.signature_status is SignatureStatus.VALID
         and signature_result.anchor_status is AnchorStatus.ANCHORED
@@ -392,7 +418,8 @@ def evaluate_chain_checkpoints(
         and full_chain
         and binding_status is CheckpointBindingStatus.MATCHED
     )
-    if trusted_conflict:
+    trusted_contradiction = trusted_conflict or (trusted_ahead and full_chain)
+    if trusted_contradiction:
         errors.append(
             _error(
                 "CHECKPOINT_BINDING_CONFLICT",
@@ -400,10 +427,10 @@ def evaluate_chain_checkpoints(
                 prepared.records[0].input_indexes[0],
             )
         )
-    if trusted_conflict or (trusted_ahead and full_chain):
+    if trusted_contradiction:
         completeness = Completeness.CONTRADICTED
         anchor_status = AnchorStatus.INVALID
-    elif terminal_trusted_match:
+    elif terminal_trusted_match and not prepared.invalid_record_count:
         completeness = Completeness.CHECKPOINT_PROVEN
     else:
         completeness = Completeness.UNPROVEN

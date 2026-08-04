@@ -7,9 +7,11 @@ from copy import deepcopy
 import pytest
 
 import aegis._internal.verification as verification_module
+from aegis._internal.checkpoint_signing import _checkpoint_payload
 from aegis._internal.evidence_profiles import build_content_checksum_v2
 from aegis._internal.signature_models import (
     AnchorStatus,
+    SignatureMetadata,
     SignatureStatus,
 )
 from aegis.audit_chain import (
@@ -94,6 +96,31 @@ def _replacement_chain(
         artifacts.append(artifact)
         previous = artifact["checksum"]  # type: ignore[assignment]
     return artifacts
+
+
+def _resign_chain_checkpoint(
+    checkpoint: TrustedChainCheckpoint,
+    **updates: object,
+) -> TrustedChainCheckpoint:
+    unsigned = checkpoint.to_dict()
+    unsigned.update(updates)
+    unsigned.pop("signature_metadata")
+    unsigned.pop("signature")
+    metadata = SignatureMetadata.from_dict(
+        checkpoint.signature_metadata.to_dict()
+    )
+    signer = DeterministicExternalSigner()
+    receipt = signer.sign(
+        _checkpoint_payload(unsigned, metadata),
+        signer.signer_identity(),
+    )
+    return TrustedChainCheckpoint.from_dict(
+        {
+            **unsigned,
+            "signature_metadata": metadata.to_dict(),
+            "signature": receipt.signature,
+        }
+    )
 
 
 @pytest.fixture
@@ -642,6 +669,88 @@ def test_checksum_valid_whole_chain_replacement_is_contradicted(
     assert report.completeness is Completeness.CONTRADICTED
     assert [error.code for error in report.errors] == [
         "CHECKPOINT_BINDING_CONFLICT"
+    ]
+
+
+@pytest.mark.parametrize("relationship", ["conflict", "ahead"])
+@pytest.mark.parametrize("malformed_first", [False, True])
+def test_malformed_checkpoint_cannot_mask_singular_trusted_contradiction(
+    valid_chain,
+    chain_checkpoint,
+    relationship,
+    malformed_first,
+):
+    artifacts = (
+        _replacement_chain()
+        if relationship == "conflict"
+        else valid_chain[:-1]
+    )
+    checkpoints = (
+        [{}, chain_checkpoint]
+        if malformed_first
+        else [chain_checkpoint, {}]
+    )
+
+    report = verify_chain_detailed(
+        artifacts,
+        checkpoints=checkpoints,
+        checkpoint_verifier=DeterministicExternalVerifier(),
+    )
+
+    expected_binding = (
+        CheckpointBindingStatus.CONFLICT
+        if relationship == "conflict"
+        else CheckpointBindingStatus.AHEAD
+    )
+    assert report.checkpoint_results[0].binding_status is expected_binding
+    assert (
+        report.checkpoint_signature_status
+        is CheckpointSignatureStatus.INDETERMINATE
+    )
+    assert report.checkpoint_anchor_status is AnchorStatus.INVALID
+    assert report.completeness is Completeness.CONTRADICTED
+    trusted_index = 1 if malformed_first else 0
+    malformed_index = 0 if malformed_first else 1
+    assert [(error.code, error.index) for error in report.errors] == sorted(
+        [
+            ("CHECKPOINT_BINDING_CONFLICT", trusted_index),
+            ("CHECKPOINT_RECORD_INVALID", malformed_index),
+        ],
+        key=lambda error: error[1],
+    )
+
+
+def test_explicit_scope_mismatch_conflicts_even_when_checkpoint_checksum_matches(
+    valid_chain,
+):
+    evidence = _replacement_chain(chain_id="evidence-chain")
+    evidence_checkpoint = create_chain_checkpoint(
+        evidence[-1],
+        DeterministicExternalSigner(),
+        checkpointed_at=1_725_000_000,
+    )
+    in_scope_checkpoint = _resign_chain_checkpoint(
+        evidence_checkpoint,
+        chain_id="expected-chain",
+    )
+
+    report = verify_chain_detailed(
+        evidence,
+        expected_chain_id="expected-chain",
+        checkpoints=[in_scope_checkpoint],
+        checkpoint_verifier=DeterministicExternalVerifier(),
+    )
+
+    assert report.content_integrity is ContentIntegrity.VALID
+    assert report.chain_continuity is ChainContinuity.VALID
+    assert (
+        report.checkpoint_results[0].binding_status
+        is CheckpointBindingStatus.CONFLICT
+    )
+    assert report.checkpoint_anchor_status is AnchorStatus.INVALID
+    assert report.completeness is Completeness.CONTRADICTED
+    assert [(error.code, error.index) for error in report.errors] == [
+        ("CHECKPOINT_BINDING_CONFLICT", 0)
     ]
 
 
