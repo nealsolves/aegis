@@ -1779,18 +1779,105 @@ def test_all_five_b4_docs_freeze_assurance_and_verifier_budgets() -> None:
         assert "#46" in collapsed, path
 
 
+def _mapping_key_byte_preflight_is_ordered(source: str) -> bool:
+    tree = ast.parse(source)
+    measure = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "_measure_json_document"
+    )
+    key_loop = next(
+        (
+            node
+            for node in ast.walk(measure)
+            if isinstance(node, ast.For)
+            and isinstance(node.target, ast.Name)
+            and node.target.id == "key"
+            and isinstance(node.iter, ast.Name)
+            and node.iter.id == "current"
+        ),
+        None,
+    )
+    value_loop = next(
+        (
+            node
+            for node in ast.walk(measure)
+            if isinstance(node, ast.For)
+            and isinstance(node.iter, ast.Call)
+            and isinstance(node.iter.func, ast.Attribute)
+            and isinstance(node.iter.func.value, ast.Name)
+            and node.iter.func.value.id == "current"
+            and node.iter.func.attr == "values"
+        ),
+        None,
+    )
+    if key_loop is None or value_loop is None or key_loop.lineno >= value_loop.lineno:
+        return False
+    key_byte_add = next(
+        (
+            node
+            for node in key_loop.body
+            if isinstance(node, ast.AugAssign)
+            and isinstance(node.target, ast.Name)
+            and node.target.id == "total"
+        ),
+        None,
+    )
+    post_add_guard = next(
+        (
+            node
+            for node in key_loop.body
+            if isinstance(node, ast.If)
+            and key_byte_add is not None
+            and node.lineno > key_byte_add.lineno
+            and any(
+                isinstance(candidate, ast.Name)
+                and candidate.id == "byte_limit"
+                for candidate in ast.walk(node.test)
+            )
+            and any(
+                isinstance(candidate, ast.Name)
+                and candidate.id == "total"
+                for candidate in ast.walk(node.test)
+            )
+        ),
+        None,
+    )
+    return post_add_guard is not None and post_add_guard.lineno < value_loop.lineno
+
+
 def test_workflow_verifier_checks_mapping_bytes_before_value_expansion() -> None:
     """Mapping-key bytes must be rejected before values enter the work stack."""
     source = (
         _ROOT / "aegis/_internal/workflow_verification.py"
     ).read_text(encoding="utf-8")
-    mapping_branch = source.split("elif type(current) is dict:", 1)[1]
-    key_preflight = mapping_branch.split(
-        "for item in current.values():",
-        1,
-    )[0]
 
-    assert "if total > byte_limit:" in key_preflight
+    assert _mapping_key_byte_preflight_is_ordered(source)
+
+
+def test_workflow_verifier_mapping_byte_fitness_rejects_early_guard() -> None:
+    """A guard before key measurement cannot protect value expansion."""
+    source = (
+        _ROOT / "aegis/_internal/workflow_verification.py"
+    ).read_text(encoding="utf-8")
+    post_add_guard = (
+        "                if total > byte_limit:\n"
+        "                    raise _VerificationBudgetExceeded\n"
+    )
+    early_guard = (
+        "            if total > byte_limit:\n"
+        "                raise _VerificationBudgetExceeded\n"
+        "            for key in current:\n"
+    )
+    mutant = source.replace(post_add_guard, "", 1).replace(
+        "            for key in current:\n",
+        early_guard,
+        1,
+    )
+
+    assert mutant != source
+    assert not _mapping_key_byte_preflight_is_ordered(mutant)
 
 
 def test_workflow_claim_provenance_uses_locked_terminal_state() -> None:
