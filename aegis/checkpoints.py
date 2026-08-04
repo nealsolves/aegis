@@ -9,6 +9,10 @@ from aegis._internal.checkpoint_models import (
     TrustedWorkflowCheckpoint,
 )
 from aegis._internal.errors import CheckpointError
+from aegis._internal.checkpoint_signing import (
+    create_chain_checkpoint,
+    create_workflow_checkpoint,
+)
 
 
 __all__ = [
@@ -19,4 +23,6 @@ __all__ = [
     "CheckpointVerificationResult",
     "TrustedChainCheckpoint",
     "TrustedWorkflowCheckpoint",
+    "create_chain_checkpoint",
+    "create_workflow_checkpoint",
 ]

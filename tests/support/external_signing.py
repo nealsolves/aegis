@@ -140,6 +140,20 @@ class DeterministicExternalSigner:
             raise RuntimeError(_SENSITIVE_MESSAGE)
         if self._mode == "malformed_receipt":
             return object()  # type: ignore[return-value]
+        if self._mode == "malformed_signature":
+            receipt = object.__new__(SigningReceipt)
+            object.__setattr__(receipt, "signature", "raw-signature-deadbeef")
+            object.__setattr__(receipt, "algorithm", identity.algorithm)
+            object.__setattr__(
+                receipt,
+                "signature_encoding",
+                identity.signature_encoding,
+            )
+            object.__setattr__(receipt, "key_reference", identity.key_reference)
+            object.__setattr__(receipt, "key_version", identity.key_version)
+            return receipt
+        if self._mode == "mutate_identity":
+            object.__setattr__(identity, "key_version", "version/historical")
 
         record = self._key_records.get(identity.key_version)
         if record is None or identity != SignerIdentity(
