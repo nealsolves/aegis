@@ -28,6 +28,9 @@ _HEX64_RE = re.compile(r"^[a-f0-9]{64}$")
 _CORRELATION_FIELDS = frozenset(
     {"session_id", "step_id", "step_index", "workflow_policy_digest"}
 )
+_CORRELATION_TRIGGER_FIELDS = frozenset(
+    {"step_index", "workflow_policy_digest"}
+)
 MAX_WORKFLOW_CLAIM_ENTRIES = 10_000
 MAX_WORKFLOW_SUPPLIED_ARTIFACTS = 10_000
 MAX_WORKFLOW_VERIFICATION_BYTES = 4 * 1024 * 1024
@@ -334,12 +337,12 @@ def _select_session_invocations(
         if type(artifact) is not dict:
             continue
         context = artifact.get("context")
-        correlation_markers = (
-            _CORRELATION_FIELDS.intersection(context)
+        correlation_triggers = (
+            _CORRELATION_TRIGGER_FIELDS.intersection(context)
             if type(context) is dict
             else set()
         )
-        if correlation_markers and not _valid_workflow_correlation(context):
+        if correlation_triggers and not _valid_workflow_correlation(context):
             errors.append(
                 _error(
                     "INVOCATION_CORRELATION_INVALID",

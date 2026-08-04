@@ -173,6 +173,23 @@ def test_extra_other_session_artifact_is_ignored(evidence_set):
     assert report.claim_status is WorkflowClaimStatus.VALID
 
 
+def test_generic_session_artifact_without_workflow_triggers_is_ignored(
+    evidence_set,
+):
+    """Generic session context must not be mistaken for partial B4 correlation."""
+    workflow, invocations = evidence_set
+    generic = copy.deepcopy(invocations[0])
+    generic["context"].pop("step_id")
+    generic["context"].pop("step_index")
+    generic["context"].pop("workflow_policy_digest")
+    generic = _refinalize_unsigned(generic)
+
+    report = verify_workflow_claim(workflow, [generic, *invocations])
+
+    assert report.claim_status is WorkflowClaimStatus.VALID
+    assert "INVOCATION_CORRELATION_INVALID" not in _error_codes(report)
+
+
 def test_workflow_artifact_cannot_substitute_for_an_invocation(evidence_set):
     workflow, invocations = evidence_set
     substitute = _refinalize_unsigned(
