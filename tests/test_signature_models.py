@@ -260,6 +260,58 @@ def test_metadata_from_dict_rejects_unhashable_profile_discriminators(field, val
         SignatureMetadata.from_dict(metadata)
 
 
+class ValueEqualString(str):
+    pass
+
+
+@pytest.mark.parametrize(
+    "field,value,expected",
+    [
+        ("signing_profile", ValueEqualString("aegis-signature-v1"), "aegis-signature-v1"),
+        (
+            "canonicalization_version",
+            ValueEqualString("aegis-canonical-json-v1"),
+            "aegis-canonical-json-v1",
+        ),
+    ],
+)
+def test_metadata_rejects_value_equal_string_subclass_discriminators(
+    field, value, expected
+):
+    assert value == expected
+    assert type(value) is not str
+
+    with pytest.raises(SignatureMetadataError) as error:
+        _metadata(**{field: value})
+
+    assert error.value.details == {"field": field}
+
+
+@pytest.mark.parametrize(
+    "field,value,expected",
+    [
+        ("signing_profile", ValueEqualString("aegis-signature-v1"), "aegis-signature-v1"),
+        (
+            "canonicalization_version",
+            ValueEqualString("aegis-canonical-json-v1"),
+            "aegis-canonical-json-v1",
+        ),
+    ],
+)
+def test_metadata_from_dict_rejects_value_equal_string_subclass_discriminators(
+    field, value, expected
+):
+    assert value == expected
+    assert type(value) is not str
+    metadata = _metadata().to_dict()
+    metadata[field] = value
+
+    with pytest.raises(SignatureMetadataError) as error:
+        SignatureMetadata.from_dict(metadata)
+
+    assert error.value.details == {"field": field}
+
+
 @pytest.mark.parametrize("payload_type,profile,canonicalization", CHECKPOINT_CASES)
 def test_metadata_accepts_only_closed_checkpoint_tuple(
     payload_type, profile, canonicalization
