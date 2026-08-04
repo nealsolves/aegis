@@ -218,12 +218,22 @@ def _verify_continuity(
 
     for offset, artifact in enumerate(typed_artifacts):
         expected_index = first_index + offset
-        if artifact["chain_index"] != expected_index:
+        artifact_index = artifact["chain_index"]
+        if type(artifact_index) is not int or artifact_index < 0:
+            errors.append(
+                _error(
+                    "CHAIN_INDEX_INVALID",
+                    f"Index {offset}: chain_index is invalid",
+                    offset,
+                )
+            )
+            continuity = ChainContinuity.INVALID
+        elif artifact_index != expected_index:
             errors.append(
                 _error(
                     "CHAIN_INDEX_MISMATCH",
                     f"Index {offset}: expected chain_index={expected_index}, "
-                    f"got {artifact['chain_index']}",
+                    f"got {artifact_index}",
                     offset,
                 )
             )

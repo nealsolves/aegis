@@ -108,6 +108,17 @@ def test_verification_depth_limit_resets_for_each_document():
         limits.VerificationBudget().measure(too_deep)
 
 
+def test_verification_alias_tracking_resets_for_each_supplied_document():
+    limits = import_module("aegis._internal.verification_limits")
+    repeated_occurrence = {"nested": []}
+    budget = limits.VerificationBudget(remaining_bytes=128, remaining_nodes=8)
+
+    budget.measure(repeated_occurrence)
+    budget.measure(repeated_occurrence)
+
+    assert budget.remaining_nodes == 4
+
+
 def test_verification_budget_rejects_aliases_cycles_custom_containers_and_keys():
     limits = import_module("aegis._internal.verification_limits")
 

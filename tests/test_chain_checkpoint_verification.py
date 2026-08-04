@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import replace
+from itertools import product
 
 import pytest
 
+import aegis._internal.chain_checkpoint_verification as checkpoint_verification_module
 import aegis._internal.verification as verification_module
 from aegis._internal.checkpoint_signing import _checkpoint_payload
 from aegis._internal.evidence_profiles import build_content_checksum_v2
@@ -30,6 +33,8 @@ from aegis.checkpoints import (
 from tests.support.external_signing import (
     DeterministicExternalSigner,
     DeterministicExternalVerifier,
+    SENSITIVE_CORPUS,
+    default_key_records,
 )
 
 
@@ -109,6 +114,8 @@ def _resign_chain_checkpoint(
     metadata = SignatureMetadata.from_dict(
         checkpoint.signature_metadata.to_dict()
     )
+    if "checkpointed_at" in updates:
+        metadata = replace(metadata, signed_at=unsigned["checkpointed_at"])
     signer = DeterministicExternalSigner()
     receipt = signer.sign(
         _checkpoint_payload(unsigned, metadata),
@@ -148,6 +155,45 @@ class _CountingVerifier:
         if self.events is not None:
             self.events.append("checkpoint")
         return self.delegate.verify(payload, signature, metadata)
+
+
+class _HostileCheckpointIterator:
+    def __init__(self, values, *, infinite=False):
+        self._values = values
+        self._infinite = infinite
+        self.next_calls = 0
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        self.next_calls += 1
+        index = self.next_calls - 1
+        if self._infinite:
+            return self._values[index % len(self._values)]
+        if index >= len(self._values):
+            raise StopIteration
+        return self._values[index]
+
+    def __bool__(self):
+        raise AssertionError("caller truthiness must not be used")
+
+    def __len__(self):
+        raise AssertionError("caller len must not be used")
+
+    def __length_hint__(self):
+        raise AssertionError("caller length hint must not be used")
+
+    def __repr__(self):
+        raise AssertionError("caller repr must not be used")
+
+
+def _distinct_checkpoint_dicts(checkpoint, count):
+    source = checkpoint.to_dict()
+    return [
+        {**deepcopy(source), "signature": f"{index + 1:064x}"}
+        for index in range(count)
+    ]
 
 
 def test_no_checkpoint_preserves_current_report(valid_chain):
@@ -392,7 +438,13 @@ def test_invalid_explicit_scope_precedes_checkpoint_consumption(valid_chain):
 
 @pytest.mark.parametrize(
     "artifacts",
-    [pytest.param([], id="empty"), pytest.param([_artifact(0, None) | {"chain_id": None}], id="invalid")],
+    [
+        pytest.param([], id="empty"),
+        pytest.param(
+            [_artifact(0, None) | {"chain_id": None}],
+            id="invalid",
+        ),
+    ],
 )
 def test_checkpoint_input_cannot_select_scope_from_invalid_chain(
     artifacts, chain_checkpoint
@@ -426,6 +478,12 @@ def test_malformed_checkpoint_never_reaches_provider(valid_chain, malformed):
 
     assert checkpoint_verifier.calls == 0
     assert report.checkpoint_results == ()
+    assert (
+        report.checkpoint_signature_status
+        is CheckpointSignatureStatus.INDETERMINATE
+    )
+    assert report.checkpoint_anchor_status is AnchorStatus.INVALID
+    assert report.completeness is Completeness.UNPROVEN
     assert [(error.code, error.index) for error in report.errors] == [
         ("CHECKPOINT_RECORD_INVALID", 0)
     ]
@@ -535,6 +593,535 @@ def test_exact_duplicate_checkpoint_records_verify_once(valid_chain, chain_check
     assert report.completeness is Completeness.CHECKPOINT_PROVEN
 
 
+def test_same_checkpoint_dictionary_object_is_snapshotted_per_occurrence(
+    valid_chain, chain_checkpoint, verifier
+):
+    supplied = chain_checkpoint.to_dict()
+
+    report = verify_chain_detailed(
+        valid_chain,
+        checkpoints=[supplied, supplied],
+        checkpoint_verifier=verifier,
+    )
+
+    assert verifier.call_count == 1
+    assert len(report.checkpoint_results) == 1
+    assert report.checkpoint_results[0].input_indexes == (0, 1)
+    assert report.completeness is Completeness.CHECKPOINT_PROVEN
+
+
+def test_reused_mutating_checkpoint_dictionary_is_snapshotted_at_each_yield(
+    valid_chain, chain_checkpoint
+):
+    historical = create_chain_checkpoint(
+        valid_chain[1],
+        DeterministicExternalSigner(),
+        checkpointed_at=1_725_000_001,
+    )
+    reused = chain_checkpoint.to_dict()
+
+    def checkpoints():
+        yield reused
+        reused.clear()
+        reused.update(historical.to_dict())
+        yield reused
+
+    verifier = DeterministicExternalVerifier()
+    report = verify_chain_detailed(
+        valid_chain,
+        checkpoints=checkpoints(),
+        checkpoint_verifier=verifier,
+    )
+
+    assert verifier.call_count == 2
+    assert [result.input_indexes for result in report.checkpoint_results] == [
+        (0,),
+        (1,),
+    ]
+    assert [result.binding_status for result in report.checkpoint_results] == [
+        CheckpointBindingStatus.MATCHED,
+        CheckpointBindingStatus.HISTORICAL,
+    ]
+    assert report.completeness is Completeness.CHECKPOINT_PROVEN
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_consistent_anchored_checkpoints_at_multiple_coordinates_prove_terminal_head(
+    valid_chain,
+    reverse,
+):
+    historical = create_chain_checkpoint(
+        valid_chain[1],
+        DeterministicExternalSigner(),
+        checkpointed_at=1_725_000_001,
+    )
+    terminal = create_chain_checkpoint(
+        valid_chain[2],
+        DeterministicExternalSigner(),
+        checkpointed_at=1_725_000_002,
+    )
+
+    checkpoints = [historical, terminal] if reverse else [terminal, historical]
+    report = verify_chain_detailed(
+        valid_chain,
+        checkpoints=checkpoints,
+        checkpoint_verifier=DeterministicExternalVerifier(),
+    )
+
+    assert [result.binding_status for result in report.checkpoint_results] == [
+        (
+            CheckpointBindingStatus.HISTORICAL
+            if reverse
+            else CheckpointBindingStatus.MATCHED
+        ),
+        (
+            CheckpointBindingStatus.MATCHED
+            if reverse
+            else CheckpointBindingStatus.HISTORICAL
+        ),
+    ]
+    assert report.checkpoint_signature_status is CheckpointSignatureStatus.VALID
+    assert report.checkpoint_anchor_status is AnchorStatus.ANCHORED
+    assert report.completeness is Completeness.CHECKPOINT_PROVEN
+
+
+def test_out_of_scope_checkpoint_is_diagnostic_and_never_calls_provider(
+    valid_chain,
+):
+    other_chain = _replacement_chain(chain_id="other-chain")
+    checkpoint = create_chain_checkpoint(
+        other_chain[-1],
+        DeterministicExternalSigner(),
+        checkpointed_at=1_725_000_000,
+    )
+    verifier = DeterministicExternalVerifier()
+
+    report = verify_chain_detailed(
+        valid_chain,
+        checkpoints=[checkpoint],
+        checkpoint_verifier=verifier,
+    )
+
+    assert verifier.call_count == 0
+    assert report.checkpoint_signature_status is CheckpointSignatureStatus.NOT_EVALUATED
+    assert report.checkpoint_anchor_status is AnchorStatus.NOT_EVALUATED
+    assert report.completeness is Completeness.UNPROVEN
+    assert (
+        report.checkpoint_results[0].binding_status
+        is CheckpointBindingStatus.OUT_OF_SCOPE
+    )
+    assert [(error.code, error.index) for error in report.errors] == [
+        ("CHECKPOINT_SCOPE_MISMATCH", 0)
+    ]
+
+
+def test_out_of_scope_record_does_not_degrade_in_scope_terminal_proof(
+    valid_chain, chain_checkpoint
+):
+    other_chain = _replacement_chain(chain_id="other-chain")
+    other_checkpoint = create_chain_checkpoint(
+        other_chain[-1],
+        DeterministicExternalSigner(),
+        checkpointed_at=1_725_000_001,
+    )
+    verifier = DeterministicExternalVerifier()
+
+    report = verify_chain_detailed(
+        valid_chain,
+        checkpoints=[other_checkpoint, chain_checkpoint],
+        checkpoint_verifier=verifier,
+    )
+
+    assert verifier.call_count == 1
+    assert [result.binding_status for result in report.checkpoint_results] == [
+        CheckpointBindingStatus.OUT_OF_SCOPE,
+        CheckpointBindingStatus.MATCHED,
+    ]
+    assert report.checkpoint_signature_status is CheckpointSignatureStatus.VALID
+    assert report.checkpoint_anchor_status is AnchorStatus.ANCHORED
+    assert report.completeness is Completeness.CHECKPOINT_PROVEN
+    assert [(error.code, error.index) for error in report.errors] == [
+        ("CHECKPOINT_SCOPE_MISMATCH", 0)
+    ]
+
+
+def test_binding_conflict_error_uses_conflicting_record_caller_index(
+    valid_chain, chain_checkpoint
+):
+    other_chain = _replacement_chain(chain_id="other-chain")
+    out_of_scope = create_chain_checkpoint(
+        other_chain[-1],
+        DeterministicExternalSigner(),
+        checkpointed_at=1_725_000_001,
+    )
+    conflicting = _resign_chain_checkpoint(
+        chain_checkpoint,
+        artifact_checksum="d" * 64,
+    )
+
+    report = verify_chain_detailed(
+        valid_chain,
+        checkpoints=[out_of_scope, chain_checkpoint, conflicting],
+        checkpoint_verifier=DeterministicExternalVerifier(),
+    )
+
+    assert report.completeness is Completeness.CONTRADICTED
+    assert [(error.code, error.index) for error in report.errors] == [
+        ("CHECKPOINT_SCOPE_MISMATCH", 0),
+        ("CHECKPOINT_BINDING_CONFLICT", 2),
+    ]
+
+
+def test_same_coordinate_anchored_checksum_disagreement_is_authoritative_conflict(
+    valid_chain, chain_checkpoint
+):
+    conflicting = _resign_chain_checkpoint(
+        chain_checkpoint,
+        artifact_checksum="d" * 64,
+    )
+
+    report = verify_chain_detailed(
+        valid_chain,
+        checkpoints=[chain_checkpoint, conflicting],
+        checkpoint_verifier=DeterministicExternalVerifier(),
+    )
+
+    assert report.checkpoint_signature_status is CheckpointSignatureStatus.VALID
+    assert report.checkpoint_anchor_status is AnchorStatus.INVALID
+    assert report.completeness is Completeness.CONTRADICTED
+    assert [(error.code, error.index) for error in report.errors] == [
+        ("CHECKPOINT_BINDING_CONFLICT", 1)
+    ]
+
+
+def test_same_coordinate_authority_conflict_does_not_require_supplied_link(
+    valid_chain,
+):
+    checkpoint = create_chain_checkpoint(
+        valid_chain[0],
+        DeterministicExternalSigner(),
+        checkpointed_at=1_725_000_000,
+    )
+    conflicting = _resign_chain_checkpoint(
+        checkpoint,
+        artifact_checksum="d" * 64,
+    )
+
+    report = verify_chain_detailed(
+        valid_chain[2:],
+        expected_chain_id="checkpoint-chain",
+        checkpoints=[checkpoint, conflicting],
+        checkpoint_verifier=DeterministicExternalVerifier(),
+    )
+
+    assert [result.binding_status for result in report.checkpoint_results] == [
+        CheckpointBindingStatus.OUTSIDE,
+        CheckpointBindingStatus.OUTSIDE,
+    ]
+    assert report.checkpoint_anchor_status is AnchorStatus.INVALID
+    assert report.completeness is Completeness.CONTRADICTED
+    assert [(error.code, error.index) for error in report.errors] == [
+        ("CHECKPOINT_BINDING_CONFLICT", 0)
+    ]
+
+
+@pytest.mark.parametrize(
+    "order",
+    [
+        ("first-checksum", "second-claim-1", "second-claim-2"),
+        ("second-claim-1", "second-claim-2", "first-checksum"),
+    ],
+)
+def test_same_coordinate_conflict_marks_every_authority_regardless_of_order(
+    valid_chain,
+    order,
+):
+    first_checksum = create_chain_checkpoint(
+        valid_chain[0],
+        DeterministicExternalSigner(),
+        checkpointed_at=1_725_000_000,
+    )
+    second_claim_1 = _resign_chain_checkpoint(
+        first_checksum,
+        artifact_checksum="d" * 64,
+    )
+    second_claim_2 = _resign_chain_checkpoint(
+        second_claim_1,
+        checkpointed_at=1_725_000_001,
+    )
+    by_name = {
+        "first-checksum": first_checksum,
+        "second-claim-1": second_claim_1,
+        "second-claim-2": second_claim_2,
+    }
+
+    report = verify_chain_detailed(
+        valid_chain[2:],
+        expected_chain_id="checkpoint-chain",
+        checkpoints=[by_name[name] for name in order],
+        checkpoint_verifier=DeterministicExternalVerifier(),
+    )
+
+    assert [result.binding_status for result in report.checkpoint_results] == [
+        CheckpointBindingStatus.OUTSIDE,
+        CheckpointBindingStatus.OUTSIDE,
+        CheckpointBindingStatus.OUTSIDE,
+    ]
+    assert report.checkpoint_anchor_status is AnchorStatus.INVALID
+    assert report.completeness is Completeness.CONTRADICTED
+    assert [(error.code, error.index) for error in report.errors] == [
+        ("CHECKPOINT_BINDING_CONFLICT", 0),
+    ]
+
+
+def test_explicit_scope_mismatch_requires_anchored_in_scope_authority(valid_chain):
+    evidence = _replacement_chain(chain_id="evidence-chain")
+    evidence_checkpoint = create_chain_checkpoint(
+        evidence[-1],
+        DeterministicExternalSigner(),
+        checkpointed_at=1_725_000_000,
+    )
+    untrusted_in_scope = _resign_chain_checkpoint(
+        evidence_checkpoint,
+        chain_id="expected-chain",
+    ).to_dict()
+    untrusted_in_scope["signature"] = "00" * 32
+
+    report = verify_chain_detailed(
+        evidence,
+        expected_chain_id="expected-chain",
+        checkpoints=[untrusted_in_scope],
+        checkpoint_verifier=DeterministicExternalVerifier(),
+    )
+
+    assert (
+        report.checkpoint_results[0].binding_status
+        is CheckpointBindingStatus.MATCHED
+    )
+    assert report.checkpoint_signature_status is CheckpointSignatureStatus.INVALID
+    assert report.checkpoint_anchor_status is AnchorStatus.NOT_EVALUATED
+    assert report.completeness is Completeness.UNPROVEN
+    assert not any(
+        error.code == "CHECKPOINT_BINDING_CONFLICT" for error in report.errors
+    )
+
+
+def test_identifier_replacement_without_explicit_scope_is_out_of_scope(
+    valid_chain, chain_checkpoint
+):
+    replacement = _replacement_chain(chain_id="replacement-chain")
+    verifier = DeterministicExternalVerifier()
+
+    report = verify_chain_detailed(
+        replacement,
+        checkpoints=[chain_checkpoint],
+        checkpoint_verifier=verifier,
+    )
+
+    assert verifier.call_count == 0
+    assert report.completeness is Completeness.UNPROVEN
+    assert (
+        report.checkpoint_results[0].binding_status
+        is CheckpointBindingStatus.OUT_OF_SCOPE
+    )
+
+
+def test_current_and_host_accepted_historical_keys_can_jointly_prove_head(
+    valid_chain,
+):
+    historical = create_chain_checkpoint(
+        valid_chain[1],
+        DeterministicExternalSigner(key_version="version/historical"),
+        checkpointed_at=9_999_999_999,
+    )
+    current = create_chain_checkpoint(
+        valid_chain[2],
+        DeterministicExternalSigner(key_version="version/current"),
+        checkpointed_at=1,
+    )
+    records = dict(default_key_records())
+    records["version/historical"] = replace(
+        records["version/historical"],
+        anchor_status=AnchorStatus.ANCHORED,
+    )
+    verifier = DeterministicExternalVerifier(
+        key_records={
+            (record.key_reference, record.key_version): record
+            for record in records.values()
+        }
+    )
+
+    report = verify_chain_detailed(
+        valid_chain,
+        checkpoints=[current, historical],
+        checkpoint_verifier=verifier,
+    )
+
+    assert verifier.call_count == 2
+    assert report.checkpoint_signature_status is CheckpointSignatureStatus.VALID
+    assert report.checkpoint_anchor_status is AnchorStatus.ANCHORED
+    assert report.completeness is Completeness.CHECKPOINT_PROVEN
+
+
+def test_unanchored_historical_key_cannot_be_hidden_by_current_anchored_key(
+    valid_chain,
+):
+    historical = create_chain_checkpoint(
+        valid_chain[1],
+        DeterministicExternalSigner(key_version="version/historical"),
+        checkpointed_at=1_725_000_001,
+    )
+    current = create_chain_checkpoint(
+        valid_chain[2],
+        DeterministicExternalSigner(key_version="version/current"),
+        checkpointed_at=1_725_000_002,
+    )
+
+    report = verify_chain_detailed(
+        valid_chain,
+        checkpoints=[current, historical],
+        checkpoint_verifier=DeterministicExternalVerifier(),
+    )
+
+    assert report.checkpoint_signature_status is CheckpointSignatureStatus.VALID
+    assert report.checkpoint_anchor_status is AnchorStatus.UNANCHORED
+    assert report.completeness is Completeness.UNPROVEN
+
+
+def test_revoked_key_cannot_be_hidden_by_current_anchored_key(valid_chain):
+    revoked = create_chain_checkpoint(
+        valid_chain[1],
+        DeterministicExternalSigner(key_version="version/revoked"),
+        checkpointed_at=1,
+    )
+    current = create_chain_checkpoint(
+        valid_chain[2],
+        DeterministicExternalSigner(key_version="version/current"),
+        checkpointed_at=9_999_999_999,
+    )
+
+    report = verify_chain_detailed(
+        valid_chain,
+        checkpoints=[current, revoked],
+        checkpoint_verifier=DeterministicExternalVerifier(),
+    )
+
+    assert report.checkpoint_signature_status is CheckpointSignatureStatus.REVOKED
+    assert report.checkpoint_anchor_status is AnchorStatus.NOT_EVALUATED
+    assert report.completeness is Completeness.UNPROVEN
+
+
+def test_boolean_noninitial_chain_index_cannot_participate_in_checkpoint_proof():
+    first = _artifact(0, None)
+    boolean_coordinate = _artifact(True, first["checksum"])
+    terminal = _artifact(2, boolean_coordinate["checksum"])
+    artifacts = [first, boolean_coordinate, terminal]
+    checkpoint = create_chain_checkpoint(
+        terminal,
+        DeterministicExternalSigner(),
+        checkpointed_at=1_725_000_000,
+    )
+
+    report = verify_chain_detailed(
+        artifacts,
+        expected_chain_id="checkpoint-chain",
+        checkpoints=[checkpoint],
+        checkpoint_verifier=DeterministicExternalVerifier(),
+    )
+
+    assert report.content_integrity is ContentIntegrity.VALID
+    assert report.chain_continuity is ChainContinuity.INVALID
+    assert report.completeness is not Completeness.CHECKPOINT_PROVEN
+    assert any(error.code == "CHAIN_INDEX_INVALID" for error in report.errors)
+
+
+_CHECKPOINT_SIGNATURE_PRECEDENCE = (
+    CheckpointSignatureStatus.NOT_EVALUATED,
+    CheckpointSignatureStatus.VALID,
+    CheckpointSignatureStatus.UNKNOWN_KEY,
+    CheckpointSignatureStatus.REVOKED,
+    CheckpointSignatureStatus.INVALID,
+    CheckpointSignatureStatus.INDETERMINATE,
+)
+
+
+@pytest.mark.parametrize(
+    ("left", "right"),
+    tuple(product(_CHECKPOINT_SIGNATURE_PRECEDENCE, repeat=2)),
+)
+def test_every_checkpoint_signature_status_pair_uses_explicit_precedence(
+    left,
+    right,
+):
+    aggregate = getattr(
+        checkpoint_verification_module,
+        "_aggregate_checkpoint_signature_status",
+        None,
+    )
+    expected = _CHECKPOINT_SIGNATURE_PRECEDENCE[
+        max(
+            _CHECKPOINT_SIGNATURE_PRECEDENCE.index(left),
+            _CHECKPOINT_SIGNATURE_PRECEDENCE.index(right),
+        )
+    ]
+
+    assert callable(aggregate)
+    assert aggregate((left, right)) is expected
+
+
+_CHECKPOINT_ANCHOR_PRECEDENCE = (
+    AnchorStatus.ANCHORED,
+    AnchorStatus.UNANCHORED,
+    AnchorStatus.NOT_EVALUATED,
+    AnchorStatus.INVALID,
+)
+
+
+@pytest.mark.parametrize(
+    ("left", "right"),
+    tuple(product(_CHECKPOINT_ANCHOR_PRECEDENCE, repeat=2)),
+)
+def test_every_checkpoint_anchor_status_pair_uses_explicit_precedence(
+    left,
+    right,
+):
+    aggregate = getattr(
+        checkpoint_verification_module,
+        "_aggregate_checkpoint_anchor_status",
+        None,
+    )
+    expected = _CHECKPOINT_ANCHOR_PRECEDENCE[
+        max(
+            _CHECKPOINT_ANCHOR_PRECEDENCE.index(left),
+            _CHECKPOINT_ANCHOR_PRECEDENCE.index(right),
+        )
+    ]
+
+    assert callable(aggregate)
+    assert aggregate((left, right)) is expected
+
+
+def test_empty_checkpoint_status_aggregation_uses_unevaluated_defaults():
+    aggregate_signature = getattr(
+        checkpoint_verification_module,
+        "_aggregate_checkpoint_signature_status",
+        None,
+    )
+    aggregate_anchor = getattr(
+        checkpoint_verification_module,
+        "_aggregate_checkpoint_anchor_status",
+        None,
+    )
+
+    assert callable(aggregate_signature)
+    assert callable(aggregate_anchor)
+    assert (
+        aggregate_signature(())
+        is CheckpointSignatureStatus.NOT_EVALUATED
+    )
+    assert aggregate_anchor(()) is AnchorStatus.NOT_EVALUATED
+
+
 @pytest.mark.parametrize(
     ("checkpoint_position", "window", "binding", "completeness"),
     [
@@ -585,15 +1172,35 @@ def test_unanchored_terminal_checkpoint_does_not_promote_completeness(valid_chai
 
 
 @pytest.mark.parametrize(
-    ("mode", "expected_status", "expects_error"),
+    ("mode", "expected_status", "expected_anchor", "expects_error"),
     [
-        ("unavailable", CheckpointSignatureStatus.INDETERMINATE, False),
-        ("unexpected", CheckpointSignatureStatus.INDETERMINATE, True),
-        ("malformed", CheckpointSignatureStatus.INDETERMINATE, True),
+        (
+            "unavailable",
+            CheckpointSignatureStatus.INDETERMINATE,
+            AnchorStatus.NOT_EVALUATED,
+            False,
+        ),
+        (
+            "unexpected",
+            CheckpointSignatureStatus.INDETERMINATE,
+            AnchorStatus.INVALID,
+            True,
+        ),
+        (
+            "malformed",
+            CheckpointSignatureStatus.INDETERMINATE,
+            AnchorStatus.INVALID,
+            True,
+        ),
     ],
 )
 def test_provider_failure_keeps_structural_binding_and_never_promotes(
-    valid_chain, chain_checkpoint, mode, expected_status, expects_error
+    valid_chain,
+    chain_checkpoint,
+    mode,
+    expected_status,
+    expected_anchor,
+    expects_error,
 ):
     report = verify_chain_detailed(
         valid_chain,
@@ -602,6 +1209,7 @@ def test_provider_failure_keeps_structural_binding_and_never_promotes(
     )
 
     assert report.checkpoint_signature_status is expected_status
+    assert report.checkpoint_anchor_status is expected_anchor
     assert (
         report.checkpoint_results[0].binding_status
         is CheckpointBindingStatus.MATCHED
@@ -842,3 +1450,401 @@ def test_structural_chain_changes_never_promote_checkpoint_completeness(
     )
 
     assert report.completeness is not Completeness.CHECKPOINT_PROVEN
+
+
+@pytest.mark.parametrize(
+    "stream_kind",
+    ["distinct", "duplicate", "malformed", "infinite"],
+)
+def test_raw_checkpoint_limit_reads_only_the_sixty_fifth_element_and_stops(
+    valid_chain,
+    chain_checkpoint,
+    stream_kind,
+):
+    source = chain_checkpoint.to_dict()
+    if stream_kind == "distinct":
+        values = _distinct_checkpoint_dicts(chain_checkpoint, 65)
+    elif stream_kind == "malformed":
+        values = [{} for _ in range(65)]
+    else:
+        values = [source] * 65
+    checkpoints = _HostileCheckpointIterator(
+        [source] if stream_kind == "infinite" else values,
+        infinite=stream_kind == "infinite",
+    )
+    checkpoint_verifier = DeterministicExternalVerifier()
+    callbacks: list[str] = []
+
+    report = verify_chain_detailed(
+        valid_chain,
+        checkpoints=checkpoints,
+        checkpoint_verifier=checkpoint_verifier,
+        anchor_verifier=lambda _artifacts: callbacks.append("anchor")
+        or AnchorStatus.ANCHORED,
+    )
+
+    assert checkpoints.next_calls == 65
+    assert checkpoint_verifier.call_count == 0
+    assert callbacks == []
+    assert report.content_integrity is ContentIntegrity.NOT_EVALUATED
+    assert report.chain_continuity is ChainContinuity.NOT_EVALUATED
+    assert report.checkpoint_results == ()
+    assert [error.code for error in report.errors] == [
+        "CHECKPOINT_LIMIT_EXCEEDED"
+    ]
+
+
+def test_sixty_four_raw_duplicate_occurrences_verify_once(valid_chain, chain_checkpoint):
+    source = chain_checkpoint.to_dict()
+    checkpoints = _HostileCheckpointIterator([source] * 64)
+    verifier = DeterministicExternalVerifier()
+
+    report = verify_chain_detailed(
+        valid_chain,
+        checkpoints=checkpoints,
+        checkpoint_verifier=verifier,
+    )
+
+    assert checkpoints.next_calls == 65
+    assert verifier.call_count == 1
+    assert len(report.checkpoint_results) == 1
+    assert report.checkpoint_results[0].input_indexes == tuple(range(64))
+    assert report.completeness is Completeness.CHECKPOINT_PROVEN
+
+
+def test_checkpoint_provider_call_count_is_capped_at_sixty_four_unique_records(
+    valid_chain,
+    chain_checkpoint,
+):
+    checkpoints = _HostileCheckpointIterator(
+        _distinct_checkpoint_dicts(chain_checkpoint, 64)
+    )
+    verifier = DeterministicExternalVerifier()
+
+    report = verify_chain_detailed(
+        valid_chain,
+        checkpoints=checkpoints,
+        checkpoint_verifier=verifier,
+    )
+
+    assert checkpoints.next_calls == 65
+    assert verifier.call_count == 64
+    assert len(report.checkpoint_results) == 64
+    assert report.checkpoint_signature_status is CheckpointSignatureStatus.INVALID
+    assert report.completeness is Completeness.UNPROVEN
+
+
+def test_checkpoint_iterator_exception_is_sanitized_before_callbacks(
+    valid_chain,
+    chain_checkpoint,
+):
+    class ExplodingIterator:
+        def __init__(self):
+            self.calls = 0
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            self.calls += 1
+            if self.calls == 1:
+                return chain_checkpoint
+            raise RuntimeError(" | ".join(SENSITIVE_CORPUS))
+
+    checkpoints = ExplodingIterator()
+    verifier = DeterministicExternalVerifier()
+    callbacks: list[str] = []
+
+    report = verify_chain_detailed(
+        valid_chain,
+        checkpoints=checkpoints,
+        checkpoint_verifier=verifier,
+        anchor_verifier=lambda _artifacts: callbacks.append("anchor")
+        or AnchorStatus.ANCHORED,
+    )
+
+    assert checkpoints.calls == 2
+    assert verifier.call_count == 0
+    assert callbacks == []
+    assert [error.code for error in report.errors] == [
+        "CHECKPOINT_INPUT_INVALID"
+    ]
+    assert not any(secret in repr(report.errors) for secret in SENSITIVE_CORPUS)
+
+
+def _hostile_checkpoint_graph(kind):
+    if kind == "bytes":
+        return {"oversized": "x" * (4 * 1024 * 1024 + 1)}
+    if kind == "nodes":
+        return {"nodes": [None] * 65_537}
+    if kind == "depth":
+        nested = None
+        for _ in range(33):
+            nested = [nested]
+        return {"nested": nested}
+    if kind == "cycle":
+        cyclic = {}
+        cyclic["cycle"] = cyclic
+        return cyclic
+    if kind == "custom-container":
+        class CustomList(list):
+            pass
+
+        return {"custom": CustomList()}
+    if kind == "non-string-key":
+        return {1: "value"}
+    raise AssertionError(kind)
+
+
+@pytest.mark.parametrize(
+    "kind",
+    ["bytes", "nodes", "depth", "cycle", "custom-container", "non-string-key"],
+)
+def test_checkpoint_resource_preflight_rejects_hostile_graphs_before_all_callbacks(
+    valid_chain,
+    kind,
+):
+    verifier = DeterministicExternalVerifier()
+    callbacks: list[str] = []
+
+    report = verify_chain_detailed(
+        valid_chain,
+        checkpoints=[_hostile_checkpoint_graph(kind)],
+        checkpoint_verifier=verifier,
+        anchor_verifier=lambda _artifacts: callbacks.append("anchor")
+        or AnchorStatus.ANCHORED,
+    )
+
+    assert verifier.call_count == 0
+    assert callbacks == []
+    assert report.content_integrity is ContentIntegrity.NOT_EVALUATED
+    assert report.chain_continuity is ChainContinuity.NOT_EVALUATED
+    assert [error.code for error in report.errors] == [
+        "CHECKPOINT_LIMIT_EXCEEDED"
+    ]
+
+
+@pytest.mark.parametrize("resource", ["bytes", "nodes"])
+def test_chain_and_checkpoints_share_one_aggregate_resource_budget(resource):
+    if resource == "bytes":
+        artifacts = [{"left": "a" * 2_100_000}]
+        checkpoint = {"right": "b" * 2_100_000}
+    else:
+        artifacts = [{"left": [None] * 40_000}]
+        checkpoint = {"right": [None] * 40_000}
+    verifier = DeterministicExternalVerifier()
+    callbacks: list[str] = []
+
+    report = verify_chain_detailed(
+        artifacts,
+        checkpoints=[checkpoint],
+        checkpoint_verifier=verifier,
+        anchor_verifier=lambda _artifacts: callbacks.append("anchor")
+        or AnchorStatus.ANCHORED,
+    )
+
+    assert verifier.call_count == 0
+    assert callbacks == []
+    assert [error.code for error in report.errors] == [
+        "CHECKPOINT_LIMIT_EXCEEDED"
+    ]
+
+
+@pytest.mark.parametrize(
+    "mode",
+    ["unexpected", "malformed", "malformed_combination"],
+)
+def test_hostile_provider_failure_is_bounded_typed_and_redacted(
+    valid_chain,
+    chain_checkpoint,
+    mode,
+    caplog,
+):
+    verifier = DeterministicExternalVerifier(mode=mode)
+
+    report = verify_chain_detailed(
+        valid_chain,
+        checkpoints=[chain_checkpoint],
+        checkpoint_verifier=verifier,
+    )
+
+    assert verifier.call_count == 1
+    assert (
+        report.checkpoint_signature_status
+        is CheckpointSignatureStatus.INDETERMINATE
+    )
+    assert report.checkpoint_anchor_status is AnchorStatus.INVALID
+    assert report.completeness is Completeness.UNPROVEN
+    assert [(error.code, error.index) for error in report.errors] == [
+        ("CHECKPOINT_VERIFICATION_ERROR", 0)
+    ]
+    rendered = repr(report.errors) + caplog.text
+    assert not any(secret in rendered for secret in SENSITIVE_CORPUS)
+
+
+def test_unknown_key_cannot_be_hidden_by_an_anchored_terminal_record(
+    valid_chain,
+    chain_checkpoint,
+):
+    unknown = create_chain_checkpoint(
+        valid_chain[1],
+        DeterministicExternalSigner(),
+        checkpointed_at=1_725_000_001,
+    ).to_dict()
+    unknown["signature_metadata"]["key_version"] = "version/unknown"
+
+    report = verify_chain_detailed(
+        valid_chain,
+        checkpoints=[chain_checkpoint, unknown],
+        checkpoint_verifier=DeterministicExternalVerifier(),
+    )
+
+    assert report.checkpoint_signature_status is CheckpointSignatureStatus.UNKNOWN_KEY
+    assert report.checkpoint_anchor_status is AnchorStatus.NOT_EVALUATED
+    assert report.completeness is Completeness.UNPROVEN
+
+
+def test_invalid_anchor_cannot_be_hidden_by_an_anchored_terminal_record(valid_chain):
+    invalid_anchor = create_chain_checkpoint(
+        valid_chain[1],
+        DeterministicExternalSigner(key_version="version/invalid-anchor"),
+        checkpointed_at=1_725_000_001,
+    )
+    terminal = create_chain_checkpoint(
+        valid_chain[2],
+        DeterministicExternalSigner(),
+        checkpointed_at=1_725_000_002,
+    )
+
+    report = verify_chain_detailed(
+        valid_chain,
+        checkpoints=[terminal, invalid_anchor],
+        checkpoint_verifier=DeterministicExternalVerifier(),
+    )
+
+    assert report.checkpoint_signature_status is CheckpointSignatureStatus.VALID
+    assert report.checkpoint_anchor_status is AnchorStatus.INVALID
+    assert report.completeness is Completeness.UNPROVEN
+
+
+@pytest.mark.parametrize(
+    ("mode", "expected_anchor", "expects_error"),
+    [
+        ("unavailable", AnchorStatus.NOT_EVALUATED, False),
+        ("unexpected", AnchorStatus.INVALID, True),
+        ("malformed", AnchorStatus.INVALID, True),
+    ],
+)
+def test_unavailable_or_failed_record_cannot_be_hidden_by_anchored_record(
+    valid_chain,
+    mode,
+    expected_anchor,
+    expects_error,
+):
+    historical = create_chain_checkpoint(
+        valid_chain[1],
+        DeterministicExternalSigner(key_version="version/historical"),
+        checkpointed_at=1_725_000_001,
+    )
+    terminal = create_chain_checkpoint(
+        valid_chain[2],
+        DeterministicExternalSigner(),
+        checkpointed_at=1_725_000_002,
+    )
+
+    class RoutingVerifier:
+        def __init__(self):
+            self.normal = DeterministicExternalVerifier()
+            self.selected = DeterministicExternalVerifier(mode=mode)
+
+        def verify(self, payload, signature, metadata):
+            verifier = (
+                self.selected
+                if metadata.key_version == "version/historical"
+                else self.normal
+            )
+            return verifier.verify(payload, signature, metadata)
+
+    verifier = RoutingVerifier()
+    report = verify_chain_detailed(
+        valid_chain,
+        checkpoints=[terminal, historical],
+        checkpoint_verifier=verifier,
+    )
+
+    assert verifier.normal.call_count == 1
+    assert verifier.selected.call_count == 1
+    assert (
+        report.checkpoint_signature_status
+        is CheckpointSignatureStatus.INDETERMINATE
+    )
+    assert report.checkpoint_anchor_status is expected_anchor
+    assert report.completeness is Completeness.UNPROVEN
+    assert (
+        "CHECKPOINT_VERIFICATION_ERROR"
+        in [error.code for error in report.errors]
+    ) is expects_error
+
+
+def test_checkpoint_and_artifact_errors_share_the_hundred_error_report_cap():
+    artifacts = []
+    previous = None
+    for index in range(64):
+        artifact = _artifact(index, previous)
+        artifacts.append(artifact)
+        previous = artifact["checksum"]
+    checkpoint = create_chain_checkpoint(
+        artifacts[-1],
+        DeterministicExternalSigner(),
+        checkpointed_at=1_725_000_000,
+    )
+    for artifact in artifacts:
+        artifact.update(
+            signature="ab" * 32,
+            signature_metadata={},
+            signature_status="signed",
+        )
+    verifier = DeterministicExternalVerifier(mode="unexpected")
+
+    report = verify_chain_detailed(
+        artifacts,
+        checkpoints=_distinct_checkpoint_dicts(checkpoint, 64),
+        checkpoint_verifier=verifier,
+    )
+
+    assert verifier.call_count == 64
+    assert len(report.errors) == 100
+    assert not any(secret in repr(report.errors) for secret in SENSITIVE_CORPUS)
+
+
+def test_different_checkpoint_coordinates_are_not_compared_without_chain_links(
+    valid_chain,
+):
+    first_history = create_chain_checkpoint(
+        valid_chain[0],
+        DeterministicExternalSigner(),
+        checkpointed_at=1_725_000_000,
+    )
+    alternate = _replacement_chain(length=2)
+    second_history = create_chain_checkpoint(
+        alternate[1],
+        DeterministicExternalSigner(),
+        checkpointed_at=1_725_000_001,
+    )
+
+    report = verify_chain_detailed(
+        valid_chain[2:],
+        expected_chain_id="checkpoint-chain",
+        checkpoints=[first_history, second_history],
+        checkpoint_verifier=DeterministicExternalVerifier(),
+    )
+
+    assert [result.binding_status for result in report.checkpoint_results] == [
+        CheckpointBindingStatus.OUTSIDE,
+        CheckpointBindingStatus.OUTSIDE,
+    ]
+    assert report.checkpoint_anchor_status is AnchorStatus.ANCHORED
+    assert report.completeness is Completeness.UNPROVEN
+    assert not any(
+        error.code == "CHECKPOINT_BINDING_CONFLICT" for error in report.errors
+    )

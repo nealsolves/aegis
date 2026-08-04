@@ -193,6 +193,11 @@ class DeterministicExternalVerifier:
         self._key_records = MappingProxyType(dict(records))
         self._allowed_algorithms = frozenset(allowed_algorithms)
         self._mode = mode
+        self.calls: list[tuple[bytes, str, SignatureMetadata]] = []
+
+    @property
+    def call_count(self) -> int:
+        return len(self.calls)
 
     def verify(
         self,
@@ -200,6 +205,7 @@ class DeterministicExternalVerifier:
         signature: str,
         metadata: SignatureMetadata,
     ) -> ExternalVerificationOutcome:
+        self.calls.append((payload, signature, metadata))
         if self._mode == "unavailable":
             return ExternalVerificationOutcome(
                 SignatureStatus.INDETERMINATE,
