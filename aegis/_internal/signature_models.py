@@ -7,7 +7,8 @@ import binascii
 import re
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, TypeVar
+from types import MappingProxyType
+from typing import Any, FrozenSet, Mapping, TypeVar
 
 from aegis._internal.errors import (
     SignatureMetadataError,
@@ -37,7 +38,7 @@ class EvidenceType(str, Enum):
     WORKFLOW_CHECKPOINT = "workflow_checkpoint"
 
 
-_SIGNATURE_METADATA_PROFILES = frozenset({
+_SIGNATURE_METADATA_PROFILES: FrozenSet[tuple[EvidenceType, str, str]] = frozenset({
     (EvidenceType.AUDIT_ARTIFACT, SIGNING_PROFILE, CANONICALIZATION_VERSION),
     (
         EvidenceType.CHAIN_CHECKPOINT,
@@ -88,39 +89,42 @@ class VerificationReasonCode(str, Enum):
     ANCHOR_INVALID = "anchor_invalid"
 
 
-ALLOWED_VERIFICATION_OUTCOMES = {
-    (SignatureStatus.UNSIGNED, AnchorStatus.NOT_EVALUATED): {
+ALLOWED_VERIFICATION_OUTCOMES: Mapping[
+    tuple[SignatureStatus, AnchorStatus],
+    FrozenSet[VerificationReasonCode],
+] = MappingProxyType({
+    (SignatureStatus.UNSIGNED, AnchorStatus.NOT_EVALUATED): frozenset({
         VerificationReasonCode.UNSIGNED,
-    },
-    (SignatureStatus.VALID, AnchorStatus.NOT_EVALUATED): {
+    }),
+    (SignatureStatus.VALID, AnchorStatus.NOT_EVALUATED): frozenset({
         VerificationReasonCode.LEGACY_SIGNATURE_VALID,
-    },
-    (SignatureStatus.VALID, AnchorStatus.UNANCHORED): {
+    }),
+    (SignatureStatus.VALID, AnchorStatus.UNANCHORED): frozenset({
         VerificationReasonCode.LEGACY_SIGNATURE_VALID,
         VerificationReasonCode.SIGNATURE_VALID_UNANCHORED,
-    },
-    (SignatureStatus.VALID, AnchorStatus.ANCHORED): {
+    }),
+    (SignatureStatus.VALID, AnchorStatus.ANCHORED): frozenset({
         VerificationReasonCode.SIGNATURE_VALID_ANCHORED,
-    },
-    (SignatureStatus.VALID, AnchorStatus.INVALID): {
+    }),
+    (SignatureStatus.VALID, AnchorStatus.INVALID): frozenset({
         VerificationReasonCode.ANCHOR_INVALID,
-    },
-    (SignatureStatus.INVALID, AnchorStatus.NOT_EVALUATED): {
+    }),
+    (SignatureStatus.INVALID, AnchorStatus.NOT_EVALUATED): frozenset({
         VerificationReasonCode.LEGACY_SIGNATURE_INVALID,
         VerificationReasonCode.SIGNATURE_INVALID,
         VerificationReasonCode.ALGORITHM_NOT_ALLOWED,
-    },
-    (SignatureStatus.UNKNOWN_KEY, AnchorStatus.NOT_EVALUATED): {
+    }),
+    (SignatureStatus.UNKNOWN_KEY, AnchorStatus.NOT_EVALUATED): frozenset({
         VerificationReasonCode.KEY_UNKNOWN,
-    },
-    (SignatureStatus.REVOKED, AnchorStatus.NOT_EVALUATED): {
+    }),
+    (SignatureStatus.REVOKED, AnchorStatus.NOT_EVALUATED): frozenset({
         VerificationReasonCode.KEY_REVOKED,
-    },
-    (SignatureStatus.INDETERMINATE, AnchorStatus.NOT_EVALUATED): {
+    }),
+    (SignatureStatus.INDETERMINATE, AnchorStatus.NOT_EVALUATED): frozenset({
         VerificationReasonCode.SIGNATURE_METADATA_MISSING,
         VerificationReasonCode.VERIFIER_UNAVAILABLE,
-    },
-}
+    }),
+})
 
 _EnumType = TypeVar("_EnumType", bound=Enum)
 

@@ -310,7 +310,7 @@ def _legacy_evidence_kind(artifacts: Sequence[object]) -> LegacyFeature | None:
     return next(iter(kinds)) if len(kinds) == 1 else None
 
 
-_SIGNATURE_PRIORITY = MappingProxyType({
+_SIGNATURE_PRIORITY: Mapping[SignatureStatus, int] = MappingProxyType({
     SignatureStatus.INVALID: 5,
     SignatureStatus.REVOKED: 4,
     SignatureStatus.UNKNOWN_KEY: 3,
@@ -318,7 +318,7 @@ _SIGNATURE_PRIORITY = MappingProxyType({
     SignatureStatus.UNSIGNED: 1,
     SignatureStatus.VALID: 0,
 })
-_ANCHOR_PRIORITY = MappingProxyType({
+_ANCHOR_PRIORITY: Mapping[AnchorStatus, int] = MappingProxyType({
     AnchorStatus.INVALID: 3,
     AnchorStatus.UNANCHORED: 2,
     AnchorStatus.NOT_EVALUATED: 1,
@@ -503,8 +503,7 @@ def _apply_anchor_verifier(
     if callable(anchor_verifier):
         result = anchor_verifier(tuple(artifacts))
     else:
-        verify = getattr(anchor_verifier, "verify")
-        result = verify(tuple(artifacts))
+        result = anchor_verifier.verify(tuple(artifacts))  # type: ignore[attr-defined]
     if not isinstance(result, AnchorStatus):
         raise TypeError("anchor verifier must return AnchorStatus")
     return result

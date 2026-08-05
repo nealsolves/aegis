@@ -327,6 +327,62 @@ class _StorageAwareSigner(DeterministicExternalSigner):
         self.storage_calls += 1
 
 
+class _OrderedCapabilitySigner(DeterministicExternalSigner):
+    def __init__(self) -> None:
+        super().__init__()
+        self.events: list[str] = []
+        self.side_effect_calls: list[str] = []
+
+    def signer_identity(self):
+        self.events.append("signer_identity")
+        return super().signer_identity()
+
+    def sign(self, payload, identity):
+        self.events.append("sign")
+        return super().sign(payload, identity)
+
+    def store(self, record) -> None:
+        del record
+        self.side_effect_calls.append("store")
+
+    def publish(self, record) -> None:
+        del record
+        self.side_effect_calls.append("publish")
+
+    def request(self, payload) -> None:
+        del payload
+        self.side_effect_calls.append("request")
+
+
+@pytest.mark.parametrize("creator_name", ["chain", "workflow"])
+def test_successful_creation_uses_only_ordered_signer_capabilities(
+    chained_artifact,
+    finalized_workflow,
+    creator_name,
+):
+    source = (
+        chained_artifact if creator_name == "chain" else finalized_workflow
+    )
+    source_before = deepcopy(source)
+    creator = (
+        create_chain_checkpoint
+        if creator_name == "chain"
+        else create_workflow_checkpoint
+    )
+    checkpointed_at = (
+        1_725_000_000 if creator_name == "chain" else 1_725_000_001
+    )
+    signer = _OrderedCapabilitySigner()
+
+    result = creator(source, signer, checkpointed_at=checkpointed_at)
+
+    assert result is not None
+    assert signer.events == ["signer_identity", "sign"]
+    assert len(signer.payloads) == 1
+    assert signer.side_effect_calls == []
+    assert source == source_before
+
+
 def _assert_sanitized_failure(
     operation: Callable[[], object],
     source: object,
@@ -549,6 +605,40 @@ def test_source_limit_failure_stops_before_schema_checksum_and_identity(
 
     assert later_calls == []
     assert signer.identity_calls == 0
+
+
+@pytest.mark.parametrize("creator_name", ["chain", "workflow"])
+def test_cyclic_source_stops_before_every_signer_capability(
+    chained_artifact,
+    finalized_workflow,
+    creator_name,
+    caplog,
+):
+    source = deepcopy(
+        chained_artifact if creator_name == "chain" else finalized_workflow
+    )
+    cycle: list[object] = []
+    cycle.append(cycle)
+    source["cycle"] = cycle
+    signer = _ForbiddenSigner()
+    creator = (
+        create_chain_checkpoint
+        if creator_name == "chain"
+        else create_workflow_checkpoint
+    )
+
+    with pytest.raises(CheckpointError) as raised:
+        creator(source, signer, checkpointed_at=1_725_000_000)
+
+    assert raised.value.code == "CHECKPOINT_INPUT_INVALID"
+    assert raised.value.details == {}
+    assert source["cycle"] is cycle
+    assert cycle[0] is cycle
+    assert signer.identity_calls == 0
+    assert signer.storage_calls == 0
+    public_text = str(raised.value) + repr(raised.value.details) + caplog.text
+    for sensitive in SENSITIVE_CORPUS:
+        assert sensitive not in public_text
 
 
 @pytest.mark.parametrize(

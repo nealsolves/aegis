@@ -12,6 +12,8 @@ import pytest
 import aegis
 import aegis._internal.checkpoint_models as checkpoint_models
 import aegis._internal.checkpoint_signing as checkpoint_signing
+import aegis._internal.external_signing as external_signing
+import aegis._internal.signature_models as signature_models
 import aegis.audit_chain as audit_chain
 import aegis.checkpoints as checkpoints
 import aegis.errors as errors
@@ -450,3 +452,147 @@ def test_public_result_requires_contextual_matching_checkpoint_metadata(
                 signature_result,
                 checkpoints.CheckpointBindingStatus.MATCHED,
             )
+
+
+def _anchored_outcome() -> aegis.ExternalVerificationOutcome:
+    return aegis.ExternalVerificationOutcome(
+        SignatureStatus.VALID,
+        AnchorStatus.ANCHORED,
+        VerificationReasonCode.SIGNATURE_VALID_ANCHORED,
+        "provider-controlled-message",
+    )
+
+
+def test_shared_outcome_policy_cannot_admit_unsigned_evaluated_checkpoint(
+    chain_checkpoint: checkpoints.TrustedChainCheckpoint,
+) -> None:
+    policy = signature_models.ALLOWED_VERIFICATION_OUTCOMES
+    key = (SignatureStatus.UNSIGNED, AnchorStatus.NOT_EVALUATED)
+    invalid_reason = VerificationReasonCode.SIGNATURE_VALID_ANCHORED
+    reasons = policy[key]
+    mutated = False
+    try:
+        reasons.add(invalid_reason)
+        mutated = True
+        provider_result = ArtifactVerificationResult(
+            SignatureStatus.UNSIGNED,
+            AnchorStatus.NOT_EVALUATED,
+            invalid_reason,
+            "safe",
+            chain_checkpoint.signature_metadata,
+        )
+        checkpoints.CheckpointVerificationResult(
+            (0,),
+            chain_checkpoint,
+            chain_checkpoint.chain_id,
+            chain_checkpoint.chain_index,
+            provider_result,
+            checkpoints.CheckpointBindingStatus.MATCHED,
+        )
+    except AttributeError:
+        pass
+    finally:
+        if type(reasons) is set:
+            reasons.discard(invalid_reason)
+    assert mutated is False
+
+
+@pytest.mark.parametrize(
+    ("method_name", "arguments"),
+    [
+        ("add", (VerificationReasonCode.SIGNATURE_VALID_ANCHORED,)),
+        ("remove", (VerificationReasonCode.UNSIGNED,)),
+        ("update", ({VerificationReasonCode.SIGNATURE_VALID_ANCHORED},)),
+        ("clear", ()),
+    ],
+)
+def test_shared_outcome_policy_nested_sets_reject_every_mutator(
+    method_name: str,
+    arguments: tuple[object, ...],
+) -> None:
+    key = (SignatureStatus.UNSIGNED, AnchorStatus.NOT_EVALUATED)
+    reasons = signature_models.ALLOWED_VERIFICATION_OUTCOMES[key]
+    original = frozenset(reasons)
+    try:
+        with pytest.raises(AttributeError):
+            getattr(reasons, method_name)(*arguments)
+    finally:
+        if type(reasons) is set:
+            reasons.clear()
+            reasons.update(original)
+
+
+def test_shared_outcome_policy_rejects_top_level_assignment_and_deletion() -> None:
+    policy = signature_models.ALLOWED_VERIFICATION_OUTCOMES
+    key = (SignatureStatus.UNSIGNED, AnchorStatus.NOT_EVALUATED)
+    original = policy[key]
+    try:
+        with pytest.raises(TypeError):
+            policy[key] = frozenset({VerificationReasonCode.UNSIGNED})
+        with pytest.raises(TypeError):
+            del policy[key]
+    finally:
+        if type(policy) is dict:
+            policy[key] = original
+
+
+def test_normalized_message_policy_rejects_replacement_and_stays_core_owned(
+    chain_checkpoint: checkpoints.TrustedChainCheckpoint,
+) -> None:
+    messages = external_signing._SAFE_REASON_MESSAGES
+    reason = VerificationReasonCode.SIGNATURE_VALID_ANCHORED
+    original = messages[reason]
+    mutation_rejected = False
+    try:
+        try:
+            messages[reason] = "attacker-controlled-message"
+        except TypeError:
+            mutation_rejected = True
+        result = external_signing._normalize_external_outcome(
+            _anchored_outcome(),
+            chain_checkpoint.signature_metadata,
+        )
+    finally:
+        if type(messages) is dict:
+            messages[reason] = original
+    assert mutation_rejected is True
+    assert result.message == "Signature is valid and externally anchored"
+
+
+def test_normalized_message_policy_rejects_deletion() -> None:
+    messages = external_signing._SAFE_REASON_MESSAGES
+    reason = VerificationReasonCode.SIGNATURE_VALID_ANCHORED
+    original = messages[reason]
+    try:
+        with pytest.raises(TypeError):
+            del messages[reason]
+    finally:
+        if type(messages) is dict:
+            messages[reason] = original
+
+
+def test_impossible_external_reason_policy_cannot_be_relaxed(
+    chain_checkpoint: checkpoints.TrustedChainCheckpoint,
+) -> None:
+    impossible = external_signing._CONTEXTUALLY_IMPOSSIBLE_EXTERNAL_REASONS
+    reason = VerificationReasonCode.LEGACY_SIGNATURE_VALID
+    removed = False
+    try:
+        impossible.remove(reason)
+        removed = True
+        outcome = aegis.ExternalVerificationOutcome(
+            SignatureStatus.VALID,
+            AnchorStatus.NOT_EVALUATED,
+            reason,
+            "provider-controlled-message",
+        )
+        external_signing._normalize_external_outcome(
+            outcome,
+            chain_checkpoint.signature_metadata,
+        )
+    except AttributeError:
+        pass
+    finally:
+        if type(impossible) is set:
+            impossible.add(reason)
+    assert removed is False

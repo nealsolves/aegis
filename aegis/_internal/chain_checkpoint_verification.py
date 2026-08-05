@@ -38,7 +38,7 @@ _MAX_CHAIN_ARTIFACTS = 1_024
 _MAX_CHAIN_CHECKPOINTS = 64
 _MAX_SCOPE_ID_LENGTH = 512
 
-_SIGNATURE_PRECEDENCE = MappingProxyType({
+_SIGNATURE_PRECEDENCE: Mapping[CheckpointSignatureStatus, int] = MappingProxyType({
     CheckpointSignatureStatus.NOT_EVALUATED: 0,
     CheckpointSignatureStatus.VALID: 1,
     CheckpointSignatureStatus.UNKNOWN_KEY: 2,
@@ -46,7 +46,7 @@ _SIGNATURE_PRECEDENCE = MappingProxyType({
     CheckpointSignatureStatus.INVALID: 4,
     CheckpointSignatureStatus.INDETERMINATE: 5,
 })
-_ANCHOR_PRECEDENCE = MappingProxyType({
+_ANCHOR_PRECEDENCE: Mapping[AnchorStatus, int] = MappingProxyType({
     AnchorStatus.ANCHORED: 0,
     AnchorStatus.UNANCHORED: 1,
     AnchorStatus.NOT_EVALUATED: 2,

@@ -2021,6 +2021,9 @@ _CHECKPOINT_ARCHITECTURE_MODULES = {
     "checkpoints": _ROOT / "aegis" / "checkpoints.py",
     "audit_chain": _ROOT / "aegis" / "audit_chain.py",
     "workflow_verification": _ROOT / "aegis" / "workflow_verification.py",
+    "checkpoint_models": (
+        _ROOT / "aegis" / "_internal" / "checkpoint_models.py"
+    ),
     "checkpoint_signing": (
         _ROOT / "aegis" / "_internal" / "checkpoint_signing.py"
     ),
@@ -2032,6 +2035,18 @@ _CHECKPOINT_ARCHITECTURE_MODULES = {
     ),
     "workflow_checkpoint_verification": (
         _ROOT / "aegis" / "_internal" / "workflow_checkpoint_verification.py"
+    ),
+    "signature_models": (
+        _ROOT / "aegis" / "_internal" / "signature_models.py"
+    ),
+    "external_signing": (
+        _ROOT / "aegis" / "_internal" / "external_signing.py"
+    ),
+    "verification_limits": (
+        _ROOT / "aegis" / "_internal" / "verification_limits.py"
+    ),
+    "verification_contracts": (
+        _ROOT / "aegis" / "_internal" / "verification_contracts.py"
     ),
     "chain_verification_integration": (
         _ROOT / "aegis" / "_internal" / "verification.py"
@@ -2312,3 +2327,580 @@ def test_checkpoint_verifiers_reach_only_the_supplied_verifier_after_preflight(
     workflow_evaluation = _named_calls(workflow, "evaluate_workflow_checkpoint")
     assert len(workflow_preflight) == len(workflow_evaluation) == 1
     assert workflow_preflight[0].lineno < workflow_evaluation[0].lineno
+
+
+_EXPECTED_CHECKPOINT_TRUST_BOUNDARY_MODULES = frozenset(
+    {
+        "checkpoints",
+        "audit_chain",
+        "workflow_verification",
+        "checkpoint_models",
+        "checkpoint_signing",
+        "checkpoint_verification",
+        "chain_checkpoint_verification",
+        "workflow_checkpoint_verification",
+        "signature_models",
+        "external_signing",
+        "verification_limits",
+        "verification_contracts",
+        "chain_verification_integration",
+        "workflow_verification_integration",
+    }
+)
+
+
+_REFLECTIVE_OR_DYNAMIC_CALLS = frozenset(
+    {
+        "builtins.__import__",
+        "builtins.compile",
+        "builtins.delattr",
+        "builtins.eval",
+        "builtins.exec",
+        "builtins.getattr",
+        "builtins.globals",
+        "builtins.locals",
+        "builtins.setattr",
+        "builtins.vars",
+        "importlib.import_module",
+    }
+)
+
+_CAPABILITY_CHAIN_SEGMENTS = frozenset(
+    {
+        "cloud",
+        "credential",
+        "credentials",
+        "enforcement",
+        "environ",
+        "filesystem",
+        "http",
+        "network",
+        "process",
+        "retry",
+        "session",
+        "socket",
+        "storage",
+        "subprocess",
+        "thread",
+    }
+)
+
+_CAPABILITY_SINK_LEAVES = frozenset(
+    {
+        "connect",
+        "create_task",
+        "emit",
+        "execute",
+        "open",
+        "publish",
+        "put",
+        "request",
+        "save",
+        "send",
+        "spawn",
+        "start",
+        "store",
+        "submit",
+        "touch",
+        "unlink",
+        "write",
+        "write_bytes",
+        "write_text",
+    }
+)
+
+_BUILTIN_CALL_ALIASES = {
+    name: f"builtins.{name}"
+    for name in (
+        "__import__",
+        "compile",
+        "delattr",
+        "eval",
+        "exec",
+        "getattr",
+        "globals",
+        "locals",
+        "open",
+        "setattr",
+        "vars",
+    )
+}
+
+
+def _import_aliases(tree: ast.AST) -> dict[str, str]:
+    aliases = dict(_BUILTIN_CALL_ALIASES)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                aliases[alias.asname or alias.name.split(".")[0]] = alias.name
+        elif isinstance(node, ast.ImportFrom) and node.module is not None:
+            for alias in node.names:
+                aliases[alias.asname or alias.name] = (
+                    f"{node.module}.{alias.name}"
+                )
+    return aliases
+
+
+def _resolved_expression_candidates(
+    expression: ast.AST,
+    aliases: dict[str, set[str]],
+) -> set[str]:
+    if isinstance(expression, ast.Name):
+        return aliases.get(expression.id, {expression.id})
+    if isinstance(expression, ast.Attribute):
+        return {
+            f"{owner}.{expression.attr}"
+            for owner in _resolved_expression_candidates(expression.value, aliases)
+        }
+    return set()
+
+
+def _assignment_alias_candidates(
+    tree: ast.AST,
+    aliases: dict[str, str],
+) -> dict[str, set[str]]:
+    resolved = {name: {path} for name, path in aliases.items()}
+    assignments = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.Assign, ast.AnnAssign))
+    ]
+    for _ in range(len(assignments) + 1):
+        changed = False
+        for node in assignments:
+            value = node.value
+            if value is None:
+                continue
+            paths = _resolved_expression_candidates(value, resolved)
+            if not paths:
+                continue
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            for target in targets:
+                if isinstance(target, ast.Name):
+                    prior = resolved.setdefault(target.id, set())
+                    before = len(prior)
+                    prior.update(paths)
+                    changed = changed or len(prior) != before
+        if not changed:
+            break
+    return resolved
+
+
+def _deeply_immutable_global(
+    expression: ast.AST,
+    bindings: dict[str, ast.AST],
+    *,
+    container_allowed: bool = False,
+    seen: frozenset[str] = frozenset(),
+) -> bool:
+    if isinstance(expression, (ast.Constant, ast.Attribute, ast.Subscript)):
+        return True
+    if isinstance(expression, ast.Name):
+        if expression.id not in bindings:
+            return True
+        if expression.id in seen:
+            return False
+        return _deeply_immutable_global(
+            bindings[expression.id],
+            bindings,
+            seen=seen | {expression.id},
+        )
+    if isinstance(expression, ast.Tuple):
+        return all(
+            _deeply_immutable_global(item, bindings, seen=seen)
+            for item in expression.elts
+        )
+    if isinstance(expression, (ast.List, ast.Set)):
+        return container_allowed and all(
+            _deeply_immutable_global(item, bindings, seen=seen)
+            for item in expression.elts
+        )
+    if isinstance(expression, ast.Dict):
+        return container_allowed and all(
+            key is not None
+            and _deeply_immutable_global(key, bindings, seen=seen)
+            and _deeply_immutable_global(value, bindings, seen=seen)
+            for key, value in zip(expression.keys, expression.values)
+        )
+    if isinstance(expression, ast.Call):
+        leaf = _checkpoint_call_leaf(expression)
+        if leaf in {"frozenset", "tuple"}:
+            return all(
+                _deeply_immutable_global(
+                    argument,
+                    bindings,
+                    container_allowed=True,
+                    seen=seen,
+                )
+                for argument in expression.args
+            )
+        if leaf == "MappingProxyType":
+            return len(expression.args) == 1 and _deeply_immutable_global(
+                expression.args[0],
+                bindings,
+                container_allowed=True,
+                seen=seen,
+            )
+        # Regex patterns, TypeVars, and sentinel objects are immutable handles.
+        return leaf in {"compile", "TypeVar", "object"}
+    if isinstance(expression, ast.BinOp):
+        return _deeply_immutable_global(
+            expression.left, bindings, seen=seen
+        ) and _deeply_immutable_global(expression.right, bindings, seen=seen)
+    if isinstance(expression, ast.UnaryOp):
+        return _deeply_immutable_global(expression.operand, bindings, seen=seen)
+    return False
+
+
+def _checkpoint_boundary_violations_for_source(source: str) -> list[str]:
+    """Reject capability aliases, reflection, and mutable trust-boundary state."""
+    tree = ast.parse(source)
+    aliases = _assignment_alias_candidates(tree, _import_aliases(tree))
+    violations: list[str] = []
+    for imported, line in _checkpoint_imports(tree):
+        if any(
+            imported == prefix or imported.startswith(f"{prefix}.")
+            for prefix in _FORBIDDEN_CHECKPOINT_IMPORT_PREFIXES
+        ):
+            violations.append(f"{line}:import:{imported}")
+
+    for call in (node for node in ast.walk(tree) if isinstance(node, ast.Call)):
+        paths = _resolved_expression_candidates(call.func, aliases)
+        dynamic = paths.intersection(_REFLECTIVE_OR_DYNAMIC_CALLS)
+        forbidden = {
+            path
+            for path in paths
+            if path.rsplit(".", 1)[-1] in _FORBIDDEN_CHECKPOINT_CALL_NAMES
+        }
+        capability = {
+            path
+            for path in paths
+            if path.rsplit(".", 1)[-1] in _CAPABILITY_SINK_LEAVES
+            and set(path.split(".")).intersection(_CAPABILITY_CHAIN_SEGMENTS)
+        }
+        if dynamic:
+            violations.append(
+                f"{call.lineno}:dynamic-or-reflective:{min(dynamic)}"
+            )
+        elif forbidden:
+            violations.append(f"{call.lineno}:call:{min(forbidden)}")
+        elif capability:
+            violations.append(
+                f"{call.lineno}:capability-chain:{min(capability)}"
+            )
+
+    bindings: dict[str, ast.AST] = {}
+    for node in tree.body:
+        if isinstance(node, (ast.Assign, ast.AnnAssign)) and node.value is not None:
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            for target in targets:
+                if isinstance(target, ast.Name):
+                    if target.id in bindings and target.id != "__all__":
+                        violations.append(
+                            f"{node.lineno}:global-rebinding:{target.id}"
+                        )
+                    bindings[target.id] = node.value
+    for name, value in bindings.items():
+        if name != "__all__" and not _deeply_immutable_global(
+            value, bindings, seen=frozenset({name})
+        ):
+            violations.append(f"{value.lineno}:mutable-global:{name}")
+
+    global_names = set(bindings)
+
+    def global_target_name(target: ast.AST) -> str | None:
+        while isinstance(target, (ast.Attribute, ast.Subscript)):
+            target = target.value
+        return target.id if isinstance(target, ast.Name) else None
+
+    for node in tree.body:
+        targets: list[ast.AST] = []
+        if isinstance(node, ast.AugAssign):
+            targets = [node.target]
+        elif isinstance(node, ast.Delete):
+            targets = list(node.targets)
+        elif isinstance(node, ast.Assign):
+            targets = [
+                target
+                for target in node.targets
+                if not isinstance(target, ast.Name)
+            ]
+        elif isinstance(node, ast.AnnAssign) and not isinstance(
+            node.target, ast.Name
+        ):
+            targets = [node.target]
+        if any(
+            global_target_name(target) in global_names
+            for target in targets
+        ):
+            violations.append(f"{node.lineno}:global-mutation")
+
+    mutating_operations = {
+        "add",
+        "append",
+        "clear",
+        "discard",
+        "extend",
+        "insert",
+        "pop",
+        "remove",
+        "setdefault",
+        "update",
+    }
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            call_paths = _resolved_expression_candidates(node.func, aliases)
+            for call_path in call_paths:
+                owner, _, operation = call_path.rpartition(".")
+                root = owner.split(".", 1)[0]
+                if root in global_names and operation in mutating_operations:
+                    violations.append(
+                        f"{node.lineno}:global-mutation:{call_path}"
+                    )
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            declared_globals = {
+                name
+                for declaration in ast.walk(node)
+                if isinstance(declaration, ast.Global)
+                for name in declaration.names
+            }
+            for mutation in ast.walk(node):
+                targets = []
+                if isinstance(mutation, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+                    targets = (
+                        mutation.targets
+                        if isinstance(mutation, ast.Assign)
+                        else [mutation.target]
+                    )
+                elif isinstance(mutation, ast.Delete):
+                    targets = mutation.targets
+                if any(
+                    global_target_name(target) in declared_globals
+                    for target in targets
+                ):
+                    violations.append(
+                        f"{mutation.lineno}:function-global-mutation"
+                    )
+    return violations
+
+
+def _checkpoint_callback_order_violations_for_source(
+    source: str,
+    *,
+    function_name: str,
+    boundary_name: str,
+    preflight_name: str,
+) -> list[str]:
+    tree = ast.parse(source)
+    function = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == function_name
+    )
+    aliases = _assignment_alias_candidates(function, _import_aliases(tree))
+    calls = [node for node in ast.walk(function) if isinstance(node, ast.Call)]
+    boundary_calls = [
+        call
+        for call in calls
+        if any(
+            path == boundary_name or path.endswith(f".{boundary_name}")
+            for path in _resolved_expression_candidates(call.func, aliases)
+        )
+    ]
+    preflight_calls = [
+        call
+        for call in calls
+        if any(
+            path == preflight_name or path.endswith(f".{preflight_name}")
+            for path in _resolved_expression_candidates(call.func, aliases)
+        )
+    ]
+    if boundary_calls and not preflight_calls:
+        return ["callback-without-preflight"]
+    if boundary_calls and min(
+        (call.lineno, call.col_offset) for call in boundary_calls
+    ) < min((call.lineno, call.col_offset) for call in preflight_calls):
+        return ["callback-before-preflight"]
+    return []
+
+
+def test_checkpoint_trust_boundary_module_set_is_exact_and_complete() -> None:
+    assert (
+        frozenset(_CHECKPOINT_ARCHITECTURE_MODULES)
+        == _EXPECTED_CHECKPOINT_TRUST_BOUNDARY_MODULES
+    )
+
+
+def test_checkpoint_trust_boundary_modules_pass_robust_capability_analysis(
+) -> None:
+    violations: list[str] = []
+    for module_name, path in _CHECKPOINT_ARCHITECTURE_MODULES.items():
+        violations.extend(
+            f"{module_name}:{violation}"
+            for violation in _checkpoint_boundary_violations_for_source(
+                path.read_text(encoding="utf-8")
+            )
+        )
+    assert violations == []
+
+
+@pytest.mark.parametrize(
+    ("module_name", "function_name", "boundary_name", "preflight_name"),
+    [
+        (
+            "checkpoint_signing",
+            "create_chain_checkpoint",
+            "_sign_checkpoint",
+            "_measure_source",
+        ),
+        (
+            "checkpoint_signing",
+            "create_workflow_checkpoint",
+            "_sign_checkpoint",
+            "_measure_source",
+        ),
+        (
+            "external_signing",
+            "_verify_prepared_payload_detailed",
+            "verify",
+            "from_dict",
+        ),
+        (
+            "chain_verification_integration",
+            "verify_chain_detailed",
+            "evaluate_chain_checkpoints",
+            "prepare_chain_checkpoint_input",
+        ),
+        (
+            "workflow_verification_integration",
+            "_verify_workflow_claim",
+            "evaluate_workflow_checkpoint",
+            "prepare_workflow_checkpoint_input",
+        ),
+    ],
+)
+def test_checkpoint_real_callbacks_remain_after_preflight_under_alias_analysis(
+    module_name: str,
+    function_name: str,
+    boundary_name: str,
+    preflight_name: str,
+) -> None:
+    source = _CHECKPOINT_ARCHITECTURE_MODULES[module_name].read_text(
+        encoding="utf-8"
+    )
+    assert _checkpoint_callback_order_violations_for_source(
+        source,
+        function_name=function_name,
+        boundary_name=boundary_name,
+        preflight_name=preflight_name,
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "import importlib as loader\nloader.import_module('socket')\n",
+        "from builtins import open as read_value\nread_value('secret')\n",
+        (
+            "from builtins import open as callback\n"
+            "callback('secret')\n"
+            "callback = safe_callback\n"
+        ),
+        (
+            "def run(host):\n"
+            "    writer = host.filesystem.writer.write\n"
+            "    writer(b'secret')\n"
+        ),
+        "module = __import__('socket')\n",
+        "import importlib\nmodule = importlib.import_module('requests')\n",
+        "value = eval('open(\"secret\")')\n",
+        "exec('open(\"secret\")')\n",
+        "callback = getattr(signer, 'sign')\n",
+        (
+            "from types import MappingProxyType\n"
+            "POLICY = MappingProxyType({'allowed': {'mutable'}})\n"
+        ),
+        "POLICY = frozenset({'safe'})\nPOLICY |= frozenset({'changed'})\n",
+        (
+            "POLICY = frozenset({'safe'})\n"
+            "POLICY = frozenset({'replaced'})\n"
+        ),
+        (
+            "POLICY = frozenset({'safe'})\n"
+            "def weaken():\n"
+            "    global POLICY\n"
+            "    POLICY |= frozenset({'changed'})\n"
+        ),
+    ],
+    ids=[
+        "aliased-dynamic-import",
+        "from-import-sink-alias",
+        "sink-alias-laundering",
+        "indirect-attribute-chain",
+        "dunder-import",
+        "importlib-import-module",
+        "eval",
+        "exec",
+        "getattr-reflection",
+        "shallow-wrapper-nested-mutable",
+        "post-definition-global-mutation",
+        "post-definition-global-rebinding",
+        "function-scope-global-mutation",
+    ],
+)
+def test_checkpoint_architecture_checker_rejects_constructed_bypasses(
+    source: str,
+) -> None:
+    assert _checkpoint_boundary_violations_for_source(source)
+
+
+@pytest.mark.parametrize(
+    ("source", "function_name", "boundary_name", "preflight_name"),
+    [
+        (
+            "def create(source, signer):\n"
+            "    invoke = signer.sign\n"
+            "    invoke(b'payload', None)\n"
+            "    validate(source)\n",
+            "create",
+            "sign",
+            "validate",
+        ),
+        (
+            "def verify(source, verifier):\n"
+            "    invoke = verifier.verify\n"
+            "    invoke(b'payload', 'AA==', None)\n"
+            "    preflight(source)\n",
+            "verify",
+            "verify",
+            "preflight",
+        ),
+        (
+            "def verify(source, verifier):\n"
+            "    invoke = verifier.verify\n"
+            "    invoke(b'payload', 'AA==', None)\n"
+            "    invoke = safe_callback\n"
+            "    preflight(source)\n",
+            "verify",
+            "verify",
+            "preflight",
+        ),
+    ],
+    ids=[
+        "indirect-signer-before-preflight",
+        "indirect-verifier-before-preflight",
+        "laundered-verifier-before-preflight",
+    ],
+)
+def test_checkpoint_callback_checker_resolves_indirect_calls_and_actual_order(
+    source: str,
+    function_name: str,
+    boundary_name: str,
+    preflight_name: str,
+) -> None:
+    assert _checkpoint_callback_order_violations_for_source(
+        source,
+        function_name=function_name,
+        boundary_name=boundary_name,
+        preflight_name=preflight_name,
+    )

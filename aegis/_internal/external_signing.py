@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Mapping, Protocol, runtime_checkable
+from types import MappingProxyType
+from typing import Any, FrozenSet, Mapping, Protocol, runtime_checkable
 
 from aegis._internal.errors import (
     ArtifactSigningError,
@@ -38,7 +39,7 @@ from aegis._internal.utils import canonical_json_bytes
 
 _SIGNATURE_DOMAIN = b"AEGIS-SIGNATURE\x00"
 
-_SAFE_REASON_MESSAGES = {
+_SAFE_REASON_MESSAGES: Mapping[VerificationReasonCode, str] = MappingProxyType({
     VerificationReasonCode.UNSIGNED: "Artifact is unsigned",
     VerificationReasonCode.LEGACY_SIGNATURE_VALID: "Legacy signature is valid",
     VerificationReasonCode.LEGACY_SIGNATURE_INVALID: "Legacy signature is invalid",
@@ -65,14 +66,16 @@ _SAFE_REASON_MESSAGES = {
         "External verification is unavailable"
     ),
     VerificationReasonCode.ANCHOR_INVALID: "The external anchor is invalid",
-}
+})
 
-_CONTEXTUALLY_IMPOSSIBLE_EXTERNAL_REASONS = {
+_CONTEXTUALLY_IMPOSSIBLE_EXTERNAL_REASONS: FrozenSet[
+    VerificationReasonCode
+] = frozenset({
     VerificationReasonCode.UNSIGNED,
     VerificationReasonCode.LEGACY_SIGNATURE_VALID,
     VerificationReasonCode.LEGACY_SIGNATURE_INVALID,
     VerificationReasonCode.SIGNATURE_METADATA_MISSING,
-}
+})
 
 
 @runtime_checkable

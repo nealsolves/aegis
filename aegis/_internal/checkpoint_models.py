@@ -295,13 +295,13 @@ def _measure_record(value: object) -> None:
 
 def _write_slots(instance: object, owner: type[object], values: dict[str, object]) -> None:
     for field, value in values.items():
-        vars(owner)[field].__set__(instance, value)
+        owner.__dict__[field].__set__(instance, value)
 
 
 def _read_slots(instance: object, owner: type[object]) -> dict[str, object]:
     try:
         return {
-            field: vars(owner)[field].__get__(instance, owner)
+            field: owner.__dict__[field].__get__(instance, owner)
             for field in owner.__dataclass_fields__  # type: ignore[attr-defined]
         }
     except Exception:
