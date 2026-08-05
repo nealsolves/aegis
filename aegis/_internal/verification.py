@@ -5,8 +5,10 @@ from __future__ import annotations
 from copy import deepcopy
 import re
 import hashlib
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
+from types import MappingProxyType
 from typing import Any, Iterable, Sequence
 
 from aegis._internal.canonicalization import CANONICALIZATION_PROFILE_V2
@@ -308,23 +310,27 @@ def _legacy_evidence_kind(artifacts: Sequence[object]) -> LegacyFeature | None:
     return next(iter(kinds)) if len(kinds) == 1 else None
 
 
-_SIGNATURE_PRIORITY = {
+_SIGNATURE_PRIORITY = MappingProxyType({
     SignatureStatus.INVALID: 5,
     SignatureStatus.REVOKED: 4,
     SignatureStatus.UNKNOWN_KEY: 3,
     SignatureStatus.INDETERMINATE: 2,
     SignatureStatus.UNSIGNED: 1,
     SignatureStatus.VALID: 0,
-}
-_ANCHOR_PRIORITY = {
+})
+_ANCHOR_PRIORITY = MappingProxyType({
     AnchorStatus.INVALID: 3,
     AnchorStatus.UNANCHORED: 2,
     AnchorStatus.NOT_EVALUATED: 1,
     AnchorStatus.ANCHORED: 0,
-}
+})
 
 
-def _worst(values: Iterable[Enum], priority: dict[Any, int], default: Any) -> Any:
+def _worst(
+    values: Iterable[Enum],
+    priority: Mapping[Any, int],
+    default: Any,
+) -> Any:
     values = tuple(values)
     return max(values, key=priority.__getitem__) if values else default
 

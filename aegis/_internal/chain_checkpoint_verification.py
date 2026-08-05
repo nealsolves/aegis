@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass
+from types import MappingProxyType
 
 from aegis._internal.canonicalization import canonicalize_v2
 from aegis._internal.checkpoint_models import (
@@ -37,20 +38,20 @@ _MAX_CHAIN_ARTIFACTS = 1_024
 _MAX_CHAIN_CHECKPOINTS = 64
 _MAX_SCOPE_ID_LENGTH = 512
 
-_SIGNATURE_PRECEDENCE = {
+_SIGNATURE_PRECEDENCE = MappingProxyType({
     CheckpointSignatureStatus.NOT_EVALUATED: 0,
     CheckpointSignatureStatus.VALID: 1,
     CheckpointSignatureStatus.UNKNOWN_KEY: 2,
     CheckpointSignatureStatus.REVOKED: 3,
     CheckpointSignatureStatus.INVALID: 4,
     CheckpointSignatureStatus.INDETERMINATE: 5,
-}
-_ANCHOR_PRECEDENCE = {
+})
+_ANCHOR_PRECEDENCE = MappingProxyType({
     AnchorStatus.ANCHORED: 0,
     AnchorStatus.UNANCHORED: 1,
     AnchorStatus.NOT_EVALUATED: 2,
     AnchorStatus.INVALID: 3,
-}
+})
 
 
 @dataclass(frozen=True, slots=True)

@@ -2010,3 +2010,305 @@ def test_workflow_claim_provenance_uses_locked_terminal_state() -> None:
         and node.attr == "_steps"
         for node in ast.walk(invocations_value)
     )
+
+
+# ---------------------------------------------------------------------------
+# Trusted-checkpoint provider-neutral capability boundary (issue #46)
+# ---------------------------------------------------------------------------
+
+
+_CHECKPOINT_ARCHITECTURE_MODULES = {
+    "checkpoints": _ROOT / "aegis" / "checkpoints.py",
+    "audit_chain": _ROOT / "aegis" / "audit_chain.py",
+    "workflow_verification": _ROOT / "aegis" / "workflow_verification.py",
+    "checkpoint_signing": (
+        _ROOT / "aegis" / "_internal" / "checkpoint_signing.py"
+    ),
+    "checkpoint_verification": (
+        _ROOT / "aegis" / "_internal" / "checkpoint_verification.py"
+    ),
+    "chain_checkpoint_verification": (
+        _ROOT / "aegis" / "_internal" / "chain_checkpoint_verification.py"
+    ),
+    "workflow_checkpoint_verification": (
+        _ROOT / "aegis" / "_internal" / "workflow_checkpoint_verification.py"
+    ),
+    "chain_verification_integration": (
+        _ROOT / "aegis" / "_internal" / "verification.py"
+    ),
+    "workflow_verification_integration": (
+        _ROOT / "aegis" / "_internal" / "workflow_verification.py"
+    ),
+}
+
+_FORBIDDEN_CHECKPOINT_IMPORT_PREFIXES = frozenset(
+    {
+        "aiohttp",
+        "azure",
+        "boto3",
+        "botocore",
+        "concurrent",
+        "google.cloud",
+        "http",
+        "httpx",
+        "io",
+        "multiprocessing",
+        "os",
+        "pathlib",
+        "requests",
+        "shutil",
+        "socket",
+        "subprocess",
+        "tempfile",
+        "threading",
+        "time",
+        "urllib",
+        "aegis.enforcement",
+        "aegis._internal.enforcement",
+        "aegis.retry",
+        "aegis._internal.retry",
+        "aegis.session",
+        "aegis._internal.session",
+        "aegis.sinks",
+        "aegis._internal.sinks",
+    }
+)
+
+_FORBIDDEN_CHECKPOINT_CALL_NAMES = frozenset(
+    {
+        "Popen",
+        "create_task",
+        "emit_to_sink",
+        "enforce_invocation",
+        "enforce_invocation_async",
+        "enforce_post_call",
+        "enforce_post_call_async",
+        "enforce_pre_call",
+        "enforce_pre_call_async",
+        "fork",
+        "get_audit_sink",
+        "getenv",
+        "makedirs",
+        "mkdir",
+        "open",
+        "putenv",
+        "rmdir",
+        "run_in_executor",
+        "set_audit_sink",
+        "sleep",
+        "spawn",
+        "touch",
+        "unlink",
+        "unsetenv",
+        "urlopen",
+        "urlretrieve",
+        "write_bytes",
+        "write_text",
+        "_do_finalize",
+    }
+)
+
+
+def _checkpoint_imports(tree: ast.AST) -> list[tuple[str, int]]:
+    imports: list[tuple[str, int]] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imports.extend((alias.name, node.lineno) for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module is not None:
+            imports.append((node.module, node.lineno))
+    return imports
+
+
+def _checkpoint_call_leaf(call: ast.Call) -> str | None:
+    if isinstance(call.func, ast.Name):
+        return call.func.id
+    if isinstance(call.func, ast.Attribute):
+        return call.func.attr
+    return None
+
+
+def _named_function(path: Path, name: str) -> ast.FunctionDef:
+    functions = [
+        function
+        for function in _functions(path)
+        if isinstance(function, ast.FunctionDef) and function.name == name
+    ]
+    assert len(functions) == 1
+    return functions[0]
+
+
+def _named_calls(function: ast.FunctionDef, name: str) -> list[ast.Call]:
+    return [
+        call
+        for call in ast.walk(function)
+        if isinstance(call, ast.Call) and _checkpoint_call_leaf(call) == name
+    ]
+
+
+def test_checkpoint_modules_import_no_storage_network_credential_or_dispatch_sinks(
+) -> None:
+    violations: list[str] = []
+    for module_name, path in _CHECKPOINT_ARCHITECTURE_MODULES.items():
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for imported, line in _checkpoint_imports(tree):
+            if any(
+                imported == prefix or imported.startswith(f"{prefix}.")
+                for prefix in _FORBIDDEN_CHECKPOINT_IMPORT_PREFIXES
+            ):
+                violations.append(f"{module_name}:{line}:import:{imported}")
+    assert violations == []
+
+
+def test_checkpoint_modules_call_no_storage_network_retry_or_enforcement_sinks(
+) -> None:
+    violations: list[str] = []
+    for module_name, path in _CHECKPOINT_ARCHITECTURE_MODULES.items():
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for call in (
+            node for node in ast.walk(tree) if isinstance(node, ast.Call)
+        ):
+            leaf = _checkpoint_call_leaf(call)
+            if leaf in _FORBIDDEN_CHECKPOINT_CALL_NAMES:
+                violations.append(f"{module_name}:{call.lineno}:call:{leaf}")
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and node.attr == "environ":
+                violations.append(
+                    f"{module_name}:{node.lineno}:attribute:environ"
+                )
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                tokens = set(node.name.lower().split("_"))
+                if tokens.intersection({"retry", "retries", "backoff"}):
+                    violations.append(
+                        f"{module_name}:{node.lineno}:function:{node.name}"
+                    )
+    assert violations == []
+
+
+def test_checkpoint_modules_have_no_mutable_module_storage() -> None:
+    violations: list[str] = []
+    mutable_literals = (
+        ast.List,
+        ast.Dict,
+        ast.Set,
+        ast.ListComp,
+        ast.DictComp,
+        ast.SetComp,
+    )
+    mutable_factories = {"list", "dict", "set", "bytearray"}
+    for module_name, path in _CHECKPOINT_ARCHITECTURE_MODULES.items():
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in tree.body:
+            if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+                continue
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            names = [
+                target.id for target in targets if isinstance(target, ast.Name)
+            ]
+            if names == ["__all__"]:
+                continue
+            value = node.value
+            mutable = isinstance(value, mutable_literals) or (
+                isinstance(value, ast.Call)
+                and _checkpoint_call_leaf(value) in mutable_factories
+            )
+            if mutable:
+                violations.extend(
+                    f"{module_name}:{node.lineno}:global:{name}" for name in names
+                )
+    assert violations == []
+
+
+def test_checkpoint_creators_preflight_before_the_only_signer_callbacks() -> None:
+    path = _CHECKPOINT_ARCHITECTURE_MODULES["checkpoint_signing"]
+    for creator_name in (
+        "create_chain_checkpoint",
+        "create_workflow_checkpoint",
+    ):
+        creator = _named_function(path, creator_name)
+        measure = _named_calls(creator, "_measure_source")
+        validate_time = _named_calls(creator, "_require_checkpointed_at")
+        sign = _named_calls(creator, "_sign_checkpoint")
+        assert len(measure) == len(validate_time) == len(sign) == 1
+        assert measure[0].lineno < validate_time[0].lineno < sign[0].lineno
+        assert len(sign[0].args) == 2
+        assert isinstance(sign[0].args[1], ast.Name)
+        assert sign[0].args[1].id == "signer"
+
+    boundary = _named_function(path, "_sign_checkpoint")
+    signer_calls = sorted(
+        (
+            call
+            for call in ast.walk(boundary)
+            if isinstance(call, ast.Call)
+            and isinstance(call.func, ast.Attribute)
+            and isinstance(call.func.value, ast.Name)
+            and call.func.value.id == "signer"
+        ),
+        key=lambda call: call.lineno,
+    )
+    assert len(signer_calls) == 2
+    assert [call.func.attr for call in signer_calls] == [
+        "signer_identity",
+        "sign",
+    ]
+    payload = _named_calls(boundary, "_checkpoint_payload")
+    assert len(payload) == 1
+    assert payload[0].lineno < signer_calls[1].lineno
+
+
+def test_checkpoint_verifiers_reach_only_the_supplied_verifier_after_preflight(
+) -> None:
+    checkpoint_boundary_path = _CHECKPOINT_ARCHITECTURE_MODULES[
+        "checkpoint_verification"
+    ]
+    checkpoint_boundary = _named_function(
+        checkpoint_boundary_path,
+        "verify_prepared_checkpoint",
+    )
+    delegates = _named_calls(
+        checkpoint_boundary,
+        "_verify_prepared_payload_detailed",
+    )
+    assert len(delegates) == 1
+    assert len(delegates[0].args) == 4
+    assert isinstance(delegates[0].args[3], ast.Name)
+    assert delegates[0].args[3].id == "verifier"
+    assert _named_calls(checkpoint_boundary, "verify") == []
+
+    provider_path = _ROOT / "aegis" / "_internal" / "external_signing.py"
+    provider_boundary = _named_function(
+        provider_path,
+        "_verify_prepared_payload_detailed",
+    )
+    verifier_calls = [
+        call
+        for call in ast.walk(provider_boundary)
+        if isinstance(call, ast.Call)
+        and isinstance(call.func, ast.Attribute)
+        and isinstance(call.func.value, ast.Name)
+        and call.func.value.id == "verifier"
+    ]
+    assert len(verifier_calls) == 1
+    assert verifier_calls[0].func.attr == "verify"
+    detached_metadata = _named_calls(provider_boundary, "from_dict")
+    assert len(detached_metadata) == 1
+    assert detached_metadata[0].lineno < verifier_calls[0].lineno
+
+    chain_path = _ROOT / "aegis" / "_internal" / "verification.py"
+    chain = _named_function(chain_path, "verify_chain_detailed")
+    chain_preflight = _named_calls(chain, "prepare_chain_checkpoint_input")
+    chain_evaluation = _named_calls(chain, "evaluate_chain_checkpoints")
+    assert len(chain_preflight) == len(chain_evaluation) == 1
+    assert chain_preflight[0].lineno < chain_evaluation[0].lineno
+
+    workflow_path = (
+        _ROOT / "aegis" / "_internal" / "workflow_verification.py"
+    )
+    workflow = _named_function(workflow_path, "_verify_workflow_claim")
+    workflow_preflight = _named_calls(
+        workflow,
+        "prepare_workflow_checkpoint_input",
+    )
+    workflow_evaluation = _named_calls(workflow, "evaluate_workflow_checkpoint")
+    assert len(workflow_preflight) == len(workflow_evaluation) == 1
+    assert workflow_preflight[0].lineno < workflow_evaluation[0].lineno

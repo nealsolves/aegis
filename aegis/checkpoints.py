@@ -2,7 +2,6 @@
 
 from aegis._internal.checkpoint_models import (
     CheckpointBindingStatus,
-    CheckpointRecord,
     CheckpointSignatureStatus,
     CheckpointVerificationResult,
     TrustedChainCheckpoint,
@@ -18,7 +17,6 @@ from aegis._internal.checkpoint_signing import (
 __all__ = [
     "CheckpointBindingStatus",
     "CheckpointError",
-    "CheckpointRecord",
     "CheckpointSignatureStatus",
     "CheckpointVerificationResult",
     "TrustedChainCheckpoint",

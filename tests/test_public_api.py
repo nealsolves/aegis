@@ -586,3 +586,18 @@ def test_trust_anchor_errors_are_public_and_identical():
     assert all(issubclass(error, AIGCError) for error in module_exports)
     assert expected_names <= set(errors_module.__all__)
     assert expected_names <= set(aegis.__all__)
+
+
+def test_trusted_checkpoint_names_are_in_the_top_level_all_contract():
+    expected_names = {
+        "CheckpointBindingStatus",
+        "CheckpointError",
+        "CheckpointSignatureStatus",
+        "CheckpointVerificationResult",
+        "TrustedChainCheckpoint",
+        "TrustedWorkflowCheckpoint",
+        "create_chain_checkpoint",
+        "create_workflow_checkpoint",
+    }
+
+    assert expected_names <= set(aegis.__all__)
