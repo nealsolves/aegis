@@ -97,21 +97,44 @@ if TYPE_CHECKING:
         expect_pass,
     )
 
-# Bind the security-sensitive checkpoint facade once.  Apart from preserving
-# normal re-export identity, these assignments ensure later monkeypatches of a
-# source submodule cannot silently rewrite the top-level trust boundary.  They
-# also overwrite stale module attributes when ``importlib.reload`` re-executes
-# this module.
-from aegis.checkpoints import (  # noqa: E402,F401,F811
-    CheckpointBindingStatus,
-    CheckpointError,
-    CheckpointSignatureStatus,
-    CheckpointVerificationResult,
-    TrustedChainCheckpoint,
-    TrustedWorkflowCheckpoint,
-    create_chain_checkpoint,
-    create_workflow_checkpoint,
-)
+# Capture the security-sensitive facade on the first import only.  A module
+# reload reuses this module dictionary, so the immutable tuple remains the
+# authority even if ``aegis.checkpoints`` was monkeypatched in the meantime.
+try:
+    _CANONICAL_CHECKPOINT_EXPORTS
+except NameError:
+    from aegis.checkpoints import (  # noqa: E402,F401,F811
+        CheckpointBindingStatus,
+        CheckpointError,
+        CheckpointSignatureStatus,
+        CheckpointVerificationResult,
+        TrustedChainCheckpoint,
+        TrustedWorkflowCheckpoint,
+        create_chain_checkpoint,
+        create_workflow_checkpoint,
+    )
+
+    _CANONICAL_CHECKPOINT_EXPORTS = (
+        ("CheckpointBindingStatus", CheckpointBindingStatus),
+        ("CheckpointError", CheckpointError),
+        ("CheckpointSignatureStatus", CheckpointSignatureStatus),
+        ("CheckpointVerificationResult", CheckpointVerificationResult),
+        ("TrustedChainCheckpoint", TrustedChainCheckpoint),
+        ("TrustedWorkflowCheckpoint", TrustedWorkflowCheckpoint),
+        ("create_chain_checkpoint", create_chain_checkpoint),
+        ("create_workflow_checkpoint", create_workflow_checkpoint),
+    )
+
+(
+    (_, CheckpointBindingStatus),
+    (_, CheckpointError),
+    (_, CheckpointSignatureStatus),
+    (_, CheckpointVerificationResult),
+    (_, TrustedChainCheckpoint),
+    (_, TrustedWorkflowCheckpoint),
+    (_, create_chain_checkpoint),
+    (_, create_workflow_checkpoint),
+) = _CANONICAL_CHECKPOINT_EXPORTS
 
 _EXPORT_GROUPS = (
     ("aegis.enforcement", (
@@ -204,9 +227,21 @@ _EXPORT_GROUPS = (
     )),
 )
 
+# ``importlib.reload`` retains a module dictionary.  Remove any legacy lazy
+# value installed by callers or an earlier implementation before resolving it
+# from its source module again.
+for _module_name, _exported_names in _EXPORT_GROUPS:
+    if _module_name != "aegis.checkpoints":
+        for _exported_name in _exported_names:
+            globals().pop(_exported_name, None)
+
 
 def __getattr__(name: str) -> object:
     """Resolve one stable public export without eagerly importing the SDK."""
+    for canonical_name, canonical_value in _CANONICAL_CHECKPOINT_EXPORTS:
+        if name == canonical_name:
+            globals()[name] = canonical_value
+            return canonical_value
     for module_name, exported_names in _EXPORT_GROUPS:
         if name in exported_names:
             module = __import__(module_name, fromlist=(name,))

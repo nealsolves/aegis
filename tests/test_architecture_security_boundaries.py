@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import builtins
 import json
 from pathlib import Path
 import re
@@ -2663,35 +2664,76 @@ def _deeply_immutable_global(
     bindings: dict[str, ast.AST],
     *,
     container_allowed: bool = False,
+    immutable_attribute_owners: frozenset[str] = frozenset(),
     seen: frozenset[str] = frozenset(),
 ) -> bool:
-    if isinstance(expression, (ast.Constant, ast.Attribute, ast.Subscript)):
+    if isinstance(expression, ast.Constant):
         return True
+    if isinstance(expression, ast.Attribute):
+        # An imported/object attribute may be a mutable descriptor result.  The
+        # referent cannot be proven immutable from this module's syntax alone.
+        return (
+            isinstance(expression.value, ast.Name)
+            and expression.value.id in immutable_attribute_owners
+        )
+    if isinstance(expression, ast.Subscript):
+        return _deeply_immutable_global(
+            expression.value,
+            bindings,
+            immutable_attribute_owners=immutable_attribute_owners,
+            seen=seen,
+        ) and _deeply_immutable_global(
+            expression.slice,
+            bindings,
+            immutable_attribute_owners=immutable_attribute_owners,
+            seen=seen,
+        )
     if isinstance(expression, ast.Name):
         if expression.id not in bindings:
-            return True
+            return False
         if expression.id in seen:
             return False
         return _deeply_immutable_global(
             bindings[expression.id],
             bindings,
+            immutable_attribute_owners=immutable_attribute_owners,
             seen=seen | {expression.id},
         )
     if isinstance(expression, ast.Tuple):
         return all(
-            _deeply_immutable_global(item, bindings, seen=seen)
+            _deeply_immutable_global(
+                item,
+                bindings,
+                immutable_attribute_owners=immutable_attribute_owners,
+                seen=seen,
+            )
             for item in expression.elts
         )
     if isinstance(expression, (ast.List, ast.Set)):
         return container_allowed and all(
-            _deeply_immutable_global(item, bindings, seen=seen)
+            _deeply_immutable_global(
+                item,
+                bindings,
+                immutable_attribute_owners=immutable_attribute_owners,
+                seen=seen,
+            )
             for item in expression.elts
         )
     if isinstance(expression, ast.Dict):
         return container_allowed and all(
             key is not None
-            and _deeply_immutable_global(key, bindings, seen=seen)
-            and _deeply_immutable_global(value, bindings, seen=seen)
+            and _deeply_immutable_global(
+                key,
+                bindings,
+                immutable_attribute_owners=immutable_attribute_owners,
+                seen=seen,
+            )
+            and _deeply_immutable_global(
+                value,
+                bindings,
+                immutable_attribute_owners=immutable_attribute_owners,
+                seen=seen,
+            )
             for key, value in zip(expression.keys, expression.values)
         )
     if isinstance(expression, ast.Call):
@@ -2702,6 +2744,7 @@ def _deeply_immutable_global(
                     argument,
                     bindings,
                     container_allowed=True,
+                    immutable_attribute_owners=immutable_attribute_owners,
                     seen=seen,
                 )
                 for argument in expression.args
@@ -2710,10 +2753,23 @@ def _deeply_immutable_global(
         return leaf in {"compile", "range", "TypeVar", "object"}
     if isinstance(expression, ast.BinOp):
         return _deeply_immutable_global(
-            expression.left, bindings, seen=seen
-        ) and _deeply_immutable_global(expression.right, bindings, seen=seen)
+            expression.left,
+            bindings,
+            immutable_attribute_owners=immutable_attribute_owners,
+            seen=seen,
+        ) and _deeply_immutable_global(
+            expression.right,
+            bindings,
+            immutable_attribute_owners=immutable_attribute_owners,
+            seen=seen,
+        )
     if isinstance(expression, ast.UnaryOp):
-        return _deeply_immutable_global(expression.operand, bindings, seen=seen)
+        return _deeply_immutable_global(
+            expression.operand,
+            bindings,
+            immutable_attribute_owners=immutable_attribute_owners,
+            seen=seen,
+        )
     return False
 
 
@@ -2722,6 +2778,38 @@ def _checkpoint_boundary_violations_for_source(source: str) -> list[str]:
     tree = ast.parse(source)
     aliases = _assignment_alias_candidates(tree, _import_aliases(tree))
     violations = _scope_capability_violations(tree, aliases)
+    imports_by_name = _import_aliases(tree)
+    immutable_attribute_owners = set()
+    for node in tree.body:
+        if not isinstance(node, ast.ClassDef):
+            continue
+        if not any(
+            _resolved_expression_candidates(base, {
+                name: {path} for name, path in imports_by_name.items()
+            }) == {"enum.Enum"}
+            for base in node.bases
+        ):
+            continue
+        member_values = [
+            statement.value
+            for statement in node.body
+            if isinstance(statement, (ast.Assign, ast.AnnAssign))
+            and statement.value is not None
+        ]
+        if all(
+            _deeply_immutable_global(value, {}) for value in member_values
+        ):
+            immutable_attribute_owners.add(node.name)
+    for statement in tree.body:
+        if not isinstance(statement, ast.ImportFrom) or statement.module != (
+            "aegis._internal.signature_models"
+        ):
+            continue
+        immutable_attribute_owners.update(
+            imported.asname or imported.name
+            for imported in statement.names
+            if imported.name in {"EvidenceType", "VerificationReasonCode"}
+        )
 
     parents: dict[ast.AST, ast.AST] = {}
     for parent in ast.walk(tree):
@@ -2731,44 +2819,37 @@ def _checkpoint_boundary_violations_for_source(source: str) -> list[str]:
     safe_shadow_lines: set[int] = set()
     builtin_names = set(_BUILTIN_CALL_ALIASES)
 
-    def directly_bound_functions(scope: ast.AST) -> set[str]:
-        bound: set[str] = set()
+    def containing_scope(node: ast.AST) -> ast.AST:
+        while node in parents:
+            node = parents[node]
+            if isinstance(
+                node,
+                (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.Module),
+            ):
+                return node
+        return tree
 
-        class _BindingVisitor(ast.NodeVisitor):
-            def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-                bound.add(node.name)
+    def direct_scope_nodes(scope: ast.AST) -> list[ast.AST]:
+        return [
+            node
+            for node in ast.walk(scope)
+            if node is not scope and containing_scope(node) is scope
+        ]
 
-            def visit_AsyncFunctionDef(
-                self,
-                node: ast.AsyncFunctionDef,
-            ) -> None:
-                bound.add(node.name)
+    import_resolution = {
+        name: {path} for name, path in _import_aliases(tree).items()
+    }
 
-            def visit_Lambda(self, node: ast.Lambda) -> None:
-                del node
-
-            def visit_ClassDef(self, node: ast.ClassDef) -> None:
-                del node
-
-        visitor = _BindingVisitor()
-        body = getattr(scope, "body", ())
-        if not isinstance(body, list):
-            return bound
-        for statement in body:
-            visitor.visit(statement)
-        return bound
-
-    for call in (node for node in ast.walk(tree) if isinstance(node, ast.Call)):
-        if not isinstance(call.func, ast.Name) or call.func.id not in builtin_names:
-            continue
-        scope: ast.AST = call
-        while scope in parents and not isinstance(
-            scope,
-            (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.Module),
-        ):
-            scope = parents[scope]
-        parameters = set()
-        if isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+    def scope_safely_shadows(call: ast.Call) -> bool:
+        name = call.func.id
+        scope = containing_scope(call)
+        while not isinstance(scope, ast.Module):
+            nodes = direct_scope_nodes(scope)
+            if any(
+                isinstance(node, ast.Global) and name in node.names
+                for node in nodes
+            ):
+                return False
             parameters = {
                 argument.arg
                 for argument in (
@@ -2777,35 +2858,47 @@ def _checkpoint_boundary_violations_for_source(source: str) -> list[str]:
                     *scope.args.kwonlyargs,
                 )
             }
-        nearest_assignment = None
-        for candidate in ast.walk(scope):
-            if not isinstance(candidate, (ast.Assign, ast.AnnAssign)):
-                continue
-            if candidate.lineno >= call.lineno:
-                continue
-            targets = candidate.targets if isinstance(candidate, ast.Assign) else [candidate.target]
+            if name in parameters:
+                return True
+            direct_definitions = {
+                node.name
+                for node in nodes
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            }
+            if name in direct_definitions:
+                return True
+            assignments: list[ast.Assign | ast.AnnAssign] = []
+            for node in nodes:
+                if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+                    continue
+                if node.lineno >= call.lineno:
+                    continue
+                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                if any(
+                    isinstance(target, ast.Name) and target.id == name
+                    for target in targets
+                ):
+                    assignments.append(node)
+            if assignments:
+                nearest = max(assignments, key=lambda node: node.lineno)
+                value = nearest.value
+                if value is None:
+                    return False
+                paths = _resolved_expression_candidates(value, import_resolution)
+                return not any(path.startswith("builtins.") for path in paths)
             if any(
-                isinstance(target, ast.Name) and target.id == call.func.id
-                for target in targets
-            ) and (
-                nearest_assignment is None
-                or candidate.lineno > nearest_assignment.lineno
+                isinstance(node, ast.Nonlocal) and name in node.names
+                for node in nodes
             ):
-                nearest_assignment = candidate
-        local_safe_assignment = False
-        if nearest_assignment is not None and nearest_assignment.value is not None:
-            paths = _resolved_expression_candidates(
-                nearest_assignment.value,
-                {name: {path} for name, path in _import_aliases(tree).items()},
-            )
-            local_safe_assignment = not any(
-                path.startswith("builtins.") for path in paths
-            )
-        if (
-            call.func.id in directly_bound_functions(scope)
-            or call.func.id in parameters
-            or local_safe_assignment
-        ):
+                scope = containing_scope(scope)
+                continue
+            scope = containing_scope(scope)
+        return False
+
+    for call in (node for node in ast.walk(tree) if isinstance(node, ast.Call)):
+        if not isinstance(call.func, ast.Name) or call.func.id not in builtin_names:
+            continue
+        if scope_safely_shadows(call):
             safe_shadow_lines.add(call.lineno)
 
     if safe_shadow_lines:
@@ -2892,9 +2985,39 @@ def _checkpoint_boundary_violations_for_source(source: str) -> list[str]:
                             f"{node.lineno}:global-rebinding:{target.id}"
                         )
                     bindings[target.id] = node.value
+    immutability_bindings = dict(bindings)
+    type_alias_names = {
+        statement.target.id
+        for statement in tree.body
+        if isinstance(statement, ast.AnnAssign)
+        and isinstance(statement.target, ast.Name)
+        and _resolved_expression_candidates(
+            statement.annotation,
+            {name: {path} for name, path in imports_by_name.items()},
+        ) == {"typing.TypeAlias"}
+    }
+    for definition in tree.body:
+        if isinstance(definition, ast.ClassDef):
+            immutability_bindings.setdefault(
+                definition.name,
+                ast.Constant(None),
+            )
+        elif (
+            isinstance(definition, ast.ImportFrom)
+            and definition.module == "aegis._internal.workflow_limits"
+        ):
+            for imported in definition.names:
+                if imported.name == "MAX_WORKFLOW_ATTEMPTS":
+                    immutability_bindings.setdefault(
+                        imported.asname or imported.name,
+                        ast.Constant(None),
+                    )
     for name, value in bindings.items():
-        if name != "__all__" and not _deeply_immutable_global(
-            value, bindings, seen=frozenset({name})
+        if name not in {"__all__", *type_alias_names} and not _deeply_immutable_global(
+            value,
+            immutability_bindings,
+            immutable_attribute_owners=frozenset(immutable_attribute_owners),
+            seen=frozenset({name}),
         ):
             violations.append(f"{value.lineno}:mutable-global:{name}")
 
@@ -2995,6 +3118,11 @@ def _checkpoint_callback_order_violations_for_source(
         for node in ast.walk(tree)
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
     }
+    classes = {
+        node.name: node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ClassDef)
+    }
     function = next(
         node
         for node in tree.body
@@ -3080,40 +3208,69 @@ def _checkpoint_callback_order_violations_for_source(
             resolved[target.id] = paths or {target.id}
 
     def aliases_at(node: ast.AST) -> dict[str, set[str]]:
-        scope = enclosing_function(node)
         resolved = {name: {path} for name, path in import_aliases.items()}
-        candidates = sorted(
-            (
-                candidate
-                for candidate in ast.walk(scope)
-                if isinstance(
+        scope_chain: list[ast.AST] = [tree]
+        ancestry: list[ast.AST] = []
+        ancestor = node
+        while ancestor in parents:
+            ancestor = parents[ancestor]
+            if isinstance(ancestor, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+                ancestry.append(ancestor)
+        scope_chain.extend(reversed(ancestry))
+        for scope in scope_chain:
+            if isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+                for parameter in (
+                    *scope.args.posonlyargs,
+                    *scope.args.args,
+                    *scope.args.kwonlyargs,
+                ):
+                    resolved[parameter.arg] = {parameter.arg}
+            candidates = sorted(
+                (
+                    candidate
+                    for candidate in ast.walk(scope)
+                    if isinstance(
+                        candidate,
+                        (
+                            ast.Assign,
+                            ast.AnnAssign,
+                            ast.NamedExpr,
+                            ast.Import,
+                            ast.ImportFrom,
+                            ast.FunctionDef,
+                            ast.AsyncFunctionDef,
+                            ast.ClassDef,
+                        ),
+                    )
+                    and enclosing_function(candidate) is scope
+                    and (candidate.lineno, candidate.col_offset)
+                    < (node.lineno, node.col_offset)
+                ),
+                key=lambda candidate: (candidate.lineno, candidate.col_offset),
+            )
+            for candidate in candidates:
+                if isinstance(candidate, ast.Assign):
+                    for target in candidate.targets:
+                        bind_alias(target, candidate.value, resolved)
+                elif isinstance(candidate, ast.AnnAssign) and candidate.value is not None:
+                    bind_alias(candidate.target, candidate.value, resolved)
+                elif isinstance(candidate, ast.NamedExpr):
+                    bind_alias(candidate.target, candidate.value, resolved)
+                elif isinstance(candidate, ast.ImportFrom) and candidate.module:
+                    for imported in candidate.names:
+                        resolved[imported.asname or imported.name] = {
+                            f"{candidate.module}.{imported.name}"
+                        }
+                elif isinstance(candidate, ast.Import):
+                    for imported in candidate.names:
+                        resolved[
+                            imported.asname or imported.name.split(".")[0]
+                        ] = {imported.name}
+                elif isinstance(
                     candidate,
-                    (ast.Assign, ast.AnnAssign, ast.NamedExpr, ast.Import, ast.ImportFrom),
-                )
-                and enclosing_function(candidate) is scope
-                and (candidate.lineno, candidate.col_offset)
-                < (node.lineno, node.col_offset)
-            ),
-            key=lambda candidate: (candidate.lineno, candidate.col_offset),
-        )
-        for candidate in candidates:
-            if isinstance(candidate, ast.Assign):
-                for target in candidate.targets:
-                    bind_alias(target, candidate.value, resolved)
-            elif isinstance(candidate, ast.AnnAssign) and candidate.value is not None:
-                bind_alias(candidate.target, candidate.value, resolved)
-            elif isinstance(candidate, ast.NamedExpr):
-                bind_alias(candidate.target, candidate.value, resolved)
-            elif isinstance(candidate, ast.ImportFrom) and candidate.module:
-                for imported in candidate.names:
-                    resolved[imported.asname or imported.name] = {
-                        f"{candidate.module}.{imported.name}"
-                    }
-            elif isinstance(candidate, ast.Import):
-                for imported in candidate.names:
-                    resolved[imported.asname or imported.name.split(".")[0]] = {
-                        imported.name
-                    }
+                    (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef),
+                ):
+                    resolved[candidate.name] = {candidate.name}
         return resolved
 
     class _CurrentScopeCalls(ast.NodeVisitor):
@@ -3121,8 +3278,17 @@ def _checkpoint_callback_order_violations_for_source(
             self.calls: list[ast.Call] = []
 
         def visit_Call(self, node: ast.Call) -> None:
+            self.visit(node.func)
+            argument_expressions = [
+                *node.args,
+                *(keyword.value for keyword in node.keywords),
+            ]
+            for expression in sorted(
+                argument_expressions,
+                key=lambda value: (value.lineno, value.col_offset),
+            ):
+                self.visit(expression)
             self.calls.append(node)
-            self.generic_visit(node)
 
         def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
             for decorator in node.decorator_list:
@@ -3146,29 +3312,34 @@ def _checkpoint_callback_order_violations_for_source(
                 visitor.visit(statement)
         else:
             visitor.visit(node)
-        return sorted(
-            visitor.calls,
-            key=lambda call: (call.lineno, call.col_offset),
-        )
+        return visitor.calls
 
-    def call_matches(call: ast.Call, name: str) -> bool:
+    def call_paths(
+        call: ast.Call,
+        substitutions: dict[str, set[str]] | None = None,
+    ) -> set[str]:
+        resolved = aliases_at(call)
+        if substitutions:
+            resolved.update(substitutions)
+        return _resolved_expression_candidates(call.func, resolved)
+
+    def call_matches(
+        call: ast.Call,
+        name: str,
+        substitutions: dict[str, set[str]] | None = None,
+    ) -> bool:
         return any(
             path == name
             or path.endswith(f".{name}")
             or path.endswith(f".{name}.__call__")
-            for path in _resolved_expression_candidates(call.func, aliases_at(call))
+            for path in call_paths(call, substitutions)
         )
 
     def preflight_matches(call: ast.Call) -> bool:
-        return call_matches(call, preflight_name) and (
-            isinstance(call.func, ast.Name)
-            or any(
-                path.startswith("aegis.")
-                for path in _resolved_expression_candidates(
-                    call.func, aliases_at(call)
-                )
-            )
-        )
+        paths = call_paths(call)
+        if preflight_name == "validate":
+            return "aegis.preflight.validate" in paths
+        return call_matches(call, preflight_name)
 
     def function_has_direct_boundary(name: str) -> bool:
         return any(
@@ -3199,12 +3370,250 @@ def _checkpoint_callback_order_violations_for_source(
                 return True
         return False
 
-    def helper_boundary_count(call: ast.Call, seen: frozenset[str]) -> int:
-        if call_matches(call, boundary_name):
-            return 1
-        if not isinstance(call.func, ast.Name) or call.func.id not in functions:
+    def helper_substitutions(
+        helper: ast.FunctionDef | ast.AsyncFunctionDef,
+        call: ast.Call,
+        inherited: dict[str, set[str]],
+    ) -> dict[str, set[str]]:
+        resolved = aliases_at(call)
+        resolved.update(inherited)
+        parameters = [*helper.args.posonlyargs, *helper.args.args]
+        substitutions: dict[str, set[str]] = {}
+        positional_arguments: list[ast.AST] = []
+        unresolved_positional_expansion = False
+        for argument in call.args:
+            if isinstance(argument, ast.Starred):
+                starred_value = argument.value
+                if isinstance(starred_value, ast.Name):
+                    scope = enclosing_function(call)
+                    assignments = [
+                        candidate
+                        for candidate in ast.walk(scope)
+                        if isinstance(candidate, (ast.Assign, ast.AnnAssign))
+                        and enclosing_function(candidate) is scope
+                        and (candidate.lineno, candidate.col_offset)
+                        < (call.lineno, call.col_offset)
+                        and isinstance(candidate.value, (ast.Tuple, ast.List))
+                        and any(
+                            isinstance(target, ast.Name)
+                            and target.id == starred_value.id
+                            for target in (
+                                candidate.targets
+                                if isinstance(candidate, ast.Assign)
+                                else [candidate.target]
+                            )
+                        )
+                    ]
+                    if assignments:
+                        starred_value = max(
+                            assignments,
+                            key=lambda candidate: (
+                                candidate.lineno,
+                                candidate.col_offset,
+                            ),
+                        ).value
+                if isinstance(starred_value, (ast.Tuple, ast.List)):
+                    positional_arguments.extend(starred_value.elts)
+                    continue
+                unresolved_positional_expansion = True
+                continue
+            positional_arguments.append(argument)
+        for parameter, argument in zip(parameters, positional_arguments):
+            substitutions[parameter.arg] = (
+                _resolved_expression_candidates(argument, resolved)
+                or {parameter.arg}
+            )
+        if unresolved_positional_expansion:
+            for parameter in parameters[len(positional_arguments):]:
+                substitutions.setdefault(parameter.arg, {boundary_name})
+        positional_defaults = {
+            parameter.arg: default
+            for parameter, default in zip(
+                parameters[len(parameters) - len(helper.args.defaults):],
+                helper.args.defaults,
+            )
+        }
+        for parameter in parameters[len(positional_arguments):]:
+            if (
+                parameter.arg not in substitutions
+                and parameter.arg in positional_defaults
+            ):
+                default = positional_defaults[parameter.arg]
+                default_paths = (
+                    _resolved_expression_candidates(default, aliases_at(default))
+                    or {parameter.arg}
+                )
+                substitutions[parameter.arg] = default_paths
+                if any(
+                    path == boundary_name or path.endswith(f".{boundary_name}")
+                    for path in default_paths
+                ):
+                    violations.append(
+                        "callback-capability-captured-in-helper-default"
+                    )
+        unresolved_keyword_expansion = False
+        for keyword in call.keywords:
+            if keyword.arg is not None:
+                substitutions[keyword.arg] = (
+                    _resolved_expression_candidates(keyword.value, resolved)
+                    or {keyword.arg}
+                )
+            elif isinstance(keyword.value, ast.Dict):
+                for key, value in zip(keyword.value.keys, keyword.value.values):
+                    if isinstance(key, ast.Constant) and isinstance(key.value, str):
+                        substitutions[key.value] = (
+                            _resolved_expression_candidates(value, resolved)
+                            or {key.value}
+                        )
+                    else:
+                        unresolved_keyword_expansion = True
+            else:
+                unresolved_keyword_expansion = True
+        if unresolved_keyword_expansion:
+            for parameter in parameters:
+                substitutions.setdefault(parameter.arg, {boundary_name})
+        return substitutions
+
+    def callable_class_boundary_count(
+        call: ast.Call,
+        substitutions: dict[str, set[str]],
+    ) -> int:
+        constructor = call.func if isinstance(call.func, ast.Call) else None
+        if constructor is None and isinstance(call.func, ast.Name):
+            scope = enclosing_function(call)
+            assignments = [
+                candidate
+                for candidate in ast.walk(scope)
+                if isinstance(candidate, (ast.Assign, ast.AnnAssign))
+                and enclosing_function(candidate) is scope
+                and (candidate.lineno, candidate.col_offset)
+                < (call.lineno, call.col_offset)
+                and isinstance(candidate.value, ast.Call)
+                and any(
+                    isinstance(target, ast.Name) and target.id == call.func.id
+                    for target in (
+                        candidate.targets
+                        if isinstance(candidate, ast.Assign)
+                        else [candidate.target]
+                    )
+                )
+            ]
+            if assignments:
+                constructor = max(
+                    assignments,
+                    key=lambda candidate: (
+                        candidate.lineno,
+                        candidate.col_offset,
+                    ),
+                ).value
+        if constructor is None:
             return 0
-        helper_name = call.func.id
+        class_names = {
+            path for path in call_paths(constructor, substitutions) if path in classes
+        }
+        if len(class_names) != 1:
+            return 0
+        class_definition = classes[next(iter(class_names))]
+        methods = {
+            statement.name: statement
+            for statement in class_definition.body
+            if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef))
+        }
+        initializer = methods.get("__init__")
+        invoked = methods.get("__call__")
+        if initializer is None or invoked is None:
+            return 0
+        inherited = aliases_at(constructor)
+        inherited.update(substitutions)
+        init_parameters = [*initializer.args.posonlyargs, *initializer.args.args][1:]
+        parameter_paths = {
+            parameter.arg: (
+                _resolved_expression_candidates(argument, inherited)
+                or {parameter.arg}
+            )
+            for parameter, argument in zip(init_parameters, constructor.args)
+        }
+        if any(isinstance(argument, ast.Starred) for argument in constructor.args):
+            for parameter in init_parameters:
+                parameter_paths[parameter.arg] = {boundary_name}
+        for keyword in constructor.keywords:
+            if keyword.arg is not None:
+                parameter_paths[keyword.arg] = (
+                    _resolved_expression_candidates(keyword.value, inherited)
+                    or {keyword.arg}
+                )
+            elif isinstance(keyword.value, ast.Dict):
+                all_keys_resolved = True
+                for key, value in zip(keyword.value.keys, keyword.value.values):
+                    if isinstance(key, ast.Constant) and isinstance(key.value, str):
+                        parameter_paths[key.value] = (
+                            _resolved_expression_candidates(value, inherited)
+                            or {key.value}
+                        )
+                    else:
+                        all_keys_resolved = False
+                if not all_keys_resolved:
+                    for parameter in init_parameters:
+                        parameter_paths.setdefault(parameter.arg, {boundary_name})
+            else:
+                for parameter in init_parameters:
+                    parameter_paths.setdefault(parameter.arg, {boundary_name})
+        attribute_paths: dict[str, set[str]] = {}
+        for assignment in ast.walk(initializer):
+            if not isinstance(assignment, (ast.Assign, ast.AnnAssign)):
+                continue
+            targets = (
+                assignment.targets
+                if isinstance(assignment, ast.Assign)
+                else [assignment.target]
+            )
+            value = assignment.value
+            if not isinstance(value, ast.Name) or value.id not in parameter_paths:
+                continue
+            for target in targets:
+                if (
+                    isinstance(target, ast.Attribute)
+                    and isinstance(target.value, ast.Name)
+                    and target.value.id == "self"
+                ):
+                    attribute_paths[target.attr] = parameter_paths[value.id]
+        total = 0
+        for nested in current_scope_calls(invoked):
+            if (
+                isinstance(nested.func, ast.Attribute)
+                and isinstance(nested.func.value, ast.Name)
+                and nested.func.value.id == "self"
+                and any(
+                    path.endswith(f".{boundary_name}") or path == boundary_name
+                    for path in attribute_paths.get(nested.func.attr, set())
+                )
+            ):
+                total += 1
+            else:
+                total += helper_boundary_count(
+                    nested,
+                    frozenset({invoked.name}),
+                    substitutions,
+                )
+        return total
+
+    def helper_boundary_count(
+        call: ast.Call,
+        seen: frozenset[str],
+        substitutions: dict[str, set[str]] | None = None,
+    ) -> int:
+        inherited = substitutions or {}
+        if call_matches(call, boundary_name, inherited):
+            return 1
+        class_count = callable_class_boundary_count(call, inherited)
+        if class_count:
+            return class_count
+        helper_names = {
+            path for path in call_paths(call, inherited) if path in functions
+        }
+        if len(helper_names) != 1:
+            return 0
+        helper_name = next(iter(helper_names))
         if helper_name in seen:
             cycle = {
                 name
@@ -3213,18 +3622,186 @@ def _checkpoint_callback_order_violations_for_source(
             }
             return 2 if any(function_has_direct_boundary(name) for name in cycle) else 0
         helper = functions[helper_name]
+        nested_substitutions = helper_substitutions(helper, call, inherited)
         total = 0
         for nested in current_scope_calls(helper):
-            count = helper_boundary_count(nested, seen | {helper_name})
+            count = helper_boundary_count(
+                nested,
+                seen | {helper_name},
+                nested_substitutions,
+            )
             if count and call_is_repeated(nested, helper):
                 return 2
             total += count
         return total
 
-    def statement_calls(statement: ast.stmt) -> list[ast.Call]:
-        if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            return []
-        return current_scope_calls(statement)
+    def analyze_expression(
+        expression: ast.AST | None,
+        preflight_guaranteed: bool,
+    ) -> tuple[bool, int]:
+        if expression is None:
+            return preflight_guaranteed, 0
+        if isinstance(expression, ast.IfExp):
+            test_preflight, test_count = analyze_expression(
+                expression.test,
+                preflight_guaranteed,
+            )
+            body_preflight, body_count = analyze_expression(
+                expression.body,
+                test_preflight,
+            )
+            else_preflight, else_count = analyze_expression(
+                expression.orelse,
+                test_preflight,
+            )
+            return (
+                body_preflight and else_preflight,
+                test_count + max(body_count, else_count),
+            )
+        if isinstance(expression, ast.BoolOp):
+            first_preflight, callback_count = analyze_expression(
+                expression.values[0],
+                preflight_guaranteed,
+            )
+            continuing_preflight = first_preflight
+            for value in expression.values[1:]:
+                continuing_preflight, count = analyze_expression(
+                    value,
+                    continuing_preflight,
+                )
+                callback_count += count
+            # Every operand after the first is conditional.  Only state established
+            # by the first operand dominates the whole expression.
+            return first_preflight, callback_count
+        if isinstance(expression, ast.Call):
+            current_preflight, callback_count = analyze_expression(
+                expression.func,
+                preflight_guaranteed,
+            )
+            arguments = [
+                *expression.args,
+                *(keyword.value for keyword in expression.keywords),
+            ]
+            for argument in sorted(
+                arguments,
+                key=lambda value: (value.lineno, value.col_offset),
+            ):
+                current_preflight, count = analyze_expression(
+                    argument,
+                    current_preflight,
+                )
+                callback_count += count
+            if preflight_matches(expression):
+                return True, callback_count
+            count = helper_boundary_count(
+                expression,
+                frozenset({function_name}),
+            )
+            if count and not current_preflight:
+                violations.append("callback-before-complete-preflight")
+            return current_preflight, callback_count + count
+        if isinstance(
+            expression,
+            (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp),
+        ):
+            count = sum(
+                helper_boundary_count(call, frozenset({function_name}))
+                for call in current_scope_calls(expression)
+            )
+            if count:
+                violations.append("callback-in-comprehension")
+            return preflight_guaranteed, count
+        if isinstance(expression, ast.Lambda):
+            current_preflight = preflight_guaranteed
+            callback_count = 0
+            for default in (*expression.args.defaults, *expression.args.kw_defaults):
+                current_preflight, count = analyze_expression(
+                    default,
+                    current_preflight,
+                )
+                callback_count += count
+            return current_preflight, callback_count
+        if isinstance(expression, ast.Dict):
+            current_preflight = preflight_guaranteed
+            callback_count = 0
+            for key, value in zip(expression.keys, expression.values):
+                current_preflight, count = analyze_expression(
+                    key,
+                    current_preflight,
+                )
+                callback_count += count
+                current_preflight, count = analyze_expression(
+                    value,
+                    current_preflight,
+                )
+                callback_count += count
+            return current_preflight, callback_count
+
+        current_preflight = preflight_guaranteed
+        callback_count = 0
+        for child in ast.iter_child_nodes(expression):
+            current_preflight, count = analyze_expression(
+                child,
+                current_preflight,
+            )
+            callback_count += count
+        return current_preflight, callback_count
+
+    def simple_statement_expressions(statement: ast.stmt) -> list[ast.AST]:
+        if isinstance(statement, ast.Expr):
+            return [statement.value]
+        if isinstance(statement, (ast.Return, ast.Raise)):
+            return [
+                value
+                for value in (
+                    statement.value if isinstance(statement, ast.Return) else statement.exc,
+                    None if isinstance(statement, ast.Return) else statement.cause,
+                )
+                if value is not None
+            ]
+        if isinstance(statement, ast.Assign):
+            return [statement.value]
+        if isinstance(statement, ast.AnnAssign):
+            return [
+                value
+                for value in (statement.annotation, statement.value)
+                if value is not None
+            ]
+        if isinstance(statement, ast.AugAssign):
+            return [statement.target, statement.value]
+        if isinstance(statement, ast.Assert):
+            return [
+                value for value in (statement.test, statement.msg) if value is not None
+            ]
+        if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            expressions: list[ast.AST] = [*statement.decorator_list]
+            if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                expressions.extend(statement.args.defaults)
+                expressions.extend(
+                    default
+                    for default in statement.args.kw_defaults
+                    if default is not None
+                )
+                expressions.extend(
+                    value
+                    for value in (
+                        statement.returns,
+                        *(arg.annotation for arg in statement.args.posonlyargs),
+                        *(arg.annotation for arg in statement.args.args),
+                        *(arg.annotation for arg in statement.args.kwonlyargs),
+                    )
+                    if value is not None
+                )
+            else:
+                expressions.extend(statement.bases)
+                expressions.extend(keyword.value for keyword in statement.keywords)
+                for child in statement.body:
+                    child_expressions = simple_statement_expressions(child)
+                    expressions.extend(
+                        child_expressions or current_scope_calls(child)
+                    )
+            return expressions
+        return []
 
     def analyze_block(
         statements: list[ast.stmt],
@@ -3233,20 +3810,10 @@ def _checkpoint_callback_order_violations_for_source(
         callback_count = 0
         for statement in statements:
             if isinstance(statement, ast.If):
-                test_count = 0
-                test_preflight = preflight_guaranteed
-                for call in current_scope_calls(statement.test):
-                    if preflight_matches(call):
-                        test_preflight = True
-                        continue
-                    count = helper_boundary_count(
-                        call, frozenset({function_name})
-                    )
-                    if count and not test_preflight:
-                        violations.append(
-                            "callback-before-complete-preflight"
-                        )
-                    test_count += count
+                test_preflight, test_count = analyze_expression(
+                    statement.test,
+                    preflight_guaranteed,
+                )
                 body_preflight, body_count = analyze_block(
                     statement.body,
                     test_preflight,
@@ -3259,15 +3826,26 @@ def _checkpoint_callback_order_violations_for_source(
                 callback_count += test_count + max(body_count, else_count)
                 continue
             if isinstance(statement, (ast.For, ast.AsyncFor, ast.While)):
-                loop_count = sum(
-                    helper_boundary_count(call, frozenset({function_name}))
-                    for call in statement_calls(statement)
+                loop_expressions = (
+                    [statement.test]
+                    if isinstance(statement, ast.While)
+                    else [statement.iter]
                 )
+                loop_preflight = preflight_guaranteed
+                loop_count = 0
+                for expression in loop_expressions:
+                    loop_preflight, count = analyze_expression(
+                        expression,
+                        loop_preflight,
+                    )
+                    loop_count += count
+                _, body_count = analyze_block(statement.body, loop_preflight)
+                loop_count += body_count
                 if loop_count:
                     violations.append("callback-in-loop")
                 callback_count += loop_count
                 continue
-            if isinstance(statement, ast.Try):
+            if isinstance(statement, (ast.Try, ast.TryStar)):
                 entry_preflight = preflight_guaranteed
                 body_preflight, body_count = analyze_block(
                     statement.body,
@@ -3282,18 +3860,10 @@ def _checkpoint_callback_order_violations_for_source(
                     handler_count = 0
                     handler_preflight = entry_preflight
                     if handler.type is not None:
-                        for call in current_scope_calls(handler.type):
-                            if preflight_matches(call):
-                                handler_preflight = True
-                                continue
-                            count = helper_boundary_count(
-                                call, frozenset({function_name})
-                            )
-                            if count and not handler_preflight:
-                                violations.append(
-                                    "callback-before-complete-preflight"
-                                )
-                            handler_count += count
+                        handler_preflight, handler_count = analyze_expression(
+                            handler.type,
+                            handler_preflight,
+                        )
                     path_preflight, path_count = analyze_block(
                         handler.body, handler_preflight
                     )
@@ -3315,33 +3885,19 @@ def _checkpoint_callback_order_violations_for_source(
                     callback_count += final_count
                 continue
             if isinstance(statement, ast.Match):
-                subject_preflight = preflight_guaranteed
-                subject_count = 0
-                for call in current_scope_calls(statement.subject):
-                    if preflight_matches(call):
-                        subject_preflight = True
-                        continue
-                    count = helper_boundary_count(call, frozenset({function_name}))
-                    if count and not subject_preflight:
-                        violations.append("callback-before-complete-preflight")
-                    subject_count += count
+                subject_preflight, subject_count = analyze_expression(
+                    statement.subject,
+                    preflight_guaranteed,
+                )
                 paths = []
                 for case in statement.cases:
                     case_preflight = subject_preflight
                     guard_count = 0
                     if case.guard is not None:
-                        for call in current_scope_calls(case.guard):
-                            if preflight_matches(call):
-                                case_preflight = True
-                                continue
-                            count = helper_boundary_count(
-                                call, frozenset({function_name})
-                            )
-                            if count and not case_preflight:
-                                violations.append(
-                                    "callback-before-complete-preflight"
-                                )
-                            guard_count += count
+                        case_preflight, guard_count = analyze_expression(
+                            case.guard,
+                            case_preflight,
+                        )
                     path_preflight, path_count = analyze_block(
                         case.body, case_preflight
                     )
@@ -3363,15 +3919,11 @@ def _checkpoint_callback_order_violations_for_source(
                 continue
             if isinstance(statement, (ast.With, ast.AsyncWith)):
                 for item in statement.items:
-                    for call in current_scope_calls(item.context_expr):
-                        count = helper_boundary_count(
-                            call, frozenset({function_name})
-                        )
-                        if count and not preflight_guaranteed:
-                            violations.append(
-                                "callback-before-complete-preflight"
-                            )
-                        callback_count += count
+                    preflight_guaranteed, count = analyze_expression(
+                        item.context_expr,
+                        preflight_guaranteed,
+                    )
+                    callback_count += count
                 preflight_guaranteed, body_count = analyze_block(
                     statement.body,
                     preflight_guaranteed,
@@ -3379,27 +3931,12 @@ def _checkpoint_callback_order_violations_for_source(
                 callback_count += body_count
                 continue
 
-            if any(
-                isinstance(nested, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp))
-                and any(
-                    helper_boundary_count(call, frozenset({function_name}))
-                    for call in current_scope_calls(nested)
+            for expression in simple_statement_expressions(statement):
+                preflight_guaranteed, count = analyze_expression(
+                    expression,
+                    preflight_guaranteed,
                 )
-                for nested in ast.walk(statement)
-            ):
-                violations.append("callback-in-comprehension")
-            for call in statement_calls(statement):
-                if preflight_matches(call):
-                    preflight_guaranteed = True
-                    continue
-                count = helper_boundary_count(
-                    call,
-                    frozenset({function_name}),
-                )
-                if count:
-                    if not preflight_guaranteed:
-                        violations.append("callback-before-complete-preflight")
-                    callback_count += count
+                callback_count += count
         return preflight_guaranteed, callback_count
 
     definition_calls = []
@@ -3483,26 +4020,84 @@ _CHECKPOINT_REVIEWED_PURE_LEAVES = frozenset(
         ("abc", "abstractmethod"),
         ("base64", "b64decode"),
         ("base64", "b64encode"),
+        ("base64", "<module>"),
+        ("binascii", "<module>"),
         ("binascii", "Error"),
+        ("builtins", "AttributeError"),
+        ("builtins", "Exception"),
+        ("builtins", "KeyError"),
+        ("builtins", "MemoryError"),
+        ("builtins", "NotImplementedError"),
+        ("builtins", "OverflowError"),
+        ("builtins", "RecursionError"),
+        ("builtins", "StopIteration"),
+        ("builtins", "TypeError"),
+        ("builtins", "UnicodeEncodeError"),
+        ("builtins", "UnicodeError"),
+        ("builtins", "ValueError"),
+        ("builtins", "abs"),
+        ("builtins", "all"),
+        ("builtins", "any"),
+        ("builtins", "bool"),
+        ("builtins", "bytearray"),
+        ("builtins", "bytes"),
+        ("builtins", "callable"),
+        ("builtins", "classmethod"),
+        ("builtins", "dict"),
+        ("builtins", "enumerate"),
+        ("builtins", "float"),
+        ("builtins", "frozenset"),
+        ("builtins", "id"),
+        ("builtins", "int"),
+        ("builtins", "isinstance"),
+        ("builtins", "iter"),
+        ("builtins", "len"),
+        ("builtins", "list"),
+        ("builtins", "max"),
+        ("builtins", "min"),
+        ("builtins", "next"),
+        ("builtins", "object"),
+        ("builtins", "ord"),
+        ("builtins", "property"),
+        ("builtins", "reversed"),
+        ("builtins", "set"),
+        ("builtins", "sorted"),
+        ("builtins", "str"),
+        ("builtins", "super"),
+        ("builtins", "tuple"),
+        ("builtins", "type"),
+        ("builtins", "zip"),
+        ("abc", "<module>"),
         ("collections.abc", "Iterable"),
         ("collections.abc", "Mapping"),
         ("copy", "deepcopy"),
+        ("copy", "<module>"),
         ("dataclasses", "dataclass"),
+        ("dataclasses", "field"),
         ("enum", "Enum"),
         ("hashlib", "sha256"),
+        ("hashlib", "<module>"),
         ("hmac", "compare_digest"),
         ("hmac", "new"),
+        ("hmac", "<module>"),
         ("json", "dumps"),
+        ("json", "<module>"),
         ("math", "isfinite"),
+        ("math", "<module>"),
+        ("re", "<module>"),
+        ("rfc8785", "<module>"),
         ("rfc8785", "CanonicalizationError"),
         ("rfc8785", "dumps"),
         ("re", "compile"),
         ("typing", "Any"),
         ("typing", "Callable"),
+        ("typing", "FrozenSet"),
         ("typing", "Iterable"),
+        ("typing", "Literal"),
         ("typing", "Mapping"),
         ("typing", "Protocol"),
         ("typing", "Sequence"),
+        ("typing", "TYPE_CHECKING"),
         ("typing", "TypeVar"),
         ("typing", "runtime_checkable"),
     }
@@ -3516,11 +4111,112 @@ def _checkpoint_module_path(module: str) -> Path | None:
     return path if path.is_file() else None
 
 
-def _checkpoint_callable_dependency_closure() -> frozenset[tuple[str, str]]:
-    """Resolve imported and local symbols reachable from the exact API roots."""
+def _checkpoint_callable_dependency_graph() -> tuple[
+    frozenset[tuple[str, str]],
+    frozenset[tuple[tuple[str, str], tuple[str, str]]],
+    frozenset[str],
+]:
+    """Resolve the fail-closed symbol graph reachable from the exact API roots."""
     pending = list(_CHECKPOINT_CALLABLE_ROOTS)
     reached: set[tuple[str, str]] = set()
-    parsed: dict[str, tuple[dict[str, tuple[str, str | None]], dict[str, ast.AST]]] = {}
+    edges: set[tuple[tuple[str, str], tuple[str, str]]] = set()
+    parsed: dict[
+        str,
+        tuple[dict[str, tuple[str, str | None]], dict[str, ast.AST]],
+    ] = {}
+
+    def resolve_import_module(
+        current_module: str,
+        imported_module: str | None,
+        level: int,
+    ) -> str:
+        if level == 0:
+            return imported_module or ""
+        package = current_module.split(".")[:-1]
+        retained = package[: len(package) - (level - 1)]
+        if imported_module:
+            retained.extend(imported_module.split("."))
+        return ".".join(retained)
+
+    def module_runtime_expressions(
+        tree: ast.Module,
+    ) -> tuple[list[ast.AST], list[ast.Import | ast.ImportFrom]]:
+        expressions: list[ast.AST] = []
+        executed_imports: list[ast.Import | ast.ImportFrom] = []
+
+        class _ModuleRuntimeVisitor(ast.NodeVisitor):
+            def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+                expressions.extend(node.decorator_list)
+                expressions.extend(node.args.defaults)
+                expressions.extend(
+                    value for value in node.args.kw_defaults if value is not None
+                )
+                expressions.extend(
+                    value
+                    for value in (
+                        node.returns,
+                        *(arg.annotation for arg in node.args.posonlyargs),
+                        *(arg.annotation for arg in node.args.args),
+                        *(arg.annotation for arg in node.args.kwonlyargs),
+                    )
+                    if value is not None
+                )
+
+            def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+                self.visit_FunctionDef(node)
+
+            def visit_ClassDef(self, node: ast.ClassDef) -> None:
+                expressions.extend(node.decorator_list)
+                expressions.extend(node.bases)
+                expressions.extend(keyword.value for keyword in node.keywords)
+                for statement in node.body:
+                    self.visit(statement)
+
+            def visit_Assign(self, node: ast.Assign) -> None:
+                expressions.append(node.value)
+
+            def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+                expressions.append(node.annotation)
+                if node.value is not None:
+                    expressions.append(node.value)
+
+            def visit_If(self, node: ast.If) -> None:
+                if isinstance(node.test, ast.Name) and node.test.id == "TYPE_CHECKING":
+                    for statement in node.orelse:
+                        self.visit(statement)
+                    return
+                self.generic_visit(node)
+
+            def visit_Import(self, node: ast.Import) -> None:
+                executed_imports.append(node)
+                expressions.extend(
+                    ast.Name(
+                        id=imported.asname or imported.name.split(".")[0],
+                        ctx=ast.Load(),
+                    )
+                    for imported in node.names
+                )
+
+            def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+                if node.module == "__future__":
+                    return
+                executed_imports.append(node)
+                expressions.extend(
+                    ast.Name(
+                        id=imported.asname or imported.name,
+                        ctx=ast.Load(),
+                    )
+                    for imported in node.names
+                )
+
+            def generic_visit(self, node: ast.AST) -> None:
+                if isinstance(node, ast.expr):
+                    expressions.append(node)
+                    return
+                super().generic_visit(node)
+
+        _ModuleRuntimeVisitor().visit(tree)
+        return expressions, executed_imports
 
     def module_index(
         module: str,
@@ -3532,25 +4228,33 @@ def _checkpoint_callable_dependency_closure() -> frozenset[tuple[str, str]]:
             return None
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         imports: dict[str, tuple[str, str | None]] = {}
-        definitions: dict[str, ast.AST] = {}
-        for statement in tree.body:
-            if isinstance(statement, ast.ImportFrom) and statement.module:
+        runtime_expressions, executed_imports = module_runtime_expressions(tree)
+        definitions: dict[str, ast.AST] = {
+            "<module>": ast.Tuple(
+                elts=runtime_expressions,
+                ctx=ast.Load(),
+            )
+        }
+        for statement in executed_imports:
+            if isinstance(statement, ast.ImportFrom):
+                imported_module = resolve_import_module(
+                    module,
+                    statement.module,
+                    statement.level,
+                )
                 for imported in statement.names:
                     imports[imported.asname or imported.name] = (
-                        statement.module,
+                        imported_module,
                         imported.name,
                     )
-                    if statement.module.startswith("aegis."):
-                        pending.append((statement.module, imported.name))
-            elif isinstance(statement, ast.Import):
+            else:
                 for imported in statement.names:
                     imports[imported.asname or imported.name.split(".")[0]] = (
                         imported.name,
                         None,
                     )
-                    if imported.name.startswith("aegis."):
-                        pending.append((imported.name, "<module>"))
-            elif isinstance(
+        for statement in tree.body:
+            if isinstance(
                 statement,
                 (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef),
             ):
@@ -3562,10 +4266,31 @@ def _checkpoint_callable_dependency_closure() -> frozenset[tuple[str, str]]:
                     else [statement.target]
                 )
                 for target in targets:
-                    if isinstance(target, ast.Name) and statement.value is not None:
+                    if (
+                        isinstance(target, ast.Name)
+                        and statement.value is not None
+                    ):
                         definitions[target.id] = statement.value
+            elif (
+                isinstance(statement, ast.If)
+                and isinstance(statement.test, ast.Name)
+                and statement.test.id == "TYPE_CHECKING"
+            ):
+                for nested in statement.body:
+                    if isinstance(nested, ast.ImportFrom):
+                        for imported in nested.names:
+                            definitions[
+                                f"<type-only:{imported.asname or imported.name}>"
+                            ] = ast.Constant(None)
         parsed[module] = imports, definitions
         return parsed[module]
+
+    def enqueue(
+        caller: tuple[str, str],
+        dependency: tuple[str, str],
+    ) -> None:
+        edges.add((caller, dependency))
+        pending.append(dependency)
 
     while pending:
         symbol = pending.pop()
@@ -3578,42 +4303,186 @@ def _checkpoint_callable_dependency_closure() -> frozenset[tuple[str, str]]:
         indexed = module_index(module)
         if indexed is None:
             raise AssertionError(f"unreviewed external closure leaf: {module}.{name}")
-        if name == "<module>":
-            continue
         imports, definitions = indexed
+        if name != "<module>":
+            enqueue(symbol, (module, "<module>"))
+        if name == "<module>":
+            for imported_module, imported_name in imports.values():
+                dependency = (
+                    imported_module,
+                    imported_name if imported_name is not None else "<module>",
+                )
+                enqueue(symbol, dependency)
         definition = definitions.get(name)
         if definition is None:
+            if name in imports:
+                imported_module, imported_name = imports[name]
+                enqueue(
+                    symbol,
+                    (
+                        imported_module,
+                        imported_name if imported_name is not None else "<module>",
+                    ),
+                )
+                continue
             raise AssertionError(f"unresolved checkpoint closure symbol: {module}.{name}")
-        local_imports = dict(imports)
-        for node in ast.walk(definition):
-            if isinstance(node, ast.ImportFrom) and node.module is not None:
-                for imported in node.names:
-                    local_imports[imported.asname or imported.name] = (
-                        node.module,
+        definition_parents: dict[ast.AST, ast.AST] = {}
+        for parent in ast.walk(definition):
+            for child in ast.iter_child_nodes(parent):
+                definition_parents[child] = parent
+
+        def nearest_function_scope(node: ast.AST) -> ast.AST | None:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+                node = definition_parents.get(node, definition)
+            while node in definition_parents:
+                node = definition_parents[node]
+                if isinstance(
+                    node,
+                    (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda),
+                ):
+                    return node
+            return (
+                definition
+                if isinstance(
+                    definition,
+                    (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda),
+                )
+                else None
+            )
+
+        function_scopes = [
+            node
+            for node in ast.walk(definition)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda))
+        ]
+        scope_local_names: dict[ast.AST, set[str]] = {
+            scope: {
+                argument.arg
+                for argument in (
+                    *scope.args.posonlyargs,
+                    *scope.args.args,
+                    *scope.args.kwonlyargs,
+                )
+            }
+            for scope in function_scopes
+        }
+        scope_imports: dict[ast.AST, dict[str, tuple[str, str | None]]] = {
+            scope: {} for scope in function_scopes
+        }
+        for nested in ast.walk(definition):
+            scope = nearest_function_scope(nested)
+            if scope is None:
+                continue
+            if isinstance(nested, ast.ImportFrom):
+                imported_module = resolve_import_module(
+                    module,
+                    nested.module,
+                    nested.level,
+                )
+                for imported in nested.names:
+                    scope_imports[scope][imported.asname or imported.name] = (
+                        imported_module,
                         imported.name,
                     )
-            elif isinstance(node, ast.Import):
-                for imported in node.names:
-                    local_imports[imported.asname or imported.name.split(".")[0]] = (
-                        imported.name,
-                        None,
-                    )
+            elif isinstance(nested, ast.Import):
+                for imported in nested.names:
+                    scope_imports[scope][
+                        imported.asname or imported.name.split(".")[0]
+                    ] = (imported.name, None)
+        for nested in ast.walk(definition):
+            scope = nearest_function_scope(nested)
+            if scope is None:
+                continue
+            if isinstance(nested, ast.Name) and isinstance(nested.ctx, ast.Store):
+                scope_local_names[scope].add(nested.id)
+            elif isinstance(
+                nested,
+                (ast.ExceptHandler, ast.MatchAs, ast.MatchStar),
+            ) and nested.name is not None:
+                scope_local_names[scope].add(nested.name)
+            elif isinstance(
+                nested,
+                (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef),
+            ) and nested is not scope:
+                scope_local_names[scope].add(nested.name)
+
+        def name_is_lexically_local(node: ast.Name) -> bool:
+            scope = nearest_function_scope(node)
+            while scope is not None:
+                if node.id in scope_local_names.get(scope, set()):
+                    return True
+                outer_scope = nearest_function_scope(scope)
+                if outer_scope is scope:
+                    break
+                scope = outer_scope
+            return False
+
+        def imports_at(node: ast.AST) -> dict[str, tuple[str, str | None]]:
+            lexical_imports = dict(imports)
+            scopes: list[ast.AST] = []
+            scope = nearest_function_scope(node)
+            while scope is not None:
+                scopes.append(scope)
+                outer_scope = nearest_function_scope(scope)
+                if outer_scope is scope:
+                    break
+                scope = outer_scope
+            for lexical_scope in reversed(scopes):
+                lexical_imports.update(scope_imports.get(lexical_scope, {}))
+            return lexical_imports
+        attribute_bases = {
+            node.value
+            for node in ast.walk(definition)
+            if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)
+        }
         for node in ast.walk(definition):
             if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+                local_imports = imports_at(node)
                 if node.id in definitions:
-                    pending.append((module, node.id))
+                    enqueue(symbol, (module, node.id))
                 elif node.id in local_imports and local_imports[node.id][1] is not None:
                     imported_module, imported_name = local_imports[node.id]
-                    pending.append((imported_module, imported_name))
-            elif (
-                isinstance(node, ast.Attribute)
-                and isinstance(node.value, ast.Name)
-                and node.value.id in local_imports
-                and local_imports[node.value.id][1] is None
+                    enqueue(symbol, (imported_module, imported_name))
+                elif node.id in local_imports:
+                    imported_module, _ = local_imports[node.id]
+                    enqueue(symbol, (imported_module, "<module>"))
+                elif node in attribute_bases and node.id in local_imports:
+                    continue
+                elif name_is_lexically_local(node) or node.id in {
+                    "__name__",
+                    "__package__",
+                    "__doc__",
+                    "__file__",
+                    "__annotations__",
+                }:
+                    continue
+                elif f"<type-only:{node.id}>" in definitions:
+                    continue
+                elif hasattr(builtins, node.id):
+                    enqueue(symbol, ("builtins", node.id))
+                else:
+                    raise AssertionError(
+                        f"unresolved checkpoint closure symbol: {module}.{node.id}"
+                    )
+            elif isinstance(node, ast.Attribute) and isinstance(
+                node.value,
+                ast.Name,
             ):
-                imported_module, _ = local_imports[node.value.id]
-                pending.append((imported_module, node.attr))
-    return frozenset(reached)
+                local_imports = imports_at(node)
+                if (
+                    node.value.id in local_imports
+                    and local_imports[node.value.id][1] is None
+                ):
+                    imported_module, _ = local_imports[node.value.id]
+                    enqueue(symbol, (imported_module, node.attr))
+    modules = frozenset(module for module, _ in reached)
+    return frozenset(reached), frozenset(edges), modules
+
+
+def _checkpoint_callable_dependency_closure() -> frozenset[tuple[str, str]]:
+    """Return the symbol projection of the reviewed dependency graph."""
+    symbols, _, _ = _checkpoint_callable_dependency_graph()
+    return symbols
 
 
 def test_checkpoint_callable_roots_discover_the_complete_reviewed_closure() -> None:
@@ -3650,6 +4519,28 @@ def test_checkpoint_callable_roots_discover_the_complete_reviewed_closure() -> N
             "aegis._internal.session",
         )
     )
+
+
+def test_checkpoint_dependency_graph_matches_exact_reviewed_manifest() -> None:
+    manifest = json.loads(
+        (_ROOT / "tests" / "fixtures" / "checkpoint_dependency_manifest.json")
+        .read_text(encoding="utf-8")
+    )
+    manifest_symbols = tuple(
+        (module, symbol) for module, symbol in manifest["symbols"]
+    )
+    expected_symbols = frozenset(manifest_symbols)
+    expected_edges = frozenset(
+        (manifest_symbols[caller], manifest_symbols[dependency])
+        for caller, dependency in manifest["edges"]
+    )
+    expected_modules = frozenset(manifest["modules"])
+
+    symbols, edges, modules = _checkpoint_callable_dependency_graph()
+
+    assert symbols == expected_symbols
+    assert edges == expected_edges
+    assert modules == expected_modules
 
 
 def test_every_callable_closure_module_is_capability_reviewed() -> None:
@@ -3756,6 +4647,128 @@ def test_callable_closure_fails_closed_for_unresolved_executed_import(
 
     with pytest.raises(AssertionError, match="unresolved checkpoint closure symbol"):
         _checkpoint_callable_dependency_closure()
+
+
+@pytest.mark.parametrize(
+    "source",
+    (
+        "def root():\n    return MISSING()\n",
+        "ALIAS = MISSING\ndef root():\n    return ALIAS()\n",
+        "BOOT = MISSING()\ndef root():\n    return 1\n",
+        "if True:\n    BOOT = MISSING()\ndef root():\n    return 1\n",
+        "@MISSING()\ndef root():\n    return 1\n",
+        "def root(value=MISSING()):\n    return value\n",
+        "def root(value: MISSING):\n    return value\n",
+        "class root(MISSING):\n    pass\n",
+        "if True:\n    import dangerous\ndef root():\n    return 1\n",
+        "class Holder:\n    import dangerous\ndef root():\n    return 1\n",
+        "def root():\n    return open('secret')\n",
+        "def root():\n    from dangerous import capability\n    return capability()\n",
+        (
+            "def root():\n"
+            "    dangerous()\n"
+            "    def nested(dangerous):\n        return dangerous()\n"
+        ),
+        (
+            "def root():\n"
+            "    json.dumps({})\n"
+            "    def nested():\n        import json\n        return json.dumps({})\n"
+        ),
+    ),
+    ids=(
+        "unresolved-direct",
+        "unresolved-assignment-alias",
+        "unresolved-module-initializer",
+        "unresolved-conditional-module-initializer",
+        "unresolved-decorator",
+        "unresolved-default",
+        "unresolved-annotation",
+        "unresolved-class-base",
+        "conditional-module-import",
+        "class-body-import",
+        "unreviewed-builtin",
+        "local-hidden-capability",
+        "nested-parameter-does-not-mask-outer-unresolved",
+        "nested-import-does-not-mask-outer-unresolved",
+    ),
+)
+def test_callable_closure_fails_closed_for_every_unresolved_executed_leaf(
+    source: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "root.py"
+    root.write_text(source, encoding="utf-8")
+    monkeypatch.setattr(
+        sys.modules[__name__],
+        "_CHECKPOINT_CALLABLE_ROOTS",
+        (("aegis.fixture.root", "root"),),
+    )
+    monkeypatch.setattr(
+        sys.modules[__name__],
+        "_checkpoint_module_path",
+        lambda module: root if module == "aegis.fixture.root" else None,
+    )
+
+    with pytest.raises(
+        AssertionError,
+        match="(?:unresolved checkpoint closure symbol|unreviewed external closure leaf)",
+    ):
+        _checkpoint_callable_dependency_graph()
+
+
+def test_callable_closure_exact_manifest_tracks_relative_reexports(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sources = {
+        "aegis.fixture.root": (
+            "from aegis.fixture.facade import exported\n"
+            "def root():\n    return exported()\n"
+        ),
+        "aegis.fixture.facade": "from .leaf import leaf as exported\n",
+        "aegis.fixture.leaf": "def leaf():\n    return 1\n",
+    }
+    paths: dict[str, Path] = {}
+    for index, (module, source) in enumerate(sources.items()):
+        path = tmp_path / f"manifest_{index}.py"
+        path.write_text(source, encoding="utf-8")
+        paths[module] = path
+    monkeypatch.setattr(
+        sys.modules[__name__],
+        "_CHECKPOINT_CALLABLE_ROOTS",
+        (("aegis.fixture.root", "root"),),
+    )
+    monkeypatch.setattr(
+        sys.modules[__name__],
+        "_checkpoint_module_path",
+        lambda module: paths.get(module),
+    )
+
+    symbols, edges, modules = _checkpoint_callable_dependency_graph()
+
+    assert symbols == frozenset(
+        {
+            ("aegis.fixture.root", "root"),
+            ("aegis.fixture.root", "<module>"),
+            ("aegis.fixture.facade", "exported"),
+            ("aegis.fixture.facade", "<module>"),
+            ("aegis.fixture.leaf", "leaf"),
+            ("aegis.fixture.leaf", "<module>"),
+        }
+    )
+    assert edges == frozenset(
+        {
+            (("aegis.fixture.root", "root"), ("aegis.fixture.root", "<module>")),
+            (("aegis.fixture.root", "root"), ("aegis.fixture.facade", "exported")),
+            (("aegis.fixture.root", "<module>"), ("aegis.fixture.facade", "exported")),
+            (("aegis.fixture.facade", "exported"), ("aegis.fixture.facade", "<module>")),
+            (("aegis.fixture.facade", "exported"), ("aegis.fixture.leaf", "leaf")),
+            (("aegis.fixture.facade", "<module>"), ("aegis.fixture.leaf", "leaf")),
+            (("aegis.fixture.leaf", "leaf"), ("aegis.fixture.leaf", "<module>")),
+        }
+    )
+    assert modules == frozenset(sources)
 
 
 def test_checkpoint_trust_boundary_modules_pass_robust_capability_analysis(
@@ -4282,6 +5295,7 @@ def test_checkpoint_callback_checker_rejects_recursive_callback_sccs(
 
 def test_checkpoint_callback_checker_accepts_exhaustive_match_preflight() -> None:
     source = (
+        "from aegis.preflight import validate\n"
         "def create(signer, value):\n"
         "    match value:\n"
         "        case _:\n"
@@ -4300,6 +5314,7 @@ def test_checkpoint_callback_checker_accepts_exhaustive_match_preflight() -> Non
 def test_checkpoint_callback_checker_uses_nearest_lexical_multitarget_binding(
 ) -> None:
     source = (
+        "from aegis.preflight import validate\n"
         "def safe(*args):\n"
         "    return args\n"
         "def create(source, signer):\n"
@@ -4339,6 +5354,7 @@ def test_checkpoint_callback_checker_analyzes_calls_in_branch_expressions() -> N
 
 def test_checkpoint_callback_checker_accepts_callback_free_recursive_scc() -> None:
     source = (
+        "from aegis.preflight import validate\n"
         "def helper(value):\n"
         "    if value:\n"
         "        return helper(value - 1)\n"
@@ -4518,3 +5534,372 @@ def test_checkpoint_architecture_checker_accepts_safe_parameter_and_local_shadow
     source: str,
 ) -> None:
     assert _checkpoint_boundary_violations_for_source(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    (
+        (
+            "from aegis.preflight import validate\n"
+            "def create(source, signer):\n"
+            "    validate(signer.sign(b'x', None))\n"
+        ),
+        (
+            "from aegis.preflight import validate\n"
+            "def create(source, signer):\n"
+            "    validate(value=signer.sign(b'x', None))\n"
+        ),
+        (
+            "from aegis.preflight import validate\n"
+            "def create(source, signer, args, kwargs):\n"
+            "    validate(*args, **{'value': signer.sign(b'x', None)}, **kwargs)\n"
+        ),
+        (
+            "from aegis.preflight import validate\n"
+            "def create(source, signer, condition):\n"
+            "    validate(source) if condition else signer.sign(b'x', None)\n"
+        ),
+        (
+            "from aegis.preflight import validate\n"
+            "class Wrapper:\n"
+            "    def __init__(self, callback):\n"
+            "        self.callback = callback\n"
+            "    def __call__(self):\n"
+            "        return self.callback(b'x', None)\n"
+            "def create(source, signer):\n"
+            "    Wrapper(signer.sign)()\n"
+            "    validate(source)\n"
+        ),
+        (
+            "from aegis.preflight import validate\n"
+            "def helper(callback=signer.sign):\n"
+            "    callback(b'x', None)\n"
+            "def create(source, signer):\n"
+            "    validate(source)\n"
+            "    helper()\n"
+        ),
+        (
+            "from aegis.preflight import validate\n"
+            "def create(source, signer):\n"
+            "    try:\n"
+            "        validate(source)\n"
+            "    except* signer.sign(b'x', None):\n"
+            "        pass\n"
+        ),
+        (
+            "from aegis.preflight import validate\n"
+            "def helper(callback):\n"
+            "    return callback(b'x', None)\n"
+            "def create(source, signer, condition):\n"
+            "    validate(helper(signer.sign)) if condition else helper(signer.sign)\n"
+        ),
+    ),
+    ids=(
+        "positional-argument",
+        "keyword-argument",
+        "star-keyword-argument",
+        "reversed-ifexp",
+        "callable-instance-wrapper",
+        "helper-default",
+        "trystar-handler-type",
+        "nested-helper-ifexp",
+    ),
+)
+def test_checkpoint_callback_checker_rejects_round5_python_order_bypasses(
+    source: str,
+) -> None:
+    assert _checkpoint_callback_order_violations_for_source(
+        source,
+        function_name="create",
+        boundary_name="sign",
+        preflight_name="validate",
+    )
+
+
+def test_checkpoint_callback_checker_rejects_local_preflight_shadow() -> None:
+    source = (
+        "def validate(source):\n    return source\n"
+        "def create(source, signer):\n"
+        "    validate(source)\n"
+        "    signer.sign(b'x', None)\n"
+    )
+
+    assert _checkpoint_callback_order_violations_for_source(
+        source,
+        function_name="create",
+        boundary_name="sign",
+        preflight_name="validate",
+    )
+
+
+def test_checkpoint_callback_checker_rejects_nearer_canonical_import_shadow(
+) -> None:
+    source = (
+        "from aegis.preflight import validate\n"
+        "def create(source, signer):\n"
+        "    def validate(value):\n        return value\n"
+        "    validate(source)\n"
+        "    signer.sign(b'x', None)\n"
+    )
+
+    assert _checkpoint_callback_order_violations_for_source(
+        source,
+        function_name="create",
+        boundary_name="sign",
+        preflight_name="validate",
+    )
+
+
+@pytest.mark.parametrize(
+    "source",
+    (
+        (
+            "from aegis.preflight import validate\n"
+            "class Wrapper:\n"
+            "    def __init__(self, callback):\n        self.callback = callback\n"
+            "    def __call__(self):\n        return self.callback(b'x', None)\n"
+            "def create(source, signer):\n"
+            "    wrapped = Wrapper(signer.sign)\n"
+            "    wrapped()\n"
+            "    validate(source)\n"
+        ),
+        (
+            "from aegis.preflight import validate\n"
+            "def helper(callback):\n    return callback(b'x', None)\n"
+            "def create(source, signer):\n"
+            "    alias = helper\n"
+            "    alias(signer.sign)\n"
+            "    validate(source)\n"
+        ),
+        (
+            "from aegis.preflight import validate\n"
+            "def create(source, signer):\n"
+            "    class Derived(signer.sign(b'x', None)):\n        pass\n"
+            "    validate(source)\n"
+        ),
+        (
+            "from aegis.preflight import validate\n"
+            "def create(source, signer):\n"
+            "    class Body:\n        result = signer.sign(b'x', None)\n"
+            "    validate(source)\n"
+        ),
+        (
+            "from aegis.preflight import validate\n"
+            "def create(source, signer):\n"
+            "    def nested(value: signer.sign(b'x', None)):\n"
+            "        return value\n"
+            "    validate(source)\n"
+        ),
+        (
+            "from aegis.preflight import validate\n"
+            "class Wrapper:\n"
+            "    def __init__(self, callback):\n        self.callback = callback\n"
+            "    def __call__(self):\n        return self.callback(b'x', None)\n"
+            "def create(source, signer):\n"
+            "    wrapped = Wrapper(signer.sign); wrapped(); validate(source)\n"
+        ),
+        (
+            "from aegis.preflight import validate\n"
+            "class Wrapper:\n"
+            "    def __init__(self, callback):\n        self.callback = callback\n"
+            "    def __call__(self):\n        return self.callback(b'x', None)\n"
+            "def create(source, signer):\n"
+            "    factory = Wrapper\n"
+            "    wrapped = factory(signer.sign)\n"
+            "    wrapped()\n"
+            "    validate(source)\n"
+        ),
+        (
+            "from aegis.preflight import validate\n"
+            "def create(source, signer):\n"
+            "    class Body:\n"
+            "        if True:\n            result = signer.sign(b'x', None)\n"
+            "    validate(source)\n"
+        ),
+        (
+            "from aegis.preflight import validate\n"
+            "def helper(callback):\n    return callback(b'x', None)\n"
+            "def create(source, signer):\n"
+            "    helper(*(signer.sign,))\n"
+            "    validate(source)\n"
+        ),
+        (
+            "from aegis.preflight import validate\n"
+            "def helper(cb):\n    return cb(b'x', None)\n"
+            "def create(source, signer):\n"
+            "    helper(**{'cb': signer.sign})\n"
+            "    validate(source)\n"
+        ),
+        (
+            "from aegis.preflight import validate\n"
+            "def helper(callback):\n    return callback(b'x', None)\n"
+            "def create(source, signer):\n"
+            "    args = (signer.sign,)\n"
+            "    helper(*args)\n"
+            "    validate(source)\n"
+        ),
+        (
+            "from aegis.preflight import validate\n"
+            "class Wrapper:\n"
+            "    def __init__(self, cb):\n        self.callback = cb\n"
+            "    def __call__(self):\n        return self.callback(b'x', None)\n"
+            "def create(source, signer):\n"
+            "    wrapped = Wrapper(cb=signer.sign)\n"
+            "    wrapped()\n"
+            "    validate(source)\n"
+        ),
+        (
+            "from aegis.preflight import validate\n"
+            "class Wrapper:\n"
+            "    def __init__(self, cb):\n        self.callback = cb\n"
+            "    def __call__(self):\n        return self.callback(b'x', None)\n"
+            "def create(source, signer):\n"
+            "    args = (signer.sign,)\n"
+            "    wrapped = Wrapper(*args)\n"
+            "    wrapped()\n"
+            "    validate(source)\n"
+        ),
+    ),
+    ids=(
+        "stored-callable-instance",
+        "helper-alias",
+        "class-base",
+        "class-body",
+        "nested-annotation",
+        "same-line-stored-callable",
+        "aliased-constructor",
+        "conditional-class-body",
+        "starred-helper-substitution",
+        "star-keyword-helper-substitution",
+        "assigned-star-helper-substitution",
+        "callable-constructor-keyword",
+        "callable-constructor-starred",
+    ),
+)
+def test_checkpoint_callback_checker_rejects_round5_review_wrappers(
+    source: str,
+) -> None:
+    assert _checkpoint_callback_order_violations_for_source(
+        source,
+        function_name="create",
+        boundary_name="sign",
+        preflight_name="validate",
+    )
+
+
+def test_checkpoint_callback_checker_accepts_canonical_aliased_preflight() -> None:
+    source = (
+        "from aegis.preflight import validate as canonical_check\n"
+        "def create(source, signer):\n"
+        "    canonical_check(source)\n"
+        "    signer.sign(b'x', None)\n"
+    )
+
+    assert _checkpoint_callback_order_violations_for_source(
+        source,
+        function_name="create",
+        boundary_name="sign",
+        preflight_name="validate",
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    (
+        "import fixture\nPOLICY = fixture.mutable_policy\n",
+        "VALUES = ([],)\nFIRST = VALUES[0]\n",
+        "import fixture\nITEM = fixture.mutable_policy['allowed']\n",
+        (
+            "from fixture import VerificationReasonCode\n"
+            "POLICY = VerificationReasonCode.UNSIGNED\n"
+        ),
+        "from fixture import mutable_policy\nPOLICY = mutable_policy\n",
+        "FIRST = UNKNOWN[0]\n",
+        (
+            "from fixture import Enum\n"
+            "class Evil(Enum):\n    VALUE = []\n"
+            "POLICY = Evil.VALUE\n"
+        ),
+        "VALUES = (1, 2)\nfrom fixture import INDEX\nFIRST = VALUES[INDEX]\n",
+    ),
+    ids=(
+        "imported-mutable-attribute",
+        "mutable-container-alias",
+        "mutable-subscript",
+        "spoofed-enum-owner",
+        "imported-mutable-name",
+        "unknown-subscript-owner",
+        "spoofed-enum-base",
+        "imported-subscript-index",
+    ),
+)
+def test_checkpoint_architecture_checker_rejects_unproven_mutable_referents(
+    source: str,
+) -> None:
+    assert _checkpoint_boundary_violations_for_source(source)
+
+
+def test_checkpoint_architecture_checker_accepts_proven_immutable_subscript() -> None:
+    source = "VALUES = ('allowed', 'denied')\nFIRST = VALUES[0]\n"
+
+    assert _checkpoint_boundary_violations_for_source(source) == []
+
+
+def test_nested_safe_shadow_does_not_sanitize_outer_builtin_call() -> None:
+    source = (
+        "def safe(value):\n    return value\n"
+        "def outer():\n"
+        "    def inner():\n"
+        "        open = safe\n"
+        "        return open('safe')\n"
+        "    return open('secret')\n"
+    )
+
+    assert _checkpoint_boundary_violations_for_source(source)
+
+
+@pytest.mark.parametrize(
+    "source",
+    (
+        (
+            "def safe(value):\n    return value\n"
+            "def outer():\n"
+            "    open = safe\n"
+            "    def inner():\n        return open('safe')\n"
+            "    return inner()\n"
+        ),
+        (
+            "def outer(open):\n"
+            "    def inner():\n        return open('safe')\n"
+            "    return inner()\n"
+        ),
+        (
+            "def safe(value):\n    return value\n"
+            "def outer():\n"
+            "    open = safe\n"
+            "    def inner():\n"
+            "        nonlocal open\n"
+            "        return open('safe')\n"
+            "    return inner()\n"
+        ),
+    ),
+    ids=("outer-local", "outer-parameter", "explicit-nonlocal"),
+)
+def test_checkpoint_architecture_checker_accepts_safe_lexical_shadows(
+    source: str,
+) -> None:
+    assert _checkpoint_boundary_violations_for_source(source) == []
+
+
+def test_global_declaration_does_not_inherit_safe_outer_shadow() -> None:
+    source = (
+        "def safe(value):\n    return value\n"
+        "def outer():\n"
+        "    open = safe\n"
+        "    def inner():\n"
+        "        global open\n"
+        "        return open('secret')\n"
+        "    return inner()\n"
+    )
+
+    assert _checkpoint_boundary_violations_for_source(source)

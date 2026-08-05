@@ -138,6 +138,138 @@ def test_top_level_checkpoint_exports_are_pinned_and_reload_overwrites_stale_val
     assert importlib.reload(aegis).TrustedChainCheckpoint is canonical
 
 
+def test_checkpoint_facade_reload_uses_first_import_canonical_tuple() -> None:
+    import importlib
+
+    import aegis
+    import aegis.checkpoints as checkpoints
+
+    names = (
+        "CheckpointBindingStatus",
+        "CheckpointError",
+        "CheckpointSignatureStatus",
+        "CheckpointVerificationResult",
+        "TrustedChainCheckpoint",
+        "TrustedWorkflowCheckpoint",
+        "create_chain_checkpoint",
+        "create_workflow_checkpoint",
+    )
+    canonical = tuple(getattr(aegis, name) for name in names)
+    originals = tuple(getattr(checkpoints, name) for name in names)
+    sentinels = tuple(object() for _ in names)
+    try:
+        for name, sentinel in zip(names, sentinels, strict=True):
+            setattr(checkpoints, name, sentinel)
+        reloaded = importlib.reload(aegis)
+        assert tuple(getattr(reloaded, name) for name in names) == canonical
+    finally:
+        for name, original in zip(names, originals, strict=True):
+            setattr(checkpoints, name, original)
+        importlib.reload(aegis)
+
+
+def test_checkpoint_facade_getattr_repins_without_live_submodule_lookup() -> None:
+    import importlib
+
+    import aegis
+    import aegis.checkpoints as checkpoints
+
+    canonical = aegis.TrustedChainCheckpoint
+    original = checkpoints.TrustedChainCheckpoint
+    sentinel = object()
+    try:
+        checkpoints.TrustedChainCheckpoint = sentinel  # type: ignore[misc]
+        del aegis.TrustedChainCheckpoint
+        assert aegis.TrustedChainCheckpoint is canonical
+    finally:
+        checkpoints.TrustedChainCheckpoint = original
+        importlib.reload(aegis)
+
+
+def test_facade_reload_clears_stale_lazy_export_and_is_concurrency_stable() -> None:
+    import importlib
+    from concurrent.futures import ThreadPoolExecutor
+
+    import aegis
+    import aegis.checkpoints as checkpoints
+
+    canonical_checkpoint = aegis.TrustedChainCheckpoint
+    canonical_legacy = aegis.AEGIS
+    original = checkpoints.TrustedChainCheckpoint
+    sentinel = object()
+    try:
+        checkpoints.TrustedChainCheckpoint = sentinel  # type: ignore[misc]
+        aegis.AEGIS = sentinel  # type: ignore[misc]
+
+        reloaded = importlib.reload(aegis)
+
+        def read_after_reload(_: int) -> tuple[object, object]:
+            return reloaded.TrustedChainCheckpoint, reloaded.AEGIS
+
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            observed = tuple(executor.map(read_after_reload, range(8)))
+        assert observed == ((canonical_checkpoint, canonical_legacy),) * 8
+    finally:
+        checkpoints.TrustedChainCheckpoint = original
+        if getattr(aegis, "AEGIS", None) is sentinel:
+            del aegis.AEGIS
+        importlib.reload(aegis)
+
+
+def test_checkpoint_facade_concurrent_reload_and_getattr_is_fresh_process_safe(
+) -> None:
+    script = r'''
+import importlib
+import json
+import sys
+import threading
+
+sys.path.insert(0, sys.argv[1])
+import aegis
+import aegis.checkpoints as checkpoints
+
+canonical = aegis.TrustedChainCheckpoint
+original = checkpoints.TrustedChainCheckpoint
+sentinel = object()
+checkpoints.TrustedChainCheckpoint = sentinel
+barrier = threading.Barrier(8)
+results = []
+
+def exercise(index):
+    barrier.wait()
+    if index % 2 == 0:
+        importlib.reload(aegis)
+    else:
+        try:
+            del aegis.TrustedChainCheckpoint
+        except AttributeError:
+            pass
+    results.append(aegis.TrustedChainCheckpoint is canonical)
+
+threads = [threading.Thread(target=exercise, args=(index,)) for index in range(8)]
+for thread in threads:
+    thread.start()
+for thread in threads:
+    thread.join()
+checkpoints.TrustedChainCheckpoint = original
+print(json.dumps({"results": results, "canonical": aegis.TrustedChainCheckpoint is canonical}))
+'''
+    completed = subprocess.run(
+        [sys.executable, "-I", "-c", script, str(_ROOT)],
+        cwd=_ROOT,
+        env={"PYTHONPATH": str(_ROOT)},
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert completed.stderr == ""
+    assert json.loads(completed.stdout) == {
+        "results": [True] * 8,
+        "canonical": True,
+    }
+
+
 def test_legacy_warning_lazily_installs_one_null_handler_without_last_resort_output(
 ) -> None:
     script = r'''
