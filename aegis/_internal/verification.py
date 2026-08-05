@@ -5,11 +5,9 @@ from __future__ import annotations
 from copy import deepcopy
 import re
 import hashlib
-from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
-from types import MappingProxyType
-from typing import Any, Iterable, Sequence
+from typing import Any, Callable, Iterable, Sequence
 
 from aegis._internal.canonicalization import CANONICALIZATION_PROFILE_V2
 from aegis._internal.chain_checkpoint_verification import (
@@ -310,29 +308,41 @@ def _legacy_evidence_kind(artifacts: Sequence[object]) -> LegacyFeature | None:
     return next(iter(kinds)) if len(kinds) == 1 else None
 
 
-_SIGNATURE_PRIORITY: Mapping[SignatureStatus, int] = MappingProxyType({
-    SignatureStatus.INVALID: 5,
-    SignatureStatus.REVOKED: 4,
-    SignatureStatus.UNKNOWN_KEY: 3,
-    SignatureStatus.INDETERMINATE: 2,
-    SignatureStatus.UNSIGNED: 1,
-    SignatureStatus.VALID: 0,
-})
-_ANCHOR_PRIORITY: Mapping[AnchorStatus, int] = MappingProxyType({
-    AnchorStatus.INVALID: 3,
-    AnchorStatus.UNANCHORED: 2,
-    AnchorStatus.NOT_EVALUATED: 1,
-    AnchorStatus.ANCHORED: 0,
-})
+def _signature_priority(status: SignatureStatus) -> int:
+    if status is SignatureStatus.INVALID:
+        return 5
+    if status is SignatureStatus.REVOKED:
+        return 4
+    if status is SignatureStatus.UNKNOWN_KEY:
+        return 3
+    if status is SignatureStatus.INDETERMINATE:
+        return 2
+    if status is SignatureStatus.UNSIGNED:
+        return 1
+    if status is SignatureStatus.VALID:
+        return 0
+    raise TypeError("signature status is invalid")
+
+
+def _anchor_priority(status: AnchorStatus) -> int:
+    if status is AnchorStatus.INVALID:
+        return 3
+    if status is AnchorStatus.UNANCHORED:
+        return 2
+    if status is AnchorStatus.NOT_EVALUATED:
+        return 1
+    if status is AnchorStatus.ANCHORED:
+        return 0
+    raise TypeError("anchor status is invalid")
 
 
 def _worst(
     values: Iterable[Enum],
-    priority: Mapping[Any, int],
+    priority: Callable[[Any], int],
     default: Any,
 ) -> Any:
     values = tuple(values)
-    return max(values, key=priority.__getitem__) if values else default
+    return max(values, key=priority) if values else default
 
 
 def _verify_signatures(
@@ -437,8 +447,8 @@ def _verify_signatures(
             signature_statuses.append(result.signature_status)
             anchor_statuses.append(result.anchor_status)
     return (
-        _worst(signature_statuses, _SIGNATURE_PRIORITY, SignatureStatus.UNSIGNED),
-        _worst(anchor_statuses, _ANCHOR_PRIORITY, AnchorStatus.NOT_EVALUATED),
+        _worst(signature_statuses, _signature_priority, SignatureStatus.UNSIGNED),
+        _worst(anchor_statuses, _anchor_priority, AnchorStatus.NOT_EVALUATED),
     )
 
 

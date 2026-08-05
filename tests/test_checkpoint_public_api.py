@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import FrozenInstanceError, fields, is_dataclass
+import gc
+from importlib import import_module
 import inspect
 import json
 from typing import get_type_hints
@@ -463,114 +465,6 @@ def _anchored_outcome() -> aegis.ExternalVerificationOutcome:
     )
 
 
-def test_shared_outcome_policy_cannot_admit_unsigned_evaluated_checkpoint(
-    chain_checkpoint: checkpoints.TrustedChainCheckpoint,
-) -> None:
-    policy = signature_models.ALLOWED_VERIFICATION_OUTCOMES
-    key = (SignatureStatus.UNSIGNED, AnchorStatus.NOT_EVALUATED)
-    invalid_reason = VerificationReasonCode.SIGNATURE_VALID_ANCHORED
-    reasons = policy[key]
-    mutated = False
-    try:
-        reasons.add(invalid_reason)
-        mutated = True
-        provider_result = ArtifactVerificationResult(
-            SignatureStatus.UNSIGNED,
-            AnchorStatus.NOT_EVALUATED,
-            invalid_reason,
-            "safe",
-            chain_checkpoint.signature_metadata,
-        )
-        checkpoints.CheckpointVerificationResult(
-            (0,),
-            chain_checkpoint,
-            chain_checkpoint.chain_id,
-            chain_checkpoint.chain_index,
-            provider_result,
-            checkpoints.CheckpointBindingStatus.MATCHED,
-        )
-    except AttributeError:
-        pass
-    finally:
-        if type(reasons) is set:
-            reasons.discard(invalid_reason)
-    assert mutated is False
-
-
-@pytest.mark.parametrize(
-    ("method_name", "arguments"),
-    [
-        ("add", (VerificationReasonCode.SIGNATURE_VALID_ANCHORED,)),
-        ("remove", (VerificationReasonCode.UNSIGNED,)),
-        ("update", ({VerificationReasonCode.SIGNATURE_VALID_ANCHORED},)),
-        ("clear", ()),
-    ],
-)
-def test_shared_outcome_policy_nested_sets_reject_every_mutator(
-    method_name: str,
-    arguments: tuple[object, ...],
-) -> None:
-    key = (SignatureStatus.UNSIGNED, AnchorStatus.NOT_EVALUATED)
-    reasons = signature_models.ALLOWED_VERIFICATION_OUTCOMES[key]
-    original = frozenset(reasons)
-    try:
-        with pytest.raises(AttributeError):
-            getattr(reasons, method_name)(*arguments)
-    finally:
-        if type(reasons) is set:
-            reasons.clear()
-            reasons.update(original)
-
-
-def test_shared_outcome_policy_rejects_top_level_assignment_and_deletion() -> None:
-    policy = signature_models.ALLOWED_VERIFICATION_OUTCOMES
-    key = (SignatureStatus.UNSIGNED, AnchorStatus.NOT_EVALUATED)
-    original = policy[key]
-    try:
-        with pytest.raises(TypeError):
-            policy[key] = frozenset({VerificationReasonCode.UNSIGNED})
-        with pytest.raises(TypeError):
-            del policy[key]
-    finally:
-        if type(policy) is dict:
-            policy[key] = original
-
-
-def test_normalized_message_policy_rejects_replacement_and_stays_core_owned(
-    chain_checkpoint: checkpoints.TrustedChainCheckpoint,
-) -> None:
-    messages = external_signing._SAFE_REASON_MESSAGES
-    reason = VerificationReasonCode.SIGNATURE_VALID_ANCHORED
-    original = messages[reason]
-    mutation_rejected = False
-    try:
-        try:
-            messages[reason] = "attacker-controlled-message"
-        except TypeError:
-            mutation_rejected = True
-        result = external_signing._normalize_external_outcome(
-            _anchored_outcome(),
-            chain_checkpoint.signature_metadata,
-        )
-    finally:
-        if type(messages) is dict:
-            messages[reason] = original
-    assert mutation_rejected is True
-    assert result.message == "Signature is valid and externally anchored"
-
-
-def test_normalized_message_policy_rejects_deletion() -> None:
-    messages = external_signing._SAFE_REASON_MESSAGES
-    reason = VerificationReasonCode.SIGNATURE_VALID_ANCHORED
-    original = messages[reason]
-    try:
-        with pytest.raises(TypeError):
-            del messages[reason]
-    finally:
-        if type(messages) is dict:
-            messages[reason] = original
-
-
 def test_impossible_external_reason_policy_cannot_be_relaxed(
     chain_checkpoint: checkpoints.TrustedChainCheckpoint,
 ) -> None:
@@ -596,3 +490,198 @@ def test_impossible_external_reason_policy_cannot_be_relaxed(
         if type(impossible) is set:
             impossible.add(reason)
     assert removed is False
+
+
+@pytest.mark.parametrize(
+    ("module_name", "policy_name"),
+    [
+        ("aegis._internal.signature_models", "ALLOWED_VERIFICATION_OUTCOMES"),
+        ("aegis._internal.external_signing", "_SAFE_REASON_MESSAGES"),
+        ("aegis._internal.chain_checkpoint_verification", "_SIGNATURE_PRECEDENCE"),
+        ("aegis._internal.chain_checkpoint_verification", "_ANCHOR_PRECEDENCE"),
+        ("aegis._internal.verification", "_SIGNATURE_PRIORITY"),
+        ("aegis._internal.verification", "_ANCHOR_PRIORITY"),
+    ],
+)
+def test_security_policy_objects_have_no_mutable_referent(
+    module_name: str,
+    policy_name: str,
+) -> None:
+    policy = getattr(import_module(module_name), policy_name, None)
+    assert policy is None or not any(
+        isinstance(referent, (dict, list, set))
+        for referent in gc.get_referents(policy)
+    )
+
+
+def test_referent_inspection_cannot_admit_unsigned_matched_result(
+    chain_checkpoint: checkpoints.TrustedChainCheckpoint,
+) -> None:
+    policy = getattr(
+        signature_models,
+        "ALLOWED_VERIFICATION_OUTCOMES",
+        None,
+    )
+    referents = [] if policy is None else gc.get_referents(policy)
+    backing = next(
+        (referent for referent in referents if type(referent) is dict),
+        None,
+    )
+    key = (SignatureStatus.UNSIGNED, AnchorStatus.NOT_EVALUATED)
+    original = None if backing is None else backing[key]
+    try:
+        if backing is not None:
+            backing[key] = frozenset(
+                {VerificationReasonCode.SIGNATURE_VALID_ANCHORED}
+            )
+        with pytest.raises(errors.VerificationContractError):
+            provider_result = ArtifactVerificationResult(
+                SignatureStatus.UNSIGNED,
+                AnchorStatus.NOT_EVALUATED,
+                VerificationReasonCode.SIGNATURE_VALID_ANCHORED,
+                "safe",
+                chain_checkpoint.signature_metadata,
+            )
+            checkpoints.CheckpointVerificationResult(
+                (0,),
+                chain_checkpoint,
+                chain_checkpoint.chain_id,
+                chain_checkpoint.chain_index,
+                provider_result,
+                checkpoints.CheckpointBindingStatus.MATCHED,
+            )
+    finally:
+        if backing is not None:
+            backing[key] = original
+
+
+def test_referent_inspection_cannot_replace_core_owned_reason_message(
+    chain_checkpoint: checkpoints.TrustedChainCheckpoint,
+) -> None:
+    messages = getattr(external_signing, "_SAFE_REASON_MESSAGES", None)
+    referents = [] if messages is None else gc.get_referents(messages)
+    backing = next(
+        (referent for referent in referents if type(referent) is dict),
+        None,
+    )
+    reason = VerificationReasonCode.SIGNATURE_VALID_ANCHORED
+    original = None if backing is None else backing[reason]
+    try:
+        if backing is not None:
+            backing[reason] = "attacker-controlled-message"
+        result = external_signing._normalize_external_outcome(
+            _anchored_outcome(),
+            chain_checkpoint.signature_metadata,
+        )
+    finally:
+        if backing is not None:
+            backing[reason] = original
+    assert result.message == "Signature is valid and externally anchored"
+
+
+@pytest.mark.parametrize(
+    (
+        "module_name",
+        "policy_name",
+        "aggregate_name",
+        "better",
+        "worse",
+        "default",
+    ),
+    [
+        (
+            "aegis._internal.chain_checkpoint_verification",
+            "_SIGNATURE_PRECEDENCE",
+            "_aggregate_checkpoint_signature_status",
+            checkpoints.CheckpointSignatureStatus.VALID,
+            checkpoints.CheckpointSignatureStatus.INVALID,
+            None,
+        ),
+        (
+            "aegis._internal.chain_checkpoint_verification",
+            "_ANCHOR_PRECEDENCE",
+            "_aggregate_checkpoint_anchor_status",
+            AnchorStatus.ANCHORED,
+            AnchorStatus.INVALID,
+            None,
+        ),
+        (
+            "aegis._internal.verification",
+            "_SIGNATURE_PRIORITY",
+            "_worst",
+            SignatureStatus.VALID,
+            SignatureStatus.INVALID,
+            SignatureStatus.UNSIGNED,
+        ),
+        (
+            "aegis._internal.verification",
+            "_ANCHOR_PRIORITY",
+            "_worst",
+            AnchorStatus.ANCHORED,
+            AnchorStatus.INVALID,
+            AnchorStatus.NOT_EVALUATED,
+        ),
+    ],
+)
+def test_referent_inspection_cannot_relax_worst_status_aggregation(
+    module_name: str,
+    policy_name: str,
+    aggregate_name: str,
+    better: object,
+    worse: object,
+    default: object,
+) -> None:
+    module = import_module(module_name)
+    policy = getattr(module, policy_name, None)
+    referents = [] if policy is None else gc.get_referents(policy)
+    backing = next(
+        (referent for referent in referents if type(referent) is dict),
+        None,
+    )
+    original = None if backing is None else (backing[better], backing[worse])
+    try:
+        if backing is not None:
+            backing[better] = 10_000
+            backing[worse] = -10_000
+        aggregate = getattr(module, aggregate_name)
+        priority = policy
+        if priority is None and module_name.endswith(".verification"):
+            priority = getattr(
+                module,
+                "_signature_priority"
+                if policy_name == "_SIGNATURE_PRIORITY"
+                else "_anchor_priority",
+            )
+        result = (
+            aggregate((better, worse))
+            if default is None
+            else aggregate((better, worse), priority, default)
+        )
+    finally:
+        if backing is not None:
+            backing[better], backing[worse] = original
+    assert result is worse
+
+
+@pytest.mark.parametrize(
+    ("module_name", "priority_name"),
+    [
+        (
+            "aegis._internal.chain_checkpoint_verification",
+            "_checkpoint_signature_priority",
+        ),
+        (
+            "aegis._internal.chain_checkpoint_verification",
+            "_checkpoint_anchor_priority",
+        ),
+        ("aegis._internal.verification", "_signature_priority"),
+        ("aegis._internal.verification", "_anchor_priority"),
+    ],
+)
+def test_status_priority_functions_reject_values_outside_closed_enums(
+    module_name: str,
+    priority_name: str,
+) -> None:
+    priority = getattr(import_module(module_name), priority_name)
+    with pytest.raises(TypeError):
+        priority(object())

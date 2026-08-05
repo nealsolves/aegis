@@ -16,9 +16,9 @@ from aegis._internal.evidence_profiles import (
     ContentIntegrity,
     verify_content_checksum_v2,
 )
-from aegis._internal.evidence_finalizer import (
-    _audit_validator,
-    _workflow_validator,
+from aegis._internal.checkpoint_source_validation import (
+    is_valid_audit_artifact_v2,
+    is_valid_workflow_artifact_v2,
 )
 from aegis._internal.signature_models import AnchorStatus, SignatureStatus
 from aegis._internal.verification import _verify_signatures
@@ -444,7 +444,7 @@ def _compare_selected(
                 )
             )
         try:
-            schema_valid = _audit_validator().is_valid(artifact)
+            schema_valid = is_valid_audit_artifact_v2(artifact)
         except Exception:
             schema_valid = False
         if not schema_valid:
@@ -626,7 +626,7 @@ def _verify_workflow_claim(
             validated = _validate_claim(workflow_snapshot, errors)
 
             try:
-                workflow_schema_valid = _workflow_validator().is_valid(
+                workflow_schema_valid = is_valid_workflow_artifact_v2(
                     workflow_snapshot
                 )
             except Exception:

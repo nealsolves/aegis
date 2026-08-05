@@ -13,7 +13,6 @@ from aegis._internal.errors import (
     VerificationContractError,
 )
 from aegis._internal.signature_models import (
-    ALLOWED_VERIFICATION_OUTCOMES,
     CANONICALIZATION_VERSION,
     CHECKPOINT_CANONICALIZATION_VERSION,
     CHAIN_CHECKPOINT_SIGNING_PROFILE,
@@ -34,6 +33,65 @@ from aegis._internal.signature_models import (
     VerificationReasonCode,
     validate_encoded_signature,
     validate_verification_outcome,
+)
+
+
+_ALLOWED_VERIFICATION_OUTCOMES = (
+    (
+        SignatureStatus.UNSIGNED,
+        AnchorStatus.NOT_EVALUATED,
+        (VerificationReasonCode.UNSIGNED,),
+    ),
+    (
+        SignatureStatus.VALID,
+        AnchorStatus.NOT_EVALUATED,
+        (VerificationReasonCode.LEGACY_SIGNATURE_VALID,),
+    ),
+    (
+        SignatureStatus.VALID,
+        AnchorStatus.UNANCHORED,
+        (
+            VerificationReasonCode.LEGACY_SIGNATURE_VALID,
+            VerificationReasonCode.SIGNATURE_VALID_UNANCHORED,
+        ),
+    ),
+    (
+        SignatureStatus.VALID,
+        AnchorStatus.ANCHORED,
+        (VerificationReasonCode.SIGNATURE_VALID_ANCHORED,),
+    ),
+    (
+        SignatureStatus.VALID,
+        AnchorStatus.INVALID,
+        (VerificationReasonCode.ANCHOR_INVALID,),
+    ),
+    (
+        SignatureStatus.INVALID,
+        AnchorStatus.NOT_EVALUATED,
+        (
+            VerificationReasonCode.LEGACY_SIGNATURE_INVALID,
+            VerificationReasonCode.SIGNATURE_INVALID,
+            VerificationReasonCode.ALGORITHM_NOT_ALLOWED,
+        ),
+    ),
+    (
+        SignatureStatus.UNKNOWN_KEY,
+        AnchorStatus.NOT_EVALUATED,
+        (VerificationReasonCode.KEY_UNKNOWN,),
+    ),
+    (
+        SignatureStatus.REVOKED,
+        AnchorStatus.NOT_EVALUATED,
+        (VerificationReasonCode.KEY_REVOKED,),
+    ),
+    (
+        SignatureStatus.INDETERMINATE,
+        AnchorStatus.NOT_EVALUATED,
+        (
+            VerificationReasonCode.SIGNATURE_METADATA_MISSING,
+            VerificationReasonCode.VERIFIER_UNAVAILABLE,
+        ),
+    ),
 )
 
 
@@ -452,7 +510,7 @@ def test_signing_receipt_rejects_raw_encoding():
 
 
 def test_every_allowed_verification_outcome_constructs_successfully():
-    for (signature_status, anchor_status), reasons in ALLOWED_VERIFICATION_OUTCOMES.items():
+    for signature_status, anchor_status, reasons in _ALLOWED_VERIFICATION_OUTCOMES:
         for reason in reasons:
             outcome = ExternalVerificationOutcome(signature_status, anchor_status, reason, "safe")
             result = ArtifactVerificationResult(
@@ -463,7 +521,10 @@ def test_every_allowed_verification_outcome_constructs_successfully():
 
 
 def test_verification_matrix_rejects_every_unlisted_status_axis_pair():
-    allowed_pairs = set(ALLOWED_VERIFICATION_OUTCOMES)
+    allowed_pairs = {
+        (signature_status, anchor_status)
+        for signature_status, anchor_status, _ in _ALLOWED_VERIFICATION_OUTCOMES
+    }
     for signature_status in SignatureStatus:
         for anchor_status in AnchorStatus:
             if (signature_status, anchor_status) not in allowed_pairs:
@@ -474,8 +535,12 @@ def test_verification_matrix_rejects_every_unlisted_status_axis_pair():
 
 
 def test_verification_matrix_rejects_every_contradictory_reason():
-    for (signature_status, anchor_status), allowed_reasons in ALLOWED_VERIFICATION_OUTCOMES.items():
-        for reason_code in set(VerificationReasonCode) - allowed_reasons:
+    for (
+        signature_status,
+        anchor_status,
+        allowed_reasons,
+    ) in _ALLOWED_VERIFICATION_OUTCOMES:
+        for reason_code in set(VerificationReasonCode) - set(allowed_reasons):
             with pytest.raises(VerificationContractError):
                 validate_verification_outcome(signature_status, anchor_status, reason_code)
 

@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass
-from types import MappingProxyType
 
 from aegis._internal.canonicalization import canonicalize_v2
 from aegis._internal.checkpoint_models import (
@@ -38,20 +37,33 @@ _MAX_CHAIN_ARTIFACTS = 1_024
 _MAX_CHAIN_CHECKPOINTS = 64
 _MAX_SCOPE_ID_LENGTH = 512
 
-_SIGNATURE_PRECEDENCE: Mapping[CheckpointSignatureStatus, int] = MappingProxyType({
-    CheckpointSignatureStatus.NOT_EVALUATED: 0,
-    CheckpointSignatureStatus.VALID: 1,
-    CheckpointSignatureStatus.UNKNOWN_KEY: 2,
-    CheckpointSignatureStatus.REVOKED: 3,
-    CheckpointSignatureStatus.INVALID: 4,
-    CheckpointSignatureStatus.INDETERMINATE: 5,
-})
-_ANCHOR_PRECEDENCE: Mapping[AnchorStatus, int] = MappingProxyType({
-    AnchorStatus.ANCHORED: 0,
-    AnchorStatus.UNANCHORED: 1,
-    AnchorStatus.NOT_EVALUATED: 2,
-    AnchorStatus.INVALID: 3,
-})
+
+def _checkpoint_signature_priority(status: CheckpointSignatureStatus) -> int:
+    if status is CheckpointSignatureStatus.NOT_EVALUATED:
+        return 0
+    if status is CheckpointSignatureStatus.VALID:
+        return 1
+    if status is CheckpointSignatureStatus.UNKNOWN_KEY:
+        return 2
+    if status is CheckpointSignatureStatus.REVOKED:
+        return 3
+    if status is CheckpointSignatureStatus.INVALID:
+        return 4
+    if status is CheckpointSignatureStatus.INDETERMINATE:
+        return 5
+    raise TypeError("checkpoint signature status is invalid")
+
+
+def _checkpoint_anchor_priority(status: AnchorStatus) -> int:
+    if status is AnchorStatus.ANCHORED:
+        return 0
+    if status is AnchorStatus.UNANCHORED:
+        return 1
+    if status is AnchorStatus.NOT_EVALUATED:
+        return 2
+    if status is AnchorStatus.INVALID:
+        return 3
+    raise TypeError("checkpoint anchor status is invalid")
 
 
 @dataclass(frozen=True, slots=True)
@@ -304,17 +316,15 @@ def _binding_status(
 def _checkpoint_signature_status(
     result: ArtifactVerificationResult,
 ) -> CheckpointSignatureStatus:
-    mapping = {
-        SignatureStatus.VALID: CheckpointSignatureStatus.VALID,
-        SignatureStatus.INVALID: CheckpointSignatureStatus.INVALID,
-        SignatureStatus.UNKNOWN_KEY: CheckpointSignatureStatus.UNKNOWN_KEY,
-        SignatureStatus.REVOKED: CheckpointSignatureStatus.REVOKED,
-        SignatureStatus.INDETERMINATE: CheckpointSignatureStatus.INDETERMINATE,
-    }
-    return mapping.get(
-        result.signature_status,
-        CheckpointSignatureStatus.INDETERMINATE,
-    )
+    if result.signature_status is SignatureStatus.VALID:
+        return CheckpointSignatureStatus.VALID
+    if result.signature_status is SignatureStatus.INVALID:
+        return CheckpointSignatureStatus.INVALID
+    if result.signature_status is SignatureStatus.UNKNOWN_KEY:
+        return CheckpointSignatureStatus.UNKNOWN_KEY
+    if result.signature_status is SignatureStatus.REVOKED:
+        return CheckpointSignatureStatus.REVOKED
+    return CheckpointSignatureStatus.INDETERMINATE
 
 
 def _aggregate_checkpoint_signature_status(
@@ -322,7 +332,7 @@ def _aggregate_checkpoint_signature_status(
 ) -> CheckpointSignatureStatus:
     return max(
         statuses,
-        key=_SIGNATURE_PRECEDENCE.__getitem__,
+        key=_checkpoint_signature_priority,
         default=CheckpointSignatureStatus.NOT_EVALUATED,
     )
 
@@ -332,7 +342,7 @@ def _aggregate_checkpoint_anchor_status(
 ) -> AnchorStatus:
     return max(
         statuses,
-        key=_ANCHOR_PRECEDENCE.__getitem__,
+        key=_checkpoint_anchor_priority,
         default=AnchorStatus.NOT_EVALUATED,
     )
 

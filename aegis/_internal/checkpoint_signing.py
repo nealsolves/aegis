@@ -9,9 +9,9 @@ from aegis._internal.checkpoint_models import (
     TrustedWorkflowCheckpoint,
 )
 from aegis._internal.errors import CheckpointError
-from aegis._internal.evidence_finalizer import (
-    _audit_validator,
-    _workflow_validator,
+from aegis._internal.checkpoint_source_validation import (
+    is_valid_audit_artifact_v2,
+    is_valid_workflow_artifact_v2,
 )
 from aegis._internal.evidence_profiles import (
     ContentIntegrity,
@@ -311,7 +311,7 @@ def create_chain_checkpoint(
     selected_time = _require_checkpointed_at(checkpointed_at)
     if (
         type(artifact) is not dict
-        or not _audit_validator().is_valid(artifact)
+        or not is_valid_audit_artifact_v2(artifact)
         or verify_content_checksum_v2(artifact) is not ContentIntegrity.VALID
         or not _valid_chain_source(artifact)
     ):
@@ -353,7 +353,7 @@ def create_workflow_checkpoint(
     selected_time = _require_checkpointed_at(checkpointed_at)
     if (
         type(workflow) is not dict
-        or not _workflow_validator().is_valid(workflow)
+        or not is_valid_workflow_artifact_v2(workflow)
         or verify_content_checksum_v2(workflow) is not ContentIntegrity.VALID
         or not _valid_workflow_source(workflow)
     ):

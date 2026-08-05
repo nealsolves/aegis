@@ -4,6 +4,11 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import FrozenInstanceError
+from importlib import import_module
+import json
+from pathlib import Path
+import subprocess
+import sys
 from typing import Callable
 
 import pytest
@@ -122,6 +127,161 @@ EXPECTED_WORKFLOW_RECORD = {
     },
     "signature": "0bc0b2a0a82f5f184178c5624b413abc36f80107a0aaf35a39f693fd70c8254d",
 }
+
+
+@pytest.mark.parametrize("creator_name", ["chain", "workflow"])
+def test_cold_creation_performs_no_schema_io_or_validator_cache_mutation(
+    chained_artifact,
+    finalized_workflow,
+    creator_name,
+):
+    source = (
+        chained_artifact if creator_name == "chain" else finalized_workflow
+    )
+    program = """
+import json
+from pathlib import Path
+import sys
+
+from tests.support.external_signing import DeterministicExternalSigner
+import aegis._internal.checkpoint_signing as checkpoint_signing
+import aegis._internal.evidence_finalizer as evidence_finalizer
+
+evidence_finalizer._AUDIT_VALIDATOR = None
+evidence_finalizer._WORKFLOW_VALIDATOR = None
+reads = []
+original_read_text = Path.read_text
+
+def recording_read_text(path, *args, **kwargs):
+    reads.append(str(path))
+    return original_read_text(path, *args, **kwargs)
+
+Path.read_text = recording_read_text
+request = json.loads(sys.stdin.read())
+creator = (
+    checkpoint_signing.create_chain_checkpoint
+    if request["creator"] == "chain"
+    else checkpoint_signing.create_workflow_checkpoint
+)
+result = creator(
+    request["source"],
+    DeterministicExternalSigner(),
+    checkpointed_at=1725000000,
+)
+print(json.dumps({
+    "reads": reads,
+    "audit_cache": evidence_finalizer._AUDIT_VALIDATOR is not None,
+    "workflow_cache": evidence_finalizer._WORKFLOW_VALIDATOR is not None,
+    "profile": result.checkpoint_profile,
+    "imports_finalizer_validator": (
+        "_audit_validator" in vars(checkpoint_signing)
+        or "_workflow_validator" in vars(checkpoint_signing)
+    ),
+}))
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", program],
+        input=json.dumps({"creator": creator_name, "source": source}),
+        text=True,
+        capture_output=True,
+        cwd=Path(__file__).resolve().parents[1],
+        check=True,
+    )
+    observed = json.loads(completed.stdout.strip().splitlines()[-1])
+
+    assert observed["reads"] == []
+    assert observed["audit_cache"] is False
+    assert observed["workflow_cache"] is False
+    assert observed["imports_finalizer_validator"] is False
+    assert observed["profile"] == (
+        "aegis-chain-checkpoint-v1"
+        if creator_name == "chain"
+        else "aegis-workflow-checkpoint-v1"
+    )
+
+
+def test_pure_checkpoint_source_validation_matches_audit_schema_corpus(
+    chained_artifact,
+):
+    try:
+        module = import_module("aegis._internal.checkpoint_source_validation")
+    except ModuleNotFoundError:
+        module = None
+    validate = (
+        None if module is None else getattr(module, "is_valid_audit_artifact_v2", None)
+    )
+    assert callable(validate)
+
+    valid = deepcopy(chained_artifact)
+    cases: tuple[tuple[dict[str, object], bool], ...] = (
+        (valid, True),
+        ({key: value for key, value in valid.items() if key != "role"}, False),
+        ({**valid, "unexpected": None}, False),
+        ({**valid, "enforcement_result": "UNKNOWN"}, False),
+        ({**valid, "failure_gate": []}, False),
+        ({**valid, "failures": [{"code": "x", "message": "x"}]}, False),
+        ({**valid, "context": {"step_index": 0}}, False),
+        (
+            {
+                key: value
+                for key, value in valid.items()
+                if key != "reservation_id"
+            },
+            False,
+        ),
+        ({**valid, "checksum": "not-a-checksum"}, False),
+    )
+    schema = _audit_validator()
+    for source, expected in cases:
+        assert schema.is_valid(source) is expected
+        assert validate(source) is expected
+
+
+def test_pure_checkpoint_source_validation_matches_workflow_schema_corpus(
+    finalized_workflow,
+):
+    try:
+        module = import_module("aegis._internal.checkpoint_source_validation")
+    except ModuleNotFoundError:
+        module = None
+    validate = (
+        None
+        if module is None
+        else getattr(module, "is_valid_workflow_artifact_v2", None)
+    )
+    assert callable(validate)
+
+    valid = deepcopy(finalized_workflow)
+    cases: tuple[tuple[dict[str, object], bool], ...] = (
+        (valid, True),
+        (
+            {
+                key: value
+                for key, value in valid.items()
+                if key != "artifact_type"
+            },
+            False,
+        ),
+        ({**valid, "unexpected": None}, False),
+        ({**valid, "status": "UNKNOWN"}, False),
+        ({**valid, "status": []}, False),
+        (
+            {
+                **valid,
+                "invocations": [
+                    {"step_index": 0, "checksum": "b" * 64, "extra": True}
+                ],
+            },
+            False,
+        ),
+        ({**valid, "approval_checkpoints": [{"paused_at": "invalid"}]}, False),
+        ({**valid, "step_count": 1_025}, False),
+        ({**valid, "checksum": "not-a-checksum"}, False),
+    )
+    schema = _workflow_validator()
+    for source, expected in cases:
+        assert schema.is_valid(source) is expected
+        assert validate(source) is expected
 
 
 class _Reservation:
@@ -302,7 +462,10 @@ def test_signed_record_reconstructs_the_same_frozen_payload(record, vector):
 class _ForbiddenSigner:
     def __init__(self) -> None:
         self.identity_calls = 0
+        self.sign_calls = 0
         self.storage_calls = 0
+        self.publish_calls = 0
+        self.request_calls = 0
 
     def signer_identity(self):
         self.identity_calls += 1
@@ -310,11 +473,20 @@ class _ForbiddenSigner:
 
     def sign(self, payload, identity):
         del payload, identity
+        self.sign_calls += 1
         raise AssertionError("source preflight must precede signing")
 
     def store(self, record) -> None:
         del record
         self.storage_calls += 1
+
+    def publish(self, record) -> None:
+        del record
+        self.publish_calls += 1
+
+    def request(self, payload) -> None:
+        del payload
+        self.request_calls += 1
 
 
 class _StorageAwareSigner(DeterministicExternalSigner):
@@ -398,6 +570,9 @@ def _assert_sanitized_failure(
     assert returned == []
     assert source == before
     assert getattr(signer, "storage_calls", 0) == 0
+    assert getattr(signer, "publish_calls", 0) == 0
+    assert getattr(signer, "request_calls", 0) == 0
+    assert getattr(signer, "sign_calls", 0) == 0
     public_text = (
         str(raised.value)
         + repr(raised.value.details)
@@ -571,7 +746,8 @@ def test_source_limit_failure_stops_before_schema_checksum_and_identity(
     signer = _ForbiddenSigner()
     later_calls: list[str] = []
 
-    def forbidden_validator():
+    def forbidden_validator(value):
+        del value
         later_calls.append("schema")
         raise AssertionError
 
@@ -582,7 +758,7 @@ def test_source_limit_failure_stops_before_schema_checksum_and_identity(
 
     monkeypatch.setattr(
         checkpoint_signing,
-        "_audit_validator",
+        "is_valid_audit_artifact_v2",
         forbidden_validator,
     )
     monkeypatch.setattr(
@@ -605,6 +781,30 @@ def test_source_limit_failure_stops_before_schema_checksum_and_identity(
 
     assert later_calls == []
     assert signer.identity_calls == 0
+
+
+def test_workflow_source_limit_failure_stops_every_signer_capability(
+    finalized_workflow,
+    caplog,
+):
+    source = deepcopy(finalized_workflow)
+    source["metadata"] = {"oversized": "x" * (4 * 1024 * 1024)}
+    signer = _ForbiddenSigner()
+
+    _assert_sanitized_failure(
+        lambda: create_workflow_checkpoint(
+            source,
+            signer,
+            checkpointed_at=1_725_000_001,
+        ),
+        source,
+        expected_code="CHECKPOINT_INPUT_INVALID",
+        signer=signer,
+        caplog=caplog,
+    )
+
+    assert signer.identity_calls == 0
+    assert signer.sign_calls == 0
 
 
 @pytest.mark.parametrize("creator_name", ["chain", "workflow"])

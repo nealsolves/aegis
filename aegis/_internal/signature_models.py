@@ -7,8 +7,7 @@ import binascii
 import re
 from dataclasses import dataclass
 from enum import Enum
-from types import MappingProxyType
-from typing import Any, FrozenSet, Mapping, TypeVar
+from typing import Any, FrozenSet, TypeVar
 
 from aegis._internal.errors import (
     SignatureMetadataError,
@@ -89,42 +88,59 @@ class VerificationReasonCode(str, Enum):
     ANCHOR_INVALID = "anchor_invalid"
 
 
-ALLOWED_VERIFICATION_OUTCOMES: Mapping[
-    tuple[SignatureStatus, AnchorStatus],
-    FrozenSet[VerificationReasonCode],
-] = MappingProxyType({
-    (SignatureStatus.UNSIGNED, AnchorStatus.NOT_EVALUATED): frozenset({
-        VerificationReasonCode.UNSIGNED,
-    }),
-    (SignatureStatus.VALID, AnchorStatus.NOT_EVALUATED): frozenset({
-        VerificationReasonCode.LEGACY_SIGNATURE_VALID,
-    }),
-    (SignatureStatus.VALID, AnchorStatus.UNANCHORED): frozenset({
-        VerificationReasonCode.LEGACY_SIGNATURE_VALID,
-        VerificationReasonCode.SIGNATURE_VALID_UNANCHORED,
-    }),
-    (SignatureStatus.VALID, AnchorStatus.ANCHORED): frozenset({
-        VerificationReasonCode.SIGNATURE_VALID_ANCHORED,
-    }),
-    (SignatureStatus.VALID, AnchorStatus.INVALID): frozenset({
-        VerificationReasonCode.ANCHOR_INVALID,
-    }),
-    (SignatureStatus.INVALID, AnchorStatus.NOT_EVALUATED): frozenset({
-        VerificationReasonCode.LEGACY_SIGNATURE_INVALID,
-        VerificationReasonCode.SIGNATURE_INVALID,
-        VerificationReasonCode.ALGORITHM_NOT_ALLOWED,
-    }),
-    (SignatureStatus.UNKNOWN_KEY, AnchorStatus.NOT_EVALUATED): frozenset({
-        VerificationReasonCode.KEY_UNKNOWN,
-    }),
-    (SignatureStatus.REVOKED, AnchorStatus.NOT_EVALUATED): frozenset({
-        VerificationReasonCode.KEY_REVOKED,
-    }),
-    (SignatureStatus.INDETERMINATE, AnchorStatus.NOT_EVALUATED): frozenset({
-        VerificationReasonCode.SIGNATURE_METADATA_MISSING,
-        VerificationReasonCode.VERIFIER_UNAVAILABLE,
-    }),
-})
+def _verification_outcome_is_allowed(
+    signature_status: SignatureStatus,
+    anchor_status: AnchorStatus,
+    reason_code: VerificationReasonCode,
+) -> bool:
+    if signature_status is SignatureStatus.UNSIGNED:
+        return (
+            anchor_status is AnchorStatus.NOT_EVALUATED
+            and reason_code is VerificationReasonCode.UNSIGNED
+        )
+    if signature_status is SignatureStatus.VALID:
+        if anchor_status is AnchorStatus.NOT_EVALUATED:
+            return reason_code is VerificationReasonCode.LEGACY_SIGNATURE_VALID
+        if anchor_status is AnchorStatus.UNANCHORED:
+            return reason_code in (
+                VerificationReasonCode.LEGACY_SIGNATURE_VALID,
+                VerificationReasonCode.SIGNATURE_VALID_UNANCHORED,
+            )
+        if anchor_status is AnchorStatus.ANCHORED:
+            return reason_code is VerificationReasonCode.SIGNATURE_VALID_ANCHORED
+        if anchor_status is AnchorStatus.INVALID:
+            return reason_code is VerificationReasonCode.ANCHOR_INVALID
+        return False
+    if signature_status is SignatureStatus.INVALID:
+        return (
+            anchor_status is AnchorStatus.NOT_EVALUATED
+            and reason_code
+            in (
+                VerificationReasonCode.LEGACY_SIGNATURE_INVALID,
+                VerificationReasonCode.SIGNATURE_INVALID,
+                VerificationReasonCode.ALGORITHM_NOT_ALLOWED,
+            )
+        )
+    if signature_status is SignatureStatus.UNKNOWN_KEY:
+        return (
+            anchor_status is AnchorStatus.NOT_EVALUATED
+            and reason_code is VerificationReasonCode.KEY_UNKNOWN
+        )
+    if signature_status is SignatureStatus.REVOKED:
+        return (
+            anchor_status is AnchorStatus.NOT_EVALUATED
+            and reason_code is VerificationReasonCode.KEY_REVOKED
+        )
+    return (
+        signature_status is SignatureStatus.INDETERMINATE
+        and anchor_status is AnchorStatus.NOT_EVALUATED
+        and reason_code
+        in (
+            VerificationReasonCode.SIGNATURE_METADATA_MISSING,
+            VerificationReasonCode.VERIFIER_UNAVAILABLE,
+        )
+    )
+
 
 _EnumType = TypeVar("_EnumType", bound=Enum)
 
@@ -204,8 +220,11 @@ def validate_verification_outcome(
     _require_enum(signature_status, SignatureStatus, "signature_status", VerificationContractError)
     _require_enum(anchor_status, AnchorStatus, "anchor_status", VerificationContractError)
     _require_enum(reason_code, VerificationReasonCode, "reason_code", VerificationContractError)
-    allowed_reasons = ALLOWED_VERIFICATION_OUTCOMES.get((signature_status, anchor_status))
-    if allowed_reasons is None or reason_code not in allowed_reasons:
+    if not _verification_outcome_is_allowed(
+        signature_status,
+        anchor_status,
+        reason_code,
+    ):
         raise VerificationContractError("verification outcome is invalid", details={})
 
 

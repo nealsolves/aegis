@@ -2017,42 +2017,28 @@ def test_workflow_claim_provenance_uses_locked_terminal_state() -> None:
 # ---------------------------------------------------------------------------
 
 
+_CHECKPOINT_INTERNAL_DIRECTORY = _ROOT / "aegis" / "_internal"
 _CHECKPOINT_ARCHITECTURE_MODULES = {
     "checkpoints": _ROOT / "aegis" / "checkpoints.py",
     "audit_chain": _ROOT / "aegis" / "audit_chain.py",
     "workflow_verification": _ROOT / "aegis" / "workflow_verification.py",
-    "checkpoint_models": (
-        _ROOT / "aegis" / "_internal" / "checkpoint_models.py"
-    ),
-    "checkpoint_signing": (
-        _ROOT / "aegis" / "_internal" / "checkpoint_signing.py"
-    ),
-    "checkpoint_verification": (
-        _ROOT / "aegis" / "_internal" / "checkpoint_verification.py"
-    ),
-    "chain_checkpoint_verification": (
-        _ROOT / "aegis" / "_internal" / "chain_checkpoint_verification.py"
-    ),
-    "workflow_checkpoint_verification": (
-        _ROOT / "aegis" / "_internal" / "workflow_checkpoint_verification.py"
-    ),
-    "signature_models": (
-        _ROOT / "aegis" / "_internal" / "signature_models.py"
-    ),
-    "external_signing": (
-        _ROOT / "aegis" / "_internal" / "external_signing.py"
-    ),
+    **{
+        path.stem: path
+        for path in sorted(_CHECKPOINT_INTERNAL_DIRECTORY.glob("*checkpoint*.py"))
+    },
+    "signature_models": _CHECKPOINT_INTERNAL_DIRECTORY / "signature_models.py",
+    "external_signing": _CHECKPOINT_INTERNAL_DIRECTORY / "external_signing.py",
     "verification_limits": (
-        _ROOT / "aegis" / "_internal" / "verification_limits.py"
+        _CHECKPOINT_INTERNAL_DIRECTORY / "verification_limits.py"
     ),
     "verification_contracts": (
-        _ROOT / "aegis" / "_internal" / "verification_contracts.py"
+        _CHECKPOINT_INTERNAL_DIRECTORY / "verification_contracts.py"
     ),
     "chain_verification_integration": (
-        _ROOT / "aegis" / "_internal" / "verification.py"
+        _CHECKPOINT_INTERNAL_DIRECTORY / "verification.py"
     ),
     "workflow_verification_integration": (
-        _ROOT / "aegis" / "_internal" / "workflow_verification.py"
+        _CHECKPOINT_INTERNAL_DIRECTORY / "workflow_verification.py"
     ),
 }
 
@@ -2080,6 +2066,7 @@ _FORBIDDEN_CHECKPOINT_IMPORT_PREFIXES = frozenset(
         "urllib",
         "aegis.enforcement",
         "aegis._internal.enforcement",
+        "aegis._internal.evidence_finalizer",
         "aegis.retry",
         "aegis._internal.retry",
         "aegis.session",
@@ -2329,26 +2316,6 @@ def test_checkpoint_verifiers_reach_only_the_supplied_verifier_after_preflight(
     assert workflow_preflight[0].lineno < workflow_evaluation[0].lineno
 
 
-_EXPECTED_CHECKPOINT_TRUST_BOUNDARY_MODULES = frozenset(
-    {
-        "checkpoints",
-        "audit_chain",
-        "workflow_verification",
-        "checkpoint_models",
-        "checkpoint_signing",
-        "checkpoint_verification",
-        "chain_checkpoint_verification",
-        "workflow_checkpoint_verification",
-        "signature_models",
-        "external_signing",
-        "verification_limits",
-        "verification_contracts",
-        "chain_verification_integration",
-        "workflow_verification_integration",
-    }
-)
-
-
 _REFLECTIVE_OR_DYNAMIC_CALLS = frozenset(
     {
         "builtins.__import__",
@@ -2486,6 +2453,188 @@ def _assignment_alias_candidates(
     return resolved
 
 
+def _scope_capability_violations(
+    tree: ast.Module,
+    aliases: dict[str, set[str]],
+) -> list[str]:
+    """Conservatively track capability values through every binding form."""
+    violations: list[str] = []
+    tainted_names: set[str] = set()
+    tainted_attributes: set[str] = set()
+
+    def forbidden_path(path: str) -> bool:
+        leaf = path.rsplit(".", 1)[-1]
+        parts = set(path.split("."))
+        return (
+            path in _REFLECTIVE_OR_DYNAMIC_CALLS
+            or path in {
+                "object.__getattribute__",
+                "builtins.object.__getattribute__",
+            }
+            or leaf in _FORBIDDEN_CHECKPOINT_CALL_NAMES
+            or (
+                leaf in _CAPABILITY_SINK_LEAVES
+                and bool(parts.intersection(_CAPABILITY_CHAIN_SEGMENTS))
+            )
+        )
+
+    def expression_is_tainted(expression: ast.AST | None) -> bool:
+        if expression is None:
+            return False
+        if isinstance(expression, ast.Name):
+            return expression.id in tainted_names or any(
+                forbidden_path(path)
+                for path in _resolved_expression_candidates(expression, aliases)
+            )
+        if isinstance(expression, ast.Attribute):
+            paths = _resolved_expression_candidates(expression, aliases)
+            return (
+                any(path in tainted_attributes for path in paths)
+                or any(forbidden_path(path) for path in paths)
+                or expression_is_tainted(expression.value)
+            )
+        if isinstance(expression, ast.Subscript):
+            base_paths = _resolved_expression_candidates(expression.value, aliases)
+            return (
+                expression_is_tainted(expression.value)
+                or any(
+                    path.endswith(".__dict__")
+                    and path.split(".", 1)[0] in {"builtins", "importlib"}
+                    for path in base_paths
+                )
+            )
+        if isinstance(expression, ast.NamedExpr):
+            return expression_is_tainted(expression.value)
+        if isinstance(expression, ast.IfExp):
+            return expression_is_tainted(
+                expression.body
+            ) or expression_is_tainted(expression.orelse)
+        if isinstance(expression, (ast.Tuple, ast.List, ast.Set)):
+            return any(expression_is_tainted(item) for item in expression.elts)
+        if isinstance(expression, ast.Dict):
+            return any(
+                expression_is_tainted(item)
+                for item in (*expression.keys, *expression.values)
+                if item is not None
+            )
+        if isinstance(expression, ast.Lambda):
+            return any(
+                expression_is_tainted(default)
+                for default in (*expression.args.defaults, *expression.args.kw_defaults)
+            ) or expression_is_tainted(expression.body)
+        if isinstance(expression, (ast.GeneratorExp, ast.ListComp, ast.SetComp)):
+            return expression_is_tainted(expression.elt) or any(
+                expression_is_tainted(generator.iter)
+                or any(expression_is_tainted(condition) for condition in generator.ifs)
+                for generator in expression.generators
+            )
+        if isinstance(expression, ast.DictComp):
+            return (
+                expression_is_tainted(expression.key)
+                or expression_is_tainted(expression.value)
+                or any(
+                    expression_is_tainted(generator.iter)
+                    or any(
+                        expression_is_tainted(condition)
+                        for condition in generator.ifs
+                    )
+                    for generator in expression.generators
+                )
+            )
+        if isinstance(expression, ast.Call):
+            return (
+                expression_is_tainted(expression.func)
+                or any(expression_is_tainted(argument) for argument in expression.args)
+                or any(
+                    expression_is_tainted(keyword.value)
+                    for keyword in expression.keywords
+                )
+            )
+        return False
+
+    def bind(target: ast.AST, value: ast.AST | None, prefix: str = "") -> bool:
+        changed = False
+        if isinstance(target, (ast.Tuple, ast.List)):
+            values = (
+                value.elts
+                if isinstance(value, (ast.Tuple, ast.List))
+                and len(value.elts) == len(target.elts)
+                else (value,) * len(target.elts)
+            )
+            for nested_target, nested_value in zip(target.elts, values):
+                changed = bind(nested_target, nested_value, prefix) or changed
+            return changed
+        if not expression_is_tainted(value):
+            return False
+        if isinstance(target, (ast.Name, ast.arg)):
+            target_name = target.id if isinstance(target, ast.Name) else target.arg
+            qualified = f"{prefix}.{target_name}" if prefix else target_name
+            destination = tainted_attributes if prefix else tainted_names
+            if qualified not in destination:
+                destination.add(qualified)
+                return True
+        return False
+
+    bindings: list[tuple[ast.AST, ast.AST | None, str]] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and any(
+            alias.name == "*" for alias in node.names
+        ):
+            violations.append(f"{node.lineno}:star-import")
+        elif isinstance(node, ast.Assign):
+            bindings.extend((target, node.value, "") for target in node.targets)
+        elif isinstance(node, ast.AnnAssign):
+            bindings.append((node.target, node.value, ""))
+        elif isinstance(node, ast.NamedExpr):
+            bindings.append((node.target, node.value, ""))
+        elif isinstance(node, (ast.For, ast.AsyncFor)):
+            bindings.append((node.target, node.iter, ""))
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            positional = (*node.args.posonlyargs, *node.args.args)
+            default_targets = positional[len(positional) - len(node.args.defaults):]
+            bindings.extend(
+                (target, default, "")
+                for target, default in zip(
+                    default_targets,
+                    node.args.defaults,
+                    strict=True,
+                )
+            )
+            bindings.extend(
+                (target, default, "")
+                for target, default in zip(
+                    node.args.kwonlyargs,
+                    node.args.kw_defaults,
+                    strict=True,
+                )
+                if default is not None
+            )
+            if not isinstance(node, ast.Lambda):
+                for decorator in node.decorator_list:
+                    if expression_is_tainted(decorator):
+                        violations.append(
+                            f"{decorator.lineno}:tainted-decorator"
+                        )
+        elif isinstance(node, ast.ClassDef):
+            for statement in node.body:
+                if isinstance(statement, ast.Assign):
+                    bindings.extend(
+                        (target, statement.value, node.name)
+                        for target in statement.targets
+                    )
+
+    for _ in range(len(bindings) + 1):
+        if not any(bind(target, value, prefix) for target, value, prefix in bindings):
+            break
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and expression_is_tainted(node.func):
+            violations.append(f"{node.lineno}:tainted-call")
+        elif isinstance(node, ast.NamedExpr) and expression_is_tainted(node.value):
+            violations.append(f"{node.lineno}:tainted-walrus")
+    return violations
+
+
 def _deeply_immutable_global(
     expression: ast.AST,
     bindings: dict[str, ast.AST],
@@ -2542,7 +2691,7 @@ def _deeply_immutable_global(
                 seen=seen,
             )
         # Regex patterns, TypeVars, and sentinel objects are immutable handles.
-        return leaf in {"compile", "TypeVar", "object"}
+        return leaf in {"compile", "range", "TypeVar", "object"}
     if isinstance(expression, ast.BinOp):
         return _deeply_immutable_global(
             expression.left, bindings, seen=seen
@@ -2556,7 +2705,7 @@ def _checkpoint_boundary_violations_for_source(source: str) -> list[str]:
     """Reject capability aliases, reflection, and mutable trust-boundary state."""
     tree = ast.parse(source)
     aliases = _assignment_alias_candidates(tree, _import_aliases(tree))
-    violations: list[str] = []
+    violations = _scope_capability_violations(tree, aliases)
     for imported, line in _checkpoint_imports(tree):
         if any(
             imported == prefix or imported.startswith(f"{prefix}.")
@@ -2675,7 +2824,13 @@ def _checkpoint_boundary_violations_for_source(source: str) -> list[str]:
                 elif isinstance(mutation, ast.Delete):
                     targets = mutation.targets
                 if any(
-                    global_target_name(target) in declared_globals
+                    (
+                        global_target_name(target) in declared_globals
+                        or (
+                            isinstance(target, (ast.Attribute, ast.Subscript))
+                            and global_target_name(target) in global_names
+                        )
+                    )
                     for target in targets
                 ):
                     violations.append(
@@ -2692,43 +2847,179 @@ def _checkpoint_callback_order_violations_for_source(
     preflight_name: str,
 ) -> list[str]:
     tree = ast.parse(source)
+    functions = {
+        node.name: node
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
     function = next(
         node
         for node in tree.body
-        if isinstance(node, ast.FunctionDef) and node.name == function_name
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == function_name
     )
     aliases = _assignment_alias_candidates(function, _import_aliases(tree))
-    calls = [node for node in ast.walk(function) if isinstance(node, ast.Call)]
-    boundary_calls = [
-        call
-        for call in calls
-        if any(
-            path == boundary_name or path.endswith(f".{boundary_name}")
+    violations: list[str] = []
+
+    class _CurrentScopeCalls(ast.NodeVisitor):
+        def __init__(self) -> None:
+            self.calls: list[ast.Call] = []
+
+        def visit_Call(self, node: ast.Call) -> None:
+            self.calls.append(node)
+            self.generic_visit(node)
+
+        def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+            del node
+
+        def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+            del node
+
+        def visit_Lambda(self, node: ast.Lambda) -> None:
+            del node
+
+    def current_scope_calls(node: ast.AST) -> list[ast.Call]:
+        visitor = _CurrentScopeCalls()
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for statement in node.body:
+                visitor.visit(statement)
+        else:
+            visitor.visit(node)
+        return sorted(
+            visitor.calls,
+            key=lambda call: (call.lineno, call.col_offset),
+        )
+
+    def call_matches(call: ast.Call, name: str) -> bool:
+        return any(
+            path == name or path.endswith(f".{name}")
             for path in _resolved_expression_candidates(call.func, aliases)
         )
-    ]
-    preflight_calls = [
-        call
-        for call in calls
-        if any(
-            path == preflight_name or path.endswith(f".{preflight_name}")
-            for path in _resolved_expression_candidates(call.func, aliases)
+
+    def helper_boundary_count(call: ast.Call, seen: frozenset[str]) -> int:
+        if call_matches(call, boundary_name):
+            return 1
+        if not isinstance(call.func, ast.Name) or call.func.id not in functions:
+            return 0
+        helper_name = call.func.id
+        if helper_name in seen:
+            return 0
+        helper = functions[helper_name]
+        return sum(
+            helper_boundary_count(nested, seen | {helper_name})
+            for nested in current_scope_calls(helper)
         )
-    ]
-    if boundary_calls and not preflight_calls:
-        return ["callback-without-preflight"]
-    if boundary_calls and min(
-        (call.lineno, call.col_offset) for call in boundary_calls
-    ) < min((call.lineno, call.col_offset) for call in preflight_calls):
-        return ["callback-before-preflight"]
-    return []
+
+    def statement_calls(statement: ast.stmt) -> list[ast.Call]:
+        if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            return []
+        return current_scope_calls(statement)
+
+    def analyze_block(
+        statements: list[ast.stmt],
+        preflight_guaranteed: bool,
+    ) -> tuple[bool, int]:
+        callback_count = 0
+        for statement in statements:
+            if isinstance(statement, ast.If):
+                body_preflight, body_count = analyze_block(
+                    statement.body,
+                    preflight_guaranteed,
+                )
+                else_preflight, else_count = analyze_block(
+                    statement.orelse,
+                    preflight_guaranteed,
+                )
+                preflight_guaranteed = body_preflight and else_preflight
+                callback_count += max(body_count, else_count)
+                continue
+            if isinstance(statement, (ast.For, ast.AsyncFor, ast.While)):
+                loop_count = sum(
+                    helper_boundary_count(call, frozenset({function_name}))
+                    for call in statement_calls(statement)
+                )
+                if loop_count:
+                    violations.append("callback-in-loop")
+                callback_count += loop_count
+                continue
+            if isinstance(statement, ast.Try):
+                body_preflight, body_count = analyze_block(
+                    statement.body,
+                    preflight_guaranteed,
+                )
+                paths = [
+                    analyze_block(handler.body, preflight_guaranteed)
+                    for handler in statement.handlers
+                ]
+                if statement.orelse:
+                    paths.append(analyze_block(statement.orelse, body_preflight))
+                if not paths:
+                    paths.append((preflight_guaranteed, 0))
+                preflight_guaranteed = body_preflight and all(
+                    path_preflight for path_preflight, _ in paths
+                )
+                callback_count += max(
+                    (body_count, *(path_count for _, path_count in paths))
+                )
+                continue
+
+            for call in statement_calls(statement):
+                if call_matches(call, preflight_name):
+                    preflight_guaranteed = True
+                    continue
+                count = helper_boundary_count(
+                    call,
+                    frozenset({function_name}),
+                )
+                if count:
+                    if not preflight_guaranteed:
+                        violations.append("callback-before-complete-preflight")
+                    callback_count += count
+        return preflight_guaranteed, callback_count
+
+    _, callback_count = analyze_block(function.body, False)
+    if callback_count > 1:
+        violations.append("callback-ceiling-exceeded")
+    return violations
 
 
-def test_checkpoint_trust_boundary_module_set_is_exact_and_complete() -> None:
-    assert (
-        frozenset(_CHECKPOINT_ARCHITECTURE_MODULES)
-        == _EXPECTED_CHECKPOINT_TRUST_BOUNDARY_MODULES
+def test_checkpoint_trust_boundary_inventory_discovers_every_checkpoint_module(
+) -> None:
+    discovered = frozenset(
+        _CHECKPOINT_INTERNAL_DIRECTORY.glob("*checkpoint*.py")
     )
+    audited = frozenset(_CHECKPOINT_ARCHITECTURE_MODULES.values())
+    assert discovered <= audited
+    assert {
+        _ROOT / "aegis" / "checkpoints.py",
+        _ROOT / "aegis" / "audit_chain.py",
+        _ROOT / "aegis" / "workflow_verification.py",
+        _CHECKPOINT_INTERNAL_DIRECTORY / "signature_models.py",
+        _CHECKPOINT_INTERNAL_DIRECTORY / "external_signing.py",
+        _CHECKPOINT_INTERNAL_DIRECTORY / "verification_limits.py",
+        _CHECKPOINT_INTERNAL_DIRECTORY / "verification_contracts.py",
+        _CHECKPOINT_INTERNAL_DIRECTORY / "verification.py",
+        _CHECKPOINT_INTERNAL_DIRECTORY / "workflow_verification.py",
+    } <= audited
+
+
+def test_checkpoint_reachable_checkpoint_dependencies_are_all_audited() -> None:
+    audited = frozenset(_CHECKPOINT_ARCHITECTURE_MODULES.values())
+    missing: list[str] = []
+    for caller_name, caller_path in _CHECKPOINT_ARCHITECTURE_MODULES.items():
+        tree = ast.parse(caller_path.read_text(encoding="utf-8"))
+        for imported, line in _checkpoint_imports(tree):
+            if not imported.startswith("aegis._internal."):
+                continue
+            dependency_name = imported.rsplit(".", 1)[-1]
+            if "checkpoint" not in dependency_name:
+                continue
+            dependency = _CHECKPOINT_INTERNAL_DIRECTORY / f"{dependency_name}.py"
+            if dependency.exists() and dependency not in audited:
+                missing.append(
+                    f"{caller_name}:{line}:unreviewed-dependency:{dependency_name}"
+                )
+    assert missing == []
 
 
 def test_checkpoint_trust_boundary_modules_pass_robust_capability_analysis(
@@ -2758,6 +3049,12 @@ def test_checkpoint_trust_boundary_modules_pass_robust_capability_analysis(
             "create_workflow_checkpoint",
             "_sign_checkpoint",
             "_measure_source",
+        ),
+        (
+            "checkpoint_signing",
+            "_sign_checkpoint",
+            "sign",
+            "_checkpoint_payload",
         ),
         (
             "external_signing",
@@ -2903,4 +3200,190 @@ def test_checkpoint_callback_checker_resolves_indirect_calls_and_actual_order(
         function_name=function_name,
         boundary_name=boundary_name,
         preflight_name=preflight_name,
+    )
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "def run():\n    (callback,) = (open,)\n    callback('secret')\n",
+        "def run():\n    (callback := open)('secret')\n",
+        "def run(callback=open):\n    callback('secret')\n",
+        "def run():\n    callback = lambda: open('secret')\n    callback()\n",
+        (
+            "class Capability:\n"
+            "    callback = open\n"
+            "def run():\n"
+            "    Capability.callback('secret')\n"
+        ),
+        (
+            "def run():\n"
+            "    callback = next(item for item in (open,))\n"
+            "    callback('secret')\n"
+        ),
+        "from dangerous_capabilities import *\n",
+        (
+            "def run():\n"
+            "    for callback in (open,):\n"
+            "        callback('secret')\n"
+        ),
+        (
+            "def run():\n"
+            "    try:\n"
+            "        callbacks = (open,)\n"
+            "    except Exception:\n"
+            "        callbacks = ()\n"
+            "    callbacks[0]('secret')\n"
+        ),
+        (
+            "def run(flag, safe):\n"
+            "    callback = open if flag else safe\n"
+            "    callback('secret')\n"
+        ),
+        (
+            "import builtins\n"
+            "callback = object.__getattribute__(builtins, 'open')\n"
+            "callback('secret')\n"
+        ),
+        (
+            "import builtins\n"
+            "callback = builtins.__dict__['open']\n"
+            "callback('secret')\n"
+        ),
+        (
+            "import importlib\n"
+            "load = importlib.__dict__['import_module']\n"
+            "load('socket')\n"
+        ),
+        (
+            "from functools import partial\n"
+            "callback = partial(open, 'secret')\n"
+            "callback()\n"
+        ),
+        (
+            "def passthrough(callback):\n"
+            "    return callback\n"
+            "def run():\n"
+            "    callback = passthrough(open)\n"
+            "    callback('secret')\n"
+        ),
+        (
+            "def decorator(callback):\n"
+            "    return callback\n"
+            "@decorator(open)\n"
+            "def run():\n"
+            "    return None\n"
+        ),
+        (
+            "from types import MappingProxyType\n"
+            "POLICY = MappingProxyType({'safe': frozenset({'value'})})\n"
+            "def weaken():\n"
+            "    POLICY['safe'] = frozenset({'changed'})\n"
+        ),
+        (
+            "def run():\n"
+            "    callbacks = {'nested': [open]}\n"
+            "    callbacks['nested'][0]('secret')\n"
+        ),
+    ],
+    ids=[
+        "tuple-destructuring",
+        "walrus",
+        "default-argument",
+        "lambda-closure",
+        "class-binding",
+        "comprehension-binding",
+        "star-import",
+        "loop-binding",
+        "try-container-binding",
+        "conditional-rebinding",
+        "object-getattribute",
+        "builtins-subscript",
+        "importlib-subscript",
+        "partial-wrapper",
+        "function-wrapper",
+        "decorator-wrapper",
+        "function-global-subscript-mutation",
+        "nested-mutable-capability",
+    ],
+)
+def test_checkpoint_architecture_checker_rejects_scope_and_wrapper_bypasses(
+    source: str,
+) -> None:
+    assert _checkpoint_boundary_violations_for_source(source)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "VALUES = frozenset(range(3))\n",
+        "VALUES = (('safe', 1), ('also-safe', 2))\n",
+        "def pure(value):\n    return value + 1\n",
+    ],
+    ids=["frozenset-range", "nested-tuples", "pure-function"],
+)
+def test_checkpoint_architecture_checker_accepts_proven_immutable_controls(
+    source: str,
+) -> None:
+    assert _checkpoint_boundary_violations_for_source(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        (
+            "def create(source, signer):\n"
+            "    if False:\n"
+            "        validate(source)\n"
+            "    signer.sign(b'payload', None)\n"
+        ),
+        (
+            "def create(source, signer, condition):\n"
+            "    if condition:\n"
+            "        validate(source)\n"
+            "    signer.sign(b'payload', None)\n"
+        ),
+        (
+            "def create(source, signer):\n"
+            "    def unused_preflight():\n"
+            "        validate(source)\n"
+            "    signer.sign(b'payload', None)\n"
+        ),
+        (
+            "def create(source, signer, items):\n"
+            "    validate(source)\n"
+            "    for item in items:\n"
+            "        signer.sign(item, None)\n"
+        ),
+        (
+            "def invoke(signer):\n"
+            "    signer.sign(b'payload', None)\n"
+            "def create(source, signer):\n"
+            "    invoke(signer)\n"
+            "    validate(source)\n"
+        ),
+        (
+            "def create(source, signer):\n"
+            "    validate(source)\n"
+            "    signer.sign(b'one', None)\n"
+            "    signer.sign(b'two', None)\n"
+        ),
+    ],
+    ids=[
+        "dead-preflight",
+        "conditional-preflight",
+        "uncalled-preflight",
+        "looped-callback",
+        "nested-helper-before-preflight",
+        "callback-ceiling",
+    ],
+)
+def test_checkpoint_callback_checker_rejects_control_flow_bypasses(
+    source: str,
+) -> None:
+    assert _checkpoint_callback_order_violations_for_source(
+        source,
+        function_name="create",
+        boundary_name="sign",
+        preflight_name="validate",
     )
