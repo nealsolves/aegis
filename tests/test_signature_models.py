@@ -31,6 +31,7 @@ from aegis._internal.signature_models import (
     SignerIdentity,
     SigningReceipt,
     VerificationReasonCode,
+    _require_enum,
     validate_encoded_signature,
     validate_verification_outcome,
 )
@@ -257,6 +258,81 @@ def test_verification_rejects_every_noncanonical_closed_enum_instance(
         validate_verification_outcome(**values)
 
     assert error.value.details == {"field": field}
+
+
+@pytest.mark.parametrize(
+    ("enum_type", "canonical", "error_type"),
+    (
+        (EvidenceType, EvidenceType.AUDIT_ARTIFACT, SignatureMetadataError),
+        (SignatureEncoding, SignatureEncoding.HEX, SigningContractError),
+        (SignatureStatus, SignatureStatus.INVALID, VerificationContractError),
+        (AnchorStatus, AnchorStatus.NOT_EVALUATED, VerificationContractError),
+        (
+            VerificationReasonCode,
+            VerificationReasonCode.SIGNATURE_INVALID,
+            VerificationContractError,
+        ),
+    ),
+)
+def test_enum_authenticity_is_independent_of_mutable_enum_registries(
+    enum_type,
+    canonical,
+    error_type,
+):
+    member_map = enum_type._member_map_
+    member_names = enum_type._member_names_
+    value_map = enum_type._value2member_map_
+    original_map = member_map.copy()
+    original_names = list(member_names)
+    original_values = value_map.copy()
+    forged = str.__new__(enum_type, canonical.value)
+    object.__setattr__(forged, "_name_", "FORGED")
+    object.__setattr__(forged, "_value_", canonical.value)
+    try:
+        member_map["FORGED"] = forged
+        member_names.append("FORGED")
+        value_map[canonical.value] = forged
+        with pytest.raises(error_type) as error:
+            _require_enum(forged, enum_type, "field", error_type)
+        assert error.value.details == {"field": "field"}
+
+        member_map.clear()
+        member_names.clear()
+        value_map.clear()
+        assert _require_enum(canonical, enum_type, "field", error_type) is None
+    finally:
+        member_map.clear()
+        member_map.update(original_map)
+        member_names[:] = original_names
+        value_map.clear()
+        value_map.update(original_values)
+
+
+def test_metadata_enum_parsing_is_independent_of_mutable_enum_registries():
+    registries = []
+    for enum_type in (EvidenceType, SignatureEncoding):
+        registries.append((
+            enum_type,
+            enum_type._member_map_.copy(),
+            list(enum_type._member_names_),
+            enum_type._value2member_map_.copy(),
+        ))
+    value = _metadata().to_dict()
+    try:
+        for enum_type, _, _, _ in registries:
+            enum_type._member_map_.clear()
+            enum_type._member_names_.clear()
+            enum_type._value2member_map_.clear()
+        parsed = SignatureMetadata.from_dict(value)
+        assert parsed.payload_type is EvidenceType.AUDIT_ARTIFACT
+        assert parsed.signature_encoding is SignatureEncoding.BASE64
+    finally:
+        for enum_type, member_map, member_names, value_map in registries:
+            enum_type._member_map_.clear()
+            enum_type._member_map_.update(member_map)
+            enum_type._member_names_[:] = member_names
+            enum_type._value2member_map_.clear()
+            enum_type._value2member_map_.update(value_map)
 
 
 @pytest.mark.parametrize("field, value", [

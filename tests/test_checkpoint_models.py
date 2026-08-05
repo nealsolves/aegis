@@ -16,6 +16,7 @@ from aegis._internal.checkpoint_models import (
     CheckpointVerificationResult,
     TrustedChainCheckpoint,
     TrustedWorkflowCheckpoint,
+    _is_exact_enum_member,
 )
 from aegis._internal.errors import CheckpointError
 from aegis._internal.signature_models import (
@@ -29,6 +30,43 @@ from aegis._internal.verification_limits import (
     VerificationBudget,
     VerificationInputError,
 )
+
+
+@pytest.mark.parametrize(
+    ("enum_type", "canonical"),
+    (
+        (CheckpointSignatureStatus, CheckpointSignatureStatus.VALID),
+        (CheckpointBindingStatus, CheckpointBindingStatus.MATCHED),
+    ),
+)
+def test_checkpoint_enum_authenticity_ignores_mutable_enum_registries(
+    enum_type,
+    canonical,
+):
+    member_map = enum_type._member_map_
+    member_names = enum_type._member_names_
+    value_map = enum_type._value2member_map_
+    original_map = member_map.copy()
+    original_names = list(member_names)
+    original_values = value_map.copy()
+    forged = str.__new__(enum_type, canonical.value)
+    object.__setattr__(forged, "_name_", "FORGED")
+    object.__setattr__(forged, "_value_", canonical.value)
+    try:
+        member_map["FORGED"] = forged
+        member_names.append("FORGED")
+        value_map[canonical.value] = forged
+        assert _is_exact_enum_member(forged, enum_type) is False
+        member_map.clear()
+        member_names.clear()
+        value_map.clear()
+        assert _is_exact_enum_member(canonical, enum_type) is True
+    finally:
+        member_map.clear()
+        member_map.update(original_map)
+        member_names[:] = original_names
+        value_map.clear()
+        value_map.update(original_values)
 
 
 @pytest.fixture

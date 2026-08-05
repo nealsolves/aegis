@@ -76,6 +76,15 @@ def _artifact(
     return artifact
 
 
+def test_deprecated_anchor_verifier_rejects_forged_exact_enum_instance():
+    forged = str.__new__(AnchorStatus, AnchorStatus.ANCHORED.value)
+    object.__setattr__(forged, "_name_", "FORGED")
+    object.__setattr__(forged, "_value_", AnchorStatus.ANCHORED.value)
+
+    with pytest.raises(TypeError, match="must return AnchorStatus"):
+        verification_module._apply_anchor_verifier(lambda _: forged, ())
+
+
 @pytest.fixture
 def valid_chain() -> list[dict[str, object]]:
     first = _artifact(0, None)

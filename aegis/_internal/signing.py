@@ -39,7 +39,14 @@ def _logger():
     """Load logging only for legacy signer operations that actually emit."""
     import logging
 
-    return logging.getLogger("aegis.signing")
+    logger = logging.getLogger("aegis.signing")
+    logging._acquireLock()
+    try:
+        if not any(type(handler) is logging.NullHandler for handler in logger.handlers):
+            logger.addHandler(logging.NullHandler())
+    finally:
+        logging._releaseLock()
+    return logger
 
 
 def _finalizer_payload_type(domain: object) -> str:

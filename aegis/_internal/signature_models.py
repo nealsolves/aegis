@@ -151,8 +151,74 @@ def _require_enum(
     field: str,
     error_type: type[Exception],
 ) -> None:
-    if not any(value is member for member in enum_type):
+    if not _is_canonical_enum_member(value, enum_type):
         raise error_type(f"{field} must be a {enum_type.__name__}", details={"field": field})
+
+
+def _is_canonical_enum_member(value: object, enum_type: type[Enum]) -> bool:
+    """Check closed enums without consulting mutable ``EnumMeta`` registries."""
+    if enum_type is EvidenceType:
+        return (
+            value is EvidenceType.AUDIT_ARTIFACT
+            or value is EvidenceType.CHAIN_CHECKPOINT
+            or value is EvidenceType.WORKFLOW_CHECKPOINT
+        )
+    if enum_type is SignatureEncoding:
+        return value is SignatureEncoding.HEX or value is SignatureEncoding.BASE64
+    if enum_type is SignatureStatus:
+        return (
+            value is SignatureStatus.UNSIGNED
+            or value is SignatureStatus.VALID
+            or value is SignatureStatus.INVALID
+            or value is SignatureStatus.UNKNOWN_KEY
+            or value is SignatureStatus.REVOKED
+            or value is SignatureStatus.INDETERMINATE
+        )
+    if enum_type is AnchorStatus:
+        return (
+            value is AnchorStatus.NOT_EVALUATED
+            or value is AnchorStatus.UNANCHORED
+            or value is AnchorStatus.ANCHORED
+            or value is AnchorStatus.INVALID
+        )
+    if enum_type is VerificationReasonCode:
+        return (
+            value is VerificationReasonCode.UNSIGNED
+            or value is VerificationReasonCode.LEGACY_SIGNATURE_VALID
+            or value is VerificationReasonCode.LEGACY_SIGNATURE_INVALID
+            or value is VerificationReasonCode.SIGNATURE_VALID_UNANCHORED
+            or value is VerificationReasonCode.SIGNATURE_VALID_ANCHORED
+            or value is VerificationReasonCode.SIGNATURE_INVALID
+            or value is VerificationReasonCode.SIGNATURE_METADATA_MISSING
+            or value is VerificationReasonCode.ALGORITHM_NOT_ALLOWED
+            or value is VerificationReasonCode.KEY_UNKNOWN
+            or value is VerificationReasonCode.KEY_REVOKED
+            or value is VerificationReasonCode.VERIFIER_UNAVAILABLE
+            or value is VerificationReasonCode.ANCHOR_INVALID
+        )
+    return False
+
+
+def _parse_evidence_type(value: object) -> EvidenceType | None:
+    if type(value) is not str:
+        return None
+    if value == "audit_artifact":
+        return EvidenceType.AUDIT_ARTIFACT
+    if value == "chain_checkpoint":
+        return EvidenceType.CHAIN_CHECKPOINT
+    if value == "workflow_checkpoint":
+        return EvidenceType.WORKFLOW_CHECKPOINT
+    return None
+
+
+def _parse_signature_encoding(value: object) -> SignatureEncoding | None:
+    if type(value) is not str:
+        return None
+    if value == "hex":
+        return SignatureEncoding.HEX
+    if value == "base64":
+        return SignatureEncoding.BASE64
+    return None
 
 
 def _validate_identity_fields(
@@ -336,29 +402,8 @@ class SignatureMetadata:
                     "extra_count": len(extra),
                 },
             )
-        try:
-            payload_type = (
-                EvidenceType(value["payload_type"])
-                if isinstance(value["payload_type"], str)
-                else None
-            )
-            signature_encoding = (
-                SignatureEncoding(value["signature_encoding"])
-                if isinstance(value["signature_encoding"], str)
-                else None
-            )
-        except ValueError:
-            invalid_field = (
-                "payload_type"
-                if (
-                    not isinstance(value["payload_type"], str)
-                    or value["payload_type"] not in EvidenceType._value2member_map_
-                )
-                else "signature_encoding"
-            )
-            raise SignatureMetadataError(
-                "metadata enum is invalid", details={"field": invalid_field}
-            ) from None
+        payload_type = _parse_evidence_type(value["payload_type"])
+        signature_encoding = _parse_signature_encoding(value["signature_encoding"])
         if payload_type is None:
             raise SignatureMetadataError(
                 "metadata enum is invalid", details={"field": "payload_type"}

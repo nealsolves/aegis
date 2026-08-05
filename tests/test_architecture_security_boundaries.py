@@ -6,6 +6,7 @@ import ast
 import json
 from pathlib import Path
 import re
+import sys
 
 import pytest
 
@@ -2636,6 +2637,24 @@ def _scope_capability_violations(
             violations.append(f"{node.lineno}:tainted-call")
         elif isinstance(node, ast.NamedExpr) and expression_is_tainted(node.value):
             violations.append(f"{node.lineno}:tainted-walrus")
+        elif isinstance(node, (ast.With, ast.AsyncWith)) and any(
+            expression_is_tainted(item.context_expr) for item in node.items
+        ):
+            violations.append(f"{node.lineno}:tainted-context-manager")
+        elif isinstance(node, (ast.For, ast.AsyncFor)) and expression_is_tainted(
+            node.iter
+        ):
+            violations.append(f"{node.lineno}:tainted-iteration")
+        elif isinstance(node, (ast.BinOp, ast.UnaryOp, ast.Compare)) and any(
+            expression_is_tainted(child) for child in ast.iter_child_nodes(node)
+        ):
+            violations.append(f"{node.lineno}:tainted-operator")
+        elif (
+            isinstance(node, ast.Attribute)
+            and isinstance(node.ctx, ast.Load)
+            and expression_is_tainted(node)
+        ):
+            violations.append(f"{node.lineno}:tainted-descriptor")
     return violations
 
 
@@ -2748,7 +2767,45 @@ def _checkpoint_boundary_violations_for_source(source: str) -> list[str]:
             (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.Module),
         ):
             scope = parents[scope]
-        if call.func.id in directly_bound_functions(scope):
+        parameters = set()
+        if isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            parameters = {
+                argument.arg
+                for argument in (
+                    *scope.args.posonlyargs,
+                    *scope.args.args,
+                    *scope.args.kwonlyargs,
+                )
+            }
+        nearest_assignment = None
+        for candidate in ast.walk(scope):
+            if not isinstance(candidate, (ast.Assign, ast.AnnAssign)):
+                continue
+            if candidate.lineno >= call.lineno:
+                continue
+            targets = candidate.targets if isinstance(candidate, ast.Assign) else [candidate.target]
+            if any(
+                isinstance(target, ast.Name) and target.id == call.func.id
+                for target in targets
+            ) and (
+                nearest_assignment is None
+                or candidate.lineno > nearest_assignment.lineno
+            ):
+                nearest_assignment = candidate
+        local_safe_assignment = False
+        if nearest_assignment is not None and nearest_assignment.value is not None:
+            paths = _resolved_expression_candidates(
+                nearest_assignment.value,
+                {name: {path} for name, path in _import_aliases(tree).items()},
+            )
+            local_safe_assignment = not any(
+                path.startswith("builtins.") for path in paths
+            )
+        if (
+            call.func.id in directly_bound_functions(scope)
+            or call.func.id in parameters
+            or local_safe_assignment
+        ):
             safe_shadow_lines.add(call.lineno)
 
     if safe_shadow_lines:
@@ -2944,8 +3001,120 @@ def _checkpoint_callback_order_violations_for_source(
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         and node.name == function_name
     )
-    aliases = _assignment_alias_candidates(function, _import_aliases(tree))
+    import_aliases = _import_aliases(tree)
     violations: list[str] = []
+
+    parents: dict[ast.AST, ast.AST] = {}
+    for parent in ast.walk(tree):
+        for child in ast.iter_child_nodes(parent):
+            parents[child] = parent
+
+    def enclosing_function(node: ast.AST) -> ast.AST:
+        while node in parents:
+            node = parents[node]
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+                return node
+        return tree
+
+    def bind_alias(
+        target: ast.AST,
+        value: ast.AST,
+        resolved: dict[str, set[str]],
+    ) -> None:
+        if isinstance(target, (ast.Tuple, ast.List)) and isinstance(
+            value, (ast.Tuple, ast.List)
+        ) and len(target.elts) == len(value.elts):
+            for nested_target, nested_value in zip(target.elts, value.elts):
+                bind_alias(nested_target, nested_value, resolved)
+            return
+        if isinstance(target, ast.Name):
+            paths = _resolved_expression_candidates(value, resolved)
+            if isinstance(value, ast.Lambda):
+                body = value.body.func if isinstance(value.body, ast.Call) else value.body
+                paths = _resolved_expression_candidates(body, resolved)
+            elif (
+                isinstance(value, ast.Call)
+                and any(
+                    path.endswith("functools.partial") or path == "functools.partial"
+                    for path in _resolved_expression_candidates(value.func, resolved)
+                )
+                and value.args
+            ):
+                paths = _resolved_expression_candidates(value.args[0], resolved)
+            elif isinstance(value, ast.Call) and isinstance(value.func, ast.Name):
+                helper = functions.get(value.func.id)
+                if helper is not None:
+                    helper_aliases = _assignment_alias_candidates(
+                        helper, import_aliases
+                    )
+                    returned: set[str] = set()
+                    parameters = [
+                        *helper.args.posonlyargs,
+                        *helper.args.args,
+                    ]
+                    for return_node in ast.walk(helper):
+                        if not isinstance(return_node, ast.Return):
+                            continue
+                        returned.update(
+                            _resolved_expression_candidates(
+                                return_node.value, helper_aliases
+                            ) if return_node.value is not None else set()
+                        )
+                        if (
+                            isinstance(return_node.value, ast.Name)
+                            and return_node.value.id
+                            in {parameter.arg for parameter in parameters}
+                        ):
+                            index = next(
+                                index
+                                for index, parameter in enumerate(parameters)
+                                if parameter.arg == return_node.value.id
+                            )
+                            if index < len(value.args):
+                                returned.update(
+                                    _resolved_expression_candidates(
+                                        value.args[index], resolved
+                                    )
+                                )
+                    paths = returned
+            resolved[target.id] = paths or {target.id}
+
+    def aliases_at(node: ast.AST) -> dict[str, set[str]]:
+        scope = enclosing_function(node)
+        resolved = {name: {path} for name, path in import_aliases.items()}
+        candidates = sorted(
+            (
+                candidate
+                for candidate in ast.walk(scope)
+                if isinstance(
+                    candidate,
+                    (ast.Assign, ast.AnnAssign, ast.NamedExpr, ast.Import, ast.ImportFrom),
+                )
+                and enclosing_function(candidate) is scope
+                and (candidate.lineno, candidate.col_offset)
+                < (node.lineno, node.col_offset)
+            ),
+            key=lambda candidate: (candidate.lineno, candidate.col_offset),
+        )
+        for candidate in candidates:
+            if isinstance(candidate, ast.Assign):
+                for target in candidate.targets:
+                    bind_alias(target, candidate.value, resolved)
+            elif isinstance(candidate, ast.AnnAssign) and candidate.value is not None:
+                bind_alias(candidate.target, candidate.value, resolved)
+            elif isinstance(candidate, ast.NamedExpr):
+                bind_alias(candidate.target, candidate.value, resolved)
+            elif isinstance(candidate, ast.ImportFrom) and candidate.module:
+                for imported in candidate.names:
+                    resolved[imported.asname or imported.name] = {
+                        f"{candidate.module}.{imported.name}"
+                    }
+            elif isinstance(candidate, ast.Import):
+                for imported in candidate.names:
+                    resolved[imported.asname or imported.name.split(".")[0]] = {
+                        imported.name
+                    }
+        return resolved
 
     class _CurrentScopeCalls(ast.NodeVisitor):
         def __init__(self) -> None:
@@ -2987,7 +3156,7 @@ def _checkpoint_callback_order_violations_for_source(
             path == name
             or path.endswith(f".{name}")
             or path.endswith(f".{name}.__call__")
-            for path in _resolved_expression_candidates(call.func, aliases)
+            for path in _resolved_expression_candidates(call.func, aliases_at(call))
         )
 
     def preflight_matches(call: ast.Call) -> bool:
@@ -2995,9 +3164,40 @@ def _checkpoint_callback_order_violations_for_source(
             isinstance(call.func, ast.Name)
             or any(
                 path.startswith("aegis.")
-                for path in _resolved_expression_candidates(call.func, aliases)
+                for path in _resolved_expression_candidates(
+                    call.func, aliases_at(call)
+                )
             )
         )
+
+    def function_has_direct_boundary(name: str) -> bool:
+        return any(
+            call_matches(call, boundary_name)
+            for call in current_scope_calls(functions[name])
+            if not (
+                isinstance(call.func, ast.Name)
+                and call.func.id in functions
+            )
+        )
+
+    def call_is_repeated(call: ast.Call, owner: ast.AST) -> bool:
+        node: ast.AST = call
+        while node in parents and parents[node] is not owner:
+            node = parents[node]
+            if isinstance(
+                node,
+                (
+                    ast.For,
+                    ast.AsyncFor,
+                    ast.While,
+                    ast.ListComp,
+                    ast.SetComp,
+                    ast.DictComp,
+                    ast.GeneratorExp,
+                ),
+            ):
+                return True
+        return False
 
     def helper_boundary_count(call: ast.Call, seen: frozenset[str]) -> int:
         if call_matches(call, boundary_name):
@@ -3006,13 +3206,20 @@ def _checkpoint_callback_order_violations_for_source(
             return 0
         helper_name = call.func.id
         if helper_name in seen:
-            # A reachable recursive SCC has no finite provider-call ceiling.
-            return 2
+            cycle = {
+                name
+                for name in seen | {helper_name}
+                if name in functions and name != function_name
+            }
+            return 2 if any(function_has_direct_boundary(name) for name in cycle) else 0
         helper = functions[helper_name]
-        return sum(
-            helper_boundary_count(nested, seen | {helper_name})
-            for nested in current_scope_calls(helper)
-        )
+        total = 0
+        for nested in current_scope_calls(helper):
+            count = helper_boundary_count(nested, seen | {helper_name})
+            if count and call_is_repeated(nested, helper):
+                return 2
+            total += count
+        return total
 
     def statement_calls(statement: ast.stmt) -> list[ast.Call]:
         if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -3026,16 +3233,30 @@ def _checkpoint_callback_order_violations_for_source(
         callback_count = 0
         for statement in statements:
             if isinstance(statement, ast.If):
+                test_count = 0
+                test_preflight = preflight_guaranteed
+                for call in current_scope_calls(statement.test):
+                    if preflight_matches(call):
+                        test_preflight = True
+                        continue
+                    count = helper_boundary_count(
+                        call, frozenset({function_name})
+                    )
+                    if count and not test_preflight:
+                        violations.append(
+                            "callback-before-complete-preflight"
+                        )
+                    test_count += count
                 body_preflight, body_count = analyze_block(
                     statement.body,
-                    preflight_guaranteed,
+                    test_preflight,
                 )
                 else_preflight, else_count = analyze_block(
                     statement.orelse,
-                    preflight_guaranteed,
+                    test_preflight,
                 )
                 preflight_guaranteed = body_preflight and else_preflight
-                callback_count += max(body_count, else_count)
+                callback_count += test_count + max(body_count, else_count)
                 continue
             if isinstance(statement, (ast.For, ast.AsyncFor, ast.While)):
                 loop_count = sum(
@@ -3047,37 +3268,84 @@ def _checkpoint_callback_order_violations_for_source(
                 callback_count += loop_count
                 continue
             if isinstance(statement, ast.Try):
+                entry_preflight = preflight_guaranteed
                 body_preflight, body_count = analyze_block(
                     statement.body,
                     preflight_guaranteed,
                 )
-                paths = [
-                    analyze_block(handler.body, preflight_guaranteed)
-                    for handler in statement.handlers
-                ]
+                normal_preflight, normal_count = analyze_block(
+                    statement.orelse,
+                    body_preflight,
+                )
+                paths = [(normal_preflight, body_count + normal_count)]
+                for handler in statement.handlers:
+                    handler_count = 0
+                    handler_preflight = entry_preflight
+                    if handler.type is not None:
+                        for call in current_scope_calls(handler.type):
+                            if preflight_matches(call):
+                                handler_preflight = True
+                                continue
+                            count = helper_boundary_count(
+                                call, frozenset({function_name})
+                            )
+                            if count and not handler_preflight:
+                                violations.append(
+                                    "callback-before-complete-preflight"
+                                )
+                            handler_count += count
+                    path_preflight, path_count = analyze_block(
+                        handler.body, handler_preflight
+                    )
+                    paths.append(
+                        (path_preflight, handler_count + path_count)
+                    )
                 if statement.orelse:
-                    paths.append(analyze_block(statement.orelse, body_preflight))
-                if not paths:
-                    paths.append((preflight_guaranteed, 0))
-                preflight_guaranteed = body_preflight and all(
+                    pass
+                preflight_guaranteed = all(
                     path_preflight for path_preflight, _ in paths
                 )
-                callback_count += max(
-                    (body_count, *(path_count for _, path_count in paths))
-                )
+                callback_count += max(path_count for _, path_count in paths)
                 if statement.finalbody:
                     final_preflight, final_count = analyze_block(
                         statement.finalbody,
-                        preflight_guaranteed,
+                        preflight_guaranteed and entry_preflight,
                     )
                     preflight_guaranteed = final_preflight
                     callback_count += final_count
                 continue
             if isinstance(statement, ast.Match):
-                paths = [
-                    analyze_block(case.body, preflight_guaranteed)
-                    for case in statement.cases
-                ]
+                subject_preflight = preflight_guaranteed
+                subject_count = 0
+                for call in current_scope_calls(statement.subject):
+                    if preflight_matches(call):
+                        subject_preflight = True
+                        continue
+                    count = helper_boundary_count(call, frozenset({function_name}))
+                    if count and not subject_preflight:
+                        violations.append("callback-before-complete-preflight")
+                    subject_count += count
+                paths = []
+                for case in statement.cases:
+                    case_preflight = subject_preflight
+                    guard_count = 0
+                    if case.guard is not None:
+                        for call in current_scope_calls(case.guard):
+                            if preflight_matches(call):
+                                case_preflight = True
+                                continue
+                            count = helper_boundary_count(
+                                call, frozenset({function_name})
+                            )
+                            if count and not case_preflight:
+                                violations.append(
+                                    "callback-before-complete-preflight"
+                                )
+                            guard_count += count
+                    path_preflight, path_count = analyze_block(
+                        case.body, case_preflight
+                    )
+                    paths.append((path_preflight, guard_count + path_count))
                 exhaustive = any(
                     case.guard is None
                     and isinstance(case.pattern, ast.MatchAs)
@@ -3089,7 +3357,7 @@ def _checkpoint_callback_order_violations_for_source(
                 preflight_guaranteed = all(
                     path_preflight for path_preflight, _ in paths
                 )
-                callback_count += max(
+                callback_count += subject_count + max(
                     path_count for _, path_count in paths
                 )
                 continue
@@ -3139,6 +3407,10 @@ def _checkpoint_callback_order_violations_for_source(
         *function.decorator_list,
         *function.args.defaults,
         *function.args.kw_defaults,
+        function.returns,
+        *(argument.annotation for argument in function.args.posonlyargs),
+        *(argument.annotation for argument in function.args.args),
+        *(argument.annotation for argument in function.args.kwonlyargs),
     ):
         if expression is not None:
             definition_calls.extend(current_scope_calls(expression))
@@ -3207,14 +3479,31 @@ _CHECKPOINT_CALLABLE_ROOTS = (
 _CHECKPOINT_REVIEWED_PURE_LEAVES = frozenset(
     {
         ("aegis._internal.compiled_policy", "JsonValue"),
+        ("abc", "ABC"),
+        ("abc", "abstractmethod"),
+        ("base64", "b64decode"),
+        ("base64", "b64encode"),
+        ("binascii", "Error"),
         ("collections.abc", "Iterable"),
         ("collections.abc", "Mapping"),
+        ("copy", "deepcopy"),
+        ("dataclasses", "dataclass"),
+        ("enum", "Enum"),
+        ("hashlib", "sha256"),
+        ("hmac", "compare_digest"),
+        ("hmac", "new"),
+        ("json", "dumps"),
+        ("math", "isfinite"),
+        ("rfc8785", "CanonicalizationError"),
+        ("rfc8785", "dumps"),
+        ("re", "compile"),
         ("typing", "Any"),
         ("typing", "Callable"),
         ("typing", "Iterable"),
         ("typing", "Mapping"),
         ("typing", "Protocol"),
         ("typing", "Sequence"),
+        ("typing", "TypeVar"),
         ("typing", "runtime_checkable"),
     }
 )
@@ -3251,17 +3540,30 @@ def _checkpoint_callable_dependency_closure() -> frozenset[tuple[str, str]]:
                         statement.module,
                         imported.name,
                     )
+                    if statement.module.startswith("aegis."):
+                        pending.append((statement.module, imported.name))
             elif isinstance(statement, ast.Import):
                 for imported in statement.names:
                     imports[imported.asname or imported.name.split(".")[0]] = (
                         imported.name,
                         None,
                     )
+                    if imported.name.startswith("aegis."):
+                        pending.append((imported.name, "<module>"))
             elif isinstance(
                 statement,
                 (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef),
             ):
                 definitions[statement.name] = statement
+            elif isinstance(statement, (ast.Assign, ast.AnnAssign)):
+                targets = (
+                    statement.targets
+                    if isinstance(statement, ast.Assign)
+                    else [statement.target]
+                )
+                for target in targets:
+                    if isinstance(target, ast.Name) and statement.value is not None:
+                        definitions[target.id] = statement.value
         parsed[module] = imports, definitions
         return parsed[module]
 
@@ -3275,25 +3577,41 @@ def _checkpoint_callable_dependency_closure() -> frozenset[tuple[str, str]]:
         module, name = symbol
         indexed = module_index(module)
         if indexed is None:
+            raise AssertionError(f"unreviewed external closure leaf: {module}.{name}")
+        if name == "<module>":
             continue
         imports, definitions = indexed
         definition = definitions.get(name)
         if definition is None:
-            continue
+            raise AssertionError(f"unresolved checkpoint closure symbol: {module}.{name}")
+        local_imports = dict(imports)
+        for node in ast.walk(definition):
+            if isinstance(node, ast.ImportFrom) and node.module is not None:
+                for imported in node.names:
+                    local_imports[imported.asname or imported.name] = (
+                        node.module,
+                        imported.name,
+                    )
+            elif isinstance(node, ast.Import):
+                for imported in node.names:
+                    local_imports[imported.asname or imported.name.split(".")[0]] = (
+                        imported.name,
+                        None,
+                    )
         for node in ast.walk(definition):
             if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
                 if node.id in definitions:
                     pending.append((module, node.id))
-                elif node.id in imports and imports[node.id][1] is not None:
-                    imported_module, imported_name = imports[node.id]
+                elif node.id in local_imports and local_imports[node.id][1] is not None:
+                    imported_module, imported_name = local_imports[node.id]
                     pending.append((imported_module, imported_name))
             elif (
                 isinstance(node, ast.Attribute)
                 and isinstance(node.value, ast.Name)
-                and node.value.id in imports
-                and imports[node.value.id][1] is None
+                and node.value.id in local_imports
+                and local_imports[node.value.id][1] is None
             ):
-                imported_module, _ = imports[node.value.id]
+                imported_module, _ = local_imports[node.value.id]
                 pending.append((imported_module, node.attr))
     return frozenset(reached)
 
@@ -3318,6 +3636,7 @@ def test_checkpoint_callable_roots_discover_the_complete_reviewed_closure() -> N
         "aegis._internal.verification_contracts",
         "aegis._internal.verification_limits",
         "aegis._internal.workflow_checkpoint_verification",
+        "aegis._internal.workflow_limits",
         "aegis._internal.workflow_verification",
     } <= modules
     assert not any(
@@ -3347,6 +3666,96 @@ def test_every_callable_closure_module_is_capability_reviewed() -> None:
             )
         )
     assert violations == []
+
+
+def test_callable_closure_tracks_assignments_import_time_locals_attrs_and_callables(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sources = {
+        "aegis.fixture.root": (
+            "from aegis.fixture.assignment import passthrough\n"
+            "from aegis.fixture.import_time import UNUSED\n"
+            "import aegis.fixture.module_attrs as module_attrs\n"
+            "from aegis.fixture.callable_instance import Runner\n"
+            "BOUND = passthrough\n"
+            "CALLABLE = Runner()\n"
+            "def root(value):\n"
+            "    from aegis.fixture.local_import import local_leaf\n"
+            "    BOUND(module_attrs.MODULE_LEAF)\n"
+            "    local_leaf(value)\n"
+            "    CALLABLE(value)\n"
+        ),
+        "aegis.fixture.assignment": "def passthrough(value):\n    return value\n",
+        "aegis.fixture.import_time": "UNUSED = 1\n",
+        "aegis.fixture.module_attrs": "MODULE_LEAF = 1\n",
+        "aegis.fixture.local_import": "def local_leaf(value):\n    return value\n",
+        "aegis.fixture.callable_instance": (
+            "def call_leaf(value):\n    return value\n"
+            "class Runner:\n"
+            "    def __call__(self, value):\n"
+            "        return call_leaf(value)\n"
+        ),
+    }
+    paths: dict[str, Path] = {}
+    for index, (module, source) in enumerate(sources.items()):
+        path = tmp_path / f"module_{index}.py"
+        path.write_text(source, encoding="utf-8")
+        paths[module] = path
+    monkeypatch.setattr(
+        sys.modules[__name__],
+        "_CHECKPOINT_CALLABLE_ROOTS",
+        (("aegis.fixture.root", "root"),),
+    )
+    monkeypatch.setattr(
+        sys.modules[__name__],
+        "_checkpoint_module_path",
+        lambda module: paths.get(module),
+    )
+
+    closure = _checkpoint_callable_dependency_closure()
+
+    assert {
+        ("aegis.fixture.root", "BOUND"),
+        ("aegis.fixture.root", "CALLABLE"),
+        ("aegis.fixture.assignment", "passthrough"),
+        ("aegis.fixture.import_time", "UNUSED"),
+        ("aegis.fixture.module_attrs", "MODULE_LEAF"),
+        ("aegis.fixture.local_import", "local_leaf"),
+        ("aegis.fixture.callable_instance", "Runner"),
+        ("aegis.fixture.callable_instance", "call_leaf"),
+    } <= closure
+
+
+def test_callable_closure_fails_closed_for_unresolved_executed_import(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "root.py"
+    dependency = tmp_path / "dependency.py"
+    root.write_text(
+        "from aegis.fixture.dependency import MISSING\n"
+        "def root():\n    return MISSING()\n",
+        encoding="utf-8",
+    )
+    dependency.write_text("PRESENT = 1\n", encoding="utf-8")
+    paths = {
+        "aegis.fixture.root": root,
+        "aegis.fixture.dependency": dependency,
+    }
+    monkeypatch.setattr(
+        sys.modules[__name__],
+        "_CHECKPOINT_CALLABLE_ROOTS",
+        (("aegis.fixture.root", "root"),),
+    )
+    monkeypatch.setattr(
+        sys.modules[__name__],
+        "_checkpoint_module_path",
+        lambda module: paths.get(module),
+    )
+
+    with pytest.raises(AssertionError, match="unresolved checkpoint closure symbol"):
+        _checkpoint_callable_dependency_closure()
 
 
 def test_checkpoint_trust_boundary_modules_pass_robust_capability_analysis(
@@ -3886,3 +4295,226 @@ def test_checkpoint_callback_checker_accepts_exhaustive_match_preflight() -> Non
         boundary_name="sign",
         preflight_name="validate",
     ) == []
+
+
+def test_checkpoint_callback_checker_uses_nearest_lexical_multitarget_binding(
+) -> None:
+    source = (
+        "def safe(*args):\n"
+        "    return args\n"
+        "def create(source, signer):\n"
+        "    invoke = signer.sign\n"
+        "    invoke = safe\n"
+        "    invoke(source)\n"
+        "    validate(source)\n"
+        "    first, second = safe, signer.sign\n"
+        "    second(b'x', None)\n"
+    )
+
+    violations = _checkpoint_callback_order_violations_for_source(
+        source,
+        function_name="create",
+        boundary_name="sign",
+        preflight_name="validate",
+    )
+
+    assert "callback-before-complete-preflight" not in violations
+    assert "callback-ceiling-exceeded" not in violations
+
+
+def test_checkpoint_callback_checker_analyzes_calls_in_branch_expressions() -> None:
+    source = (
+        "def create(source, signer):\n"
+        "    if signer.sign(b'x', None) and validate(source):\n"
+        "        return None\n"
+    )
+
+    assert _checkpoint_callback_order_violations_for_source(
+        source,
+        function_name="create",
+        boundary_name="sign",
+        preflight_name="validate",
+    )
+
+
+def test_checkpoint_callback_checker_accepts_callback_free_recursive_scc() -> None:
+    source = (
+        "def helper(value):\n"
+        "    if value:\n"
+        "        return helper(value - 1)\n"
+        "    return value\n"
+        "def create(source, signer):\n"
+        "    validate(source)\n"
+        "    helper(2)\n"
+        "    signer.sign(b'x', None)\n"
+    )
+
+    assert _checkpoint_callback_order_violations_for_source(
+        source,
+        function_name="create",
+        boundary_name="sign",
+        preflight_name="validate",
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    (
+        (
+            "def create(source, signer):\n"
+            "    match signer.sign(b'x', None):\n"
+            "        case _:\n            validate(source)\n"
+        ),
+        (
+            "def create(source, signer):\n"
+            "    match source:\n"
+            "        case _ if signer.sign(b'x', None):\n"
+            "            validate(source)\n"
+        ),
+        (
+            "def create(source, signer):\n"
+            "    try:\n        validate(source)\n"
+            "    except signer.sign(b'x', None):\n        pass\n"
+        ),
+        (
+            "def create(source, signer):\n"
+            "    signer.sign(b'x', None) and validate(source)\n"
+        ),
+        (
+            "def create(source, signer, flag):\n"
+            "    signer.sign(b'x', None) if flag else validate(source)\n"
+        ),
+        (
+            "def create(source, signer):\n"
+            "    validate(source)\n"
+            "    try:\n        signer.sign(b'body', None)\n"
+            "    except Exception:\n        pass\n"
+            "    else:\n        signer.sign(b'else', None)\n"
+            "    finally:\n        signer.sign(b'finally', None)\n"
+        ),
+        (
+            "def create(source, signer, values):\n"
+            "    validate(source)\n"
+            "    tuple(signer.sign(value, None) for value in values)\n"
+        ),
+        (
+            "def create(source: signer.sign(b'x', None), signer=None):\n"
+            "    validate(source)\n"
+        ),
+        (
+            "def helper(signer, values):\n"
+            "    for value in values:\n        signer.sign(value, None)\n"
+            "def create(source, signer, values):\n"
+            "    validate(source)\n    helper(signer, values)\n"
+        ),
+        (
+            "def provider_callback(signer):\n    return signer.sign\n"
+            "def create(source, signer):\n"
+            "    callback = provider_callback(signer)\n"
+            "    callback(b'x', None)\n    validate(source)\n"
+        ),
+        (
+            "from functools import partial\n"
+            "def create(source, signer):\n"
+            "    callback = partial(signer.sign, b'x', None)\n"
+            "    callback()\n    validate(source)\n"
+        ),
+        (
+            "def passthrough(callback):\n    return callback\n"
+            "def create(source, signer):\n"
+            "    callback = passthrough(signer.sign)\n"
+            "    callback(b'x', None)\n    validate(source)\n"
+        ),
+        (
+            "def create(source, signer):\n"
+            "    callback = lambda: signer.sign(b'x', None)\n"
+            "    callback()\n    validate(source)\n"
+        ),
+        (
+            "async def create(source, signer):\n"
+            "    await signer.sign(b'x', None)\n    validate(source)\n"
+        ),
+        (
+            "def create(source, signer):\n"
+            "    yield signer.sign(b'x', None)\n    validate(source)\n"
+        ),
+        (
+            "async def create(source, signer, values):\n"
+            "    validate(source)\n"
+            "    async for value in values:\n        signer.sign(value, None)\n"
+        ),
+        (
+            "async def create(source, signer, context):\n"
+            "    async with context:\n        signer.sign(b'x', None)\n"
+            "    validate(source)\n"
+        ),
+    ),
+    ids=(
+        "match-subject",
+        "match-guard",
+        "exception-handler-type",
+        "short-circuit",
+        "ternary",
+        "try-body-else-finally-ceiling",
+        "generator-expression",
+        "definition-annotation",
+        "loop-inside-helper",
+        "returned-callback",
+        "functools-partial",
+        "argument-wrapper",
+        "lambda-callback",
+        "await-callback",
+        "yield-callback",
+        "async-for-callback",
+        "async-with-callback",
+    ),
+)
+def test_checkpoint_callback_checker_rejects_named_round4_execution_forms(
+    source: str,
+) -> None:
+    assert _checkpoint_callback_order_violations_for_source(
+        source,
+        function_name="create",
+        boundary_name="sign",
+        preflight_name="validate",
+    )
+
+
+@pytest.mark.parametrize(
+    "source",
+    (
+        "def run(storage):\n    with storage:\n        pass\n",
+        "def run(storage):\n    return storage.secret\n",
+        "def run(network):\n    return network + b'x'\n",
+        "async def run(network):\n    async with network:\n        pass\n",
+        "async def run(network):\n    async for item in network:\n        pass\n",
+    ),
+    ids=(
+        "context-manager",
+        "descriptor",
+        "operator",
+        "async-context-manager",
+        "async-iterator",
+    ),
+)
+def test_checkpoint_architecture_checker_rejects_implicit_execution_protocols(
+    source: str,
+) -> None:
+    assert _checkpoint_boundary_violations_for_source(source)
+
+
+@pytest.mark.parametrize(
+    "source",
+    (
+        "def run(open):\n    return open('safe')\n",
+        (
+            "def safe(value):\n    return value\n"
+            "def run():\n    open = safe\n    return open('safe')\n"
+        ),
+    ),
+    ids=("safe-parameter-shadow", "safe-local-shadow"),
+)
+def test_checkpoint_architecture_checker_accepts_safe_parameter_and_local_shadows(
+    source: str,
+) -> None:
+    assert _checkpoint_boundary_violations_for_source(source) == []

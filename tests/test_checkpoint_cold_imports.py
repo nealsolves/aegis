@@ -117,3 +117,76 @@ def test_lazy_top_level_exports_preserve_identity_star_import_and_reload() -> No
         "aegis.checkpoints"
     ).TrustedChainCheckpoint
     assert importlib.reload(aegis).TrustedChainCheckpoint is checkpoint_type
+
+
+def test_top_level_checkpoint_exports_are_pinned_and_reload_overwrites_stale_values(
+) -> None:
+    import importlib
+
+    import aegis
+    import aegis.checkpoints as checkpoints
+
+    canonical = checkpoints.TrustedChainCheckpoint
+    sentinel = object()
+    try:
+        checkpoints.TrustedChainCheckpoint = sentinel  # type: ignore[misc]
+        assert aegis.TrustedChainCheckpoint is canonical
+    finally:
+        checkpoints.TrustedChainCheckpoint = canonical
+
+    aegis.TrustedChainCheckpoint = sentinel  # type: ignore[misc]
+    assert importlib.reload(aegis).TrustedChainCheckpoint is canonical
+
+
+def test_legacy_warning_lazily_installs_one_null_handler_without_last_resort_output(
+) -> None:
+    script = r'''
+import importlib
+import json
+import sys
+
+sys.path.insert(0, sys.argv[1])
+import aegis._internal.signing as signing
+
+logging_was_cold = "logging" not in sys.modules
+signer = signing.HMACSigner(b"key")
+signing.verify_artifact({"signature": None}, signer)
+
+import logging
+logger = logging.getLogger("aegis.signing")
+records = []
+class Capture(logging.Handler):
+    def emit(self, record):
+        records.append(record.getMessage())
+capture = Capture()
+logger.addHandler(capture)
+signing.verify_artifact({"signature": None}, signer)
+before_reload = sum(type(handler) is logging.NullHandler for handler in logger.handlers)
+signing = importlib.reload(signing)
+signing.verify_artifact({"signature": None}, signer)
+after_reload = sum(type(handler) is logging.NullHandler for handler in logger.handlers)
+print(json.dumps({
+    "logging_was_cold": logging_was_cold,
+    "before_reload": before_reload,
+    "after_reload": after_reload,
+    "capture_preserved": capture in logger.handlers,
+    "record_count": len(records),
+}))
+'''
+    completed = subprocess.run(
+        [sys.executable, "-I", "-c", script, str(_ROOT)],
+        cwd=_ROOT,
+        env={"PYTHONPATH": str(_ROOT)},
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert completed.stderr == ""
+    assert json.loads(completed.stdout) == {
+        "logging_was_cold": True,
+        "before_reload": 1,
+        "after_reload": 1,
+        "capture_preserved": True,
+        "record_count": 2,
+    }

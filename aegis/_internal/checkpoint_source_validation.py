@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from math import isfinite
+
 
 _HEX_CHARACTERS = frozenset("0123456789abcdef")
 _IDENTITY_CHARACTERS = frozenset(
@@ -134,6 +136,34 @@ _APPROVAL_KEYS = frozenset(
         "denial_reason",
     }
 )
+
+
+def _is_exact_json_native(value: object) -> bool:
+    """Reject Python extensions that cannot cross the checkpoint JSON boundary."""
+    stack: list[tuple[object, frozenset[int]]] = [(value, frozenset())]
+    while stack:
+        current, ancestors = stack.pop()
+        current_type = type(current)
+        if current is None or current_type in (bool, int, str):
+            continue
+        if current_type is float:
+            if not isfinite(current):
+                return False
+            continue
+        if current_type not in (list, dict):
+            return False
+        identity = id(current)
+        if identity in ancestors:
+            return False
+        child_ancestors = ancestors | frozenset({identity})
+        if current_type is list:
+            stack.extend((item, child_ancestors) for item in current)
+            continue
+        for key, item in current.items():
+            if type(key) is not str:
+                return False
+            stack.append((item, child_ancestors))
+    return True
 
 
 def _is_int(value: object) -> bool:
@@ -327,7 +357,9 @@ def _valid_chain_fields(value: dict[str, object]) -> bool:
 
 def is_valid_audit_artifact_v2(value: object) -> bool:
     """Return whether one measured JSON object matches the audit v2 schema."""
-    if not _has_exact_object_keys(value, _AUDIT_REQUIRED_KEYS, _AUDIT_OPTIONAL_KEYS):
+    if not _is_exact_json_native(value) or not _has_exact_object_keys(
+        value, _AUDIT_REQUIRED_KEYS, _AUDIT_OPTIONAL_KEYS
+    ):
         return False
     if (
         value["audit_schema_version"] != "2.0"
@@ -431,7 +463,7 @@ def _valid_approval_checkpoints(value: object) -> bool:
 
 def is_valid_workflow_artifact_v2(value: object) -> bool:
     """Return whether one measured JSON object matches the workflow v2 schema."""
-    if not _has_exact_object_keys(
+    if not _is_exact_json_native(value) or not _has_exact_object_keys(
         value,
         _WORKFLOW_REQUIRED_KEYS,
         _WORKFLOW_OPTIONAL_KEYS,

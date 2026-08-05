@@ -514,7 +514,12 @@ def _apply_anchor_verifier(
         result = anchor_verifier(tuple(artifacts))
     else:
         result = anchor_verifier.verify(tuple(artifacts))  # type: ignore[attr-defined]
-    if not isinstance(result, AnchorStatus):
+    if not (
+        result is AnchorStatus.NOT_EVALUATED
+        or result is AnchorStatus.UNANCHORED
+        or result is AnchorStatus.ANCHORED
+        or result is AnchorStatus.INVALID
+    ):
         raise TypeError("anchor verifier must return AnchorStatus")
     return result
 

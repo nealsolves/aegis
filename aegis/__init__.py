@@ -97,6 +97,22 @@ if TYPE_CHECKING:
         expect_pass,
     )
 
+# Bind the security-sensitive checkpoint facade once.  Apart from preserving
+# normal re-export identity, these assignments ensure later monkeypatches of a
+# source submodule cannot silently rewrite the top-level trust boundary.  They
+# also overwrite stale module attributes when ``importlib.reload`` re-executes
+# this module.
+from aegis.checkpoints import (  # noqa: E402,F401,F811
+    CheckpointBindingStatus,
+    CheckpointError,
+    CheckpointSignatureStatus,
+    CheckpointVerificationResult,
+    TrustedChainCheckpoint,
+    TrustedWorkflowCheckpoint,
+    create_chain_checkpoint,
+    create_workflow_checkpoint,
+)
+
 _EXPORT_GROUPS = (
     ("aegis.enforcement", (
         "AEGIS", "AIGC", "configure_module_enforcement", "PreCallResult",

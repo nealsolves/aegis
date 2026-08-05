@@ -265,6 +265,28 @@ def _checkpoint_metadata(
     )
 
 
+def _preflight_unsigned_checkpoint(
+    unsigned_record: dict[str, object],
+    *,
+    profile: str,
+    payload_type: EvidenceType,
+) -> None:
+    """Parse every copied record field before reaching signer capabilities."""
+    placeholder_identity = SignerIdentity(
+        "AEGIS-PREFLIGHT",
+        SignatureEncoding.HEX,
+        "checkpoint-preflight",
+        "preflight/1",
+    )
+    metadata = _checkpoint_metadata(
+        placeholder_identity,
+        profile=profile,
+        payload_type=payload_type,
+        checkpointed_at=unsigned_record["checkpointed_at"],  # type: ignore[arg-type]
+    )
+    _checkpoint_payload(unsigned_record, metadata)
+
+
 def _sign_checkpoint(
     unsigned_record: dict[str, object],
     signer: ExternalArtifactSigner,
@@ -330,6 +352,17 @@ def create_chain_checkpoint(
         "artifact_checksum": artifact["checksum"],
         "checkpointed_at": selected_time,
     }
+    try:
+        _preflight_unsigned_checkpoint(
+            unsigned_record,
+            profile=CHAIN_CHECKPOINT_SIGNING_PROFILE,
+            payload_type=EvidenceType.CHAIN_CHECKPOINT,
+        )
+    except Exception:
+        raise CheckpointError(
+            "Chain checkpoint source is invalid",
+            code="CHECKPOINT_SOURCE_INVALID",
+        ) from None
     signed_record = _sign_checkpoint(
         unsigned_record,
         signer,
@@ -380,6 +413,17 @@ def create_workflow_checkpoint(
         "workflow_checksum": workflow["checksum"],
         "checkpointed_at": selected_time,
     }
+    try:
+        _preflight_unsigned_checkpoint(
+            unsigned_record,
+            profile=WORKFLOW_CHECKPOINT_SIGNING_PROFILE,
+            payload_type=EvidenceType.WORKFLOW_CHECKPOINT,
+        )
+    except Exception:
+        raise CheckpointError(
+            "Workflow checkpoint source is invalid",
+            code="CHECKPOINT_SOURCE_INVALID",
+        ) from None
     signed_record = _sign_checkpoint(
         unsigned_record,
         signer,

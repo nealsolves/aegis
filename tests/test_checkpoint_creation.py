@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import FrozenInstanceError
+from decimal import Decimal
+from fractions import Fraction
 from importlib import import_module
 import json
 from pathlib import Path
@@ -24,8 +26,8 @@ from aegis._internal.evidence_finalizer import (
     _workflow_validator,
 )
 from aegis._internal.outcomes import TerminalClass
-from aegis._internal.errors import CheckpointError
-from aegis._internal.signature_models import SignatureMetadata
+from aegis._internal.errors import CheckpointError, SignatureMetadataError
+from aegis._internal.signature_models import EvidenceType, SignatureMetadata
 from aegis._internal.sinks import CallbackAuditSink
 from aegis.checkpoints import (
     create_chain_checkpoint,
@@ -282,6 +284,80 @@ def test_pure_checkpoint_source_validation_matches_workflow_schema_corpus(
     for source, expected in cases:
         assert schema.is_valid(source) is expected
         assert validate(source) is expected
+
+
+class _IntSubclass(int):
+    pass
+
+
+class _FloatSubclass(float):
+    pass
+
+
+class _StringSubclass(str):
+    pass
+
+
+class _ListSubclass(list):
+    pass
+
+
+class _DictSubclass(dict):
+    pass
+
+
+class _HostileJsonValue:
+    def __iter__(self):
+        raise AssertionError("hostile value was invoked")
+
+
+@pytest.mark.parametrize(
+    "exotic",
+    (
+        _IntSubclass(1),
+        _FloatSubclass(1.0),
+        _StringSubclass("value"),
+        _ListSubclass(),
+        _DictSubclass(),
+        Decimal("1"),
+        Fraction(1, 2),
+        1 + 2j,
+        _HostileJsonValue(),
+    ),
+    ids=(
+        "int-subclass",
+        "float-subclass",
+        "str-subclass",
+        "list-subclass",
+        "dict-subclass",
+        "decimal",
+        "fraction",
+        "complex",
+        "hostile",
+    ),
+)
+@pytest.mark.parametrize("source_kind", ("audit", "workflow"))
+def test_pure_checkpoint_source_validation_rejects_non_exact_json_values(
+    chained_artifact,
+    finalized_workflow,
+    exotic,
+    source_kind,
+):
+    from aegis._internal.checkpoint_source_validation import (
+        is_valid_audit_artifact_v2,
+        is_valid_workflow_artifact_v2,
+    )
+
+    if source_kind == "audit":
+        source = deepcopy(chained_artifact)
+        source["context"]["opaque"] = exotic
+        validate = is_valid_audit_artifact_v2
+    else:
+        source = deepcopy(finalized_workflow)
+        source["metadata"] = {"opaque": exotic}
+        validate = is_valid_workflow_artifact_v2
+
+    assert validate(source) is False
 
 
 def _replace_path(source, path, value):
@@ -638,6 +714,127 @@ def test_signed_record_reconstructs_the_same_frozen_payload(record, vector):
     assert _checkpoint_payload(signed_record, metadata) == vector
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("checkpoint_schema_version", _StringSubclass("1")),
+        ("checkpoint_profile", _StringSubclass("aegis-chain-checkpoint-v1")),
+        ("canonicalization_profile", _StringSubclass("aegis-json-v2")),
+        ("chain_id", ""),
+        ("chain_id", "   "),
+        ("chain_id", _StringSubclass("checkpoint-chain")),
+        ("chain_index", True),
+        ("chain_index", 2.0),
+        ("chain_index", -1),
+        ("chain_index", SAFE_INTEGER_MAX + 1),
+        ("chain_length", True),
+        ("chain_length", 3.0),
+        ("chain_length", 2),
+        ("artifact_schema_version", _StringSubclass("2.0")),
+        ("artifact_checksum", "A" * 64),
+        ("artifact_checksum", "a" * 64 + "\n"),
+        ("artifact_checksum", _StringSubclass("a" * 64)),
+        ("checkpointed_at", True),
+        ("checkpointed_at", 1_725_000_000.0),
+        ("checkpointed_at", -1),
+        ("checkpointed_at", SAFE_INTEGER_MAX + 1),
+    ),
+)
+def test_chain_unsigned_record_preflight_exact_field_matrix(field, value):
+    from aegis._internal.checkpoint_signing import _preflight_unsigned_checkpoint
+
+    unsigned = {
+        key: deepcopy(item)
+        for key, item in EXPECTED_CHAIN_RECORD.items()
+        if key not in {"signature_metadata", "signature"}
+    }
+    unsigned[field] = value
+
+    with pytest.raises((CheckpointError, SignatureMetadataError)):
+        _preflight_unsigned_checkpoint(
+            unsigned,
+            profile="aegis-chain-checkpoint-v1",
+            payload_type=EvidenceType.CHAIN_CHECKPOINT,
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("checkpoint_schema_version", _StringSubclass("1")),
+        ("checkpoint_profile", _StringSubclass("aegis-workflow-checkpoint-v1")),
+        ("canonicalization_profile", _StringSubclass("aegis-json-v2")),
+        ("workflow_schema_version", _StringSubclass("2.0")),
+        ("session_id", ""),
+        ("session_id", "   "),
+        ("session_id", _StringSubclass("checkpoint-session")),
+        ("final_status", _StringSubclass("COMPLETED")),
+        ("final_status", "RUNNING"),
+        ("step_count", True),
+        ("step_count", 2.0),
+        ("step_count", -1),
+        ("step_count", 1),
+        ("step_count", SAFE_INTEGER_MAX + 1),
+        ("workflow_checksum", "A" * 64),
+        ("workflow_checksum", "a" * 64 + "\n"),
+        ("workflow_checksum", _StringSubclass("a" * 64)),
+        ("checkpointed_at", True),
+        ("checkpointed_at", 1_725_000_001.0),
+        ("checkpointed_at", -1),
+        ("checkpointed_at", SAFE_INTEGER_MAX + 1),
+    ),
+)
+def test_workflow_unsigned_record_preflight_exact_field_matrix(field, value):
+    from aegis._internal.checkpoint_signing import _preflight_unsigned_checkpoint
+
+    unsigned = {
+        key: deepcopy(item)
+        for key, item in EXPECTED_WORKFLOW_RECORD.items()
+        if key not in {"signature_metadata", "signature"}
+    }
+    unsigned[field] = value
+
+    with pytest.raises((CheckpointError, SignatureMetadataError)):
+        _preflight_unsigned_checkpoint(
+            unsigned,
+            profile="aegis-workflow-checkpoint-v1",
+            payload_type=EvidenceType.WORKFLOW_CHECKPOINT,
+        )
+
+
+@pytest.mark.parametrize(
+    "invocations",
+    (
+        ({"step_index": True, "checksum": "b" * 64},),
+        ({"step_index": 0.0, "checksum": "b" * 64},),
+        ({"step_index": -0.0, "checksum": "b" * 64},),
+        ({"step_index": -1, "checksum": "b" * 64},),
+        ({"step_index": SAFE_INTEGER_MAX + 1, "checksum": "b" * 64},),
+        ({"step_index": 1, "checksum": "b" * 64},),
+        ({"step_index": 0, "checksum": "B" * 64},),
+        ({"step_index": 0, "checksum": "b" * 64 + "\n"},),
+        ({"step_index": 0, "checksum": _StringSubclass("b" * 64)},),
+    ),
+)
+def test_workflow_unsigned_record_preflight_invocation_matrix(invocations):
+    from aegis._internal.checkpoint_signing import _preflight_unsigned_checkpoint
+
+    unsigned = {
+        key: deepcopy(item)
+        for key, item in EXPECTED_WORKFLOW_RECORD.items()
+        if key not in {"signature_metadata", "signature"}
+    }
+    unsigned["step_count"] = len(invocations)
+    unsigned["invocations"] = [dict(entry) for entry in invocations]
+
+    with pytest.raises((CheckpointError, SignatureMetadataError)):
+        _preflight_unsigned_checkpoint(
+            unsigned,
+            profile="aegis-workflow-checkpoint-v1",
+            payload_type=EvidenceType.WORKFLOW_CHECKPOINT,
+        )
+
+
 class _ForbiddenSigner:
     def __init__(self) -> None:
         self.identity_calls = 0
@@ -798,6 +995,57 @@ def test_schema_valid_integral_float_is_rejected_by_checkpoint_exact_gates(
 
     _assert_sanitized_failure(
         lambda: creator(source, signer, checkpointed_at=1_725_000_000),
+        source,
+        expected_code="CHECKPOINT_SOURCE_INVALID",
+        signer=signer,
+        caplog=caplog,
+    )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "case"),
+    (
+        (lambda source: source["invocations"][0].update(step_index=0.0), "float"),
+        (lambda source: source["invocations"][0].update(step_index=-0.0), "negative-zero"),
+        (
+            lambda source: source["invocations"][0].update(
+                checksum=source["invocations"][0]["checksum"] + "\n"
+            ),
+            "terminal-newline-checksum",
+        ),
+    ),
+    ids=lambda value: value if isinstance(value, str) else None,
+)
+def test_workflow_copied_record_fields_fail_before_every_signer_capability(
+    finalized_workflow,
+    mutation,
+    case,
+    caplog,
+):
+    del case
+    from aegis._internal.evidence_profiles import build_content_checksum_v2
+
+    source = deepcopy(finalized_workflow)
+    mutation(source)
+    unsigned = {
+        key: value
+        for key, value in source.items()
+        if key not in {
+            "checksum",
+            "signature",
+            "signature_metadata",
+            "signature_status",
+        }
+    }
+    source["checksum"] = build_content_checksum_v2(unsigned)["checksum"]
+    signer = _ForbiddenSigner()
+
+    _assert_sanitized_failure(
+        lambda: create_workflow_checkpoint(
+            source,
+            signer,
+            checkpointed_at=1_725_000_001,
+        ),
         source,
         expected_code="CHECKPOINT_SOURCE_INVALID",
         signer=signer,

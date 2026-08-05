@@ -25,6 +25,7 @@ from aegis._internal.signature_models import (
     SignatureMetadata,
     SignatureStatus,
     VerificationReasonCode,
+    _is_canonical_enum_member,
     validate_encoded_signature,
 )
 from aegis._internal.verification_limits import (
@@ -183,7 +184,27 @@ def _validate_record_discriminators(
 
 
 def _is_exact_enum_member(value: object, enum_type: type[Enum]) -> bool:
-    return type(value) is enum_type and any(value is member for member in enum_type)
+    if enum_type is CheckpointSignatureStatus:
+        return (
+            value is CheckpointSignatureStatus.NOT_EVALUATED
+            or value is CheckpointSignatureStatus.VALID
+            or value is CheckpointSignatureStatus.INVALID
+            or value is CheckpointSignatureStatus.UNKNOWN_KEY
+            or value is CheckpointSignatureStatus.REVOKED
+            or value is CheckpointSignatureStatus.INDETERMINATE
+        )
+    if enum_type is CheckpointBindingStatus:
+        return (
+            value is CheckpointBindingStatus.NOT_EVALUATED
+            or value is CheckpointBindingStatus.MATCHED
+            or value is CheckpointBindingStatus.HISTORICAL
+            or value is CheckpointBindingStatus.PARTIAL
+            or value is CheckpointBindingStatus.OUTSIDE
+            or value is CheckpointBindingStatus.AHEAD
+            or value is CheckpointBindingStatus.CONFLICT
+            or value is CheckpointBindingStatus.OUT_OF_SCOPE
+        )
+    return _is_canonical_enum_member(value, enum_type)
 
 
 def _metadata_snapshot(
