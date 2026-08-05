@@ -356,6 +356,147 @@ def _hostile_metaclass_key(*, string_subclass: bool, value: str = ""):
     return key, state
 
 
+class _HostileMroIterable:
+    def __init__(self, state: dict[str, object], *, unbounded: bool):
+        self._state = state
+        self._unbounded = unbounded
+
+    def __iter__(self):
+        self._state["calls"].append("__mro_iterable__.__iter__")
+        if self._unbounded:
+            return self
+        return iter((object, str))
+
+    def __next__(self):
+        self._state["calls"].append("__mro_iterable__.__next__")
+        raise AssertionError("reserved-key probe advanced hostile MRO iterable")
+
+
+class _HostileMroDescriptor:
+    def __init__(self, state: dict[str, object], mode: str):
+        self._state = state
+        self._mode = mode
+
+    def __get__(self, _instance, _owner=None):
+        self._state["calls"].append("__mro__.__get__")
+        if self._mode == "raises":
+            raise AssertionError("reserved-key probe invoked MRO descriptor")
+        if self._mode == "spoofs":
+            return (object, str)
+        return _HostileMroIterable(
+            self._state,
+            unbounded=self._mode == "unbounded_iterable",
+        )
+
+    def __set__(self, _instance, _value):
+        self._state["calls"].append("__mro__.__set__")
+        raise AssertionError("reserved-key probe wrote hostile MRO descriptor")
+
+
+def _hostile_mro_descriptor_key(
+    *,
+    mode: str,
+    string_subclass: bool,
+    value: str = "",
+):
+    state: dict[str, object] = {"armed": False, "calls": []}
+
+    class HostileDescriptorMeta(type):
+        __mro__ = _HostileMroDescriptor(state, mode)
+
+        def __getattribute__(cls, name):
+            if state["armed"]:
+                state["calls"].append(f"__getattribute__:{name}")
+                raise AssertionError("reserved-key probe read hostile type")
+            return type.__getattribute__(cls, name)
+
+        def __instancecheck__(cls, instance):
+            if state["armed"]:
+                state["calls"].append("__instancecheck__")
+                raise AssertionError("reserved-key probe called instance check")
+            return type.__instancecheck__(cls, instance)
+
+        def __subclasscheck__(cls, subclass):
+            if state["armed"]:
+                state["calls"].append("__subclasscheck__")
+                raise AssertionError("reserved-key probe called subclass check")
+            return type.__subclasscheck__(cls, subclass)
+
+        def mro(cls):
+            if state["armed"]:
+                state["calls"].append("mro")
+                raise AssertionError("reserved-key probe called hostile mro")
+            return type.mro(cls)
+
+    if string_subclass:
+        class HostileDescriptorStringKey(str, metaclass=HostileDescriptorMeta):
+            def __getattribute__(self, name):
+                if state["armed"]:
+                    state["calls"].append(f"instance.__getattribute__:{name}")
+                    raise AssertionError("reserved-key probe read hostile key")
+                return str.__getattribute__(self, name)
+
+            def __hash__(self):
+                if state["armed"]:
+                    state["calls"].append("instance.__hash__")
+                    raise AssertionError("reserved-key probe hashed hostile key")
+                return str.__hash__(self)
+
+            def __eq__(self, other):
+                if state["armed"]:
+                    state["calls"].append("instance.__eq__")
+                    raise AssertionError("reserved-key probe compared hostile key")
+                return str.__eq__(self, other)
+
+            def __str__(self):
+                if state["armed"]:
+                    state["calls"].append("instance.__str__")
+                    raise AssertionError("reserved-key probe rendered hostile key")
+                return str.__str__(self)
+
+            def __repr__(self):
+                if state["armed"]:
+                    state["calls"].append("instance.__repr__")
+                    raise AssertionError("reserved-key probe repr'd hostile key")
+                return str.__repr__(self)
+
+        key = HostileDescriptorStringKey(value)
+    else:
+        class HostileDescriptorObjectKey(metaclass=HostileDescriptorMeta):
+            def __getattribute__(self, name):
+                if state["armed"]:
+                    state["calls"].append(f"instance.__getattribute__:{name}")
+                    raise AssertionError("reserved-key probe read hostile key")
+                return object.__getattribute__(self, name)
+
+            def __hash__(self):
+                if state["armed"]:
+                    state["calls"].append("instance.__hash__")
+                    raise AssertionError("reserved-key probe hashed hostile key")
+                return object.__hash__(self)
+
+            def __eq__(self, other):
+                if state["armed"]:
+                    state["calls"].append("instance.__eq__")
+                    raise AssertionError("reserved-key probe compared hostile key")
+                return object.__eq__(self, other)
+
+            def __str__(self):
+                if state["armed"]:
+                    state["calls"].append("instance.__str__")
+                    raise AssertionError("reserved-key probe rendered hostile key")
+                return object.__str__(self)
+
+            def __repr__(self):
+                if state["armed"]:
+                    state["calls"].append("instance.__repr__")
+                    raise AssertionError("reserved-key probe repr'd hostile key")
+                return object.__repr__(self)
+
+        key = HostileDescriptorObjectKey()
+    return key, state
+
+
 def _evaluate_workflow_binding(
     workflow: dict[str, object],
     checkpoint: TrustedWorkflowCheckpoint,
@@ -1073,6 +1214,85 @@ def test_checkpoint_binding_real_type_probe_bypasses_custom_metaclass(
     finally:
         state["armed"] = False
 
+    assert evaluation.anchor_status is AnchorStatus.INVALID
+    assert evaluation.completeness is Completeness.CONTRADICTED
+    assert evaluation.results[0].binding_status is (
+        CheckpointBindingStatus.CONFLICT
+    )
+    assert [error.code for error in errors] == ["CHECKPOINT_BINDING_CONFLICT"]
+    assert state["calls"] == []
+
+
+@pytest.mark.parametrize(
+    "mode",
+    ["raises", "spoofs", "bounded_iterable", "unbounded_iterable"],
+)
+@pytest.mark.parametrize("string_subclass", [False, True])
+def test_builtin_subclasscheck_bypasses_hostile_mro_descriptor(
+    mode,
+    string_subclass,
+):
+    key, state = _hostile_mro_descriptor_key(
+        mode=mode,
+        string_subclass=string_subclass,
+    )
+    state["calls"].clear()
+    state["armed"] = True
+
+    try:
+        is_string_subclass = type.__subclasscheck__(str, type(key))
+    except AssertionError as error:
+        pytest.fail(f"built-in subtype probe dispatched hostile code: {error}")
+    finally:
+        state["armed"] = False
+
+    assert is_string_subclass is string_subclass
+    assert state["calls"] == []
+
+
+@pytest.mark.parametrize(
+    "mode",
+    ["raises", "spoofs", "bounded_iterable", "unbounded_iterable"],
+)
+@pytest.mark.parametrize("string_subclass", [False, True])
+def test_checkpoint_binding_bypasses_hostile_mro_descriptor(
+    evidence_set,
+    workflow_checkpoint,
+    mode,
+    string_subclass,
+):
+    workflow, _ = evidence_set
+    changed = deepcopy(workflow)
+    if string_subclass:
+        key, state = _hostile_mro_descriptor_key(
+            mode=mode,
+            string_subclass=True,
+            value="session_id",
+        )
+        session_id = changed.pop("session_id")
+        changed[key] = session_id
+    else:
+        key, state = _hostile_mro_descriptor_key(
+            mode=mode,
+            string_subclass=False,
+        )
+        changed = {key: None, **changed}
+    state["calls"].clear()
+    state["armed"] = True
+
+    try:
+        evaluation, errors = _evaluate_workflow_binding(
+            changed,
+            workflow_checkpoint,
+            workflow_content_valid=True,
+            claim_valid=True,
+        )
+    except AssertionError as error:
+        pytest.fail(f"hostile MRO descriptor escaped binding: {error}")
+    finally:
+        state["armed"] = False
+
+    assert evaluation.signature_status is CheckpointSignatureStatus.VALID
     assert evaluation.anchor_status is AnchorStatus.INVALID
     assert evaluation.completeness is Completeness.CONTRADICTED
     assert evaluation.results[0].binding_status is (
@@ -2639,6 +2859,83 @@ def test_shallow_gate_real_type_probe_bypasses_custom_metaclass(
             workflow_checkpoint,
             monkeypatch,
         )
+    finally:
+        state["armed"] = False
+
+    assert report.claim_status is WorkflowClaimStatus.INVALID
+    assert report.signature_status is SignatureStatus.INDETERMINATE
+    assert report.completeness is Completeness.UNPROVEN
+    assert report.checkpoint_signature_status is (
+        CheckpointSignatureStatus.NOT_EVALUATED
+    )
+    assert report.checkpoint_anchor_status is AnchorStatus.NOT_EVALUATED
+    assert report.checkpoint_results == ()
+    assert [error.code for error in report.errors] == expected_codes
+    assert callback_counts == (0, 0, 0, 0, 0)
+    assert state["calls"] == []
+
+
+@pytest.mark.parametrize(
+    "mode",
+    ["raises", "spoofs", "bounded_iterable", "unbounded_iterable"],
+)
+@pytest.mark.parametrize(
+    ("string_subclass", "expected_codes"),
+    [
+        (
+            False,
+            [
+                "WORKFLOW_CLAIM_INVALID",
+                "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
+            ],
+        ),
+        (
+            True,
+            [
+                "WORKFLOW_STEP_COUNT_INVALID",
+                "WORKFLOW_CLAIM_INVALID",
+                "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
+            ],
+        ),
+    ],
+)
+def test_shallow_gate_bypasses_hostile_mro_descriptor(
+    evidence_set,
+    workflow_checkpoint,
+    monkeypatch,
+    mode,
+    string_subclass,
+    expected_codes,
+):
+    workflow, _ = evidence_set
+    changed = deepcopy(workflow)
+    if string_subclass:
+        key, state = _hostile_mro_descriptor_key(
+            mode=mode,
+            string_subclass=True,
+            value="step_count",
+        )
+        changed.pop("step_count")
+        changed[key] = 1_025
+    else:
+        key, state = _hostile_mro_descriptor_key(
+            mode=mode,
+            string_subclass=False,
+        )
+        changed = {key: None, **changed}
+        changed["step_count"] = 1_025
+    changed["invocations"] = _HostileWorkflowSibling()
+    state["calls"].clear()
+    state["armed"] = True
+
+    try:
+        report, callback_counts = _verify_preflight_callback_counts(
+            changed,
+            workflow_checkpoint,
+            monkeypatch,
+        )
+    except AssertionError as error:
+        pytest.fail(f"hostile MRO descriptor escaped shallow gate: {error}")
     finally:
         state["armed"] = False
 

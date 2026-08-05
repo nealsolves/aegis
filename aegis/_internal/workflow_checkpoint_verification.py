@@ -235,10 +235,7 @@ def _workflow_binding_matches(
                 if key == field:
                     field_index = index
                     break
-        elif any(
-            base is str
-            for base in type.__getattribute__(key_type, "__mro__")
-        ):
+        elif type.__subclasscheck__(str, key_type):
             for field in _WORKFLOW_BINDING_FIELDS:
                 if str.__eq__(key, field) is True:
                     return False

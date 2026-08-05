@@ -289,10 +289,7 @@ def _reject_oversized_workflow_claim(
                 field = "step_count"
             elif key == "invocations":
                 field = "invocations"
-        elif any(
-            base is str
-            for base in type.__getattribute__(key_type, "__mro__")
-        ):
+        elif type.__subclasscheck__(str, key_type):
             if str.__eq__(key, "step_count") is True:
                 field = "step_count"
             elif str.__eq__(key, "invocations") is True:
