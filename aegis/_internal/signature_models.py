@@ -151,7 +151,7 @@ def _require_enum(
     field: str,
     error_type: type[Exception],
 ) -> None:
-    if not isinstance(value, enum_type):
+    if not any(value is member for member in enum_type):
         raise error_type(f"{field} must be a {enum_type.__name__}", details={"field": field})
 
 
@@ -259,10 +259,6 @@ class SignatureMetadata:
 
     def __post_init__(self) -> None:
         _require_enum(self.payload_type, EvidenceType, "payload_type", SignatureMetadataError)
-        if not any(self.payload_type is evidence_type for evidence_type in EvidenceType):
-            raise SignatureMetadataError(
-                "payload_type must be a EvidenceType", details={"field": "payload_type"}
-            )
         _validate_identity_fields(
             self.algorithm,
             self.signature_encoding,

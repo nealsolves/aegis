@@ -284,6 +284,185 @@ def test_pure_checkpoint_source_validation_matches_workflow_schema_corpus(
         assert validate(source) is expected
 
 
+def _replace_path(source, path, value):
+    changed = deepcopy(source)
+    target = changed
+    for segment in path[:-1]:
+        target = target[segment]
+    target[path[-1]] = value
+    return changed
+
+
+def _audit_parity_source(chained_artifact):
+    source = deepcopy(chained_artifact)
+    source["context"] = {
+        **source["context"],
+        "session_id": "session",
+        "step_id": "step",
+        "step_index": 2,
+        "workflow_policy_digest": "d" * 64,
+    }
+    source["metadata"] = {
+        **source["metadata"],
+        "pre_call_timestamp": 1,
+        "post_call_timestamp": 2,
+    }
+    source["signature_metadata"] = {
+        "schema_version": "1",
+        "signing_profile": "aegis-signature-v1",
+        "canonicalization_version": "aegis-canonical-json-v1",
+        "canonicalization_profile": "aegis-json-v2",
+        "payload_type": "audit_artifact",
+        "algorithm": "HMAC-SHA256",
+        "signature_encoding": "hex",
+        "key_reference": "key/reference",
+        "key_version": "version/1",
+        "signed_at": 1,
+    }
+    source["provenance"] = {
+        "derived_from_audit_checksums": ["e" * 64],
+        "compilation_source_hash": "f" * 64,
+    }
+    return source
+
+
+@pytest.mark.parametrize(
+    ("path", "below_minimum"),
+    (
+        (("timestamp",), -1),
+        (("context", "step_index"), -1),
+        (("metadata", "pre_call_timestamp"), -1),
+        (("metadata", "post_call_timestamp"), -1),
+        (("signature_metadata", "signed_at"), -1),
+        (("chain_index",), -1),
+    ),
+)
+def test_pure_audit_validator_matches_draft7_for_every_integer_field(
+    chained_artifact,
+    path,
+    below_minimum,
+):
+    from aegis._internal.checkpoint_source_validation import (
+        is_valid_audit_artifact_v2,
+    )
+
+    source = _audit_parity_source(chained_artifact)
+    schema = _audit_validator()
+    for value, expected in (
+        (3.0, True),
+        (3.5, False),
+        (True, False),
+        (below_minimum, False),
+    ):
+        candidate = _replace_path(source, path, value)
+        assert schema.is_valid(candidate) is expected
+        assert is_valid_audit_artifact_v2(candidate) is expected
+
+
+@pytest.mark.parametrize(
+    ("path", "below_minimum", "negative_is_valid"),
+    (
+        (("started_at",), -1, True),
+        (("finalized_at",), -1, True),
+        (("step_count",), -1, False),
+        (("invocations", 0, "step_index"), -1, False),
+        (("approval_checkpoints", 0, "paused_at"), -1, True),
+        (("approval_checkpoints", 0, "resumed_at"), -1, True),
+    ),
+)
+def test_pure_workflow_validator_matches_draft7_for_every_integer_field(
+    finalized_workflow,
+    path,
+    below_minimum,
+    negative_is_valid,
+):
+    from aegis._internal.checkpoint_source_validation import (
+        is_valid_workflow_artifact_v2,
+    )
+
+    source = deepcopy(finalized_workflow)
+    source["approval_checkpoints"] = [{"paused_at": 1, "resumed_at": 2}]
+    schema = _workflow_validator()
+    for value, expected in (
+        (3.0, True),
+        (3.5, False),
+        (True, False),
+        (below_minimum, negative_is_valid),
+    ):
+        candidate = _replace_path(source, path, value)
+        assert schema.is_valid(candidate) is expected
+        assert is_valid_workflow_artifact_v2(candidate) is expected
+
+
+@pytest.mark.parametrize(
+    "path",
+    (
+        ("input_checksum",),
+        ("output_checksum",),
+        ("context", "workflow_policy_digest"),
+        ("checksum",),
+        ("previous_audit_checksum",),
+        ("provenance", "derived_from_audit_checksums", 0),
+        ("provenance", "compilation_source_hash"),
+    ),
+)
+def test_pure_audit_validator_uses_draft7_terminal_newline_pattern_semantics(
+    chained_artifact,
+    path,
+):
+    from aegis._internal.checkpoint_source_validation import (
+        is_valid_audit_artifact_v2,
+    )
+
+    source = _audit_parity_source(chained_artifact)
+    candidate = _replace_path(source, path, "a" * 64 + "\n")
+
+    assert _audit_validator().is_valid(candidate) is True
+    assert is_valid_audit_artifact_v2(candidate) is True
+
+
+@pytest.mark.parametrize(
+    "path",
+    (("checksum",), ("invocations", 0, "checksum")),
+)
+def test_pure_workflow_validator_uses_draft7_terminal_newline_pattern_semantics(
+    finalized_workflow,
+    path,
+):
+    from aegis._internal.checkpoint_source_validation import (
+        is_valid_workflow_artifact_v2,
+    )
+
+    candidate = _replace_path(finalized_workflow, path, "a" * 64 + "\n")
+
+    assert _workflow_validator().is_valid(candidate) is True
+    assert is_valid_workflow_artifact_v2(candidate) is True
+
+
+@pytest.mark.parametrize(
+    ("path", "invalid_values"),
+    (
+        (("signature_metadata", "algorithm"), ("ok\n", "sigé", "x" * 129)),
+        (("signature_metadata", "key_reference"), ("ok\n", "keyé", "x" * 513)),
+        (("signature_metadata", "key_version"), ("ok\n", "veré", "x" * 129)),
+    ),
+)
+def test_pure_audit_validator_matches_all_bounded_identity_regex_fields(
+    chained_artifact,
+    path,
+    invalid_values,
+):
+    from aegis._internal.checkpoint_source_validation import (
+        is_valid_audit_artifact_v2,
+    )
+
+    source = _audit_parity_source(chained_artifact)
+    for value in invalid_values:
+        candidate = _replace_path(source, path, value)
+        assert _audit_validator().is_valid(candidate) is False
+        assert is_valid_audit_artifact_v2(candidate) is False
+
+
 class _Reservation:
     def __init__(self, chain_index: int = 2) -> None:
         self.coordinates = ChainCoordinates(
@@ -569,6 +748,7 @@ def _assert_sanitized_failure(
         returned.append(operation())
     assert returned == []
     assert source == before
+    assert getattr(signer, "identity_calls", 0) == 0
     assert getattr(signer, "storage_calls", 0) == 0
     assert getattr(signer, "publish_calls", 0) == 0
     assert getattr(signer, "request_calls", 0) == 0
@@ -583,6 +763,73 @@ def _assert_sanitized_failure(
     for sensitive in SENSITIVE_CORPUS:
         assert sensitive not in public_text
     return raised.value
+
+
+@pytest.mark.parametrize("creator_name", ["chain", "workflow"])
+def test_schema_valid_integral_float_is_rejected_by_checkpoint_exact_gates(
+    chained_artifact,
+    finalized_workflow,
+    creator_name,
+    caplog,
+):
+    from aegis._internal.evidence_profiles import build_content_checksum_v2
+
+    source = deepcopy(
+        chained_artifact if creator_name == "chain" else finalized_workflow
+    )
+    if creator_name == "chain":
+        source["chain_index"] = 2.0
+        creator = create_chain_checkpoint
+    else:
+        source["step_count"] = 2.0
+        creator = create_workflow_checkpoint
+    unsigned = {
+        key: value
+        for key, value in source.items()
+        if key not in {
+            "checksum",
+            "signature",
+            "signature_metadata",
+            "signature_status",
+        }
+    }
+    source["checksum"] = build_content_checksum_v2(unsigned)["checksum"]
+    signer = _ForbiddenSigner()
+
+    _assert_sanitized_failure(
+        lambda: creator(source, signer, checkpointed_at=1_725_000_000),
+        source,
+        expected_code="CHECKPOINT_SOURCE_INVALID",
+        signer=signer,
+        caplog=caplog,
+    )
+
+
+@pytest.mark.parametrize("creator_name", ["chain", "workflow"])
+def test_schema_valid_terminal_newline_checksum_fails_before_signer(
+    chained_artifact,
+    finalized_workflow,
+    creator_name,
+    caplog,
+):
+    source = deepcopy(
+        chained_artifact if creator_name == "chain" else finalized_workflow
+    )
+    source["checksum"] += "\n"
+    signer = _ForbiddenSigner()
+    creator = (
+        create_chain_checkpoint
+        if creator_name == "chain"
+        else create_workflow_checkpoint
+    )
+
+    _assert_sanitized_failure(
+        lambda: creator(source, signer, checkpointed_at=1_725_000_000),
+        source,
+        expected_code="CHECKPOINT_SOURCE_INVALID",
+        signer=signer,
+        caplog=caplog,
+    )
 
 
 @pytest.mark.parametrize(
@@ -835,7 +1082,10 @@ def test_cyclic_source_stops_before_every_signer_capability(
     assert source["cycle"] is cycle
     assert cycle[0] is cycle
     assert signer.identity_calls == 0
+    assert signer.sign_calls == 0
     assert signer.storage_calls == 0
+    assert signer.publish_calls == 0
+    assert signer.request_calls == 0
     public_text = str(raised.value) + repr(raised.value.details) + caplog.text
     for sensitive in SENSITIVE_CORPUS:
         assert sensitive not in public_text

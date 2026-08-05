@@ -214,6 +214,51 @@ def test_metadata_rejects_noncanonical_evidence_type_instance():
     assert error.value.details == {"field": "payload_type"}
 
 
+def test_models_reject_noncanonical_signature_encoding_instances():
+    forged = str.__new__(SignatureEncoding, "base64")
+
+    assert forged == SignatureEncoding.BASE64
+    assert forged is not SignatureEncoding.BASE64
+    with pytest.raises(SigningContractError) as error:
+        SignerIdentity(
+            algorithm="HSM-SHA256",
+            signature_encoding=forged,
+            key_reference="production/audit-key",
+            key_version="version/17",
+        )
+
+    assert error.value.details == {"field": "signature_encoding"}
+
+
+@pytest.mark.parametrize(
+    ("field", "enum_type", "canonical"),
+    (
+        ("signature_status", SignatureStatus, SignatureStatus.UNSIGNED),
+        ("anchor_status", AnchorStatus, AnchorStatus.NOT_EVALUATED),
+        ("reason_code", VerificationReasonCode, VerificationReasonCode.UNSIGNED),
+    ),
+)
+def test_verification_rejects_every_noncanonical_closed_enum_instance(
+    field,
+    enum_type,
+    canonical,
+):
+    forged = str.__new__(enum_type, canonical.value)
+    values = {
+        "signature_status": SignatureStatus.UNSIGNED,
+        "anchor_status": AnchorStatus.NOT_EVALUATED,
+        "reason_code": VerificationReasonCode.UNSIGNED,
+    }
+    values[field] = forged
+
+    assert forged == canonical
+    assert forged is not canonical
+    with pytest.raises(VerificationContractError) as error:
+        validate_verification_outcome(**values)
+
+    assert error.value.details == {"field": field}
+
+
 @pytest.mark.parametrize("field, value", [
     ("algorithm", ""), ("algorithm", "x" * 129), ("algorithm", "bad algorithm"),
     ("key_reference", ""), ("key_reference", "x" * 513), ("key_reference", "bad\x00key"),

@@ -137,7 +137,9 @@ _APPROVAL_KEYS = frozenset(
 
 
 def _is_int(value: object) -> bool:
-    return type(value) is int
+    return type(value) is int or (
+        type(value) is float and value.is_integer()
+    )
 
 
 def _is_string(value: object, *, minimum: int = 0, maximum: int | None = None) -> bool:
@@ -153,10 +155,11 @@ def _is_nullable_string(value: object) -> bool:
 
 
 def _is_hex64(value: object) -> bool:
-    return (
-        type(value) is str
-        and len(value) == 64
-        and all(character in _HEX_CHARACTERS for character in value)
+    if type(value) is not str:
+        return False
+    matched = value[:-1] if len(value) == 65 and value.endswith("\n") else value
+    return len(matched) == 64 and all(
+        character in _HEX_CHARACTERS for character in matched
     )
 
 

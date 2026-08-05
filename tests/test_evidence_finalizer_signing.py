@@ -21,8 +21,10 @@ from aegis._internal.signature_models import (
 from aegis._internal.signing import (
     ArtifactSignerAdapter,
     HMACSigner,
+    _finalizer_metadata,
     verify_finalized_artifact,
 )
+from aegis._internal.errors import SigningContractError
 from aegis._internal.sinks import CallbackAuditSink
 
 
@@ -96,6 +98,15 @@ def test_hmac_finalizer_signer_covers_v2_profile():
         raw_signer,
         domain="aegis.invocation.v2",
     )
+
+
+@pytest.mark.parametrize(
+    "domain",
+    ("aegis.unknown.v2", type("ForgedDomain", (str,), {})('aegis.invocation.v2')),
+)
+def test_finalizer_domain_dispatch_rejects_unknown_and_forged_values(domain):
+    with pytest.raises(SigningContractError):
+        _finalizer_metadata(_identity(), domain=domain, signed_at=101)
 
 
 class ExternalSigner:

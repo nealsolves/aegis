@@ -13,7 +13,6 @@ from __future__ import annotations
 import abc
 import hashlib
 import hmac
-import logging
 import copy
 from typing import Any, Mapping, Protocol
 
@@ -32,14 +31,26 @@ from aegis._internal.signature_models import (
 )
 from aegis._internal.utils import canonical_json_bytes
 
-logger = logging.getLogger("aegis.signing")
-
 FINALIZER_INVOCATION_DOMAIN = "aegis.invocation.v2"
 FINALIZER_WORKFLOW_DOMAIN = "aegis.workflow.v2"
-_FINALIZER_PAYLOAD_TYPES = {
-    FINALIZER_INVOCATION_DOMAIN: "audit_artifact",
-    FINALIZER_WORKFLOW_DOMAIN: "workflow_artifact",
-}
+
+
+def _logger():
+    """Load logging only for legacy signer operations that actually emit."""
+    import logging
+
+    return logging.getLogger("aegis.signing")
+
+
+def _finalizer_payload_type(domain: object) -> str:
+    """Resolve one canonical finalizer domain without mutable lookup state."""
+    if type(domain) is not str:
+        raise SigningContractError("Finalizer signing domain is unsupported")
+    if domain == FINALIZER_INVOCATION_DOMAIN:
+        return "audit_artifact"
+    if domain == FINALIZER_WORKFLOW_DOMAIN:
+        return "workflow_artifact"
+    raise SigningContractError("Finalizer signing domain is unsupported")
 
 
 class FinalizerSigner(Protocol):
@@ -110,9 +121,7 @@ def _finalizer_metadata(
     domain: str,
     signed_at: int,
 ) -> dict[str, Any]:
-    payload_type = _FINALIZER_PAYLOAD_TYPES.get(domain)
-    if payload_type is None:
-        raise SigningContractError("Finalizer signing domain is unsupported")
+    payload_type = _finalizer_payload_type(domain)
     if isinstance(signed_at, bool) or not isinstance(signed_at, int) or signed_at < 0:
         raise SigningContractError(
             "signed_at is invalid", details={"field": "signed_at"}
@@ -137,15 +146,14 @@ def _finalizer_signing_payload(
     *,
     domain: str,
 ) -> bytes:
-    if domain not in _FINALIZER_PAYLOAD_TYPES:
-        raise SigningContractError("Finalizer signing domain is unsupported")
+    payload_type = _finalizer_payload_type(domain)
     if artifact.get("canonicalization_profile") != CANONICALIZATION_PROFILE_V2:
         raise SigningContractError("Artifact canonicalization profile is invalid")
     if metadata.get("canonicalization_profile") != artifact.get(
         "canonicalization_profile"
     ):
         raise SigningContractError("Signing metadata profile does not match evidence")
-    if metadata.get("payload_type") != _FINALIZER_PAYLOAD_TYPES[domain]:
+    if metadata.get("payload_type") != payload_type:
         raise SigningContractError("Signing metadata payload type is invalid")
     signable = copy.deepcopy(dict(artifact))
     signable.pop("signature", None)
@@ -230,7 +238,7 @@ def sign_artifact(
     """
     payload = _canonical_signing_payload(artifact)
     artifact["signature"] = signer.sign(payload)
-    logger.debug("Artifact signed: %s", artifact.get("enforcement_result"))
+    _logger().debug("Artifact signed: %s", artifact.get("enforcement_result"))
     return artifact
 
 
@@ -252,11 +260,11 @@ def verify_artifact(
         )
     signature = artifact.get("signature")
     if signature is None:
-        logger.warning("Artifact has no signature to verify")
+        _logger().warning("Artifact has no signature to verify")
         return False
 
     payload = _canonical_signing_payload(artifact)
     valid = signer.verify(payload, signature)
     if not valid:
-        logger.warning("Artifact signature verification failed")
+        _logger().warning("Artifact signature verification failed")
     return valid
