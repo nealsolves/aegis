@@ -32,6 +32,7 @@ from aegis._internal.verification_limits import (
 
 
 _MAX_WORKFLOW_INVOCATIONS = 1_024
+_INVOCATION_BINDING_FIELDS = frozenset({"step_index", "checksum"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -207,20 +208,56 @@ def _checkpoint_signature_status(
     )
 
 
-def _workflow_binding(
+def _workflow_binding_matches(
     checkpoint: TrustedWorkflowCheckpoint,
-) -> dict[str, object]:
-    return {
-        "workflow_schema_version": checkpoint.workflow_schema_version,
-        "session_id": checkpoint.session_id,
-        "final_status": checkpoint.final_status,
-        "step_count": checkpoint.step_count,
-        "invocations": [
-            {"step_index": step_index, "checksum": checksum}
-            for step_index, checksum in checkpoint.invocations
-        ],
-        "workflow_checksum": checkpoint.workflow_checksum,
-    }
+    workflow: dict[str, object],
+) -> bool:
+    if type(workflow) is not dict:
+        return False
+    workflow_schema_version = workflow.get("workflow_schema_version")
+    session_id = workflow.get("session_id")
+    final_status = workflow.get("status")
+    step_count = workflow.get("step_count")
+    invocations = workflow.get("invocations")
+    workflow_checksum = workflow.get("checksum")
+    if (
+        type(workflow_schema_version) is not str
+        or type(session_id) is not str
+        or type(final_status) is not str
+        or type(step_count) is not int
+        or type(invocations) is not list
+        or type(workflow_checksum) is not str
+    ):
+        return False
+    if workflow_schema_version != checkpoint.workflow_schema_version:
+        return False
+    if session_id != checkpoint.session_id:
+        return False
+    if final_status != checkpoint.final_status:
+        return False
+    if step_count != checkpoint.step_count:
+        return False
+    if workflow_checksum != checkpoint.workflow_checksum:
+        return False
+    if len(invocations) != len(checkpoint.invocations):
+        return False
+    for entry, expected in zip(invocations, checkpoint.invocations):
+        if type(entry) is not dict:
+            return False
+        keys = tuple(entry)
+        if (
+            len(keys) != 2
+            or any(type(key) is not str for key in keys)
+            or frozenset(keys) != _INVOCATION_BINDING_FIELDS
+        ):
+            return False
+        step_index = entry["step_index"]
+        checksum = entry["checksum"]
+        if type(step_index) is not int or type(checksum) is not str:
+            return False
+        if step_index != expected[0] or checksum != expected[1]:
+            return False
+    return True
 
 
 def _result(
@@ -253,17 +290,9 @@ def evaluate_workflow_checkpoint(
     record = prepared.record
     checkpoint = record.checkpoint
     assert type(checkpoint) is TrustedWorkflowCheckpoint
-    bound_workflow = {
-        "workflow_schema_version": workflow.get("workflow_schema_version"),
-        "session_id": workflow.get("session_id"),
-        "final_status": workflow.get("status"),
-        "step_count": workflow.get("step_count"),
-        "invocations": workflow.get("invocations"),
-        "workflow_checksum": workflow.get("checksum"),
-    }
     binding_status = (
         CheckpointBindingStatus.MATCHED
-        if bound_workflow == _workflow_binding(checkpoint)
+        if _workflow_binding_matches(checkpoint, workflow)
         else CheckpointBindingStatus.CONFLICT
     )
 

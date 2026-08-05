@@ -53,6 +53,7 @@ MAX_WORKFLOW_VERIFICATION_BYTES = 4 * 1024 * 1024
 MAX_WORKFLOW_VERIFICATION_DEPTH = 32
 MAX_WORKFLOW_VERIFICATION_NODES = 65_536
 MAX_WORKFLOW_VERIFICATION_ERRORS = 100
+_MISSING_WORKFLOW_FIELD = object()
 
 
 class WorkflowClaimStatus(str, Enum):
@@ -271,17 +272,33 @@ def _reject_oversized_workflow_claim(
     workflow: dict[str, Any],
     errors: list[VerificationError],
 ) -> bool:
-    step_count = workflow.get("step_count")
-    claim = workflow.get("invocations")
+    step_count: object = _MISSING_WORKFLOW_FIELD
+    claim: object = _MISSING_WORKFLOW_FIELD
+    if dict.__len__(workflow) > MAX_WORKFLOW_VERIFICATION_NODES:
+        return False
+    for key, value in dict.items(workflow):
+        if type(key) is not str:
+            continue
+        if key == "step_count":
+            step_count = value
+        elif key == "invocations":
+            claim = value
+        if (
+            step_count is not _MISSING_WORKFLOW_FIELD
+            and claim is not _MISSING_WORKFLOW_FIELD
+        ):
+            break
+
     step_count_valid = type(step_count) is int and step_count >= 0
     claim_type_valid = type(claim) is list
+    claim_length = list.__len__(claim) if claim_type_valid else None
     step_count_oversized = (
         type(step_count) is int
         and step_count > MAX_WORKFLOW_CLAIM_ENTRIES
     )
     claim_oversized = (
         claim_type_valid
-        and len(claim) > MAX_WORKFLOW_CLAIM_ENTRIES
+        and claim_length > MAX_WORKFLOW_CLAIM_ENTRIES
     )
     if not step_count_oversized and not claim_oversized:
         return False
@@ -299,11 +316,15 @@ def _reject_oversized_workflow_claim(
                 "Workflow invocations claim is invalid",
             )
         )
-    if step_count_valid and claim_type_valid and len(claim) != step_count:
+    if (
+        step_count_valid
+        and claim_type_valid
+        and claim_length != step_count
+    ):
         errors.append(
             _error(
                 "WORKFLOW_CLAIM_COUNT_MISMATCH",
-                f"Claim contains {len(claim)} entries for step_count={step_count}",
+                f"Claim contains {claim_length} entries for step_count={step_count}",
             )
         )
     errors.append(
@@ -476,6 +497,13 @@ def _verify_workflow_claim(
             errors,
         )
 
+    if _reject_oversized_workflow_claim(workflow, errors):
+        return _report(
+            WorkflowClaimStatus.INVALID,
+            SignatureStatus.INDETERMINATE,
+            errors,
+        )
+
     budget = VerificationBudget(
         remaining_bytes=MAX_WORKFLOW_VERIFICATION_BYTES,
         remaining_nodes=MAX_WORKFLOW_VERIFICATION_NODES,
@@ -505,13 +533,6 @@ def _verify_workflow_claim(
         )
         return _report(
             WorkflowClaimStatus.NOT_EVALUATED,
-            SignatureStatus.INDETERMINATE,
-            errors,
-        )
-
-    if _reject_oversized_workflow_claim(workflow_snapshot, errors):
-        return _report(
-            WorkflowClaimStatus.INVALID,
             SignatureStatus.INDETERMINATE,
             errors,
         )

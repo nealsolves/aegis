@@ -16,6 +16,7 @@ from aegis import (
     HMACSigner,
     SignatureStatus,
 )
+from aegis._internal.canonicalization import SAFE_INTEGER_MAX
 from aegis._internal.checkpoint_signing import _checkpoint_payload
 from aegis._internal.evidence_profiles import build_content_checksum_v2
 from aegis._internal.signature_models import (
@@ -23,6 +24,15 @@ from aegis._internal.signature_models import (
     ExternalVerificationOutcome,
     SignatureMetadata,
     VerificationReasonCode,
+)
+from aegis._internal.verification_limits import (
+    BoundedVerificationErrors,
+    VerificationBudget,
+)
+from aegis._internal.workflow_checkpoint_verification import (
+    detach_workflow_checkpoint_input,
+    evaluate_workflow_checkpoint,
+    prepare_workflow_checkpoint_input,
 )
 from aegis.checkpoints import (
     CheckpointBindingStatus,
@@ -60,14 +70,19 @@ def _invocation(query: str) -> dict[str, object]:
     }
 
 
-def _evidence_set(*, session_id: str = "verified-session", signer=None):
+def _evidence_set(
+    *,
+    session_id: str = "verified-session",
+    signer=None,
+    attempts: int = 2,
+):
     emitted: list[dict[str, object]] = []
     governance = AEGIS(
         sink=CallbackAuditSink(emitted.append),
         signer=signer,
     )
     session = governance.open_session(session_id=session_id)
-    for index in range(2):
+    for index in range(attempts):
         handle = session.enforce_step_pre_call(
             _invocation(f"query-{index}"),
             step_id=f"step-{index}",
@@ -151,6 +166,61 @@ def _replace_workflow_checkpoint_slots(
             target,
             getattr(replacement, field),
         )
+
+
+class _StringSubclass(str):
+    pass
+
+
+class _IntSubclass(int):
+    pass
+
+
+class _ListSubclass(list):
+    pass
+
+
+class _DictSubclass(dict):
+    pass
+
+
+class _HostileWorkflowSibling:
+    def __bool__(self):
+        raise AssertionError("shallow count probe called hostile truthiness")
+
+    def __eq__(self, _other):
+        raise AssertionError("shallow count probe called hostile equality")
+
+    def __iter__(self):
+        raise AssertionError("shallow count probe called hostile iteration")
+
+    def __len__(self):
+        raise AssertionError("shallow count probe called hostile length")
+
+
+class _HostileListSubclass(list):
+    def __len__(self):
+        raise AssertionError("shallow count probe called subclass length")
+
+
+def _evaluate_invalid_workflow_binding(
+    workflow: dict[str, object],
+    checkpoint: TrustedWorkflowCheckpoint,
+):
+    budget = VerificationBudget()
+    errors = BoundedVerificationErrors()
+    detached = detach_workflow_checkpoint_input(checkpoint, budget)
+    prepared = prepare_workflow_checkpoint_input(detached, budget, errors)
+    assert prepared is not None
+    evaluation = evaluate_workflow_checkpoint(
+        prepared,
+        workflow,
+        workflow_content_valid=False,
+        claim_valid=False,
+        verifier=DeterministicExternalVerifier(),
+        errors=errors,
+    )
+    return evaluation, errors
 
 
 def _checkpoint_for_key(
@@ -479,6 +549,119 @@ def test_anchored_checkpoint_contradicts_every_bound_workflow_mutation(
     assert "CHECKPOINT_BINDING_CONFLICT" in {
         error.code for error in report.errors
     }
+
+
+@pytest.mark.parametrize(
+    "axis",
+    [
+        "workflow_schema_version_subclass",
+        "workflow_schema_version_non_string",
+        "session_id_subclass",
+        "session_id_non_string",
+        "final_status_subclass",
+        "final_status_non_string",
+        "step_count_float",
+        "step_count_subclass",
+        "claim_list_subclass",
+        "claim_tuple",
+        "claim_entry_subclass",
+        "step_index_bool",
+        "step_index_float",
+        "step_index_subclass",
+        "invocation_checksum_subclass",
+        "invocation_checksum_non_string",
+        "workflow_checksum_subclass",
+        "workflow_checksum_non_string",
+    ],
+)
+def test_checkpoint_binding_is_type_strict_for_every_workflow_axis(
+    evidence_set,
+    workflow_checkpoint,
+    axis,
+):
+    workflow, _ = evidence_set
+    changed = deepcopy(workflow)
+    claim = changed["invocations"]
+    assert type(claim) is list
+    first = claim[0]
+    assert type(first) is dict
+
+    if axis == "workflow_schema_version_subclass":
+        changed["workflow_schema_version"] = _StringSubclass("2.0")
+    elif axis == "workflow_schema_version_non_string":
+        changed["workflow_schema_version"] = 2.0
+    elif axis == "session_id_subclass":
+        changed["session_id"] = _StringSubclass("verified-session")
+    elif axis == "session_id_non_string":
+        changed["session_id"] = False
+    elif axis == "final_status_subclass":
+        changed["status"] = _StringSubclass("COMPLETED")
+    elif axis == "final_status_non_string":
+        changed["status"] = None
+    elif axis == "step_count_float":
+        changed["step_count"] = 2.0
+    elif axis == "step_count_subclass":
+        changed["step_count"] = _IntSubclass(2)
+    elif axis == "claim_list_subclass":
+        changed["invocations"] = _ListSubclass(claim)
+    elif axis == "claim_tuple":
+        changed["invocations"] = tuple(claim)
+    elif axis == "claim_entry_subclass":
+        claim[0] = _DictSubclass(first)
+    elif axis == "step_index_bool":
+        first["step_index"] = False
+    elif axis == "step_index_float":
+        first["step_index"] = 0.0
+    elif axis == "step_index_subclass":
+        first["step_index"] = _IntSubclass(0)
+    elif axis == "invocation_checksum_subclass":
+        first["checksum"] = _StringSubclass(first["checksum"])
+    elif axis == "invocation_checksum_non_string":
+        first["checksum"] = False
+    elif axis == "workflow_checksum_subclass":
+        changed["checksum"] = _StringSubclass(changed["checksum"])
+    else:
+        changed["checksum"] = 0
+
+    evaluation, errors = _evaluate_invalid_workflow_binding(
+        changed,
+        workflow_checkpoint,
+    )
+
+    assert evaluation.signature_status is CheckpointSignatureStatus.VALID
+    assert evaluation.anchor_status is AnchorStatus.INVALID
+    assert evaluation.completeness is Completeness.CONTRADICTED
+    assert [error.code for error in errors] == ["CHECKPOINT_BINDING_CONFLICT"]
+    result = evaluation.results[0]
+    assert result.binding_status is CheckpointBindingStatus.CONFLICT
+    assert result.signature_result is not None
+    assert result.signature_result.anchor_status is AnchorStatus.ANCHORED
+    assert result.signature_result.signature_metadata == (
+        result.checkpoint.signature_metadata
+    )
+
+
+def test_checkpoint_binding_rejects_boolean_step_count_alias():
+    workflow, _ = _evidence_set(attempts=1)
+    checkpoint = create_workflow_checkpoint(
+        workflow,
+        DeterministicExternalSigner(),
+        checkpointed_at=1_725_000_001,
+    )
+    changed = deepcopy(workflow)
+    changed["step_count"] = True
+
+    evaluation, errors = _evaluate_invalid_workflow_binding(
+        changed,
+        checkpoint,
+    )
+
+    assert evaluation.anchor_status is AnchorStatus.INVALID
+    assert evaluation.completeness is Completeness.CONTRADICTED
+    assert [error.code for error in errors] == ["CHECKPOINT_BINDING_CONFLICT"]
+    assert evaluation.results[0].binding_status is (
+        CheckpointBindingStatus.CONFLICT
+    )
 
 
 def test_whole_workflow_replacement_is_an_anchored_conflict(
@@ -1780,6 +1963,159 @@ def test_definite_workflow_ceiling_is_independent_of_malformed_sibling(
         invalid_code,
         "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
     ]
+
+
+@pytest.mark.parametrize(
+    ("case", "expected_codes"),
+    [
+        pytest.param(
+            "step_nan_claim",
+            ["WORKFLOW_CLAIM_INVALID", "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED"],
+        ),
+        pytest.param(
+            "step_custom_claim",
+            ["WORKFLOW_CLAIM_INVALID", "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED"],
+        ),
+        pytest.param(
+            "step_cyclic_claim",
+            [
+                "WORKFLOW_CLAIM_COUNT_MISMATCH",
+                "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
+            ],
+        ),
+        pytest.param(
+            "step_non_json_claim",
+            ["WORKFLOW_CLAIM_INVALID", "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED"],
+        ),
+        pytest.param(
+            "claim_custom_entry",
+            ["WORKFLOW_VERIFICATION_LIMIT_EXCEEDED"],
+        ),
+        pytest.param(
+            "claim_cyclic_entry",
+            ["WORKFLOW_VERIFICATION_LIMIT_EXCEEDED"],
+        ),
+        pytest.param(
+            "unsafe_integer_step_count",
+            [
+                "WORKFLOW_CLAIM_COUNT_MISMATCH",
+                "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
+            ],
+        ),
+    ],
+)
+def test_shallow_count_gate_precedes_unsafe_deep_workflow_measurement(
+    evidence_set,
+    workflow_checkpoint,
+    monkeypatch,
+    case,
+    expected_codes,
+):
+    workflow, _ = evidence_set
+    changed = deepcopy(workflow)
+    if case == "step_nan_claim":
+        changed["step_count"] = 1_025
+        changed["invocations"] = float("nan")
+    elif case == "step_custom_claim":
+        changed["step_count"] = 1_025
+        changed["invocations"] = _HostileWorkflowSibling()
+    elif case == "step_cyclic_claim":
+        cycle: list[object] = []
+        cycle.append(cycle)
+        changed["step_count"] = 1_025
+        changed["invocations"] = cycle
+    elif case == "step_non_json_claim":
+        changed["step_count"] = 1_025
+        changed["invocations"] = ()
+    elif case == "claim_custom_entry":
+        changed["step_count"] = 1_025
+        changed["invocations"] = [None] * 1_024 + [_HostileWorkflowSibling()]
+    elif case == "claim_cyclic_entry":
+        claim: list[object] = [None] * 1_024
+        claim.append(claim)
+        changed["step_count"] = 1_025
+        changed["invocations"] = claim
+    else:
+        changed["step_count"] = SAFE_INTEGER_MAX + 1
+        changed["invocations"] = []
+    invocation_consumptions = 0
+    content_calls = 0
+    artifact_calls = 0
+    checkpoint_verifier = DeterministicExternalVerifier()
+    verify_content = workflow_verification_module.verify_content_checksum_v2
+
+    def supplied_invocations():
+        nonlocal invocation_consumptions
+        invocation_consumptions += 1
+        yield from ()
+
+    def content_verifier(value):
+        nonlocal content_calls
+        content_calls += 1
+        return verify_content(value)
+
+    def artifact_verifier(*_args, **_kwargs):
+        nonlocal artifact_calls
+        artifact_calls += 1
+        return SignatureStatus.UNSIGNED, None
+
+    monkeypatch.setattr(
+        workflow_verification_module,
+        "verify_content_checksum_v2",
+        content_verifier,
+    )
+    monkeypatch.setattr(
+        workflow_verification_module,
+        "_verify_signatures",
+        artifact_verifier,
+    )
+
+    report = verify_workflow_claim(
+        changed,
+        supplied_invocations(),
+        expected_checkpoint=workflow_checkpoint,
+        checkpoint_verifier=checkpoint_verifier,
+    )
+
+    assert report.claim_status is WorkflowClaimStatus.INVALID
+    assert report.signature_status is SignatureStatus.INDETERMINATE
+    assert report.completeness is Completeness.UNPROVEN
+    assert report.checkpoint_signature_status is (
+        CheckpointSignatureStatus.NOT_EVALUATED
+    )
+    assert report.checkpoint_anchor_status is AnchorStatus.NOT_EVALUATED
+    assert report.checkpoint_results == ()
+    assert [error.code for error in report.errors] == expected_codes
+    assert (
+        invocation_consumptions,
+        content_calls,
+        artifact_calls,
+        checkpoint_verifier.call_count,
+    ) == (0, 0, 0, 0)
+
+
+def test_shallow_count_gate_does_not_size_hostile_list_subclass(
+    evidence_set,
+    workflow_checkpoint,
+):
+    workflow, _ = evidence_set
+    changed = deepcopy(workflow)
+    changed["invocations"] = _HostileListSubclass()
+    verifier = DeterministicExternalVerifier()
+
+    report = verify_workflow_claim(
+        changed,
+        (),
+        expected_checkpoint=workflow_checkpoint,
+        checkpoint_verifier=verifier,
+    )
+
+    assert report.claim_status is WorkflowClaimStatus.NOT_EVALUATED
+    assert [error.code for error in report.errors] == [
+        "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED"
+    ]
+    assert report.checkpoint_results == ()
+    assert verifier.call_count == 0
 
 
 def test_error_cap_does_not_skip_singular_checkpoint_evaluation(
