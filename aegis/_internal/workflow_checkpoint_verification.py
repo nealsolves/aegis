@@ -33,6 +33,15 @@ from aegis._internal.verification_limits import (
 
 _MAX_WORKFLOW_INVOCATIONS = 1_024
 _INVOCATION_BINDING_FIELDS = frozenset({"step_index", "checksum"})
+_WORKFLOW_BINDING_FIELDS = (
+    "workflow_schema_version",
+    "session_id",
+    "status",
+    "step_count",
+    "invocations",
+    "checksum",
+)
+_MISSING_BINDING_FIELD = object()
 
 
 @dataclass(frozen=True, slots=True)
@@ -214,12 +223,33 @@ def _workflow_binding_matches(
 ) -> bool:
     if type(workflow) is not dict:
         return False
-    workflow_schema_version = workflow.get("workflow_schema_version")
-    session_id = workflow.get("session_id")
-    final_status = workflow.get("status")
-    step_count = workflow.get("step_count")
-    invocations = workflow.get("invocations")
-    workflow_checksum = workflow.get("checksum")
+    values: list[object] = [
+        _MISSING_BINDING_FIELD
+        for _ in _WORKFLOW_BINDING_FIELDS
+    ]
+    for key, value in dict.items(workflow):
+        field_index = None
+        if type(key) is str:
+            for index, field in enumerate(_WORKFLOW_BINDING_FIELDS):
+                if key == field:
+                    field_index = index
+                    break
+        elif isinstance(key, str):
+            for field in _WORKFLOW_BINDING_FIELDS:
+                if str.__eq__(key, field) is True:
+                    return False
+        if field_index is not None:
+            values[field_index] = value
+    if any(value is _MISSING_BINDING_FIELD for value in values):
+        return False
+    (
+        workflow_schema_version,
+        session_id,
+        final_status,
+        step_count,
+        invocations,
+        workflow_checksum,
+    ) = values
     if (
         type(workflow_schema_version) is not str
         or type(session_id) is not str

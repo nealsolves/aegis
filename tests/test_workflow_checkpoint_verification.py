@@ -8,6 +8,9 @@ import inspect
 
 import pytest
 
+from aegis._internal import (
+    workflow_checkpoint_verification as checkpoint_verification_module,
+)
 import aegis._internal.workflow_verification as workflow_verification_module
 from aegis import (
     AEGIS,
@@ -203,9 +206,31 @@ class _HostileListSubclass(list):
         raise AssertionError("shallow count probe called subclass length")
 
 
-def _evaluate_invalid_workflow_binding(
+class _HostileReservedKey(str):
+    def __new__(cls, value: str, *, distinct_hash: bool = False):
+        instance = str.__new__(cls, value)
+        instance.armed = False
+        instance.distinct_hash = distinct_hash
+        return instance
+
+    def __hash__(self):
+        if self.armed:
+            raise AssertionError("reserved-key probe called hostile hash")
+        value = str.__hash__(self)
+        return value ^ 1 if self.distinct_hash else value
+
+    def __eq__(self, other):
+        if self.armed:
+            raise AssertionError("reserved-key probe called hostile equality")
+        return str.__eq__(self, other)
+
+
+def _evaluate_workflow_binding(
     workflow: dict[str, object],
     checkpoint: TrustedWorkflowCheckpoint,
+    *,
+    workflow_content_valid: bool,
+    claim_valid: bool,
 ):
     budget = VerificationBudget()
     errors = BoundedVerificationErrors()
@@ -215,12 +240,24 @@ def _evaluate_invalid_workflow_binding(
     evaluation = evaluate_workflow_checkpoint(
         prepared,
         workflow,
-        workflow_content_valid=False,
-        claim_valid=False,
+        workflow_content_valid=workflow_content_valid,
+        claim_valid=claim_valid,
         verifier=DeterministicExternalVerifier(),
         errors=errors,
     )
     return evaluation, errors
+
+
+def _evaluate_invalid_workflow_binding(
+    workflow: dict[str, object],
+    checkpoint: TrustedWorkflowCheckpoint,
+):
+    return _evaluate_workflow_binding(
+        workflow,
+        checkpoint,
+        workflow_content_valid=False,
+        claim_valid=False,
+    )
 
 
 def _checkpoint_for_key(
@@ -662,6 +699,199 @@ def test_checkpoint_binding_rejects_boolean_step_count_alias():
     assert evaluation.results[0].binding_status is (
         CheckpointBindingStatus.CONFLICT
     )
+
+
+@pytest.mark.parametrize(
+    "reserved_key",
+    [
+        "workflow_schema_version",
+        "session_id",
+        "status",
+        "step_count",
+        "invocations",
+        "checksum",
+    ],
+)
+def test_checkpoint_binding_rejects_value_equal_subclass_reserved_key(
+    evidence_set,
+    workflow_checkpoint,
+    reserved_key,
+):
+    workflow, _ = evidence_set
+    changed = {
+        (_StringSubclass(key) if key == reserved_key else key): deepcopy(value)
+        for key, value in workflow.items()
+    }
+
+    evaluation, errors = _evaluate_workflow_binding(
+        changed,
+        workflow_checkpoint,
+        workflow_content_valid=True,
+        claim_valid=True,
+    )
+
+    assert evaluation.signature_status is CheckpointSignatureStatus.VALID
+    assert evaluation.anchor_status is AnchorStatus.INVALID
+    assert evaluation.completeness is Completeness.CONTRADICTED
+    assert [error.code for error in errors] == ["CHECKPOINT_BINDING_CONFLICT"]
+    result = evaluation.results[0]
+    assert result.binding_status is CheckpointBindingStatus.CONFLICT
+    assert result.signature_result is not None
+    assert result.signature_result.anchor_status is AnchorStatus.ANCHORED
+    assert result.signature_result.signature_metadata == (
+        result.checkpoint.signature_metadata
+    )
+
+
+@pytest.mark.parametrize(
+    ("order", "expected_binding"),
+    [
+        ("exact_first", CheckpointBindingStatus.MATCHED),
+        ("subclass_first", CheckpointBindingStatus.CONFLICT),
+    ],
+)
+def test_checkpoint_binding_uses_retained_reserved_key_identity(
+    evidence_set,
+    workflow_checkpoint,
+    order,
+    expected_binding,
+):
+    workflow, _ = evidence_set
+    changed = deepcopy(workflow)
+    session_id = changed.pop("session_id")
+    subclass_key = _StringSubclass("session_id")
+    if order == "exact_first":
+        changed["session_id"] = session_id
+        changed[subclass_key] = session_id
+    else:
+        changed[subclass_key] = session_id
+        changed["session_id"] = session_id
+
+    evaluation, errors = _evaluate_workflow_binding(
+        changed,
+        workflow_checkpoint,
+        workflow_content_valid=True,
+        claim_valid=True,
+    )
+
+    assert evaluation.results[0].binding_status is expected_binding
+    if expected_binding is CheckpointBindingStatus.MATCHED:
+        assert evaluation.anchor_status is AnchorStatus.ANCHORED
+        assert evaluation.completeness is Completeness.CHECKPOINT_PROVEN
+        assert errors == []
+    else:
+        assert evaluation.anchor_status is AnchorStatus.INVALID
+        assert evaluation.completeness is Completeness.CONTRADICTED
+        assert [error.code for error in errors] == [
+            "CHECKPOINT_BINDING_CONFLICT"
+        ]
+
+
+def test_checkpoint_binding_rejects_coexisting_hostile_reserved_key(
+    evidence_set,
+    workflow_checkpoint,
+):
+    workflow, _ = evidence_set
+    changed = deepcopy(workflow)
+    hostile_key = _HostileReservedKey("session_id", distinct_hash=True)
+    changed[hostile_key] = changed["session_id"]
+    hostile_key.armed = True
+
+    evaluation, errors = _evaluate_workflow_binding(
+        changed,
+        workflow_checkpoint,
+        workflow_content_valid=True,
+        claim_valid=True,
+    )
+
+    assert evaluation.anchor_status is AnchorStatus.INVALID
+    assert evaluation.completeness is Completeness.CONTRADICTED
+    assert evaluation.results[0].binding_status is (
+        CheckpointBindingStatus.CONFLICT
+    )
+    assert [error.code for error in errors] == ["CHECKPOINT_BINDING_CONFLICT"]
+
+
+def test_checkpoint_binding_ignores_non_equal_unicode_control_key(
+    evidence_set,
+    workflow_checkpoint,
+):
+    workflow, _ = evidence_set
+    changed = deepcopy(workflow)
+    changed["session\u200d_id"] = _HostileWorkflowSibling()
+
+    evaluation, errors = _evaluate_workflow_binding(
+        changed,
+        workflow_checkpoint,
+        workflow_content_valid=True,
+        claim_valid=True,
+    )
+
+    assert evaluation.anchor_status is AnchorStatus.ANCHORED
+    assert evaluation.completeness is Completeness.CHECKPOINT_PROVEN
+    assert evaluation.results[0].binding_status is (
+        CheckpointBindingStatus.MATCHED
+    )
+    assert errors == []
+
+
+@pytest.mark.parametrize("entry_key", ["step_index", "checksum"])
+def test_checkpoint_binding_requires_exact_ordered_entry_key_identity(
+    evidence_set,
+    workflow_checkpoint,
+    entry_key,
+):
+    workflow, _ = evidence_set
+    changed = deepcopy(workflow)
+    claim = changed["invocations"]
+    assert type(claim) is list
+    first = claim[0]
+    assert type(first) is dict
+    claim[0] = {
+        (_StringSubclass(key) if key == entry_key else key): value
+        for key, value in first.items()
+    }
+
+    evaluation, errors = _evaluate_workflow_binding(
+        changed,
+        workflow_checkpoint,
+        workflow_content_valid=True,
+        claim_valid=True,
+    )
+
+    assert evaluation.anchor_status is AnchorStatus.INVALID
+    assert evaluation.results[0].binding_status is (
+        CheckpointBindingStatus.CONFLICT
+    )
+    assert [error.code for error in errors] == ["CHECKPOINT_BINDING_CONFLICT"]
+
+
+def test_checkpoint_binding_rejects_coexisting_hostile_ordered_entry_key(
+    evidence_set,
+    workflow_checkpoint,
+):
+    workflow, _ = evidence_set
+    changed = deepcopy(workflow)
+    claim = changed["invocations"]
+    assert type(claim) is list
+    first = claim[0]
+    assert type(first) is dict
+    hostile_key = _HostileReservedKey("step_index", distinct_hash=True)
+    first[hostile_key] = first["step_index"]
+    hostile_key.armed = True
+
+    evaluation, errors = _evaluate_workflow_binding(
+        changed,
+        workflow_checkpoint,
+        workflow_content_valid=True,
+        claim_valid=True,
+    )
+
+    assert evaluation.anchor_status is AnchorStatus.INVALID
+    assert evaluation.results[0].binding_status is (
+        CheckpointBindingStatus.CONFLICT
+    )
+    assert [error.code for error in errors] == ["CHECKPOINT_BINDING_CONFLICT"]
 
 
 def test_whole_workflow_replacement_is_an_anchored_conflict(
@@ -1963,6 +2193,284 @@ def test_definite_workflow_ceiling_is_independent_of_malformed_sibling(
         invalid_code,
         "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
     ]
+
+
+@pytest.mark.parametrize(
+    "exponent",
+    [
+        pytest.param(4_300, id="4301-digit-integer"),
+        pytest.param(4_999, id="5000-digit-integer"),
+    ],
+)
+def test_oversized_step_count_mismatch_diagnostic_is_fixed_and_bounded(
+    evidence_set,
+    workflow_checkpoint,
+    exponent,
+):
+    workflow, _ = evidence_set
+    changed = deepcopy(workflow)
+    changed["step_count"] = 10**exponent
+    changed["invocations"] = []
+    invocation_consumptions = 0
+    verifier = DeterministicExternalVerifier()
+
+    def supplied_invocations():
+        nonlocal invocation_consumptions
+        invocation_consumptions += 1
+        yield from ()
+
+    report = verify_workflow_claim(
+        changed,
+        supplied_invocations(),
+        expected_checkpoint=workflow_checkpoint,
+        checkpoint_verifier=verifier,
+    )
+
+    assert report.claim_status is WorkflowClaimStatus.INVALID
+    assert report.signature_status is SignatureStatus.INDETERMINATE
+    assert report.completeness is Completeness.UNPROVEN
+    assert report.checkpoint_signature_status is (
+        CheckpointSignatureStatus.NOT_EVALUATED
+    )
+    assert report.checkpoint_anchor_status is AnchorStatus.NOT_EVALUATED
+    assert report.checkpoint_results == ()
+    assert [(error.code, error.message) for error in report.errors] == [
+        (
+            "WORKFLOW_CLAIM_COUNT_MISMATCH",
+            "Workflow claim count does not match step_count",
+        ),
+        (
+            "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
+            "Workflow claim exceeds the verifier entry limit",
+        ),
+    ]
+    assert max(len(error.message) for error in report.errors) < 100
+    assert invocation_consumptions == 0
+    assert verifier.call_count == 0
+
+
+@pytest.mark.parametrize(
+    ("case", "expected_codes"),
+    [
+        pytest.param(
+            "step_replaced",
+            [
+                "WORKFLOW_STEP_COUNT_INVALID",
+                "WORKFLOW_CLAIM_INVALID",
+                "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
+            ],
+        ),
+        pytest.param(
+            "claim_replaced",
+            [
+                "WORKFLOW_STEP_COUNT_INVALID",
+                "WORKFLOW_CLAIM_INVALID",
+                "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
+            ],
+        ),
+        pytest.param(
+            "step_subclass_then_exact",
+            [
+                "WORKFLOW_STEP_COUNT_INVALID",
+                "WORKFLOW_CLAIM_INVALID",
+                "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
+            ],
+        ),
+        pytest.param(
+            "claim_subclass_then_exact",
+            [
+                "WORKFLOW_STEP_COUNT_INVALID",
+                "WORKFLOW_CLAIM_INVALID",
+                "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
+            ],
+        ),
+        pytest.param(
+            "step_exact_then_subclass",
+            [
+                "WORKFLOW_CLAIM_INVALID",
+                "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
+            ],
+        ),
+        pytest.param(
+            "claim_exact_then_subclass",
+            [
+                "WORKFLOW_STEP_COUNT_INVALID",
+                "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
+            ],
+        ),
+        pytest.param(
+            "step_coexisting",
+            [
+                "WORKFLOW_STEP_COUNT_INVALID",
+                "WORKFLOW_CLAIM_INVALID",
+                "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
+            ],
+        ),
+        pytest.param(
+            "claim_coexisting",
+            [
+                "WORKFLOW_STEP_COUNT_INVALID",
+                "WORKFLOW_CLAIM_INVALID",
+                "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
+            ],
+        ),
+        pytest.param(
+            "step_hostile_retained",
+            [
+                "WORKFLOW_STEP_COUNT_INVALID",
+                "WORKFLOW_CLAIM_INVALID",
+                "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
+            ],
+        ),
+        pytest.param(
+            "claim_hostile_retained",
+            [
+                "WORKFLOW_STEP_COUNT_INVALID",
+                "WORKFLOW_CLAIM_INVALID",
+                "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
+            ],
+        ),
+        pytest.param(
+            "unicode_control",
+            [
+                "WORKFLOW_CLAIM_INVALID",
+                "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
+            ],
+        ),
+    ],
+)
+def test_confusable_reserved_count_key_cannot_suppress_definite_overflow(
+    evidence_set,
+    workflow_checkpoint,
+    monkeypatch,
+    case,
+    expected_codes,
+):
+    workflow, _ = evidence_set
+    changed = deepcopy(workflow)
+    oversized_claim = [None] * 1_024 + [_HostileWorkflowSibling()]
+    if case == "step_replaced":
+        changed.pop("step_count")
+        changed[_StringSubclass("step_count")] = 1_025
+        changed["invocations"] = _HostileWorkflowSibling()
+    elif case == "claim_replaced":
+        changed.pop("invocations")
+        changed[_StringSubclass("invocations")] = oversized_claim
+        changed["step_count"] = _HostileWorkflowSibling()
+    elif case == "step_subclass_then_exact":
+        changed.pop("step_count")
+        changed[_StringSubclass("step_count")] = 0
+        changed["step_count"] = 1_025
+        changed["invocations"] = _HostileWorkflowSibling()
+    elif case == "claim_subclass_then_exact":
+        changed.pop("invocations")
+        changed[_StringSubclass("invocations")] = []
+        changed["invocations"] = oversized_claim
+        changed["step_count"] = _HostileWorkflowSibling()
+    elif case == "step_exact_then_subclass":
+        changed[_StringSubclass("step_count")] = 1_025
+        changed["invocations"] = _HostileWorkflowSibling()
+    elif case == "claim_exact_then_subclass":
+        changed[_StringSubclass("invocations")] = oversized_claim
+        changed["step_count"] = _HostileWorkflowSibling()
+    elif case == "step_coexisting":
+        changed["step_count"] = _HostileWorkflowSibling()
+        changed["invocations"] = _HostileWorkflowSibling()
+        hostile_key = _HostileReservedKey("step_count", distinct_hash=True)
+        changed[hostile_key] = 1_025
+        hostile_key.armed = True
+    elif case == "claim_coexisting":
+        changed["step_count"] = _HostileWorkflowSibling()
+        changed["invocations"] = _HostileWorkflowSibling()
+        hostile_key = _HostileReservedKey("invocations", distinct_hash=True)
+        changed[hostile_key] = oversized_claim
+        hostile_key.armed = True
+    elif case == "step_hostile_retained":
+        changed.pop("step_count")
+        hostile_key = _HostileReservedKey("step_count")
+        changed[hostile_key] = 1_025
+        hostile_key.armed = True
+        changed["invocations"] = _HostileWorkflowSibling()
+    elif case == "claim_hostile_retained":
+        changed.pop("invocations")
+        hostile_key = _HostileReservedKey("invocations")
+        changed[hostile_key] = oversized_claim
+        hostile_key.armed = True
+        changed["step_count"] = _HostileWorkflowSibling()
+    else:
+        unicode_key = _HostileReservedKey("step_count\u200d")
+        changed = {unicode_key: _HostileWorkflowSibling(), **changed}
+        unicode_key.armed = True
+        changed["step_count"] = 1_025
+        changed["invocations"] = _HostileWorkflowSibling()
+
+    invocation_consumptions = 0
+    checksum_calls = 0
+    canonicalization_calls = 0
+    artifact_calls = 0
+    checkpoint_verifier = DeterministicExternalVerifier()
+    verify_content = workflow_verification_module.verify_content_checksum_v2
+    canonicalize = checkpoint_verification_module.canonicalize_v2
+
+    def supplied_invocations():
+        nonlocal invocation_consumptions
+        invocation_consumptions += 1
+        yield from ()
+
+    def content_verifier(value):
+        nonlocal checksum_calls
+        checksum_calls += 1
+        return verify_content(value)
+
+    def canonicalizer(*args, **kwargs):
+        nonlocal canonicalization_calls
+        canonicalization_calls += 1
+        return canonicalize(*args, **kwargs)
+
+    def artifact_verifier(*_args, **_kwargs):
+        nonlocal artifact_calls
+        artifact_calls += 1
+        return SignatureStatus.UNSIGNED, None
+
+    monkeypatch.setattr(
+        workflow_verification_module,
+        "verify_content_checksum_v2",
+        content_verifier,
+    )
+    monkeypatch.setattr(
+        checkpoint_verification_module,
+        "canonicalize_v2",
+        canonicalizer,
+    )
+    monkeypatch.setattr(
+        workflow_verification_module,
+        "_verify_signatures",
+        artifact_verifier,
+    )
+
+    report = verify_workflow_claim(
+        changed,
+        supplied_invocations(),
+        expected_checkpoint=workflow_checkpoint,
+        checkpoint_verifier=checkpoint_verifier,
+    )
+
+    assert report.claim_status is WorkflowClaimStatus.INVALID
+    assert report.signature_status is SignatureStatus.INDETERMINATE
+    assert report.completeness is Completeness.UNPROVEN
+    assert report.checkpoint_signature_status is (
+        CheckpointSignatureStatus.NOT_EVALUATED
+    )
+    assert report.checkpoint_anchor_status is AnchorStatus.NOT_EVALUATED
+    assert report.checkpoint_results == ()
+    assert [error.code for error in report.errors] == expected_codes
+    assert (
+        invocation_consumptions,
+        checksum_calls,
+        canonicalization_calls,
+        artifact_calls,
+        checkpoint_verifier.call_count,
+    ) == (0, 0, 0, 0, 0)
 
 
 @pytest.mark.parametrize(

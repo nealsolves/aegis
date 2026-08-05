@@ -221,7 +221,7 @@ def _validate_claim(
         errors.append(
             _error(
                 "WORKFLOW_CLAIM_COUNT_MISMATCH",
-                f"Claim contains {len(claim)} entries for step_count={step_count}",
+                "Workflow claim count does not match step_count",
             )
         )
     if (
@@ -274,32 +274,53 @@ def _reject_oversized_workflow_claim(
 ) -> bool:
     step_count: object = _MISSING_WORKFLOW_FIELD
     claim: object = _MISSING_WORKFLOW_FIELD
+    step_count_confusable = False
+    claim_confusable = False
+    step_count_oversized = False
+    claim_oversized = False
     if dict.__len__(workflow) > MAX_WORKFLOW_VERIFICATION_NODES:
         return False
     for key, value in dict.items(workflow):
-        if type(key) is not str:
-            continue
-        if key == "step_count":
-            step_count = value
-        elif key == "invocations":
-            claim = value
-        if (
-            step_count is not _MISSING_WORKFLOW_FIELD
-            and claim is not _MISSING_WORKFLOW_FIELD
-        ):
-            break
+        field = None
+        exact_key = type(key) is str
+        if exact_key:
+            if key == "step_count":
+                field = "step_count"
+            elif key == "invocations":
+                field = "invocations"
+        elif isinstance(key, str):
+            if str.__eq__(key, "step_count") is True:
+                field = "step_count"
+            elif str.__eq__(key, "invocations") is True:
+                field = "invocations"
+        if field == "step_count":
+            if exact_key:
+                step_count = value
+            else:
+                step_count_confusable = True
+            if (
+                type(value) is int
+                and value > MAX_WORKFLOW_CLAIM_ENTRIES
+            ):
+                step_count_oversized = True
+        elif field == "invocations":
+            if exact_key:
+                claim = value
+            else:
+                claim_confusable = True
+            if (
+                type(value) is list
+                and list.__len__(value) > MAX_WORKFLOW_CLAIM_ENTRIES
+            ):
+                claim_oversized = True
 
-    step_count_valid = type(step_count) is int and step_count >= 0
-    claim_type_valid = type(claim) is list
+    step_count_valid = (
+        not step_count_confusable
+        and type(step_count) is int
+        and step_count >= 0
+    )
+    claim_type_valid = not claim_confusable and type(claim) is list
     claim_length = list.__len__(claim) if claim_type_valid else None
-    step_count_oversized = (
-        type(step_count) is int
-        and step_count > MAX_WORKFLOW_CLAIM_ENTRIES
-    )
-    claim_oversized = (
-        claim_type_valid
-        and claim_length > MAX_WORKFLOW_CLAIM_ENTRIES
-    )
     if not step_count_oversized and not claim_oversized:
         return False
     if not step_count_valid:
@@ -324,7 +345,7 @@ def _reject_oversized_workflow_claim(
         errors.append(
             _error(
                 "WORKFLOW_CLAIM_COUNT_MISMATCH",
-                f"Claim contains {claim_length} entries for step_count={step_count}",
+                "Workflow claim count does not match step_count",
             )
         )
     errors.append(
