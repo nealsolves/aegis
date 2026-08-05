@@ -2675,6 +2675,12 @@ def _deeply_immutable_global(
         return (
             isinstance(expression.value, ast.Name)
             and expression.value.id in immutable_attribute_owners
+            and expression.attr not in {
+                "__dict__",
+                "_member_map_",
+                "_member_names_",
+                "_value2member_map_",
+            }
         )
     if isinstance(expression, ast.Subscript):
         return _deeply_immutable_global(
@@ -2859,7 +2865,33 @@ def _checkpoint_boundary_violations_for_source(source: str) -> list[str]:
                 )
             }
             if name in parameters:
-                return True
+                positional = (*scope.args.posonlyargs, *scope.args.args)
+                positional_defaults = {
+                    parameter.arg: default
+                    for parameter, default in zip(
+                        positional[len(positional) - len(scope.args.defaults):],
+                        scope.args.defaults,
+                    )
+                }
+                keyword_defaults = {
+                    parameter.arg: default
+                    for parameter, default in zip(
+                        scope.args.kwonlyargs,
+                        scope.args.kw_defaults,
+                        strict=True,
+                    )
+                    if default is not None
+                }
+                default = {**positional_defaults, **keyword_defaults}.get(name)
+                if default is None:
+                    return True
+                default_paths = _resolved_expression_candidates(
+                    default,
+                    import_resolution,
+                )
+                return bool(default_paths) and not any(
+                    path.startswith("builtins.") for path in default_paths
+                )
             direct_definitions = {
                 node.name
                 for node in nodes
@@ -2885,7 +2917,9 @@ def _checkpoint_boundary_violations_for_source(source: str) -> list[str]:
                 if value is None:
                     return False
                 paths = _resolved_expression_candidates(value, import_resolution)
-                return not any(path.startswith("builtins.") for path in paths)
+                return bool(paths) and not any(
+                    path.startswith("builtins.") for path in paths
+                )
             if any(
                 isinstance(node, ast.Nonlocal) and name in node.names
                 for node in nodes
@@ -3148,12 +3182,19 @@ def _checkpoint_callback_order_violations_for_source(
         target: ast.AST,
         value: ast.AST,
         resolved: dict[str, set[str]],
+        *,
+        keep_prior: bool,
     ) -> None:
         if isinstance(target, (ast.Tuple, ast.List)) and isinstance(
             value, (ast.Tuple, ast.List)
         ) and len(target.elts) == len(value.elts):
             for nested_target, nested_value in zip(target.elts, value.elts):
-                bind_alias(nested_target, nested_value, resolved)
+                bind_alias(
+                    nested_target,
+                    nested_value,
+                    resolved,
+                    keep_prior=keep_prior,
+                )
             return
         if isinstance(target, ast.Name):
             paths = _resolved_expression_candidates(value, resolved)
@@ -3205,7 +3246,30 @@ def _checkpoint_callback_order_violations_for_source(
                                     )
                                 )
                     paths = returned
-            resolved[target.id] = paths or {target.id}
+            paths = paths or {target.id}
+            if keep_prior:
+                resolved.setdefault(target.id, set()).update(paths)
+            else:
+                resolved[target.id] = paths
+
+    def binding_is_conditional(candidate: ast.AST, scope: ast.AST) -> bool:
+        ancestor = candidate
+        while ancestor in parents and parents[ancestor] is not scope:
+            ancestor = parents[ancestor]
+            if isinstance(
+                ancestor,
+                (
+                    ast.If,
+                    ast.Match,
+                    ast.Try,
+                    ast.TryStar,
+                    ast.For,
+                    ast.AsyncFor,
+                    ast.While,
+                ),
+            ):
+                return True
+        return False
 
     def aliases_at(node: ast.AST) -> dict[str, set[str]]:
         resolved = {name: {path} for name, path in import_aliases.items()}
@@ -3249,28 +3313,54 @@ def _checkpoint_callback_order_violations_for_source(
                 key=lambda candidate: (candidate.lineno, candidate.col_offset),
             )
             for candidate in candidates:
+                keep_prior = binding_is_conditional(candidate, scope)
                 if isinstance(candidate, ast.Assign):
                     for target in candidate.targets:
-                        bind_alias(target, candidate.value, resolved)
+                        bind_alias(
+                            target,
+                            candidate.value,
+                            resolved,
+                            keep_prior=keep_prior,
+                        )
                 elif isinstance(candidate, ast.AnnAssign) and candidate.value is not None:
-                    bind_alias(candidate.target, candidate.value, resolved)
+                    bind_alias(
+                        candidate.target,
+                        candidate.value,
+                        resolved,
+                        keep_prior=keep_prior,
+                    )
                 elif isinstance(candidate, ast.NamedExpr):
-                    bind_alias(candidate.target, candidate.value, resolved)
+                    bind_alias(
+                        candidate.target,
+                        candidate.value,
+                        resolved,
+                        keep_prior=keep_prior,
+                    )
                 elif isinstance(candidate, ast.ImportFrom) and candidate.module:
                     for imported in candidate.names:
-                        resolved[imported.asname or imported.name] = {
-                            f"{candidate.module}.{imported.name}"
-                        }
+                        name = imported.asname or imported.name
+                        path = f"{candidate.module}.{imported.name}"
+                        if keep_prior:
+                            resolved.setdefault(name, set()).add(path)
+                        else:
+                            resolved[name] = {path}
                 elif isinstance(candidate, ast.Import):
                     for imported in candidate.names:
-                        resolved[
-                            imported.asname or imported.name.split(".")[0]
-                        ] = {imported.name}
+                        name = imported.asname or imported.name.split(".")[0]
+                        if keep_prior:
+                            resolved.setdefault(name, set()).add(imported.name)
+                        else:
+                            resolved[name] = {imported.name}
                 elif isinstance(
                     candidate,
                     (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef),
                 ):
-                    resolved[candidate.name] = {candidate.name}
+                    if keep_prior:
+                        resolved.setdefault(candidate.name, set()).add(
+                            candidate.name
+                        )
+                    else:
+                        resolved[candidate.name] = {candidate.name}
         return resolved
 
     class _CurrentScopeCalls(ast.NodeVisitor):
@@ -3321,7 +3411,33 @@ def _checkpoint_callback_order_violations_for_source(
         resolved = aliases_at(call)
         if substitutions:
             resolved.update(substitutions)
-        return _resolved_expression_candidates(call.func, resolved)
+
+        def callable_candidates(expression: ast.AST) -> set[str]:
+            paths = _resolved_expression_candidates(expression, resolved)
+            if paths:
+                return paths
+            if isinstance(expression, ast.Subscript):
+                return callable_candidates(expression.value)
+            if (
+                isinstance(expression, ast.Call)
+                and isinstance(expression.func, ast.Attribute)
+                and expression.func.attr == "get"
+            ):
+                return callable_candidates(expression.func.value)
+            if isinstance(expression, ast.Call) and expression.args:
+                wrapper_paths = _resolved_expression_candidates(
+                    expression.func,
+                    resolved,
+                )
+                if any(
+                    path == "functools.partial"
+                    or path.endswith(".functools.partial")
+                    for path in wrapper_paths
+                ):
+                    return callable_candidates(expression.args[0])
+            return set()
+
+        return callable_candidates(call.func)
 
     def call_matches(
         call: ast.Call,
@@ -3338,7 +3454,7 @@ def _checkpoint_callback_order_violations_for_source(
     def preflight_matches(call: ast.Call) -> bool:
         paths = call_paths(call)
         if preflight_name == "validate":
-            return "aegis.preflight.validate" in paths
+            return paths == {"aegis.preflight.validate"}
         return call_matches(call, preflight_name)
 
     def function_has_direct_boundary(name: str) -> bool:
@@ -3378,6 +3494,7 @@ def _checkpoint_callback_order_violations_for_source(
         resolved = aliases_at(call)
         resolved.update(inherited)
         parameters = [*helper.args.posonlyargs, *helper.args.args]
+        keyword_only_parameters = [*helper.args.kwonlyargs]
         substitutions: dict[str, set[str]] = {}
         positional_arguments: list[ast.AST] = []
         unresolved_positional_expansion = False
@@ -3426,6 +3543,17 @@ def _checkpoint_callback_order_violations_for_source(
         if unresolved_positional_expansion:
             for parameter in parameters[len(positional_arguments):]:
                 substitutions.setdefault(parameter.arg, {boundary_name})
+        if helper.args.vararg is not None:
+            variadic_paths: set[str] = set()
+            for argument in positional_arguments[len(parameters):]:
+                variadic_paths.update(
+                    _resolved_expression_candidates(argument, resolved)
+                )
+            if unresolved_positional_expansion:
+                variadic_paths.add(boundary_name)
+            substitutions[helper.args.vararg.arg] = (
+                variadic_paths or {helper.args.vararg.arg}
+            )
         positional_defaults = {
             parameter.arg: default
             for parameter, default in zip(
@@ -3451,27 +3579,66 @@ def _checkpoint_callback_order_violations_for_source(
                     violations.append(
                         "callback-capability-captured-in-helper-default"
                     )
+        for parameter, default in zip(
+            keyword_only_parameters,
+            helper.args.kw_defaults,
+            strict=True,
+        ):
+            if parameter.arg in substitutions or default is None:
+                continue
+            default_paths = (
+                _resolved_expression_candidates(default, aliases_at(default))
+                or {parameter.arg}
+            )
+            substitutions[parameter.arg] = default_paths
+            if any(
+                path == boundary_name or path.endswith(f".{boundary_name}")
+                for path in default_paths
+            ):
+                violations.append(
+                    "callback-capability-captured-in-helper-default"
+                )
+        keyword_variadic_paths: set[str] = set()
         unresolved_keyword_expansion = False
         for keyword in call.keywords:
             if keyword.arg is not None:
-                substitutions[keyword.arg] = (
+                keyword_paths = (
                     _resolved_expression_candidates(keyword.value, resolved)
                     or {keyword.arg}
                 )
+                if keyword.arg in {
+                    *(parameter.arg for parameter in parameters),
+                    *(parameter.arg for parameter in keyword_only_parameters),
+                }:
+                    substitutions[keyword.arg] = keyword_paths
+                else:
+                    keyword_variadic_paths.update(keyword_paths)
             elif isinstance(keyword.value, ast.Dict):
                 for key, value in zip(keyword.value.keys, keyword.value.values):
                     if isinstance(key, ast.Constant) and isinstance(key.value, str):
-                        substitutions[key.value] = (
+                        keyword_paths = (
                             _resolved_expression_candidates(value, resolved)
                             or {key.value}
                         )
+                        if key.value in {
+                            *(parameter.arg for parameter in parameters),
+                            *(parameter.arg for parameter in keyword_only_parameters),
+                        }:
+                            substitutions[key.value] = keyword_paths
+                        else:
+                            keyword_variadic_paths.update(keyword_paths)
                     else:
                         unresolved_keyword_expansion = True
             else:
                 unresolved_keyword_expansion = True
         if unresolved_keyword_expansion:
-            for parameter in parameters:
+            for parameter in (*parameters, *keyword_only_parameters):
                 substitutions.setdefault(parameter.arg, {boundary_name})
+            keyword_variadic_paths.add(boundary_name)
+        if helper.args.kwarg is not None:
+            substitutions[helper.args.kwarg.arg] = (
+                keyword_variadic_paths or {helper.args.kwarg.arg}
+            )
         return substitutions
 
     def callable_class_boundary_count(
@@ -3673,6 +3840,24 @@ def _checkpoint_callback_order_violations_for_source(
             # Every operand after the first is conditional.  Only state established
             # by the first operand dominates the whole expression.
             return first_preflight, callback_count
+        if isinstance(expression, ast.Compare):
+            current_preflight, callback_count = analyze_expression(
+                expression.left,
+                preflight_guaranteed,
+            )
+            guaranteed_preflight = current_preflight
+            for index, comparator in enumerate(expression.comparators):
+                current_preflight, count = analyze_expression(
+                    comparator,
+                    current_preflight,
+                )
+                callback_count += count
+                if index == 0:
+                    # The left operand and first comparator are unconditional;
+                    # later comparators are skipped when an earlier comparison
+                    # is false.
+                    guaranteed_preflight = current_preflight
+            return guaranteed_preflight, callback_count
         if isinstance(expression, ast.Call):
             current_preflight, callback_count = analyze_expression(
                 expression.func,
@@ -3843,7 +4028,14 @@ def _checkpoint_callback_order_violations_for_source(
                 loop_count += body_count
                 if loop_count:
                     violations.append("callback-in-loop")
-                callback_count += loop_count
+                else_preflight, else_count = analyze_block(
+                    statement.orelse,
+                    loop_preflight,
+                )
+                # A break can bypass the else suite, while a zero-iteration
+                # loop can bypass its body.  Only entry state dominates both.
+                preflight_guaranteed = loop_preflight and else_preflight
+                callback_count += loop_count + else_count
                 continue
             if isinstance(statement, (ast.Try, ast.TryStar)):
                 entry_preflight = preflight_guaranteed
@@ -3856,6 +4048,7 @@ def _checkpoint_callback_order_violations_for_source(
                     body_preflight,
                 )
                 paths = [(normal_preflight, body_count + normal_count)]
+                handler_paths: list[tuple[bool, int]] = []
                 for handler in statement.handlers:
                     handler_count = 0
                     handler_preflight = entry_preflight
@@ -3867,15 +4060,26 @@ def _checkpoint_callback_order_violations_for_source(
                     path_preflight, path_count = analyze_block(
                         handler.body, handler_preflight
                     )
-                    paths.append(
+                    handler_paths.append(
                         (path_preflight, handler_count + path_count)
                     )
-                if statement.orelse:
-                    pass
+                paths.extend(handler_paths)
                 preflight_guaranteed = all(
                     path_preflight for path_preflight, _ in paths
                 )
-                callback_count += max(path_count for _, path_count in paths)
+                if isinstance(statement, ast.TryStar):
+                    # Multiple ``except*`` suites can execute for disjoint
+                    # subgroups from the same ExceptionGroup.
+                    callback_count += max(
+                        body_count + sum(
+                            path_count for _, path_count in handler_paths
+                        ),
+                        body_count + normal_count,
+                    )
+                else:
+                    callback_count += max(
+                        path_count for _, path_count in paths
+                    )
                 if statement.finalbody:
                     final_preflight, final_count = analyze_block(
                         statement.finalbody,
@@ -4122,7 +4326,10 @@ def _checkpoint_callable_dependency_graph() -> tuple[
     edges: set[tuple[tuple[str, str], tuple[str, str]]] = set()
     parsed: dict[
         str,
-        tuple[dict[str, tuple[str, str | None]], dict[str, ast.AST]],
+        tuple[
+            dict[str, set[tuple[str, str | None]]],
+            dict[str, ast.AST],
+        ],
     ] = {}
 
     def resolve_import_module(
@@ -4220,14 +4427,17 @@ def _checkpoint_callable_dependency_graph() -> tuple[
 
     def module_index(
         module: str,
-    ) -> tuple[dict[str, tuple[str, str | None]], dict[str, ast.AST]] | None:
+    ) -> tuple[
+        dict[str, set[tuple[str, str | None]]],
+        dict[str, ast.AST],
+    ] | None:
         if module in parsed:
             return parsed[module]
         path = _checkpoint_module_path(module)
         if path is None:
             return None
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        imports: dict[str, tuple[str, str | None]] = {}
+        imports: dict[str, set[tuple[str, str | None]]] = {}
         runtime_expressions, executed_imports = module_runtime_expressions(tree)
         definitions: dict[str, ast.AST] = {
             "<module>": ast.Tuple(
@@ -4243,16 +4453,16 @@ def _checkpoint_callable_dependency_graph() -> tuple[
                     statement.level,
                 )
                 for imported in statement.names:
-                    imports[imported.asname or imported.name] = (
-                        imported_module,
-                        imported.name,
-                    )
+                    imports.setdefault(
+                        imported.asname or imported.name,
+                        set(),
+                    ).add((imported_module, imported.name))
             else:
                 for imported in statement.names:
-                    imports[imported.asname or imported.name.split(".")[0]] = (
-                        imported.name,
-                        None,
-                    )
+                    imports.setdefault(
+                        imported.asname or imported.name.split(".")[0],
+                        set(),
+                    ).add((imported.name, None))
         for statement in tree.body:
             if isinstance(
                 statement,
@@ -4307,23 +4517,26 @@ def _checkpoint_callable_dependency_graph() -> tuple[
         if name != "<module>":
             enqueue(symbol, (module, "<module>"))
         if name == "<module>":
-            for imported_module, imported_name in imports.values():
-                dependency = (
-                    imported_module,
-                    imported_name if imported_name is not None else "<module>",
-                )
-                enqueue(symbol, dependency)
+            for candidates in imports.values():
+                for imported_module, imported_name in candidates:
+                    dependency = (
+                        imported_module,
+                        imported_name if imported_name is not None else "<module>",
+                    )
+                    enqueue(symbol, dependency)
         definition = definitions.get(name)
         if definition is None:
             if name in imports:
-                imported_module, imported_name = imports[name]
-                enqueue(
-                    symbol,
-                    (
-                        imported_module,
-                        imported_name if imported_name is not None else "<module>",
-                    ),
-                )
+                for imported_module, imported_name in imports[name]:
+                    enqueue(
+                        symbol,
+                        (
+                            imported_module,
+                            imported_name
+                            if imported_name is not None
+                            else "<module>",
+                        ),
+                    )
                 continue
             raise AssertionError(f"unresolved checkpoint closure symbol: {module}.{name}")
         definition_parents: dict[ast.AST, ast.AST] = {}
@@ -4366,7 +4579,10 @@ def _checkpoint_callable_dependency_graph() -> tuple[
             }
             for scope in function_scopes
         }
-        scope_imports: dict[ast.AST, dict[str, tuple[str, str | None]]] = {
+        scope_imports: dict[
+            ast.AST,
+            dict[str, set[tuple[str, str | None]]],
+        ] = {
             scope: {} for scope in function_scopes
         }
         for nested in ast.walk(definition):
@@ -4380,15 +4596,16 @@ def _checkpoint_callable_dependency_graph() -> tuple[
                     nested.level,
                 )
                 for imported in nested.names:
-                    scope_imports[scope][imported.asname or imported.name] = (
-                        imported_module,
-                        imported.name,
-                    )
+                    scope_imports[scope].setdefault(
+                        imported.asname or imported.name,
+                        set(),
+                    ).add((imported_module, imported.name))
             elif isinstance(nested, ast.Import):
                 for imported in nested.names:
-                    scope_imports[scope][
-                        imported.asname or imported.name.split(".")[0]
-                    ] = (imported.name, None)
+                    scope_imports[scope].setdefault(
+                        imported.asname or imported.name.split(".")[0],
+                        set(),
+                    ).add((imported.name, None))
         for nested in ast.walk(definition):
             scope = nearest_function_scope(nested)
             if scope is None:
@@ -4417,8 +4634,12 @@ def _checkpoint_callable_dependency_graph() -> tuple[
                 scope = outer_scope
             return False
 
-        def imports_at(node: ast.AST) -> dict[str, tuple[str, str | None]]:
-            lexical_imports = dict(imports)
+        def imports_at(
+            node: ast.AST,
+        ) -> dict[str, set[tuple[str, str | None]]]:
+            lexical_imports = {
+                name: set(candidates) for name, candidates in imports.items()
+            }
             scopes: list[ast.AST] = []
             scope = nearest_function_scope(node)
             while scope is not None:
@@ -4428,7 +4649,13 @@ def _checkpoint_callable_dependency_graph() -> tuple[
                     break
                 scope = outer_scope
             for lexical_scope in reversed(scopes):
-                lexical_imports.update(scope_imports.get(lexical_scope, {}))
+                for imported_name, candidates in scope_imports.get(
+                    lexical_scope,
+                    {},
+                ).items():
+                    lexical_imports.setdefault(imported_name, set()).update(
+                        candidates
+                    )
             return lexical_imports
         attribute_bases = {
             node.value
@@ -4440,12 +4667,17 @@ def _checkpoint_callable_dependency_graph() -> tuple[
                 local_imports = imports_at(node)
                 if node.id in definitions:
                     enqueue(symbol, (module, node.id))
-                elif node.id in local_imports and local_imports[node.id][1] is not None:
-                    imported_module, imported_name = local_imports[node.id]
-                    enqueue(symbol, (imported_module, imported_name))
                 elif node.id in local_imports:
-                    imported_module, _ = local_imports[node.id]
-                    enqueue(symbol, (imported_module, "<module>"))
+                    for imported_module, imported_name in local_imports[node.id]:
+                        enqueue(
+                            symbol,
+                            (
+                                imported_module,
+                                imported_name
+                                if imported_name is not None
+                                else "<module>",
+                            ),
+                        )
                 elif node in attribute_bases and node.id in local_imports:
                     continue
                 elif name_is_lexically_local(node) or node.id in {
@@ -4471,10 +4703,12 @@ def _checkpoint_callable_dependency_graph() -> tuple[
                 local_imports = imports_at(node)
                 if (
                     node.value.id in local_imports
-                    and local_imports[node.value.id][1] is None
                 ):
-                    imported_module, _ = local_imports[node.value.id]
-                    enqueue(symbol, (imported_module, node.attr))
+                    for imported_module, imported_name in local_imports[
+                        node.value.id
+                    ]:
+                        if imported_name is None:
+                            enqueue(symbol, (imported_module, node.attr))
     modules = frozenset(module for module, _ in reached)
     return frozenset(reached), frozenset(edges), modules
 
@@ -5806,6 +6040,159 @@ def test_checkpoint_callback_checker_accepts_canonical_aliased_preflight() -> No
 @pytest.mark.parametrize(
     "source",
     (
+        (
+            "from aegis.preflight import validate\n"
+            "def create(source, signer):\n"
+            "    validate(source)\n"
+            "    try:\n        raise ExceptionGroup('x', [])\n"
+            "    except* ValueError:\n        signer.sign(b'one', None)\n"
+            "    except* TypeError:\n        signer.sign(b'two', None)\n"
+        ),
+        (
+            "from aegis.preflight import validate\n"
+            "def create(source, signer, left, middle):\n"
+            "    left < middle < validate(source)\n"
+            "    signer.sign(b'x', None)\n"
+        ),
+        (
+            "from aegis.preflight import validate\n"
+            "def create(source, signer, items):\n"
+            "    for item in items:\n        pass\n"
+            "    else:\n        signer.sign(b'x', None)\n"
+            "    validate(source)\n"
+        ),
+        (
+            "from aegis.preflight import validate\n"
+            "from functools import partial\n"
+            "def create(source, signer):\n"
+            "    partial(signer.sign, b'x', None)()\n"
+            "    validate(source)\n"
+        ),
+        (
+            "from aegis.preflight import validate\n"
+            "def helper(*callbacks):\n"
+            "    callbacks[0](b'x', None)\n"
+            "def create(source, signer):\n"
+            "    helper(signer.sign)\n"
+            "    validate(source)\n"
+        ),
+        (
+            "from aegis.preflight import validate\n"
+            "def helper(**callbacks):\n"
+            "    callbacks['sign'](b'x', None)\n"
+            "def create(source, signer):\n"
+            "    helper(sign=signer.sign)\n"
+            "    validate(source)\n"
+        ),
+        (
+            "from aegis.preflight import validate\n"
+            "def helper(**callbacks):\n"
+            "    callbacks.get('sign')(b'x', None)\n"
+            "def create(source, signer):\n"
+            "    helper(sign=signer.sign)\n"
+            "    validate(source)\n"
+        ),
+        (
+            "from aegis.preflight import validate\n"
+            "def helper(*, callback):\n"
+            "    callback(b'x', None)\n"
+            "def create(source, signer):\n"
+            "    helper(callback=signer.sign)\n"
+            "    validate(source)\n"
+        ),
+        (
+            "from aegis.preflight import validate\n"
+            "def helper(*, callback=signer.sign):\n"
+            "    callback(b'x', None)\n"
+            "def create(source, signer):\n"
+            "    validate(source)\n"
+            "    helper()\n"
+        ),
+        (
+            "from aegis.preflight import validate\n"
+            "def helper(*callbacks):\n"
+            "    callbacks[0](b'x', None)\n"
+            "def create(source, signer, callbacks):\n"
+            "    helper(*callbacks)\n"
+            "    validate(source)\n"
+        ),
+        (
+            "def create(source, signer, flag):\n"
+            "    if flag:\n"
+            "        def validate(value):\n            return value\n"
+            "    else:\n"
+            "        from aegis.preflight import validate\n"
+            "    validate(source)\n"
+            "    signer.sign(b'x', None)\n"
+        ),
+    ),
+    ids=(
+        "trystar-handlers-are-cumulative",
+        "chained-comparison-preflight-is-conditional",
+        "loop-else-callback",
+        "immediate-partial-callback",
+        "variadic-positional-subscript",
+        "variadic-keyword-subscript",
+        "variadic-keyword-get",
+        "keyword-only-callback",
+        "keyword-only-default-capture",
+        "unresolved-variadic-expansion",
+        "branch-local-fake-preflight",
+    ),
+)
+def test_checkpoint_callback_checker_rejects_round6_control_and_capture_bypasses(
+    source: str,
+) -> None:
+    assert _checkpoint_callback_order_violations_for_source(
+        source,
+        function_name="create",
+        boundary_name="sign",
+        preflight_name="validate",
+    )
+
+
+def test_checkpoint_dependency_graph_keeps_all_conditional_import_aliases(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sources = {
+        "fixture_root": (
+            "def root(flag):\n"
+            "    if flag:\n"
+            "        from fixture_dep_a import VALUE as dependency\n"
+            "    else:\n"
+            "        from fixture_dep_b import VALUE as dependency\n"
+            "    return dependency\n"
+        ),
+        "fixture_dep_a": "VALUE = 'a'\n",
+        "fixture_dep_b": "VALUE = 'b'\n",
+    }
+    paths: dict[str, Path] = {}
+    for module, source in sources.items():
+        path = tmp_path / f"{module}.py"
+        path.write_text(source, encoding="utf-8")
+        paths[module] = path
+
+    monkeypatch.setattr(
+        sys.modules[__name__],
+        "_CHECKPOINT_CALLABLE_ROOTS",
+        (("fixture_root", "root"),),
+    )
+    monkeypatch.setattr(
+        sys.modules[__name__],
+        "_checkpoint_module_path",
+        paths.get,
+    )
+
+    symbols, _, _ = _checkpoint_callable_dependency_graph()
+
+    assert ("fixture_dep_a", "VALUE") in symbols
+    assert ("fixture_dep_b", "VALUE") in symbols
+
+
+@pytest.mark.parametrize(
+    "source",
+    (
         "import fixture\nPOLICY = fixture.mutable_policy\n",
         "VALUES = ([],)\nFIRST = VALUES[0]\n",
         "import fixture\nITEM = fixture.mutable_policy['allowed']\n",
@@ -5834,6 +6221,33 @@ def test_checkpoint_callback_checker_accepts_canonical_aliased_preflight() -> No
     ),
 )
 def test_checkpoint_architecture_checker_rejects_unproven_mutable_referents(
+    source: str,
+) -> None:
+    assert _checkpoint_boundary_violations_for_source(source)
+
+
+@pytest.mark.parametrize(
+    "source",
+    (
+        (
+            "from aegis._internal.signature_models import EvidenceType\n"
+            "POLICY = EvidenceType.__dict__['_member_map_']\n"
+        ),
+        "def run(open=open):\n    return open('secret')\n",
+        (
+            "def identity(value):\n    return value\n"
+            "def run():\n"
+            "    open = identity(open)\n"
+            "    return open('secret')\n"
+        ),
+    ),
+    ids=(
+        "enum-member-map-referent",
+        "builtin-captured-in-default",
+        "builtin-through-local-wrapper",
+    ),
+)
+def test_checkpoint_architecture_checker_rejects_round6_mutable_and_shadow_bypasses(
     source: str,
 ) -> None:
     assert _checkpoint_boundary_violations_for_source(source)

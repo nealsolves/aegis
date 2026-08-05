@@ -97,33 +97,32 @@ if TYPE_CHECKING:
         expect_pass,
     )
 
-# Capture the security-sensitive facade on the first import only.  A module
-# reload reuses this module dictionary, so the immutable tuple remains the
-# authority even if ``aegis.checkpoints`` was monkeypatched in the meantime.
-try:
-    _CANONICAL_CHECKPOINT_EXPORTS
-except NameError:
-    from aegis.checkpoints import (  # noqa: E402,F401,F811
-        CheckpointBindingStatus,
-        CheckpointError,
-        CheckpointSignatureStatus,
-        CheckpointVerificationResult,
-        TrustedChainCheckpoint,
-        TrustedWorkflowCheckpoint,
-        create_chain_checkpoint,
-        create_workflow_checkpoint,
-    )
+# Resolve from the implementation owners on every execution.  ``reload`` keeps
+# a module dictionary, so neither a corrupted private cache nor monkeypatched
+# public facade can become the next generation's authority.
+from aegis._internal.checkpoint_models import (  # noqa: E402,F401,F811
+    CheckpointBindingStatus,
+    CheckpointSignatureStatus,
+    CheckpointVerificationResult,
+    TrustedChainCheckpoint,
+    TrustedWorkflowCheckpoint,
+)
+from aegis._internal.checkpoint_signing import (  # noqa: E402,F401,F811
+    create_chain_checkpoint,
+    create_workflow_checkpoint,
+)
+from aegis._internal.errors import CheckpointError  # noqa: E402,F401,F811
 
-    _CANONICAL_CHECKPOINT_EXPORTS = (
-        ("CheckpointBindingStatus", CheckpointBindingStatus),
-        ("CheckpointError", CheckpointError),
-        ("CheckpointSignatureStatus", CheckpointSignatureStatus),
-        ("CheckpointVerificationResult", CheckpointVerificationResult),
-        ("TrustedChainCheckpoint", TrustedChainCheckpoint),
-        ("TrustedWorkflowCheckpoint", TrustedWorkflowCheckpoint),
-        ("create_chain_checkpoint", create_chain_checkpoint),
-        ("create_workflow_checkpoint", create_workflow_checkpoint),
-    )
+_CANONICAL_CHECKPOINT_EXPORTS = (
+    ("CheckpointBindingStatus", CheckpointBindingStatus),
+    ("CheckpointError", CheckpointError),
+    ("CheckpointSignatureStatus", CheckpointSignatureStatus),
+    ("CheckpointVerificationResult", CheckpointVerificationResult),
+    ("TrustedChainCheckpoint", TrustedChainCheckpoint),
+    ("TrustedWorkflowCheckpoint", TrustedWorkflowCheckpoint),
+    ("create_chain_checkpoint", create_chain_checkpoint),
+    ("create_workflow_checkpoint", create_workflow_checkpoint),
+)
 
 (
     (_, CheckpointBindingStatus),

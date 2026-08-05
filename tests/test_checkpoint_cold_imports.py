@@ -168,6 +168,83 @@ def test_checkpoint_facade_reload_uses_first_import_canonical_tuple() -> None:
         importlib.reload(aegis)
 
 
+def test_checkpoint_facade_canonical_authority_cannot_be_rebound_or_deleted(
+) -> None:
+    import importlib
+
+    import aegis
+    import aegis.checkpoints as checkpoints
+
+    canonical = tuple(
+        getattr(aegis, name)
+        for name in (
+            "CheckpointBindingStatus",
+            "CheckpointError",
+            "CheckpointSignatureStatus",
+            "CheckpointVerificationResult",
+            "TrustedChainCheckpoint",
+            "TrustedWorkflowCheckpoint",
+            "create_chain_checkpoint",
+            "create_workflow_checkpoint",
+        )
+    )
+    replacement = tuple((str(index), object()) for index in range(8))
+    originals = tuple(
+        getattr(checkpoints, name)
+        for name in (
+            "CheckpointBindingStatus",
+            "CheckpointError",
+            "CheckpointSignatureStatus",
+            "CheckpointVerificationResult",
+            "TrustedChainCheckpoint",
+            "TrustedWorkflowCheckpoint",
+            "create_chain_checkpoint",
+            "create_workflow_checkpoint",
+        )
+    )
+    names = tuple(name for name, _ in aegis._CANONICAL_CHECKPOINT_EXPORTS)
+    try:
+        for name in names:
+            setattr(checkpoints, name, object())
+        aegis._CANONICAL_CHECKPOINT_EXPORTS = replacement
+        reloaded = importlib.reload(aegis)
+        assert tuple(getattr(reloaded, name) for name in names) == canonical
+
+        del aegis._CANONICAL_CHECKPOINT_EXPORTS
+        reloaded = importlib.reload(aegis)
+        assert tuple(getattr(reloaded, name) for name in names) == canonical
+    finally:
+        for name, original in zip(names, originals, strict=True):
+            setattr(checkpoints, name, original)
+        importlib.reload(aegis)
+
+
+def test_checkpoint_facade_reload_recovers_from_private_dict_corruption() -> None:
+    import importlib
+
+    import aegis
+    import aegis.checkpoints as checkpoints
+
+    names = tuple(name for name, _ in aegis._CANONICAL_CHECKPOINT_EXPORTS)
+    canonical = tuple(getattr(aegis, name) for name in names)
+    originals = tuple(getattr(checkpoints, name) for name in names)
+    replacement = tuple((name, object()) for name in names)
+    try:
+        for name in names:
+            setattr(checkpoints, name, object())
+        aegis.__dict__["_CANONICAL_CHECKPOINT_EXPORTS"] = replacement
+        reloaded = importlib.reload(aegis)
+        assert tuple(getattr(reloaded, name) for name in names) == canonical
+
+        del aegis.__dict__["_CANONICAL_CHECKPOINT_EXPORTS"]
+        reloaded = importlib.reload(aegis)
+        assert tuple(getattr(reloaded, name) for name in names) == canonical
+    finally:
+        for name, original in zip(names, originals, strict=True):
+            setattr(checkpoints, name, original)
+        importlib.reload(aegis)
+
+
 def test_checkpoint_facade_getattr_repins_without_live_submodule_lookup() -> None:
     import importlib
 
