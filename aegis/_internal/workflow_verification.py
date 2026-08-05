@@ -282,13 +282,17 @@ def _reject_oversized_workflow_claim(
         return False
     for key, value in dict.items(workflow):
         field = None
-        exact_key = type(key) is str
+        key_type = type(key)
+        exact_key = key_type is str
         if exact_key:
             if key == "step_count":
                 field = "step_count"
             elif key == "invocations":
                 field = "invocations"
-        elif isinstance(key, str):
+        elif any(
+            base is str
+            for base in type.__getattribute__(key_type, "__mro__")
+        ):
             if str.__eq__(key, "step_count") is True:
                 field = "step_count"
             elif str.__eq__(key, "invocations") is True:

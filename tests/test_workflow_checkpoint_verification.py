@@ -225,6 +225,137 @@ class _HostileReservedKey(str):
         return str.__eq__(self, other)
 
 
+class _HostileNonStringKey:
+    def __init__(self, *, spoof_class: bool = False):
+        object.__setattr__(self, "armed", False)
+        object.__setattr__(self, "calls", [])
+        object.__setattr__(self, "spoof_class", spoof_class)
+
+    def __getattribute__(self, name):
+        if object.__getattribute__(self, "armed"):
+            calls = object.__getattribute__(self, "calls")
+            calls.append(name)
+            if (
+                name == "__class__"
+                and object.__getattribute__(self, "spoof_class")
+            ):
+                return str
+            raise AssertionError("reserved-key probe read hostile attribute")
+        return object.__getattribute__(self, name)
+
+    def __hash__(self):
+        calls = object.__getattribute__(self, "calls")
+        calls.append("__hash__")
+        if object.__getattribute__(self, "armed"):
+            raise AssertionError("reserved-key probe called hostile hash")
+        return 0xA3615
+
+    def __eq__(self, _other):
+        calls = object.__getattribute__(self, "calls")
+        calls.append("__eq__")
+        if object.__getattribute__(self, "armed"):
+            raise AssertionError("reserved-key probe called hostile equality")
+        return False
+
+    def __str__(self):
+        calls = object.__getattribute__(self, "calls")
+        calls.append("__str__")
+        if object.__getattribute__(self, "armed"):
+            raise AssertionError("reserved-key probe called hostile string")
+        return "hostile-key"
+
+    def __repr__(self):
+        calls = object.__getattribute__(self, "calls")
+        calls.append("__repr__")
+        if object.__getattribute__(self, "armed"):
+            raise AssertionError("reserved-key probe called hostile repr")
+        return "hostile-key"
+
+
+class _HostileStringInstanceKey(str):
+    def __new__(cls, value: str):
+        instance = str.__new__(cls, value)
+        object.__setattr__(instance, "armed", False)
+        object.__setattr__(instance, "calls", [])
+        return instance
+
+    def __getattribute__(self, name):
+        if object.__getattribute__(self, "armed"):
+            calls = object.__getattribute__(self, "calls")
+            calls.append(name)
+            raise AssertionError("reserved-key probe read hostile str attribute")
+        return object.__getattribute__(self, name)
+
+    def __hash__(self):
+        calls = object.__getattribute__(self, "calls")
+        calls.append("__hash__")
+        if object.__getattribute__(self, "armed"):
+            raise AssertionError("reserved-key probe called hostile str hash")
+        return str.__hash__(self)
+
+    def __eq__(self, other):
+        calls = object.__getattribute__(self, "calls")
+        calls.append("__eq__")
+        if object.__getattribute__(self, "armed"):
+            raise AssertionError("reserved-key probe called hostile str equality")
+        return str.__eq__(self, other)
+
+    def __str__(self):
+        calls = object.__getattribute__(self, "calls")
+        calls.append("__str__")
+        if object.__getattribute__(self, "armed"):
+            raise AssertionError("reserved-key probe called hostile str string")
+        return str.__str__(self)
+
+    def __repr__(self):
+        calls = object.__getattribute__(self, "calls")
+        calls.append("__repr__")
+        if object.__getattribute__(self, "armed"):
+            raise AssertionError("reserved-key probe called hostile str repr")
+        return str.__repr__(self)
+
+
+def _hostile_metaclass_key(*, string_subclass: bool, value: str = ""):
+    state: dict[str, object] = {"armed": False, "calls": []}
+
+    class HostileMeta(type):
+        def __getattribute__(cls, name):
+            if state["armed"]:
+                state["calls"].append(f"__getattribute__:{name}")
+                raise AssertionError("reserved-key probe read hostile type")
+            return type.__getattribute__(cls, name)
+
+        def __instancecheck__(cls, instance):
+            if state["armed"]:
+                state["calls"].append("__instancecheck__")
+                raise AssertionError("reserved-key probe called instance check")
+            return type.__instancecheck__(cls, instance)
+
+        def __subclasscheck__(cls, subclass):
+            if state["armed"]:
+                state["calls"].append("__subclasscheck__")
+                raise AssertionError("reserved-key probe called subclass check")
+            return type.__subclasscheck__(cls, subclass)
+
+        def mro(cls):
+            if state["armed"]:
+                state["calls"].append("mro")
+                raise AssertionError("reserved-key probe called hostile mro")
+            return type.mro(cls)
+
+    if string_subclass:
+        class HostileStringTypeKey(str, metaclass=HostileMeta):
+            pass
+
+        key = HostileStringTypeKey(value)
+    else:
+        class HostileObjectTypeKey(metaclass=HostileMeta):
+            pass
+
+        key = HostileObjectTypeKey()
+    return key, state
+
+
 def _evaluate_workflow_binding(
     workflow: dict[str, object],
     checkpoint: TrustedWorkflowCheckpoint,
@@ -257,6 +388,70 @@ def _evaluate_invalid_workflow_binding(
         checkpoint,
         workflow_content_valid=False,
         claim_valid=False,
+    )
+
+
+def _verify_preflight_callback_counts(
+    workflow: dict[object, object],
+    checkpoint: TrustedWorkflowCheckpoint,
+    monkeypatch,
+):
+    invocation_consumptions = 0
+    checksum_calls = 0
+    canonicalization_calls = 0
+    artifact_calls = 0
+    checkpoint_verifier = DeterministicExternalVerifier()
+    verify_content = workflow_verification_module.verify_content_checksum_v2
+    canonicalize = checkpoint_verification_module.canonicalize_v2
+
+    def supplied_invocations():
+        nonlocal invocation_consumptions
+        invocation_consumptions += 1
+        yield from ()
+
+    def content_verifier(value):
+        nonlocal checksum_calls
+        checksum_calls += 1
+        return verify_content(value)
+
+    def canonicalizer(*args, **kwargs):
+        nonlocal canonicalization_calls
+        canonicalization_calls += 1
+        return canonicalize(*args, **kwargs)
+
+    def artifact_verifier(*_args, **_kwargs):
+        nonlocal artifact_calls
+        artifact_calls += 1
+        return SignatureStatus.UNSIGNED, None
+
+    monkeypatch.setattr(
+        workflow_verification_module,
+        "verify_content_checksum_v2",
+        content_verifier,
+    )
+    monkeypatch.setattr(
+        checkpoint_verification_module,
+        "canonicalize_v2",
+        canonicalizer,
+    )
+    monkeypatch.setattr(
+        workflow_verification_module,
+        "_verify_signatures",
+        artifact_verifier,
+    )
+
+    report = verify_workflow_claim(
+        workflow,
+        supplied_invocations(),
+        expected_checkpoint=checkpoint,
+        checkpoint_verifier=checkpoint_verifier,
+    )
+    return report, (
+        invocation_consumptions,
+        checksum_calls,
+        canonicalization_calls,
+        artifact_calls,
+        checkpoint_verifier.call_count,
     )
 
 
@@ -810,6 +1005,113 @@ def test_checkpoint_binding_rejects_coexisting_hostile_reserved_key(
         CheckpointBindingStatus.CONFLICT
     )
     assert [error.code for error in errors] == ["CHECKPOINT_BINDING_CONFLICT"]
+
+
+@pytest.mark.parametrize("spoof_class", [False, True], ids=["raises", "spoofs"])
+def test_checkpoint_binding_does_not_read_hostile_non_string_key_class(
+    evidence_set,
+    workflow_checkpoint,
+    spoof_class,
+):
+    workflow, _ = evidence_set
+    hostile_key = _HostileNonStringKey(spoof_class=spoof_class)
+    changed = {hostile_key: None, **deepcopy(workflow)}
+    calls = object.__getattribute__(hostile_key, "calls")
+    calls.clear()
+    object.__setattr__(hostile_key, "armed", True)
+
+    try:
+        evaluation, errors = _evaluate_workflow_binding(
+            changed,
+            workflow_checkpoint,
+            workflow_content_valid=True,
+            claim_valid=True,
+        )
+    except AssertionError as error:
+        pytest.fail(f"hostile key callback escaped lower binding: {error}")
+
+    assert evaluation.signature_status is CheckpointSignatureStatus.VALID
+    assert evaluation.anchor_status is AnchorStatus.INVALID
+    assert evaluation.completeness is Completeness.CONTRADICTED
+    assert evaluation.results[0].binding_status is (
+        CheckpointBindingStatus.CONFLICT
+    )
+    assert [error.code for error in errors] == ["CHECKPOINT_BINDING_CONFLICT"]
+    assert calls == []
+
+
+@pytest.mark.parametrize("string_subclass", [False, True])
+def test_checkpoint_binding_real_type_probe_bypasses_custom_metaclass(
+    evidence_set,
+    workflow_checkpoint,
+    string_subclass,
+):
+    workflow, _ = evidence_set
+    changed = deepcopy(workflow)
+    if string_subclass:
+        key, state = _hostile_metaclass_key(
+            string_subclass=True,
+            value="session_id",
+        )
+        session_id = changed.pop("session_id")
+        changed[key] = session_id
+    else:
+        key, state = _hostile_metaclass_key(string_subclass=False)
+        changed = {key: None, **changed}
+    state["calls"].clear()
+    state["armed"] = True
+
+    try:
+        evaluation, errors = _evaluate_workflow_binding(
+            changed,
+            workflow_checkpoint,
+            workflow_content_valid=True,
+            claim_valid=True,
+        )
+    except AssertionError as error:
+        pytest.fail(f"hostile metaclass callback escaped binding: {error}")
+    finally:
+        state["armed"] = False
+
+    assert evaluation.anchor_status is AnchorStatus.INVALID
+    assert evaluation.completeness is Completeness.CONTRADICTED
+    assert evaluation.results[0].binding_status is (
+        CheckpointBindingStatus.CONFLICT
+    )
+    assert [error.code for error in errors] == ["CHECKPOINT_BINDING_CONFLICT"]
+    assert state["calls"] == []
+
+
+def test_checkpoint_binding_bypasses_hostile_string_subclass_callbacks(
+    evidence_set,
+    workflow_checkpoint,
+):
+    workflow, _ = evidence_set
+    changed = deepcopy(workflow)
+    hostile_key = _HostileStringInstanceKey("session_id")
+    session_id = changed.pop("session_id")
+    changed[hostile_key] = session_id
+    calls = object.__getattribute__(hostile_key, "calls")
+    calls.clear()
+    object.__setattr__(hostile_key, "armed", True)
+
+    try:
+        evaluation, errors = _evaluate_workflow_binding(
+            changed,
+            workflow_checkpoint,
+            workflow_content_valid=True,
+            claim_valid=True,
+        )
+    except AssertionError as error:
+        pytest.fail(f"hostile str callback escaped binding: {error}")
+
+    assert evaluation.anchor_status is AnchorStatus.INVALID
+    assert evaluation.completeness is Completeness.CONTRADICTED
+    assert evaluation.results[0].binding_status is (
+        CheckpointBindingStatus.CONFLICT
+    )
+    assert [error.code for error in errors] == ["CHECKPOINT_BINDING_CONFLICT"]
+    assert calls == []
 
 
 def test_checkpoint_binding_ignores_non_equal_unicode_control_key(
@@ -2247,6 +2549,144 @@ def test_oversized_step_count_mismatch_diagnostic_is_fixed_and_bounded(
     assert max(len(error.message) for error in report.errors) < 100
     assert invocation_consumptions == 0
     assert verifier.call_count == 0
+
+
+@pytest.mark.parametrize("spoof_class", [False, True], ids=["raises", "spoofs"])
+def test_shallow_gate_does_not_read_hostile_non_string_key_class(
+    evidence_set,
+    workflow_checkpoint,
+    monkeypatch,
+    spoof_class,
+):
+    workflow, _ = evidence_set
+    hostile_key = _HostileNonStringKey(spoof_class=spoof_class)
+    changed = {hostile_key: None, **deepcopy(workflow)}
+    changed["step_count"] = 1_025
+    changed["invocations"] = _HostileWorkflowSibling()
+    calls = object.__getattribute__(hostile_key, "calls")
+    calls.clear()
+    object.__setattr__(hostile_key, "armed", True)
+
+    report, callback_counts = _verify_preflight_callback_counts(
+        changed,
+        workflow_checkpoint,
+        monkeypatch,
+    )
+
+    assert report.claim_status is WorkflowClaimStatus.INVALID
+    assert report.signature_status is SignatureStatus.INDETERMINATE
+    assert report.completeness is Completeness.UNPROVEN
+    assert report.checkpoint_signature_status is (
+        CheckpointSignatureStatus.NOT_EVALUATED
+    )
+    assert report.checkpoint_anchor_status is AnchorStatus.NOT_EVALUATED
+    assert report.checkpoint_results == ()
+    assert [error.code for error in report.errors] == [
+        "WORKFLOW_CLAIM_INVALID",
+        "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
+    ]
+    assert callback_counts == (0, 0, 0, 0, 0)
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    ("string_subclass", "expected_codes"),
+    [
+        (
+            False,
+            [
+                "WORKFLOW_CLAIM_INVALID",
+                "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
+            ],
+        ),
+        (
+            True,
+            [
+                "WORKFLOW_STEP_COUNT_INVALID",
+                "WORKFLOW_CLAIM_INVALID",
+                "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
+            ],
+        ),
+    ],
+)
+def test_shallow_gate_real_type_probe_bypasses_custom_metaclass(
+    evidence_set,
+    workflow_checkpoint,
+    monkeypatch,
+    string_subclass,
+    expected_codes,
+):
+    workflow, _ = evidence_set
+    changed = deepcopy(workflow)
+    if string_subclass:
+        key, state = _hostile_metaclass_key(
+            string_subclass=True,
+            value="step_count",
+        )
+        changed.pop("step_count")
+        changed[key] = 1_025
+    else:
+        key, state = _hostile_metaclass_key(string_subclass=False)
+        changed = {key: None, **changed}
+        changed["step_count"] = 1_025
+    changed["invocations"] = _HostileWorkflowSibling()
+    state["calls"].clear()
+    state["armed"] = True
+
+    try:
+        report, callback_counts = _verify_preflight_callback_counts(
+            changed,
+            workflow_checkpoint,
+            monkeypatch,
+        )
+    finally:
+        state["armed"] = False
+
+    assert report.claim_status is WorkflowClaimStatus.INVALID
+    assert report.signature_status is SignatureStatus.INDETERMINATE
+    assert report.completeness is Completeness.UNPROVEN
+    assert report.checkpoint_signature_status is (
+        CheckpointSignatureStatus.NOT_EVALUATED
+    )
+    assert report.checkpoint_anchor_status is AnchorStatus.NOT_EVALUATED
+    assert report.checkpoint_results == ()
+    assert [error.code for error in report.errors] == expected_codes
+    assert callback_counts == (0, 0, 0, 0, 0)
+    assert state["calls"] == []
+
+
+def test_shallow_gate_bypasses_hostile_string_subclass_callbacks(
+    evidence_set,
+    workflow_checkpoint,
+    monkeypatch,
+):
+    workflow, _ = evidence_set
+    changed = deepcopy(workflow)
+    hostile_key = _HostileStringInstanceKey("step_count")
+    changed.pop("step_count")
+    changed[hostile_key] = 1_025
+    changed["invocations"] = _HostileWorkflowSibling()
+    calls = object.__getattribute__(hostile_key, "calls")
+    calls.clear()
+    object.__setattr__(hostile_key, "armed", True)
+
+    report, callback_counts = _verify_preflight_callback_counts(
+        changed,
+        workflow_checkpoint,
+        monkeypatch,
+    )
+
+    assert report.claim_status is WorkflowClaimStatus.INVALID
+    assert report.signature_status is SignatureStatus.INDETERMINATE
+    assert report.completeness is Completeness.UNPROVEN
+    assert report.checkpoint_results == ()
+    assert [error.code for error in report.errors] == [
+        "WORKFLOW_STEP_COUNT_INVALID",
+        "WORKFLOW_CLAIM_INVALID",
+        "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
+    ]
+    assert callback_counts == (0, 0, 0, 0, 0)
+    assert calls == []
 
 
 @pytest.mark.parametrize(

@@ -229,15 +229,21 @@ def _workflow_binding_matches(
     ]
     for key, value in dict.items(workflow):
         field_index = None
-        if type(key) is str:
+        key_type = type(key)
+        if key_type is str:
             for index, field in enumerate(_WORKFLOW_BINDING_FIELDS):
                 if key == field:
                     field_index = index
                     break
-        elif isinstance(key, str):
+        elif any(
+            base is str
+            for base in type.__getattribute__(key_type, "__mro__")
+        ):
             for field in _WORKFLOW_BINDING_FIELDS:
                 if str.__eq__(key, field) is True:
                     return False
+        else:
+            return False
         if field_index is not None:
             values[field_index] = value
     if any(value is _MISSING_BINDING_FIELD for value in values):
