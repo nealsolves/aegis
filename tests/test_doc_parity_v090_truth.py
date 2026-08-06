@@ -2617,3 +2617,119 @@ def test_pr09_contract_rejects_missing_ops_runbook_command(tmp_path, monkeypatch
     assert any("aegis workflow export" in e and "OPERATIONS_RUNBOOK.md" in e for e in errors), (
         f"Expected missing ops runbook command error, got: {errors}"
     )
+
+
+# --- Issue #46 Task 9: trusted-checkpoint assurance documentation parity ---
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+
+# Exact public API names the maintained docs must use verbatim (source of truth:
+# aegis/checkpoints.py __all__, aegis/_internal/verification.py, and
+# aegis/_internal/verification_contracts.py).
+_CHECKPOINT_CREATION_FUNCTIONS = (
+    "create_chain_checkpoint",
+    "create_workflow_checkpoint",
+)
+_CHECKPOINT_VERIFICATION_FUNCTIONS = (
+    "verify_chain_detailed",
+    "verify_workflow_claim",
+)
+_CHECKPOINT_RECORD_TYPES = (
+    "TrustedChainCheckpoint",
+    "TrustedWorkflowCheckpoint",
+)
+_CHECKPOINT_REPORT_FIELDS = (
+    "checkpoint_signature_status",
+    "checkpoint_anchor_status",
+    "checkpoint_results",
+)
+_CHECKPOINT_COMPLETENESS_VALUES = (
+    "unproven",
+    "checkpoint_proven",
+    "contradicted",
+)
+
+
+def _read_doc(rel: str) -> str:
+    return (_REPO_ROOT / rel).read_text(encoding="utf-8")
+
+
+def test_adr_0015_documents_the_trusted_checkpoint_contract():
+    """ADR-0015 must name the exact API, both record types, the detailed-report
+    checkpoint fields, all three completeness values, and the host-owned
+    provider-neutral storage model with the signed-host-time disclaimer."""
+    adr = _read_doc("docs/decisions/ADR-0015-trusted-checkpoints.md")
+
+    for name in (
+        _CHECKPOINT_CREATION_FUNCTIONS
+        + _CHECKPOINT_VERIFICATION_FUNCTIONS
+        + _CHECKPOINT_RECORD_TYPES
+        + _CHECKPOINT_REPORT_FIELDS
+        + _CHECKPOINT_COMPLETENESS_VALUES
+    ):
+        assert name in adr, f"ADR-0015 must document {name!r}"
+
+    assert "expected_chain_id" in adr
+    assert "expected_checkpoint" in adr
+    # Provider-neutral, host-owned lifecycle and the signed-host-time caveat.
+    assert "provider-neutral" in adr
+    assert "host-owned" in adr
+    assert "signed host-supplied time" in adr
+
+
+def test_adr_0015_states_what_trusted_checkpoints_do_not_prove():
+    """The ADR must scope assurance honestly: no latest-retrieval, WORM/
+    append-only storage, future-activity, certification, or compliance claim."""
+    adr = _read_doc("docs/decisions/ADR-0015-trusted-checkpoints.md")
+    normalized = " ".join(adr.lower().split())
+
+    assert "does not prove" in normalized
+    assert "latest" in normalized
+    assert "worm" in normalized or "append-only" in normalized
+    assert "future activity" in normalized
+    assert "certification" in normalized
+    assert "compliance" in normalized
+
+
+def test_adr_0015_documents_the_test_only_tripwire_residuals():
+    """Honesty requirement (re-scope abandoned 2026-08-06): ADR-0015 must record
+    that the checkpoint architecture guard is a best-effort static test with
+    documented residuals backed by code review, not an airtight proof."""
+    adr = _read_doc("docs/decisions/ADR-0015-trusted-checkpoints.md")
+    normalized = " ".join(adr.lower().split())
+
+    assert "code review" in normalized
+    assert "residual" in normalized
+    # The guard is test-only; it must not be presented as a production control.
+    assert "source-owner" in normalized or "source owner" in normalized
+
+
+def test_threat_model_covers_checkpoint_replacement_and_omission():
+    threat = _read_doc("docs/architecture/AEGIS_THREAT_MODEL.md")
+    normalized = " ".join(threat.lower().split())
+    assert "checkpoint" in normalized
+    assert "whole-chain" in normalized or "whole chain" in normalized
+    assert "omission" in normalized or "rollback" in normalized
+
+
+def test_migration_describes_source_compatible_unproven_default():
+    migration = _read_doc("docs/migration.md")
+    assert "UNPROVEN" in migration
+    normalized = " ".join(migration.lower().split())
+    assert "source-compatible" in normalized or "source compatible" in normalized
+
+
+def test_changelog_records_the_trusted_checkpoint_source_feature():
+    changelog = _read_doc("CHANGELOG.md")
+    assert "create_chain_checkpoint" in changelog
+    assert "TrustedChainCheckpoint" in changelog
+
+
+def test_usage_docs_show_provider_neutral_checkpoint_recipes():
+    """USAGE and the integration guide must show the host-supplied-signer
+    creation call and the from_dict/expected_chain_id verification round-trip."""
+    for rel in ("docs/USAGE.md", "docs/INTEGRATION_GUIDE.md"):
+        text = _read_doc(rel)
+        assert "create_chain_checkpoint" in text, f"{rel} must show creation"
+        assert "from_dict" in text, f"{rel} must show record reconstruction"
+        assert "expected_chain_id" in text, f"{rel} must show scoped verify"

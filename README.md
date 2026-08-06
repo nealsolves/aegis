@@ -105,6 +105,19 @@ transport, availability behavior, and artifact storage. See the
 and [ADR-0012](docs/decisions/ADR-0012-external-trust-anchor-signing.md) for the
 two-axis signature/anchor contract and its limits.
 
+The same source-only line adds trusted checkpoints (issue #46): the
+provider-neutral `create_chain_checkpoint(...)` / `create_workflow_checkpoint(...)`
+creators plus `verify_chain_detailed(..., expected_chain_id=...)` and
+`verify_workflow_claim(..., expected_checkpoint=...)` add a completeness axis that
+detects whole-chain and finalized-workflow replacement for an expected scope
+(`checkpoint_proven` / `contradicted`). No-checkpoint calls stay source-compatible
+and report `unproven`. The host owns the signer, verifier, storage, and the signed
+host-supplied `checkpointed_at`; AEGIS never creates an automatic checkpoint sink.
+A `checkpoint_proven` result does not prove latest retrieval, WORM storage, future
+activity, certification, or compliance. See
+[ADR-0015](docs/decisions/ADR-0015-trusted-checkpoints.md) and
+[USAGE.md](docs/USAGE.md) Recipe 13.
+
 That source-only line now includes explicit
 [AWS KMS](docs/reference/external/AWS_KMS_SIGNING.md) and
 [Google Cloud KMS](docs/reference/external/GOOGLE_CLOUD_KMS_SIGNING.md)

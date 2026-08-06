@@ -282,8 +282,10 @@ Cons:
 
 - **#45:** provider-specific KMS or HSM integration, SDKs, credentials,
   transport, retries, and operational key rotation.
-- **#46:** trusted audit-chain checkpoints, whole-chain replacement detection,
-  and finalized workflow-evidence anchoring.
+- **#46 (now implemented in current source — see ADR-0015):** trusted
+  audit-chain checkpoints, whole-chain replacement detection, and finalized
+  workflow-evidence anchoring. This ADR's per-artifact external signing is
+  unchanged; #46 builds the separate completeness axis on top of it.
 - **#47:** WORM or append-only storage guidance, retention, object locking,
   disaster recovery, and maintained public-claims enforcement.
 

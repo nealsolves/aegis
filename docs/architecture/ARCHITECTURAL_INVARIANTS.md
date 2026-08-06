@@ -180,7 +180,13 @@ the `0.9.0b1` release. It is populated only by
 Hash-chain verification applies to the sequence supplied for verification. It
 does not detect replacement of a complete otherwise-valid chain without an
 external trusted checkpoint, establish sequence completeness, or provide WORM
-storage.
+storage. Trusted checkpoints (issue #46) are the additive, host-driven control
+that detects whole-chain replacement for an expected scope when a validly signed,
+anchored checkpoint is retained and presented; a host that omits or withholds the
+checkpoint keeps the pre-#46 `unproven` result, so checkpoint omission and
+rollback remain host-owned residuals. AEGIS never creates an automatic checkpoint
+sink, discovers a key over the network, retries a host signer, or promotes
+completeness from an artifact signature alone. See ADR-0015.
 
 ---
 
@@ -426,8 +432,11 @@ artifacts are separate evidence and are not invocation-chain artifacts.
 the supplied ordered invocation set independently of signature verification.
 Its `claim_status`, `signature_status`, and `completeness` axes are deliberately
 separate. A signed workflow without a trusted verifier has
-`signature_status=INDETERMINATE`; a non-`None` checkpoint is rejected with
-`WORKFLOW_CHECKPOINT_UNSUPPORTED` until #46 defines trusted checkpoints.
+`signature_status=INDETERMINATE`. A non-`None` `expected_checkpoint` is now
+honored (issue #46, current source): a valid, anchored `TrustedWorkflowCheckpoint`
+promotes completeness to `checkpoint_proven` for the expected scope, and a
+mismatch reports `contradicted`. Completeness from an artifact signature alone
+is never inferred. See ADR-0015.
 
 Workflow-signed proves integrity and order of the claimed supplied set. It does
 not prove the host disclosed every invocation. Completeness remains unproven

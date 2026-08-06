@@ -410,3 +410,52 @@ if len(history.scores) >= 2:
     print(f"Trajectory: {history.trajectory()}")
     # "improving" | "stable" | "degrading"
 ```
+
+## Recipe 13: Trusted checkpoints for whole-chain completeness (issue #46)
+
+Content and signature checks prove a supplied chain is internally consistent;
+they do **not** prove it is the chain that actually occurred. A trusted
+checkpoint pins a chain to externally signed, provider-neutral evidence so a
+later verification can report `checkpoint_proven` (bound to a checkpoint you
+trust) or `contradicted` (a substituted chain), instead of `unproven`. See
+ADR-0015 for the full assurance scope — a `checkpoint_proven` result does not
+prove latest-retrieval, WORM storage, future activity, or compliance.
+
+The signer and verifier are **host-supplied and provider-neutral**; AEGIS ships
+no key store or network client for this path. `checkpointed_at` is a signed but
+host-supplied Unix second. You own where and how long you persist the record.
+
+```python
+from aegis.checkpoints import create_chain_checkpoint, TrustedChainCheckpoint
+from aegis import verify_chain_detailed
+
+# 1. Create — `signer` is your ExternalArtifactSigner
+#    (signer_identity() + sign(payload, identity)).
+checkpoint = create_chain_checkpoint(
+    final_artifact,            # a finalized, checksum-valid v2 chain artifact
+    signer,
+    checkpointed_at=1_754_400_000,   # host-supplied signed time (Unix seconds)
+)
+
+# 2. Persist it yourself — AEGIS never writes to a store of its own.
+stored = checkpoint.to_dict()
+save_somewhere(stored)
+
+# 3. Verify later — reconstruct the record and bind it to the expected scope.
+reconstructed = TrustedChainCheckpoint.from_dict(load_from_somewhere())
+report = verify_chain_detailed(
+    artifacts,
+    checkpoints=[reconstructed],
+    checkpoint_verifier=verifier,          # host-supplied ExternalArtifactVerifier
+    expected_chain_id=final_artifact["chain_id"],
+)
+
+assert report.completeness.value in {"checkpoint_proven", "contradicted"}
+# checkpoint_signature_status / checkpoint_anchor_status / checkpoint_results
+# expose the per-checkpoint detail behind that completeness verdict.
+```
+
+Callers that pass no `checkpoints` see the pre-#46 behavior and an `unproven`
+completeness — adoption is fully additive. Workflow claims use the parallel
+`create_workflow_checkpoint(...)` / `verify_workflow_claim(..., expected_checkpoint=...)`
+pair with `TrustedWorkflowCheckpoint`; the two record types are never merged.

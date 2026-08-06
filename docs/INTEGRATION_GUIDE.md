@@ -751,3 +751,41 @@ trajectory = history.trajectory()     # needs >= 2 recorded scores
 if trajectory == TRAJECTORY_DEGRADING:
     alert_ops()
 ```
+
+### Trusted checkpoints (New in issue #46)
+
+Chain verification proves a supplied chain is internally consistent but not that
+it is complete — an attacker with storage-write access can replace a whole
+valid chain. A trusted checkpoint binds a chain to externally signed, provider-neutral
+evidence so verification can detect that replacement (`contradicted`) or confirm
+the expected scope (`checkpoint_proven`).
+
+Ownership boundary: the `signer` and `checkpoint_verifier` are host-supplied
+(`ExternalArtifactSigner` / `ExternalArtifactVerifier`); AEGIS ships no key
+store, network client, or storage sink for this path. `checkpointed_at` is a
+signed but host-supplied time. You persist `checkpoint.to_dict()` yourself and
+reconstruct it with `from_dict` at verification time.
+
+```python
+from aegis.checkpoints import create_chain_checkpoint, TrustedChainCheckpoint
+from aegis import verify_chain_detailed
+
+checkpoint = create_chain_checkpoint(
+    final_artifact, signer, checkpointed_at=host_now_seconds
+)
+stored = checkpoint.to_dict()                       # you own persistence
+
+reconstructed = TrustedChainCheckpoint.from_dict(stored)
+report = verify_chain_detailed(
+    artifacts,
+    checkpoints=[reconstructed],
+    checkpoint_verifier=verifier,
+    expected_chain_id=final_artifact["chain_id"],   # bind to a known scope
+)
+# report.completeness.value: "unproven" | "checkpoint_proven" | "contradicted"
+```
+
+No-checkpoint calls stay source-compatible and report `unproven`. Finalized
+workflow claims use the parallel `create_workflow_checkpoint(...)` /
+`verify_workflow_claim(..., expected_checkpoint=...)` pair. See ADR-0015 and
+`docs/USAGE.md` Recipe 13 for the full assurance scope and residuals.

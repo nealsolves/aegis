@@ -447,6 +447,27 @@ immutable. Chain verification reasons about the chain presented to it and,
 without an external trusted checkpoint, does not detect replacement of the
 complete chain.
 
+### Trusted checkpoints (issue #46)
+
+`create_chain_checkpoint` / `create_workflow_checkpoint` let a host pin a chain
+or a finalized workflow claim to externally signed, provider-neutral evidence,
+and `verify_chain_detailed(..., expected_chain_id=...)` /
+`verify_workflow_claim(..., expected_checkpoint=...)` then detect **whole-chain
+replacement** and finalized-workflow replacement for the expected scope: a
+substituted complete chain no longer matches the signed checkpoint and reports
+`contradicted` rather than `unproven`.
+
+Residual risk remains and is accepted, because the checkpoint lifecycle is
+host-owned:
+
+* **Checkpoint omission / rollback.** A host that owns storage can omit a
+  checkpoint entirely, or present an older validly signed checkpoint (rollback).
+  A `checkpoint_proven` result never proves the checkpoint is the latest one.
+* **Untrusted host time.** `checkpointed_at` is signed but host-supplied; AEGIS
+  does not prove it is accurate, monotonic, or recent.
+
+See ADR-0015 for the full assurance scope.
+
 ---
 
 ## Supply Chain Security
@@ -470,7 +491,8 @@ AEGIS does not attempt to solve:
 * provider safety systems
 * replay prevention or proof that a supplied sequence is complete
 * trusted timestamping or timestamp-authority evidence
-* trusted complete-chain checkpoints or whole-chain replacement detection
+* proof that a presented trusted checkpoint is the latest one (checkpoint
+  omission and rollback remain host-owned residual risk; see issue #46 above)
 * WORM storage, retention, object locking, or disaster recovery
 * provider signing transport, credentials, retries, or key-rotation operations
 * certification or a regulatory-compliance determination
