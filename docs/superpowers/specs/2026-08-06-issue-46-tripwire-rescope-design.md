@@ -1,7 +1,20 @@
 # Design: Re-scope the checkpoint architecture tripwire (Issue #46, Task 8)
 
+> **STATUS: ABANDONED — NOT IMPLEMENTED (2026-08-06).** The human decision was
+> to stop fixing Task 8, accept the existing `a8738ee` analyzer as-is (with its
+> documented residuals), and move to Task 9. This re-scope was never built. It
+> is retained only as a record of the approach explored and why it was dropped.
+> Two reasons: (1) the round-by-round grind was judged not worth further effort;
+> (2) the design's Section 3 premise is stale — the pre-existing
+> `_checkpoint_callable_dependency_closure` /
+> `test_every_callable_closure_module_is_capability_reviewed` infrastructure
+> already scans `canonicalization`, `chain_linker`, and `evidence_profiles`,
+> which Section 3 claims are "currently unscanned." See the SDD ledger
+> (`.superpowers/sdd/2026-08-04-issue-46-trusted-checkpoints/progress.md`) for
+> the accepted residuals and compensating control.
+
 - **Date:** 2026-08-06
-- **Status:** Approved design, pending spec review
+- **Status:** ABANDONED — not implemented (was: Approved design, pending spec review)
 - **Scope:** `tests/test_architecture_security_boundaries.py` — the two AST entry
   points `_checkpoint_boundary_violations_for_source` and
   `_checkpoint_callback_order_violations_for_source`, their supporting helpers,
