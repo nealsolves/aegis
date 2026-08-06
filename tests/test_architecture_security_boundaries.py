@@ -2463,6 +2463,11 @@ def _scope_capability_violations(
     violations: list[str] = []
     tainted_names: set[str] = set()
     tainted_attributes: set[str] = set()
+    # Names of module-level functions proven to hand a capability back to the
+    # caller (directly, through a capability-bound parameter/default, or by
+    # returning another such function's call).  Populated by a fixed point
+    # below, before the binding fixed point and the violation walk consume it.
+    capability_returning: set[str] = set()
 
     def forbidden_path(path: str) -> bool:
         leaf = path.rsplit(".", 1)[-1]
@@ -2508,6 +2513,10 @@ def _scope_capability_violations(
                     and path.split(".", 1)[0] in {"builtins", "importlib"}
                     for path in base_paths
                 )
+                or any(
+                    path == "__builtins__" or path.endswith(".__builtins__")
+                    for path in base_paths
+                )
             )
         if isinstance(expression, ast.NamedExpr):
             return expression_is_tainted(expression.value)
@@ -2549,7 +2558,13 @@ def _scope_capability_violations(
             )
         if isinstance(expression, ast.Call):
             return (
-                expression_is_tainted(expression.func)
+                any(
+                    candidate in capability_returning
+                    for candidate in _resolved_expression_candidates(
+                        expression.func, aliases
+                    )
+                )
+                or expression_is_tainted(expression.func)
                 or any(expression_is_tainted(argument) for argument in expression.args)
                 or any(
                     expression_is_tainted(keyword.value)
@@ -2629,6 +2644,66 @@ def _scope_capability_violations(
                         for target in statement.targets
                     )
 
+    functions: dict[str, ast.AST] = {
+        node.name: node
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+
+    def _capability_bound_parameters(function: ast.AST) -> set[str]:
+        bound: set[str] = set()
+        positional = (*function.args.posonlyargs, *function.args.args)
+        default_targets = positional[
+            len(positional) - len(function.args.defaults):
+        ]
+        for target, default in zip(
+            default_targets, function.args.defaults, strict=True
+        ):
+            if expression_is_tainted(default):
+                bound.add(target.arg)
+        for target, default in zip(
+            function.args.kwonlyargs, function.args.kw_defaults, strict=True
+        ):
+            if default is not None and expression_is_tainted(default):
+                bound.add(target.arg)
+        return bound
+
+    def _direct_returns(function: ast.AST) -> "list[ast.Return]":
+        found: list[ast.Return] = []
+        stack = list(function.body)
+        while stack:
+            current = stack.pop()
+            if isinstance(
+                current,
+                (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef),
+            ):
+                continue
+            if isinstance(current, ast.Return):
+                found.append(current)
+            stack.extend(ast.iter_child_nodes(current))
+        return found
+
+    def _return_is_tainted(expression: ast.AST, local_taint: set[str]) -> bool:
+        if isinstance(expression, ast.Name) and expression.id in local_taint:
+            return True
+        return expression_is_tainted(expression)
+
+    for _ in range(len(functions) + 1):
+        changed = False
+        for name, function in functions.items():
+            if name in capability_returning:
+                continue
+            local_taint = _capability_bound_parameters(function)
+            for statement in _direct_returns(function):
+                if statement.value is not None and _return_is_tainted(
+                    statement.value, local_taint
+                ):
+                    capability_returning.add(name)
+                    changed = True
+                    break
+        if not changed:
+            break
+
     for _ in range(len(bindings) + 1):
         if not any(bind(target, value, prefix) for target, value, prefix in bindings):
             break
@@ -2671,16 +2746,16 @@ def _deeply_immutable_global(
         return True
     if isinstance(expression, ast.Attribute):
         # An imported/object attribute may be a mutable descriptor result.  The
-        # referent cannot be proven immutable from this module's syntax alone.
+        # referent cannot be proven immutable from this module's syntax alone,
+        # so only a *public* member name of a known-immutable Enum owner is
+        # accepted.  A denylist of known-mutable dunder/sunder names can never
+        # be complete (e.g. ``__members__``, ``_generate_next_value_``); every
+        # underscore-prefixed attribute is an internal whose referent is not
+        # provably immutable and is rejected fail-closed.
         return (
             isinstance(expression.value, ast.Name)
             and expression.value.id in immutable_attribute_owners
-            and expression.attr not in {
-                "__dict__",
-                "_member_map_",
-                "_member_names_",
-                "_value2member_map_",
-            }
+            and not expression.attr.startswith("_")
         )
     if isinstance(expression, ast.Subscript):
         return _deeply_immutable_global(
@@ -2780,7 +2855,19 @@ def _deeply_immutable_global(
 
 
 def _checkpoint_boundary_violations_for_source(source: str) -> list[str]:
-    """Reject capability aliases, reflection, and mutable trust-boundary state."""
+    """Reject capability aliases, reflection, and mutable trust-boundary state.
+
+    Accepted residual (source-owner attack, outside the threat model): this
+    tripwire guards edits *to* the checkpoint modules against reintroducing a
+    capability leak; it does not — and cannot statically — defend against an
+    in-process attacker who rewrites an ``aegis._internal`` module and then
+    forces a reload so a monkeypatched internal-owner export republishes. That
+    attacker already owns AEGIS's own source, which is strictly more authority
+    than any checkpoint API grants, so the checkpoint boundary provides nothing
+    left to bypass. Closing it statically would require whole-program runtime
+    trust of the interpreter, which no AST checker can assert. It is therefore
+    an accepted analyzer residual, not a defect to fix here.
+    """
     tree = ast.parse(source)
     aliases = _assignment_alias_candidates(tree, _import_aliases(tree))
     violations = _scope_capability_violations(tree, aliases)
@@ -3246,6 +3333,19 @@ def _checkpoint_callback_order_violations_for_source(
                                     )
                                 )
                     paths = returned
+            elif isinstance(value, (ast.Tuple, ast.List, ast.Set)):
+                container_paths: set[str] = set()
+                for element in value.elts:
+                    container_paths |= _resolved_expression_candidates(
+                        element, resolved
+                    )
+                paths = container_paths
+            elif (
+                isinstance(value, ast.Call)
+                and isinstance(value.func, ast.Attribute)
+                and value.func.attr in {"pop", "get"}
+            ):
+                paths = _resolved_expression_candidates(value.func.value, resolved)
             paths = paths or {target.id}
             if keep_prior:
                 resolved.setdefault(target.id, set()).update(paths)
@@ -3421,7 +3521,7 @@ def _checkpoint_callback_order_violations_for_source(
             if (
                 isinstance(expression, ast.Call)
                 and isinstance(expression.func, ast.Attribute)
-                and expression.func.attr == "get"
+                and expression.func.attr in {"get", "pop"}
             ):
                 return callable_candidates(expression.func.value)
             if isinstance(expression, ast.Call) and expression.args:
@@ -3456,6 +3556,14 @@ def _checkpoint_callback_order_violations_for_source(
         if preflight_name == "validate":
             return paths == {"aegis.preflight.validate"}
         return call_matches(call, preflight_name)
+
+    def context_can_suppress(expression: ast.AST) -> bool:
+        if not isinstance(expression, ast.Call):
+            return False
+        return any(
+            path == "contextlib.suppress" or path.endswith(".contextlib.suppress")
+            for path in call_paths(expression)
+        )
 
     def function_has_direct_boundary(name: str) -> bool:
         return any(
@@ -3994,6 +4102,18 @@ def _checkpoint_callback_order_violations_for_source(
     ) -> tuple[bool, int]:
         callback_count = 0
         for statement in statements:
+            if isinstance(statement, ast.Assert):
+                entry_preflight = preflight_guaranteed
+                for expression in (statement.test, statement.msg):
+                    if expression is None:
+                        continue
+                    _, count = analyze_expression(expression, entry_preflight)
+                    callback_count += count
+                # ``assert`` statements are stripped under ``python -O``; an
+                # assertion can never establish that a preflight ran.  Any
+                # boundary reached inside it is still counted (against entry
+                # state), but the assert must not advance preflight.
+                continue
             if isinstance(statement, ast.If):
                 test_preflight, test_count = analyze_expression(
                     statement.test,
@@ -4122,17 +4242,28 @@ def _checkpoint_callback_order_violations_for_source(
                 )
                 continue
             if isinstance(statement, (ast.With, ast.AsyncWith)):
+                suppresses = False
                 for item in statement.items:
                     preflight_guaranteed, count = analyze_expression(
                         item.context_expr,
                         preflight_guaranteed,
                     )
                     callback_count += count
-                preflight_guaranteed, body_count = analyze_block(
+                    if context_can_suppress(item.context_expr):
+                        suppresses = True
+                entry_preflight = preflight_guaranteed
+                body_preflight, body_count = analyze_block(
                     statement.body,
                     preflight_guaranteed,
                 )
                 callback_count += body_count
+                # A suppressing context manager (contextlib.suppress) can
+                # swallow an exception raised mid-body, so statements after a
+                # failing preflight may be skipped; such a body cannot
+                # establish guaranteed preflight for what follows.
+                preflight_guaranteed = (
+                    entry_preflight if suppresses else body_preflight
+                )
                 continue
 
             for expression in simple_statement_expressions(statement):
@@ -6253,8 +6384,40 @@ def test_checkpoint_architecture_checker_rejects_round6_mutable_and_shadow_bypas
     assert _checkpoint_boundary_violations_for_source(source)
 
 
+@pytest.mark.parametrize(
+    "source",
+    (
+        (
+            "from aegis._internal.signature_models import EvidenceType\n"
+            "POLICY = EvidenceType.__members__\n"
+        ),
+        (
+            "from aegis._internal.signature_models import EvidenceType\n"
+            "POLICY = EvidenceType._generate_next_value_\n"
+        ),
+    ),
+    ids=(
+        "enum-members-proxy-referent",
+        "enum-internal-sunder-referent",
+    ),
+)
+def test_checkpoint_architecture_checker_rejects_round7_enum_internal_referents(
+    source: str,
+) -> None:
+    assert _checkpoint_boundary_violations_for_source(source)
+
+
 def test_checkpoint_architecture_checker_accepts_proven_immutable_subscript() -> None:
     source = "VALUES = ('allowed', 'denied')\nFIRST = VALUES[0]\n"
+
+    assert _checkpoint_boundary_violations_for_source(source) == []
+
+
+def test_checkpoint_architecture_checker_accepts_public_enum_member_referent() -> None:
+    source = (
+        "from aegis._internal.signature_models import EvidenceType\n"
+        "POLICY = EvidenceType.CHAIN_CHECKPOINT\n"
+    )
 
     assert _checkpoint_boundary_violations_for_source(source) == []
 
@@ -6316,4 +6479,84 @@ def test_global_declaration_does_not_inherit_safe_outer_shadow() -> None:
         "    return inner()\n"
     )
 
+    assert _checkpoint_boundary_violations_for_source(source)
+
+
+@pytest.mark.parametrize(
+    "source",
+    (
+        (
+            "from aegis.preflight import validate\n"
+            "def create(source, signer):\n"
+            "    assert validate(source)\n"
+            "    signer.sign(b'x', None)\n"
+        ),
+        (
+            "import contextlib\n"
+            "from aegis.preflight import validate\n"
+            "def create(source, signer):\n"
+            "    with contextlib.suppress(Exception):\n"
+            "        validate(source)\n"
+            "    signer.sign(b'x', None)\n"
+        ),
+        (
+            "def create(source, signer):\n"
+            "    handlers = [signer.sign]\n"
+            "    handlers[0](b'x', None)\n"
+        ),
+        (
+            "def create(source, signer):\n"
+            "    handlers = [signer.sign]\n"
+            "    handler = handlers.pop()\n"
+            "    handler(b'x', None)\n"
+        ),
+    ),
+    ids=(
+        "assert-gated-preflight",
+        "suppress-gated-preflight",
+        "container-alias-boundary",
+        "pop-alias-boundary",
+    ),
+)
+def test_checkpoint_callback_checker_rejects_round7_gate_and_alias_bypasses(
+    source: str,
+) -> None:
+    assert _checkpoint_callback_order_violations_for_source(
+        source,
+        function_name="create",
+        boundary_name="sign",
+        preflight_name="validate",
+    )
+
+
+@pytest.mark.parametrize(
+    "source",
+    (
+        (
+            "def acquire():\n    return open\n"
+            "def run(source):\n"
+            "    invoke = acquire()\n"
+            "    return invoke(source)\n"
+        ),
+        (
+            "def acquire(hidden=open):\n    return hidden\n"
+            "def run(source):\n"
+            "    invoke = acquire()\n"
+            "    return invoke(source)\n"
+        ),
+        (
+            "def run(source):\n"
+            "    opener = __builtins__['open']\n"
+            "    return opener(source)\n"
+        ),
+    ),
+    ids=(
+        "helper-return-capability",
+        "helper-default-capability",
+        "builtins-subscript-capability",
+    ),
+)
+def test_checkpoint_architecture_checker_rejects_round7_capability_laundering(
+    source: str,
+) -> None:
     assert _checkpoint_boundary_violations_for_source(source)
