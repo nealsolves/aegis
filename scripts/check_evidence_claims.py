@@ -38,6 +38,7 @@ _ZERO_WIDTH_TRANSLATION = str.maketrans(
 _WHITESPACE_RE = re.compile(r"\s+")
 _MAX_MARKDOWN_LABEL_CHARS = 8_192
 _MAX_MARKDOWN_TARGET_CHARS = 16_384
+_MAX_PARITY_DOC_PATH_BYTES = 1_024
 _MARKDOWN_PREFIX_RE = re.compile(
     r"^[ \t]{0,3}(?:#{1,6}[ \t]+|[-*+][ \t]+|>[ \t]?|\d{1,9}[.)][ \t]+)"
 )
@@ -867,9 +868,14 @@ def _validated_parity_docs(manifest: dict) -> frozenset[str]:
         raise ClaimsGuardError("manifest has malformed parity_docs")
     validated: set[str] = set()
     for relative in parity_docs:
+        if not isinstance(relative, str) or not relative:
+            raise ClaimsGuardError("manifest has malformed parity_docs")
+        try:
+            encoded_size = len(relative.encode("utf-8"))
+        except UnicodeError as error:
+            raise ClaimsGuardError("manifest has malformed parity_docs") from error
         if (
-            not isinstance(relative, str)
-            or not relative
+            encoded_size > _MAX_PARITY_DOC_PATH_BYTES
             or Path(relative).is_absolute()
             or ".." in Path(relative).parts
         ):
@@ -947,16 +953,27 @@ def _extract_frontend_blocks(
     counters: dict[str, int],
 ) -> tuple[TextBlock, ...]:
     blocks: list[TextBlock] = []
-    offset = 0
-    for segment in document.split("\0"):
+    segment_start = 0
+    source_line = 1
+    while True:
+        separator = document.find("\0", segment_start)
+        segment_end = len(document) if separator < 0 else separator
+        if counters["public_blocks"] >= limits.max_public_blocks:
+            raise ClaimsGuardError("public copy block limit exceeded")
+        segment = document[segment_start:segment_end]
         content_offset = 0
         while content_offset < len(segment) and segment[content_offset].isspace():
             content_offset += 1
-        line = document.count("\n", 0, offset + content_offset) + 1
+        line = source_line + segment.count("\n", 0, content_offset)
         block = _bounded_block(path, line, segment, limits, counters)
         if block is not None:
             blocks.append(block)
-        offset += len(segment) + 1
+        else:
+            counters["public_blocks"] += 1
+        source_line += segment.count("\n")
+        if separator < 0:
+            break
+        segment_start = separator + 1
     return tuple(blocks)
 
 
@@ -975,11 +992,17 @@ def run_guard(
 
     try:
         inventory_errors = check_documentation_inventory(manifest)
-    except (OSError, UnicodeError, ValueError, RuntimeError) as error:
+    except (
+        OSError,
+        UnicodeError,
+        ValueError,
+        RuntimeError,
+        TypeError,
+        KeyError,
+    ) as error:
         raise ClaimsGuardError("documentation inventory validation failed") from error
     if inventory_errors:
         raise ClaimsGuardError("documentation inventory validation failed")
-    parity_docs = _validated_parity_docs(manifest)
 
     try:
         repository_files = collect_repository_files(require_git=True)
@@ -994,6 +1017,7 @@ def run_guard(
     current_relatives = {
         path.relative_to(repo_root).as_posix() for path in current_paths
     }
+    parity_docs = _validated_parity_docs(manifest)
     mandatory_paths = MANDATORY_CURRENT_PATHS | parity_docs
     missing = sorted(mandatory_paths - current_relatives)
     if missing:

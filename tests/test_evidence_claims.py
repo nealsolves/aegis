@@ -7,6 +7,7 @@ import subprocess
 import pytest
 import yaml
 
+from scripts import check_doc_parity
 from scripts.check_evidence_claims import (
     MANDATORY_CURRENT_PATHS,
     ClaimFinding,
@@ -193,9 +194,13 @@ def test_run_guard_requires_parity_docs_to_be_current(tmp_path, monkeypatch):
         run_guard(repo_root=tmp_path, frontend_root=tmp_path / "frontend")
 
 
-def test_run_guard_rejects_malformed_parity_docs_before_git(tmp_path, monkeypatch):
+def test_run_guard_validates_parity_docs_after_git_and_selection(
+    tmp_path,
+    monkeypatch,
+):
     manifest = _manifest()
     manifest["parity_docs"] = [42]
+    calls = []
     monkeypatch.setattr(
         "scripts.check_evidence_claims.load_manifest",
         lambda: manifest,
@@ -205,16 +210,74 @@ def test_run_guard_rejects_malformed_parity_docs_before_git(tmp_path, monkeypatc
         lambda _manifest: [],
     )
 
-    def unexpected_collect(**_kwargs):
-        raise AssertionError("Git must not run after malformed parity_docs")
+    def collect(*, require_git):
+        calls.append(("collect", require_git))
+        return []
+
+    def select(repo_root, loaded_manifest, repository_files, limits):
+        calls.append("select")
+        assert repo_root == tmp_path
+        assert loaded_manifest is manifest
+        assert repository_files == []
+        assert limits == ScanLimits()
+        return ()
 
     monkeypatch.setattr(
         "scripts.check_evidence_claims.collect_repository_files",
-        unexpected_collect,
+        collect,
+    )
+    monkeypatch.setattr(
+        "scripts.check_evidence_claims.select_current_paths",
+        select,
     )
 
     with pytest.raises(ClaimsGuardError, match="malformed parity_docs"):
         run_guard(repo_root=tmp_path, frontend_root=tmp_path / "frontend")
+
+    assert calls == [("collect", True), "select"]
+
+
+def test_main_bounds_malformed_inventory_pattern_failure(
+    monkeypatch,
+    capsys,
+):
+    manifest = _manifest()
+    manifest["documentation_inventory"]["current"] = [42]
+    monkeypatch.setattr(
+        "scripts.check_evidence_claims.load_manifest",
+        lambda: manifest,
+    )
+    monkeypatch.setattr(
+        check_doc_parity,
+        "collect_documentation_files",
+        lambda: [check_doc_parity.REPO_ROOT / "README.md"],
+    )
+
+    assert main([]) == 2
+    error = capsys.readouterr().err
+    assert error == "claims guard failed: documentation inventory validation failed\n"
+    assert "Traceback" not in error
+    assert "42" not in error
+
+
+def test_main_bounds_inventory_key_error(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "scripts.check_evidence_claims.load_manifest",
+        lambda: _manifest(),
+    )
+
+    def fail(_manifest):
+        raise KeyError("SECRET inventory payload")
+
+    monkeypatch.setattr(
+        "scripts.check_evidence_claims.check_documentation_inventory",
+        fail,
+    )
+
+    assert main([]) == 2
+    error = capsys.readouterr().err
+    assert error == "claims guard failed: documentation inventory validation failed\n"
+    assert "SECRET" not in error
 
 
 def test_run_guard_scans_fixture_documents_and_react_copy(tmp_path, monkeypatch):
@@ -256,6 +319,30 @@ def test_run_guard_preserves_react_block_source_lines(tmp_path, monkeypatch):
     assert [(finding.rule_id, finding.line) for finding in result.findings] == [
         ("INTEGRITY_IS_STORAGE", 5)
     ]
+
+
+def test_run_guard_counts_empty_react_segments_before_processing_next_block(
+    tmp_path,
+    monkeypatch,
+):
+    frontend, react_path, _manifest_data, _repository_files = _guard_fixture(
+        tmp_path,
+        monkeypatch,
+        document_text="",
+    )
+    monkeypatch.setattr(
+        "scripts.check_evidence_claims.extract_frontend_public_copy",
+        lambda _paths, **_kwargs: {
+            react_path: "\0\0\0SHOULD_NOT_BE_NORMALIZED"
+        },
+    )
+    limits = ScanLimits(
+        max_public_blocks=3,
+        max_normalized_block_bytes=1,
+    )
+
+    with pytest.raises(ClaimsGuardError, match="public copy block limit"):
+        run_guard(repo_root=tmp_path, frontend_root=frontend, limits=limits)
 
 
 def test_run_guard_passes_required_boundary_arguments(tmp_path, monkeypatch):
@@ -472,6 +559,22 @@ def test_run_guard_rejects_oversized_extracted_documents(
 
     with pytest.raises(ClaimsGuardError, match=message):
         run_guard(repo_root=tmp_path, frontend_root=frontend, limits=limits)
+
+
+def test_run_guard_bounds_oversized_parity_path_diagnostic(tmp_path, monkeypatch):
+    frontend, _react_path, manifest, _repository_files = _guard_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    long_path = "SECRET_PARITY_PATH_" * 1_000 + ".md"
+    manifest["parity_docs"] = [long_path]
+
+    with pytest.raises(ClaimsGuardError) as captured:
+        run_guard(repo_root=tmp_path, frontend_root=frontend)
+
+    message = str(captured.value)
+    assert len(message.encode("utf-8")) <= 120
+    assert long_path not in message
 
 
 @pytest.mark.parametrize(
