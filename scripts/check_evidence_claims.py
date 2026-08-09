@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from bisect import bisect_left
 import fnmatch
 import html
 from dataclasses import dataclass
@@ -40,6 +41,68 @@ MANDATORY_CURRENT_PATHS = frozenset(
         "docs/reference/OPERATIONS_RUNBOOK.md",
     }
 )
+INTEGRITY_SUBJECT = re.compile(
+    r"\b(?:checksums?|signatures?|hash(?:[- ]?chains?| chaining))\b",
+    re.IGNORECASE,
+)
+CHECKPOINT_SUBJECT = re.compile(
+    r"\b(?:(?:trusted|chain|workflow) )?checkpoints?\b|\bcheckpoint[- ]proven\b",
+    re.IGNORECASE,
+)
+AEGIS_SUBJECT = re.compile(
+    r"\bAEGIS\b|\bAEGIS (?:APIs?|exports?|reports?|records?|evidence)\b",
+    re.IGNORECASE,
+)
+EVIDENCE_RECORD_SUBJECT = re.compile(
+    r"\b(?:audit|invocation|workflow|evidence) (?:artifacts?|records?|logs?)\b",
+    re.IGNORECASE,
+)
+PROVIDER_SUBJECT = re.compile(
+    r"\b(?:Amazon S3|AWS|Azure|Google Cloud|Cloud Storage|storage provider)\b",
+    re.IGNORECASE,
+)
+STORAGE_PREDICATE = re.compile(
+    r"\b(?:immutable|immutability|append[- ]only|WORM|unalterable|indelible|"
+    r"tamper[- ]proof|deletion[- ]proof|cannot be (?:changed|deleted|modified|rewritten))\b",
+    re.IGNORECASE,
+)
+CERTIFICATION_PREDICATE = re.compile(
+    r"\b(?:certified|certification|compliant|guaranteed compliance|audit[- ]ready|"
+    r"regulatory[- ]ready|regulatory approval|legally (?:admissible|sufficient))\b",
+    re.IGNORECASE,
+)
+CHECKPOINT_EXCESS_PREDICATE = re.compile(
+    r"\b(?:latest retrieval|latest record|no later activity|future inactivity|"
+    r"immutable storage|WORM storage|certification|compliance)\b",
+    re.IGNORECASE,
+)
+PSEUDO_NEGATION = re.compile(
+    r"\b(?:not only|does not merely|do not merely|cannot merely|"
+    r"does not fail to|do not fail to|cannot fail to)\b",
+    re.IGNORECASE,
+)
+BOUNDED_NEGATIVE = re.compile(
+    r"\b(?:(?:do|does) not|cannot|can not|never) (?:provide|create|make|guarantee|"
+    r"establish|prove|constitute|mean)\b|\bprovides? tamper[- ]evidence, not\b|"
+    r"\balone (?:do|does) not\b",
+    re.IGNORECASE,
+)
+_ILLUSTRATIVE_PROVIDER_CONTEXT = re.compile(
+    r"\billustrative and non[- ]normative\b",
+    re.IGNORECASE,
+)
+_CLAUSE_BOUNDARY = re.compile(
+    r"[.;!?]|,\s*(?:and|but|while|yet)\b",
+    re.IGNORECASE,
+)
+MAX_RELATION_DISTANCE = 400
+_CONTEXTUAL_RULES = (
+    ("INTEGRITY_IS_STORAGE", INTEGRITY_SUBJECT, STORAGE_PREDICATE),
+    ("CHECKPOINT_OVERCLAIM", CHECKPOINT_SUBJECT, CHECKPOINT_EXCESS_PREDICATE),
+    ("AEGIS_CERTIFICATION_CLAIM", AEGIS_SUBJECT, CERTIFICATION_PREDICATE),
+    ("IMMUTABLE_EVIDENCE_RECORD", EVIDENCE_RECORD_SUBJECT, STORAGE_PREDICATE),
+    ("IMMUTABLE_EVIDENCE_RECORD", AEGIS_SUBJECT, STORAGE_PREDICATE),
+)
 
 
 class ClaimsGuardError(RuntimeError):
@@ -70,6 +133,157 @@ class ClaimFinding:
     path: Path
     line: int
     excerpt: str
+
+
+def scan_claims(blocks: tuple[TextBlock, ...]) -> tuple[ClaimFinding, ...]:
+    """Return contextual assurance overclaims from normalized public blocks."""
+
+    def relation_distance(subject: re.Match[str], predicate: re.Match[str]) -> int:
+        if subject.end() <= predicate.start():
+            return predicate.start() - subject.end()
+        if predicate.end() <= subject.start():
+            return subject.start() - predicate.end()
+        return 0
+
+    def related(subject: re.Match[str], predicate: re.Match[str]) -> bool:
+        return relation_distance(subject, predicate) <= MAX_RELATION_DISTANCE
+
+    def negates_relation(
+        text: str,
+        subject: re.Match[str],
+        predicate: re.Match[str],
+    ) -> bool:
+        if subject.end() <= predicate.start():
+            between = text[subject.end():predicate.start()]
+            subject_precedes = True
+        elif predicate.end() <= subject.start():
+            between = text[predicate.end():subject.start()]
+            subject_precedes = False
+        else:
+            between = ""
+            subject_precedes = True
+        if PSEUDO_NEGATION.search(between) is not None:
+            return False
+        for negative in BOUNDED_NEGATIVE.finditer(between):
+            connection = (
+                between[negative.end():]
+                if subject_precedes
+                else between[:negative.start()]
+            )
+            if _CLAUSE_BOUNDARY.search(connection) is None:
+                return True
+        return False
+
+    def related_matches(
+        subject_pattern: re.Pattern[str],
+        predicate: re.Match[str],
+    ) -> tuple[re.Match[str], ...]:
+        subjects = pattern_matches[subject_pattern]
+        first_possible = bisect_left(
+            match_ends[subject_pattern],
+            predicate.start() - MAX_RELATION_DISTANCE,
+        )
+        candidates: list[re.Match[str]] = []
+        for subject in subjects[first_possible:]:
+            if subject.start() > predicate.end() + MAX_RELATION_DISTANCE:
+                break
+            if related(subject, predicate):
+                candidates.append(subject)
+        return tuple(candidates)
+
+    def has_unnegated_relation(
+        text: str,
+        subject_pattern: re.Pattern[str],
+        predicate: re.Match[str],
+    ) -> bool:
+        return any(
+            not negates_relation(text, subject, predicate)
+            for subject in related_matches(subject_pattern, predicate)
+        )
+
+    def bounded_excerpt(text: str, predicate_offset: int) -> str:
+        encoded = text.encode("utf-8")
+        predicate_byte = len(text[:predicate_offset].encode("utf-8"))
+        start = max(0, predicate_byte - 120)
+        end = min(len(encoded), start + 240)
+        start = max(0, end - 240)
+        return encoded[start:end].decode("utf-8", errors="ignore").strip()
+
+    def iter_windows():
+        for block in blocks:
+            yield block.text, block, None
+        for first, second in zip(blocks, blocks[1:]):
+            if first.path == second.path:
+                yield f"{first.text} {second.text}", first, second
+
+    findings: dict[tuple[str, Path, int], ClaimFinding] = {}
+    patterns = frozenset(
+        pattern
+        for _, subject_pattern, predicate_pattern in _CONTEXTUAL_RULES
+        for pattern in (subject_pattern, predicate_pattern)
+    ) | frozenset({PROVIDER_SUBJECT})
+
+    for text, first, second in iter_windows():
+        pattern_matches = {
+            pattern: tuple(pattern.finditer(text)) for pattern in patterns
+        }
+        match_ends = {
+            pattern: tuple(match.end() for match in matches)
+            for pattern, matches in pattern_matches.items()
+        }
+        provider_context = (
+            _ILLUSTRATIVE_PROVIDER_CONTEXT.search(text) is not None
+            and not pattern_matches[AEGIS_SUBJECT]
+            and not pattern_matches[CERTIFICATION_PREDICATE]
+        )
+        split_at = len(first.text) + 1
+
+        for rule_id, subject_pattern, predicate_pattern in _CONTEXTUAL_RULES:
+            subjects = pattern_matches[subject_pattern]
+            if not subjects:
+                continue
+            for predicate in pattern_matches[predicate_pattern]:
+                if not has_unnegated_relation(text, subject_pattern, predicate):
+                    continue
+                if (
+                    rule_id == "IMMUTABLE_EVIDENCE_RECORD"
+                    and subject_pattern is EVIDENCE_RECORD_SUBJECT
+                    and related_matches(INTEGRITY_SUBJECT, predicate)
+                ):
+                    continue
+                if (
+                    rule_id == "IMMUTABLE_EVIDENCE_RECORD"
+                    and provider_context
+                    and related_matches(PROVIDER_SUBJECT, predicate)
+                ):
+                    continue
+
+                predicate_block = (
+                    second
+                    if second is not None and predicate.start() >= split_at
+                    else first
+                )
+                key = (rule_id, predicate_block.path, predicate_block.line)
+                findings.setdefault(
+                    key,
+                    ClaimFinding(
+                        rule_id=rule_id,
+                        path=predicate_block.path,
+                        line=predicate_block.line,
+                        excerpt=bounded_excerpt(text, predicate.start()),
+                    ),
+                )
+
+    return tuple(
+        sorted(
+            findings.values(),
+            key=lambda finding: (
+                finding.path.as_posix(),
+                finding.line,
+                finding.rule_id,
+            ),
+        )
+    )
 
 
 def _balanced_markdown_target_end(text: str, opening: int) -> int | None:

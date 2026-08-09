@@ -7,9 +7,11 @@ import pytest
 from scripts.check_evidence_claims import (
     ClaimsGuardError,
     ScanLimits,
+    TextBlock,
     extract_document_blocks,
     normalize_public_text,
     read_text_source,
+    scan_claims,
     select_current_paths,
 )
 
@@ -339,4 +341,254 @@ def test_extract_document_blocks_adds_normalized_html_source_by_line(tmp_path):
     assert [(block.line, block.text) for block in blocks if block.text.startswith("<")] == [
         (1, '<meta name="description" content="AEGIS evidence">'),
         (2, "<p>immutable evidence</p>"),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("rule_id", "text"),
+    [
+        ("INTEGRITY_IS_STORAGE", "Checksums make the audit log immutable."),
+        ("INTEGRITY_IS_STORAGE", "Hash chaining guarantees WORM evidence."),
+        ("INTEGRITY_IS_STORAGE", "Signatures make records deletion-proof."),
+        (
+            "CHECKPOINT_OVERCLAIM",
+            "A trusted checkpoint proves this is the latest record.",
+        ),
+        (
+            "CHECKPOINT_OVERCLAIM",
+            "Checkpoint-proven means no later activity occurred.",
+        ),
+        (
+            "AEGIS_CERTIFICATION_CLAIM",
+            "AEGIS provides certified compliance evidence.",
+        ),
+        ("AEGIS_CERTIFICATION_CLAIM", "The AEGIS export is regulatory-ready."),
+        ("AEGIS_CERTIFICATION_CLAIM", "AEGIS records are legally admissible."),
+        (
+            "IMMUTABLE_EVIDENCE_RECORD",
+            "Each invocation produces an immutable audit record.",
+        ),
+        (
+            "INTEGRITY_IS_STORAGE",
+            "Not only does hash chaining provide immutable storage.",
+        ),
+        (
+            "INTEGRITY_IS_STORAGE",
+            "Hash chaining does not merely help; it guarantees immutable storage.",
+        ),
+        (
+            "INTEGRITY_IS_STORAGE",
+            "Hash chaining does not fail to guarantee immutable storage.",
+        ),
+    ],
+)
+def test_scan_claims_rejects_overclaims(tmp_path, rule_id, text):
+    findings = scan_claims((TextBlock(tmp_path / "public.md", 7, text),))
+
+    assert [finding.rule_id for finding in findings] == [rule_id]
+    assert findings[0].line == 7
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Hash chaining provides tamper-evidence, not immutable storage.",
+        "Checksums alone do not make storage WORM.",
+        "A checkpoint does not prove latest retrieval or compliance.",
+        "The immutable Python tuple contains approved algorithms.",
+        "Retain the exact immutable CryptoKeyVersion identifier.",
+        "Run aegis compliance export to create a technical report.",
+        (
+            "Azure immutable storage is an illustrative and non-normative "
+            "provider example."
+        ),
+    ],
+)
+def test_scan_claims_accepts_bounded_language(tmp_path, text):
+    assert scan_claims((TextBlock(tmp_path / "public.md", 1, text),)) == ()
+
+
+@pytest.mark.parametrize(
+    ("blocks", "expected_rule"),
+    [
+        (
+            (
+                TextBlock(Path("public.md"), 1, "Hash chaining"),
+                TextBlock(Path("public.md"), 3, "Makes storage immutable."),
+            ),
+            "INTEGRITY_IS_STORAGE",
+        ),
+        (
+            (
+                TextBlock(Path("public.tsx"), 8, "AEGIS evidence"),
+                TextBlock(Path("public.tsx"), 9, "is regulatory-ready."),
+            ),
+            "AEGIS_CERTIFICATION_CLAIM",
+        ),
+        (
+            (
+                TextBlock(
+                    Path("public.md"),
+                    1,
+                    "Hash chaining does not merely help;",
+                ),
+                TextBlock(
+                    Path("public.md"),
+                    2,
+                    "it guarantees immutable storage.",
+                ),
+            ),
+            "INTEGRITY_IS_STORAGE",
+        ),
+        (
+            (
+                TextBlock(
+                    Path("public.md"),
+                    1,
+                    "AEGIS uses Azure immutable storage",
+                ),
+                TextBlock(
+                    Path("public.md"),
+                    2,
+                    "as an illustrative and non-normative example.",
+                ),
+            ),
+            "IMMUTABLE_EVIDENCE_RECORD",
+        ),
+    ],
+)
+def test_scan_claims_rejects_split_and_laundered_claims(blocks, expected_rule):
+    assert expected_rule in {finding.rule_id for finding in scan_claims(blocks)}
+
+
+@pytest.mark.parametrize(
+    "blocks",
+    [
+        (
+            TextBlock(Path("public.md"), 1, "Hash chaining does not make"),
+            TextBlock(Path("public.md"), 2, "storage immutable."),
+        ),
+        (
+            TextBlock(Path("public.md"), 1, "AEGIS does not provide"),
+            TextBlock(Path("public.md"), 2, "certified compliance evidence."),
+        ),
+        (
+            TextBlock(Path("public.md"), 1, "Do not delete this section."),
+            TextBlock(
+                Path("public.md"),
+                2,
+                "Hash chaining guarantees immutable storage.",
+            ),
+        ),
+        (
+            TextBlock(
+                Path("public.md"),
+                1,
+                "Hash chaining " + "context " * 60,
+            ),
+            TextBlock(
+                Path("public.md"),
+                2,
+                "Immutable storage is a separate host control.",
+            ),
+        ),
+    ],
+)
+def test_scan_claims_handles_adjacent_negation_without_unrelated_suppression(blocks):
+    findings = scan_claims(blocks)
+    if blocks[0].text == "Do not delete this section.":
+        assert [finding.rule_id for finding in findings] == [
+            "INTEGRITY_IS_STORAGE"
+        ]
+    else:
+        assert findings == ()
+
+
+def test_scan_claims_relates_predicate_before_subject_and_uses_predicate_line():
+    findings = scan_claims(
+        (
+            TextBlock(Path("public.md"), 5, "Immutable storage"),
+            TextBlock(Path("public.md"), 8, "is guaranteed by hash chaining."),
+        )
+    )
+
+    assert [
+        (finding.rule_id, finding.path, finding.line) for finding in findings
+    ] == [("INTEGRITY_IS_STORAGE", Path("public.md"), 5)]
+
+
+def test_scan_claims_does_not_flow_negation_across_an_unrelated_clause():
+    findings = scan_claims(
+        (
+            TextBlock(
+                Path("public.md"),
+                4,
+                (
+                    "Hash chaining does not make compliance claims, but "
+                    "guarantees immutable storage."
+                ),
+            ),
+        )
+    )
+
+    assert [finding.rule_id for finding in findings] == [
+        "INTEGRITY_IS_STORAGE"
+    ]
+
+
+def test_scan_claims_relates_only_within_maximum_distance():
+    near_findings = scan_claims(
+        (
+            TextBlock(
+                Path("near.md"),
+                1,
+                "Hash chaining " + "x" * 398 + " immutable storage.",
+            ),
+        )
+    )
+    far_findings = scan_claims(
+        (
+            TextBlock(
+                Path("far.md"),
+                1,
+                "Hash chaining " + "x" * 399 + " immutable storage.",
+            ),
+        )
+    )
+
+    assert [finding.rule_id for finding in near_findings] == [
+        "INTEGRITY_IS_STORAGE"
+    ]
+    assert far_findings == ()
+
+
+def test_scan_claims_bounds_excerpt_around_the_predicate():
+    finding = scan_claims(
+        (
+            TextBlock(
+                Path("public.md"),
+                12,
+                "Hash chaining " + "context " * 48 + "immutable storage.",
+            ),
+        )
+    )[0]
+
+    assert "immutable storage" in finding.excerpt
+    assert len(finding.excerpt.encode("utf-8")) <= 240
+
+
+def test_scan_claims_deduplicates_overlapping_adjacent_windows_and_sorts_findings():
+    findings = scan_claims(
+        (
+            TextBlock(Path("z.md"), 3, "AEGIS evidence is regulatory-ready."),
+            TextBlock(Path("z.md"), 4, "Supporting context."),
+            TextBlock(Path("a.md"), 8, "Hash chaining makes storage immutable."),
+        )
+    )
+
+    assert [
+        (finding.rule_id, finding.path, finding.line) for finding in findings
+    ] == [
+        ("INTEGRITY_IS_STORAGE", Path("a.md"), 8),
+        ("AEGIS_CERTIFICATION_CLAIM", Path("z.md"), 3),
     ]
