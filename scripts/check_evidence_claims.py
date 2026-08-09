@@ -17,20 +17,31 @@ import unicodedata
 
 import yaml
 
-from scripts.check_demo_copy import (
-    extract_frontend_public_copy,
-    iter_frontend_public_files,
-)
-from scripts.check_doc_parity import (
-    check_documentation_inventory,
-    collect_repository_files,
-    load_manifest,
-)
+if __package__:
+    from scripts.check_demo_copy import (
+        extract_frontend_public_copy,
+        iter_frontend_public_files,
+    )
+    from scripts.check_doc_parity import (
+        check_documentation_inventory,
+        collect_repository_files,
+        load_manifest,
+    )
+else:
+    from check_demo_copy import (
+        extract_frontend_public_copy,
+        iter_frontend_public_files,
+    )
+    from check_doc_parity import (
+        check_documentation_inventory,
+        collect_repository_files,
+        load_manifest,
+    )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_PATH = REPO_ROOT / "doc_parity_manifest.yaml"
 FRONTEND_ROOT = REPO_ROOT / "demo-app-react" / "src"
-TEXT_SUFFIXES = frozenset({".html", ".md", ".mermaid", ".svg"})
+TEXT_SUFFIXES = frozenset({".html", ".json", ".md", ".mermaid", ".svg"})
 BINARY_SUFFIXES = frozenset({".png"})
 _ZERO_WIDTH_TRANSLATION = str.maketrans(
     {"\u200b": "", "\u200c": "", "\u200d": "", "\ufeff": ""}

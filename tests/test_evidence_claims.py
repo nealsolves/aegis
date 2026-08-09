@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import subprocess
+import sys
 
 import pytest
 import yaml
@@ -71,6 +73,41 @@ def _guard_fixture(tmp_path, monkeypatch, *, document_text="Bounded language.\n"
         lambda _root: iter((react_path,)),
     )
     return frontend, react_path, manifest, repository_files
+
+
+def test_direct_script_runs_from_repository_root_without_pythonpath():
+    repo_root = Path(__file__).resolve().parents[1]
+    environment = os.environ.copy()
+    environment.pop("PYTHONPATH", None)
+
+    completed = subprocess.run(
+        [sys.executable, "scripts/check_evidence_claims.py"],
+        cwd=repo_root,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+    assert completed.returncode == 1, completed.stderr
+    assert completed.stderr == ""
+    assert "ModuleNotFoundError" not in completed.stderr
+    assert "claims guard failed:" not in completed.stderr
+    finding_lines = completed.stdout.splitlines()
+    assert finding_lines
+    assert all(len(line.encode("utf-8")) <= 512 for line in finding_lines)
+    sort_keys = []
+    for finding_line in finding_lines:
+        rule_id, location_and_excerpt = finding_line.split(": ", 1)
+        location, _excerpt = location_and_excerpt.split(": ", 1)
+        path, line = location.rsplit(":", 1)
+        sort_keys.append((path, int(line), rule_id))
+    assert sort_keys == sorted(sort_keys)
+    assert sum(
+        "demo-app-react/src/help/helpContent.ts:" in line
+        for line in finding_lines
+    ) == 2
 
 
 def test_main_returns_one_and_prints_bounded_finding(monkeypatch, capsys):
@@ -300,6 +337,43 @@ def test_run_guard_scans_fixture_documents_and_react_copy(tmp_path, monkeypatch)
     assert result.findings[0].path == react_path
     assert result.scanned_files == len(repository_files) + 1
     assert result.binary_files == 0
+
+
+def test_run_guard_scans_json_string_values_with_source_lines(
+    tmp_path,
+    monkeypatch,
+):
+    frontend, react_path, manifest, repository_files = _guard_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    json_path = (
+        tmp_path
+        / "docs/spec-driven-dev/changes/example/context.json"
+    )
+    json_path.parent.mkdir(parents=True)
+    json_path.write_text(
+        "{\n"
+        '  "mechanism": "Hash chaining",\n'
+        '  "claim": "Makes storage immutable."\n'
+        "}\n",
+        encoding="utf-8",
+    )
+    manifest["documentation_inventory"]["current"].append(
+        "docs/spec-driven-dev/changes/example/**"
+    )
+    repository_files.append(json_path)
+    monkeypatch.setattr(
+        "scripts.check_evidence_claims.extract_frontend_public_copy",
+        lambda _paths, **_kwargs: {react_path: "Bounded language."},
+    )
+
+    result = run_guard(repo_root=tmp_path, frontend_root=frontend)
+
+    assert [
+        (finding.rule_id, finding.path, finding.line)
+        for finding in result.findings
+    ] == [("INTEGRITY_IS_STORAGE", json_path, 3)]
 
 
 def test_run_guard_preserves_react_block_source_lines(tmp_path, monkeypatch):
@@ -745,6 +819,7 @@ def test_select_current_paths_rejects_special_file(tmp_path):
         ("claims.rst", b"unsafe", "unsupported current-document suffix"),
         ("claims.md", b"\xff", "source is not valid UTF-8"),
         ("claims.md", b"12345", "source file limit exceeded"),
+        ("context.json", b"12345", "source file limit exceeded"),
     ],
 )
 def test_read_text_source_rejects_unsupported_invalid_and_oversized(
