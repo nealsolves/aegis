@@ -62,6 +62,53 @@ def test_documentation_inventory_rejects_an_unclassified_tracked_doc(
     ]
 
 
+def test_collect_repository_files_includes_cached_and_untracked_nonignored(
+    tmp_path,
+    monkeypatch,
+):
+    module = _load_doc_parity_module()
+    monkeypatch.setattr(module, "REPO_ROOT", tmp_path)
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    _write_file(tmp_path, "docs/cached.md", "# Cached")
+    _write_file(tmp_path, "docs/untracked.md", "# Untracked")
+    _write_file(tmp_path, ".gitignore", "docs/ignored.md")
+    _write_file(tmp_path, "docs/ignored.md", "# Ignored")
+    subprocess.run(["git", "add", "docs/cached.md", ".gitignore"], cwd=tmp_path, check=True)
+
+    relative = {
+        path.relative_to(tmp_path).as_posix()
+        for path in module.collect_repository_files(require_git=True)
+    }
+
+    assert "docs/cached.md" in relative
+    assert "docs/untracked.md" in relative
+    assert "docs/ignored.md" not in relative
+
+
+def test_collect_repository_files_handles_newline_in_filename(tmp_path, monkeypatch):
+    module = _load_doc_parity_module()
+    monkeypatch.setattr(module, "REPO_ROOT", tmp_path)
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    unusual = tmp_path / "docs" / "line\nbreak.md"
+    unusual.parent.mkdir(parents=True)
+    try:
+        unusual.write_text("# Visible", encoding="utf-8")
+    except OSError:
+        pytest.skip("newline filename creation unavailable")
+
+    result = module.collect_repository_files(require_git=True)
+
+    assert unusual in result
+
+
+def test_collect_repository_files_require_git_fails_closed(tmp_path, monkeypatch):
+    module = _load_doc_parity_module()
+    monkeypatch.setattr(module, "REPO_ROOT", tmp_path)
+
+    with pytest.raises(RuntimeError, match="Git repository enumeration failed"):
+        module.collect_repository_files(require_git=True)
+
+
 def test_authoritative_policy_dsl_documents_the_workflow_schema():
     policy_dsl_spec = (
         SCRIPT_PATH.parents[1] / "policies" / "policy_dsl_spec.md"
