@@ -2,17 +2,17 @@
 
 Date: 2026-08-04
 
-Status: Revised after adversarial review; awaiting approval
+Status: Historical approved design — implemented; ADR-0015 is authoritative
 
 Issue: [#46 — trusted chain checkpoints and adversarial anchor verification](https://github.com/nealsolves/aegis/issues/46)
 
 ## Executive decision
 
-AEGIS will provide explicit, provider-neutral APIs that create and verify
+AEGIS provides explicit, provider-neutral APIs that create and verify
 signed checkpoint records. Hosts remain responsible for storing, publishing,
 retaining, retrieving, and protecting those records.
 
-Two distinct public record types will be implemented:
+Two distinct public record types are implemented:
 
 - `TrustedChainCheckpoint`
 - `TrustedWorkflowCheckpoint`
@@ -615,7 +615,7 @@ Update maintained public documentation for:
 - Versioned signing profiles.
 - Rotation, revocation, and historical verification semantics.
 
-Documentation will explicitly distinguish:
+Maintained documentation distinguishes:
 
 - Tamper-evidence from external anchoring.
 - External anchoring from append-only or WORM storage.
@@ -676,7 +676,7 @@ lets an unrelated checkpoint degrade a selected chain.
 
 ## Completion criteria
 
-Issue #46 is complete when:
+Issue #46 was implemented with these completion conditions satisfied:
 
 - Both record contracts and public creators are implemented.
 - Chain and workflow verification consume the typed checkpoints.

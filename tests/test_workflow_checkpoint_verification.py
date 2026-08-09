@@ -2251,7 +2251,32 @@ def test_workflow_and_invocation_documents_cannot_replay_as_checkpoint(
     assert verifier.call_count == 0
 
 
-def test_serialized_checkpoint_is_not_an_alternate_input_policy(
+def test_exact_serialized_checkpoint_behaves_identically_to_typed_record(
+    evidence_set,
+    workflow_checkpoint,
+):
+    workflow, invocations = evidence_set
+    verifier = DeterministicExternalVerifier()
+
+    typed_report = verify_workflow_claim(
+        workflow,
+        invocations,
+        expected_checkpoint=workflow_checkpoint,
+        checkpoint_verifier=verifier,
+    )
+    serialized_report = verify_workflow_claim(
+        workflow,
+        invocations,
+        expected_checkpoint=workflow_checkpoint.to_dict(),
+        checkpoint_verifier=verifier,
+    )
+
+    assert serialized_report == typed_report
+    assert serialized_report.completeness is Completeness.CHECKPOINT_PROVEN
+    assert verifier.call_count == 2
+
+
+def test_workflow_checkpoint_dict_subclass_is_rejected_without_dispatch(
     evidence_set,
     workflow_checkpoint,
 ):
@@ -2261,7 +2286,7 @@ def test_serialized_checkpoint_is_not_an_alternate_input_policy(
     report = verify_workflow_claim(
         workflow,
         invocations,
-        expected_checkpoint=workflow_checkpoint.to_dict(),
+        expected_checkpoint=_DictSubclass(workflow_checkpoint.to_dict()),
         checkpoint_verifier=verifier,
     )
 

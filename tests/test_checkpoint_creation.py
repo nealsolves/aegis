@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import traceback
 from typing import Callable
 
 import pytest
@@ -1302,6 +1303,39 @@ def test_workflow_source_limit_failure_stops_every_signer_capability(
     assert signer.sign_calls == 0
 
 
+def test_escaped_source_over_canonical_byte_limit_stops_before_signer(
+    chained_artifact,
+):
+    from aegis._internal.evidence_profiles import build_content_checksum_v2
+
+    source = deepcopy(chained_artifact)
+    source["context"]["padding"] = "\x00" * 700_000
+    unsigned = {
+        key: value
+        for key, value in source.items()
+        if key
+        not in {
+            "checksum",
+            "signature",
+            "signature_metadata",
+            "signature_status",
+        }
+    }
+    source["checksum"] = build_content_checksum_v2(unsigned)["checksum"]
+    signer = _ForbiddenSigner()
+
+    with pytest.raises(CheckpointError) as raised:
+        create_chain_checkpoint(
+            source,
+            signer,
+            checkpointed_at=1_725_000_000,
+        )
+
+    assert raised.value.code == "CHECKPOINT_INPUT_INVALID"
+    assert signer.identity_calls == 0
+    assert signer.sign_calls == 0
+
+
 @pytest.mark.parametrize("creator_name", ["chain", "workflow"])
 def test_cyclic_source_stops_before_every_signer_capability(
     chained_artifact,
@@ -1386,7 +1420,17 @@ def test_signing_failures_are_atomic_and_sanitized(
         caplog=caplog,
     )
 
-    assert error.__cause__ is not None
+    formatted = "".join(traceback.format_exception(error))
+    assert error.__cause__ is None
+    assert error.__context__ is None
+    for sensitive in SENSITIVE_CORPUS:
+        assert sensitive not in formatted
+    expected_sign_calls = (
+        0
+        if mode.startswith("identity") or mode == "malformed_identity"
+        else 1
+    )
+    assert len(signer.payloads) == expected_sign_calls
 
 
 @pytest.mark.parametrize(

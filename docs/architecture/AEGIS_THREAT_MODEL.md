@@ -300,19 +300,22 @@ External signer or verifier availability cannot change the governance result
 already recorded in an artifact.
 
 Residual limits are deliberate: HMAC and hash chaining are tamper-evidence, not
-immutable storage. A valid or anchored result does not prevent replay, prove
-sequence completeness, detect replacement of a complete valid chain without a
-trusted checkpoint, provide WORM retention, or establish certification or
-regulatory compliance. An attacker with storage-write access can replace a
-complete chain or remove a valid tail while leaving the supplied sequence
-internally consistent. Roadmap item #46 is the separate control that binds
-trusted heads to v2 content checksums. The bundled `AuditChain` is in-memory and
-does not claim crash persistence; hosts must reconcile the emit/commit crash
-window or provide a persistent linker.
+immutable storage. An artifact signature or generic anchor alone does not
+prevent replay, prove sequence completeness, detect replacement of a complete
+valid chain, provide WORM retention, or establish certification or regulatory
+compliance. An attacker with storage-write access can replace a complete chain
+or remove a valid tail while leaving the supplied sequence internally
+consistent. Issue #46's implemented trusted checkpoints detect divergence from
+a valid, anchored, authoritative pin when it is presented; the host still owns
+latest retrieval and omission/rollback protection. The bundled `AuditChain` is
+in-memory and does not claim crash persistence; hosts must reconcile the
+emit/commit crash window or provide a persistent linker.
 
 Workflow-signed proves integrity and order of the claimed supplied set. It does
 not prove the host disclosed every invocation. Completeness remains unproven
 until a trusted checkpoint binds the expected head/count.
+Only valid, anchored, authoritative evidence can then detect divergence;
+latest retrieval and checkpoint omission/rollback remain host responsibilities.
 
 The verifier bounds claims and supplied artifacts to 1,024 entries each,
 measured input to 4 MiB, nesting to 32 levels, and reports to 100 errors.
@@ -489,7 +492,9 @@ AEGIS does not attempt to solve:
 * model hallucinations
 * model bias
 * provider safety systems
-* replay prevention or proof that a supplied sequence is complete
+* replay prevention or absolute proof that a supplied sequence is complete;
+  valid, anchored, authoritative checkpoints detect divergence relative to a
+  presented pin, while latest retrieval and omission/rollback remain host-owned
 * trusted timestamping or timestamp-authority evidence
 * proof that a presented trusted checkpoint is the latest one (checkpoint
   omission and rollback remain host-owned residual risk; see issue #46 above)

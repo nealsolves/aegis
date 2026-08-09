@@ -79,10 +79,10 @@ def test_extracted_verification_contracts_preserve_every_existing_identity():
 
 def test_verification_budget_counts_bytes_and_nodes_across_documents():
     limits = import_module("aegis._internal.verification_limits")
-    budget = limits.VerificationBudget(remaining_bytes=12, remaining_nodes=4)
+    budget = limits.VerificationBudget(remaining_bytes=10, remaining_nodes=4)
 
-    assert budget.measure(["x"]) == 6
-    assert budget.measure(["y"]) == 6
+    assert budget.measure(["x"]) == 5
+    assert budget.measure(["y"]) == 5
     assert budget.remaining_bytes == 0
     assert budget.remaining_nodes == 0
     with pytest.raises(limits.VerificationInputError):

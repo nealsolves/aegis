@@ -501,9 +501,9 @@ def test_verification_budget_retains_aggregate_counters_but_resets_cycle_state()
     budget = VerificationBudget(remaining_bytes=100, remaining_nodes=10)
     first = budget.measure(shared)
     second = budget.measure(shared)
-    assert first == 6
-    assert second == 6
-    assert budget.remaining_bytes == 88
+    assert first == 5
+    assert second == 5
+    assert budget.remaining_bytes == 90
     assert budget.remaining_nodes == 6
 
 
@@ -540,6 +540,34 @@ def test_verification_budget_enforces_exact_default_byte_ceiling():
     assert budget.remaining_bytes == 0
     with pytest.raises(VerificationInputError):
         budget.measure(None)
+
+
+@pytest.mark.parametrize(
+    ("value", "canonical_bytes"),
+    (
+        ("\x00", 8),
+        ("\b\t\n\f\r\x01", 18),
+        ('"\\', 6),
+        ("A雪😀", 10),
+        ({"\x00": '"\\雪😀'}, 24),
+    ),
+)
+def test_verification_budget_counts_canonical_escaped_string_bytes_exactly(
+    value,
+    canonical_bytes,
+):
+    budget = VerificationBudget(
+        remaining_bytes=canonical_bytes,
+        remaining_nodes=2,
+    )
+
+    assert budget.measure(value) == canonical_bytes
+    assert budget.remaining_bytes == 0
+    with pytest.raises(VerificationInputError):
+        VerificationBudget(
+            remaining_bytes=canonical_bytes - 1,
+            remaining_nodes=2,
+        ).measure(value)
 
 
 def test_verification_budget_enforces_exact_default_node_ceiling():
@@ -825,8 +853,9 @@ def test_fix2_budget_rejects_over_limit_length_before_surrogate_scan(
 
     monkeypatch.setattr(
         verification_limits_module,
-        "_has_lone_surrogate",
+        "ord",
         unexpected_scan,
+        raising=False,
     )
     with pytest.raises(VerificationInputError):
         VerificationBudget(remaining_bytes=4).measure(value)

@@ -416,8 +416,10 @@ if len(history.scores) >= 2:
 Content and signature checks prove a supplied chain is internally consistent;
 they do **not** prove it is the chain that actually occurred. A trusted
 checkpoint pins a chain to externally signed, provider-neutral evidence so a
-later verification can report `checkpoint_proven` (bound to a checkpoint you
-trust) or `contradicted` (a substituted chain), instead of `unproven`. See
+later verification can report `checkpoint_proven` for a valid, anchored,
+authoritative match or `contradicted` for a conflict with that trusted
+authority, instead of `unproven`. Invalid, unavailable, unknown-key, revoked,
+or unanchored evidence remains `unproven`. See
 ADR-0015 for the full assurance scope — a `checkpoint_proven` result does not
 prove latest-retrieval, WORM storage, future activity, or compliance.
 

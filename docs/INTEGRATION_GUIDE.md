@@ -757,8 +757,10 @@ if trajectory == TRAJECTORY_DEGRADING:
 Chain verification proves a supplied chain is internally consistent but not that
 it is complete — an attacker with storage-write access can replace a whole
 valid chain. A trusted checkpoint binds a chain to externally signed, provider-neutral
-evidence so verification can detect that replacement (`contradicted`) or confirm
-the expected scope (`checkpoint_proven`).
+evidence so verification can detect a conflict with valid, anchored,
+authoritative evidence (`contradicted`) or confirm its exact expected scope
+(`checkpoint_proven`). Invalid, unavailable, unknown-key, revoked, or unanchored
+evidence remains `unproven` even when structural binding matches or conflicts.
 
 Ownership boundary: the `signer` and `checkpoint_verifier` are host-supplied
 (`ExternalArtifactSigner` / `ExternalArtifactVerifier`); AEGIS ships no key

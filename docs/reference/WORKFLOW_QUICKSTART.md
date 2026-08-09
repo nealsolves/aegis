@@ -94,7 +94,9 @@ signed claimed set. Workflow artifacts are separate from invocation chains.
 
 Workflow-signed proves integrity and order of the claimed supplied set. It does
 not prove the host disclosed every invocation. Completeness remains unproven
-until a trusted checkpoint binds the expected head/count. The public
+until a trusted checkpoint binds the expected head/count. Only valid, anchored,
+authoritative evidence can then detect divergence; latest retrieval and
+checkpoint omission/rollback remain host responsibilities. The public
 `verify_workflow_claim(workflow, invocations)` helper checks claim matching with
 independent claim, signature, and completeness results. A signed workflow is
 `INDETERMINATE` without a trusted verifier. Trusted checkpoints are implemented

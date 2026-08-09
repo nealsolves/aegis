@@ -294,6 +294,7 @@ def _sign_checkpoint(
     profile: str,
     payload_type: EvidenceType,
 ) -> dict[str, object]:
+    signed_record: dict[str, object] | None = None
     try:
         identity = _normalize_identity(signer.signer_identity())
         metadata = _checkpoint_metadata(
@@ -313,13 +314,16 @@ def _sign_checkpoint(
         _validate_receipt(receipt, identity)
         signature = _normalized_signature(receipt)
         validate_encoded_signature(signature, identity.signature_encoding)
-        return {
+        signed_record = {
             **unsigned_record,
             "signature_metadata": metadata.to_dict(),
             "signature": signature,
         }
-    except Exception as exc:
-        raise _signing_error() from exc
+    except Exception:
+        pass
+    if signed_record is None:
+        raise _signing_error()
+    return signed_record
 
 
 def create_chain_checkpoint(
@@ -369,10 +373,14 @@ def create_chain_checkpoint(
         profile=CHAIN_CHECKPOINT_SIGNING_PROFILE,
         payload_type=EvidenceType.CHAIN_CHECKPOINT,
     )
+    checkpoint: TrustedChainCheckpoint | None = None
     try:
-        return TrustedChainCheckpoint.from_dict(signed_record)
-    except Exception as exc:
-        raise _signing_error() from exc
+        checkpoint = TrustedChainCheckpoint.from_dict(signed_record)
+    except Exception:
+        pass
+    if checkpoint is None:
+        raise _signing_error()
+    return checkpoint
 
 
 def create_workflow_checkpoint(
@@ -430,7 +438,11 @@ def create_workflow_checkpoint(
         profile=WORKFLOW_CHECKPOINT_SIGNING_PROFILE,
         payload_type=EvidenceType.WORKFLOW_CHECKPOINT,
     )
+    checkpoint: TrustedWorkflowCheckpoint | None = None
     try:
-        return TrustedWorkflowCheckpoint.from_dict(signed_record)
-    except Exception as exc:
-        raise _signing_error() from exc
+        checkpoint = TrustedWorkflowCheckpoint.from_dict(signed_record)
+    except Exception:
+        pass
+    if checkpoint is None:
+        raise _signing_error()
+    return checkpoint

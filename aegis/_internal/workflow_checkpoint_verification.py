@@ -122,6 +122,29 @@ def detach_workflow_checkpoint_input(
             snapshot,
             False,
         )
+    if type(expected_checkpoint) is dict:
+        probe = VerificationBudget(
+            remaining_bytes=budget.remaining_bytes,
+            remaining_nodes=budget.remaining_nodes,
+        )
+        try:
+            probe.measure(expected_checkpoint)
+            snapshot = deepcopy(expected_checkpoint)
+        except Exception:
+            return DetachedWorkflowCheckpointInput(
+                True,
+                True,
+                None,
+                None,
+                True,
+            )
+        return DetachedWorkflowCheckpointInput(
+            True,
+            True,
+            snapshot,
+            snapshot,
+            False,
+        )
 
     measurement = _measurement_value(expected_checkpoint)
     probe = VerificationBudget(

@@ -32,8 +32,11 @@ its own storage, or assert that it is the most recent checkpoint.
 
 ### Two explicit record types
 
-- `TrustedChainCheckpoint` pins a governance artifact chain to a signed
-  checkpoint of its content and continuity state.
+- `TrustedChainCheckpoint` pins the selected chain identity, terminal
+  coordinate and length, artifact schema, and terminal artifact content
+  checksum. Creation validates its source as finalized, chained, and
+  checksum-valid; later verification independently evaluates the supplied
+  artifacts' content and continuity before comparing them with the pin.
 - `TrustedWorkflowCheckpoint` pins one finalized, checksum-valid workflow claim.
 
 The two record types are never merged into a single envelope; a chain
@@ -96,9 +99,13 @@ signature alone:
   evidence for the expected scope.
 - `contradicted` — presented evidence conflicts with the checkpoint.
 
-`checkpoint_proven` is reachable only when the checkpoint signature is `VALID`
-and anchored; a valid *artifact* signature never promotes completeness on its
-own.
+`checkpoint_proven` is reachable only when the authoritative checkpoint
+signature is `VALID`, anchored, structurally matched, and the required full
+chain or workflow claim conditions hold. `contradicted` likewise requires a
+valid, anchored authoritative match/conflict condition. Invalid, unavailable,
+unknown-key, revoked, or unanchored evidence remains `unproven` even when its
+structural binding matches or conflicts. A valid *artifact* signature never
+promotes completeness on its own.
 
 ### Independent verification axes
 
@@ -120,7 +127,9 @@ describe whether that evidence is pinned to trusted external evidence.
 
 Completeness reaches `checkpoint_proven` only when the checkpoint signature is
 `VALID`, the checkpoint is anchored, and binding matches for the expected scope;
-any conflict is `contradicted`; absence of checkpoint evidence stays `unproven`.
+a valid and anchored authoritative conflict is `contradicted`. Invalid,
+unavailable, unknown-key, revoked, or unanchored evidence and absence of
+checkpoint evidence stay `unproven`.
 
 ## Assurance scope — what trusted checkpoints do NOT prove
 
@@ -137,6 +146,11 @@ result **does not prove**:
   nothing about activity after that moment.
 - **Certification or compliance.** Producing or verifying checkpoints is not a
   certification, audit result, or statement of regulatory compliance.
+
+When valid, anchored, authoritative checkpoint evidence is presented, AEGIS
+does detect divergence from the pinned chain head or workflow claim. That
+bounded detection does not transfer responsibility for latest retrieval,
+omission detection, or rollback protection from the host.
 
 ### Test-only architecture guard and its residuals
 

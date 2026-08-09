@@ -67,8 +67,32 @@ class BoundedVerificationErrors(list[VerificationError]):
             super().append(error)
 
 
-def _has_lone_surrogate(value: str) -> bool:
-    return any(0xD800 <= ord(character) <= 0xDFFF for character in value)
+def _canonical_string_size(value: str, *, byte_limit: int) -> int:
+    """Measure one RFC 8785 JSON string without allocating encoded output."""
+    if byte_limit < 2 or len(value) > byte_limit - 2:
+        raise VerificationInputError
+
+    total_bytes = 2
+    for character in value:
+        codepoint = ord(character)
+        if 0xD800 <= codepoint <= 0xDFFF:
+            raise VerificationInputError
+        if character in ('"', "\\") or codepoint in (8, 9, 10, 12, 13):
+            character_bytes = 2
+        elif codepoint <= 0x1F:
+            character_bytes = 6
+        elif codepoint <= 0x7F:
+            character_bytes = 1
+        elif codepoint <= 0x7FF:
+            character_bytes = 2
+        elif codepoint <= 0xFFFF:
+            character_bytes = 3
+        else:
+            character_bytes = 4
+        if character_bytes > byte_limit - total_bytes:
+            raise VerificationInputError
+        total_bytes += character_bytes
+    return total_bytes
 
 
 def _measure_json_document(
@@ -94,11 +118,10 @@ def _measure_json_document(
         if current is None or type(current) is bool:
             total_bytes += 5
         elif type(current) is str:
-            if len(current) > byte_limit - total_bytes:
-                raise VerificationInputError
-            if _has_lone_surrogate(current):
-                raise VerificationInputError
-            total_bytes += len(current.encode("utf-8")) + 2
+            total_bytes += _canonical_string_size(
+                current,
+                byte_limit=byte_limit - total_bytes,
+            )
         elif type(current) is int:
             if abs(current) > SAFE_INTEGER_MAX:
                 raise VerificationInputError
@@ -113,7 +136,7 @@ def _measure_json_document(
                 raise VerificationInputError
             seen_containers.add(identity)
             child_count = len(current)
-            total_bytes += 2 + child_count
+            total_bytes += 2 + max(0, child_count - 1)
             if (
                 total_bytes > byte_limit
                 or (child_count != 0 and depth >= depth_limit)
@@ -129,7 +152,7 @@ def _measure_json_document(
                 raise VerificationInputError
             seen_containers.add(identity)
             child_count = len(current)
-            total_bytes += 2 + child_count
+            total_bytes += 2 + max(0, child_count - 1)
             if (
                 total_bytes > byte_limit
                 or (child_count != 0 and depth >= depth_limit)
@@ -140,11 +163,10 @@ def _measure_json_document(
             for key in current:
                 if type(key) is not str:
                     raise VerificationInputError
-                if len(key) > byte_limit - total_bytes:
-                    raise VerificationInputError
-                if _has_lone_surrogate(key):
-                    raise VerificationInputError
-                total_bytes += len(key.encode("utf-8")) + 3
+                total_bytes += _canonical_string_size(
+                    key,
+                    byte_limit=byte_limit - total_bytes - 1,
+                ) + 1
                 if total_bytes > byte_limit:
                     raise VerificationInputError
             for item in current.values():

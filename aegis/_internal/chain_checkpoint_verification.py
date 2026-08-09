@@ -212,7 +212,11 @@ def prepare_chain_checkpoint_input(
         return None
 
     try:
-        budget.measure(artifacts)
+        # Charge the list's brackets, commas, and container node separately so
+        # each artifact retains its own JSON-document depth ceiling.
+        budget.measure("x" * max(0, len(artifacts) - 1))
+        for artifact in artifacts:
+            budget.measure(artifact)
         artifacts_snapshot = deepcopy(artifacts)
     except VerificationInputError:
         errors.append(

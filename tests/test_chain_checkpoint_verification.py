@@ -1659,6 +1659,56 @@ def test_chain_and_checkpoints_share_one_aggregate_resource_budget(resource):
     ]
 
 
+def test_chain_artifact_depth_limit_is_per_json_document():
+    depth_32: object = None
+    for _ in range(31):
+        depth_32 = [depth_32]
+    allowed = verify_chain_detailed([{"nested": depth_32}])
+
+    depth_33: object = None
+    for _ in range(32):
+        depth_33 = [depth_33]
+    rejected = verify_chain_detailed([{"nested": depth_33}])
+
+    assert not any(
+        error.code == "CHAIN_VERIFICATION_LIMIT_EXCEEDED"
+        for error in allowed.errors
+    )
+    assert [error.code for error in rejected.errors] == [
+        "CHAIN_VERIFICATION_LIMIT_EXCEEDED"
+    ]
+
+
+def test_escaped_chain_document_over_canonical_byte_limit_stops_callbacks():
+    source = _artifact(0, None)
+    source["context"]["padding"] = "\x00" * 700_000
+    unsigned = {
+        key: value
+        for key, value in source.items()
+        if key
+        not in {
+            "checksum",
+            "signature",
+            "signature_metadata",
+            "signature_status",
+        }
+    }
+    source["checksum"] = build_content_checksum_v2(unsigned)["checksum"]
+    callbacks: list[str] = []
+
+    report = verify_chain_detailed(
+        [source],
+        anchor_verifier=lambda _artifacts: callbacks.append("anchor")
+        or AnchorStatus.ANCHORED,
+    )
+
+    assert callbacks == []
+    assert report.content_integrity is ContentIntegrity.NOT_EVALUATED
+    assert [error.code for error in report.errors] == [
+        "CHAIN_VERIFICATION_LIMIT_EXCEEDED"
+    ]
+
+
 @pytest.mark.parametrize(
     "mode",
     ["unexpected", "malformed", "malformed_combination"],
