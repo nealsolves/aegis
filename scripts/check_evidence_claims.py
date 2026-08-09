@@ -144,6 +144,11 @@ _SHARED_PROVIDER_SUBJECT_BOUNDARY = re.compile(
     r"\b(?:and|but|while|yet)\s+(?:uses?|offers?)\b",
     re.IGNORECASE,
 )
+_INDEPENDENT_COPULAR_CLAUSE_BOUNDARY = re.compile(
+    r"\b(?:and|but|while|yet)\b(?:\s+\w+){1,3}\s+"
+    r"(?:is|are|was|were)\b",
+    re.IGNORECASE,
+)
 MAX_RELATION_DISTANCE = 400
 _CONTEXTUAL_RULES = (
     ("INTEGRITY_IS_STORAGE", INTEGRITY_SUBJECT, STORAGE_PREDICATE),
@@ -325,10 +330,24 @@ def scan_claims(blocks: tuple[TextBlock, ...]) -> tuple[ClaimFinding, ...]:
         if boundary is None:
             return None
         context_ceiling = min(len(text), predicate.end() + MAX_RELATION_DISTANCE)
-        next_boundary = _CLAUSE_BOUNDARY.search(
-            text,
-            predicate.end(),
-            context_ceiling,
+        next_boundary = min(
+            (
+                candidate
+                for pattern in (
+                    _CLAUSE_BOUNDARY,
+                    _INDEPENDENT_COPULAR_CLAUSE_BOUNDARY,
+                )
+                if (
+                    candidate := pattern.search(
+                        text,
+                        predicate.end(),
+                        context_ceiling,
+                    )
+                )
+                is not None
+            ),
+            key=lambda boundary: boundary.start(),
+            default=None,
         )
         context_end = (
             next_boundary.start()

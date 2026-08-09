@@ -954,6 +954,29 @@ def test_scan_claims_does_not_carry_provider_qualification_to_a_later_claim():
 @pytest.mark.parametrize(
     "text",
     [
+        (
+            "Azure does not offer archival storage but offers immutable "
+            "managed storage and this note is illustrative and non-normative."
+        ),
+        (
+            "Azure does not offer archival storage but offers immutable "
+            "managed storage while this note is illustrative and non-normative."
+        ),
+    ],
+)
+def test_scan_claims_does_not_carry_provider_qualification_from_copular_clause(
+    text,
+):
+    findings = scan_claims((TextBlock(Path("public.md"), 34, text),))
+
+    assert [finding.rule_id for finding in findings] == [
+        "IMMUTABLE_EVIDENCE_RECORD"
+    ]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
         "AEGIS certifies full compliance.",
         "AEGIS certifies ongoing regulatory compliance.",
         "AEGIS certifies SOC 2 compliance.",
