@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from scripts.check_evidence_claims import (
@@ -146,6 +148,47 @@ def test_read_text_source_accounts_for_binary_without_decoding(tmp_path):
 
     assert read_text_source(path, tmp_path, ScanLimits(), counters) == ""
     assert counters == {"source_bytes": 0, "binary_files": 1}
+
+
+def test_read_text_source_rejects_unreadable_binary_before_accounting(
+    tmp_path,
+    monkeypatch,
+):
+    path = tmp_path / "diagram.png"
+    path.write_bytes(b"\x89PNG\r\n")
+    original_mode = path.stat().st_mode
+    try:
+        path.chmod(0)
+    except OSError:
+        read_is_denied = False
+        permissions_changed = False
+    else:
+        permissions_changed = True
+        try:
+            with path.open("rb"):
+                pass
+        except OSError:
+            read_is_denied = True
+        else:
+            read_is_denied = False
+    try:
+        if not read_is_denied:
+            original_open = Path.open
+
+            def deny_binary_read(self, *args, **kwargs):
+                if self == path:
+                    raise PermissionError("read denied")
+                return original_open(self, *args, **kwargs)
+
+            monkeypatch.setattr(Path, "open", deny_binary_read)
+
+        counters = {"source_bytes": 0, "binary_files": 0}
+        with pytest.raises(ClaimsGuardError, match="source read failed"):
+            read_text_source(path, tmp_path, ScanLimits(), counters)
+        assert counters == {"source_bytes": 0, "binary_files": 0}
+    finally:
+        if permissions_changed:
+            path.chmod(original_mode)
 
 
 def test_read_text_source_enforces_aggregate_limit(tmp_path):

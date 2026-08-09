@@ -119,6 +119,11 @@ def read_text_source(
     relative = path.relative_to(repo_root).as_posix()
     suffix = path.suffix.lower()
     if suffix in BINARY_SUFFIXES:
+        try:
+            with path.open("rb") as source_file:
+                source_file.read(1)
+        except OSError as error:
+            raise ClaimsGuardError(f"{relative}: source read failed") from error
         counters["binary_files"] += 1
         return ""
     if suffix not in TEXT_SUFFIXES:
