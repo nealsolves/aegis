@@ -8,6 +8,7 @@ import pytest
 
 from aegis import (
     AEGIS,
+    AnchorStatus,
     CallbackAuditSink,
     Completeness,
     HMACSigner,
@@ -16,8 +17,10 @@ from aegis import (
     WorkflowVerificationReport,
     verify_workflow_claim,
 )
+from aegis.checkpoints import CheckpointSignatureStatus
 from aegis._internal.evidence_profiles import build_content_checksum_v2
 from aegis._internal import workflow_verification as workflow_verification_module
+from aegis._internal import verification_limits as verification_limits_module
 from aegis.workflow_verification import (
     WorkflowClaimStatus as ModuleWorkflowClaimStatus,
 )
@@ -101,6 +104,9 @@ def test_valid_supplied_set_matches_the_workflow_claim(evidence_set):
         signature_status=SignatureStatus.UNSIGNED,
         completeness=Completeness.UNPROVEN,
         errors=(),
+        checkpoint_signature_status=CheckpointSignatureStatus.NOT_EVALUATED,
+        checkpoint_anchor_status=AnchorStatus.NOT_EVALUATED,
+        checkpoint_results=(),
     )
 
 
@@ -309,7 +315,7 @@ def test_valid_claim_without_checkpoint_never_proves_completeness(evidence_set):
     assert report.completeness is Completeness.UNPROVEN
 
 
-def test_non_none_checkpoint_fails_closed_until_issue_46(evidence_set):
+def test_malformed_singular_checkpoint_does_not_suppress_b4(evidence_set):
     workflow, invocations = evidence_set
 
     report = verify_workflow_claim(
@@ -318,9 +324,14 @@ def test_non_none_checkpoint_fails_closed_until_issue_46(evidence_set):
         expected_checkpoint=object(),
     )
 
-    assert report.claim_status is WorkflowClaimStatus.NOT_EVALUATED
+    assert report.claim_status is WorkflowClaimStatus.VALID
     assert report.completeness is Completeness.UNPROVEN
-    assert "WORKFLOW_CHECKPOINT_UNSUPPORTED" in _error_codes(report)
+    assert report.checkpoint_signature_status is (
+        CheckpointSignatureStatus.INDETERMINATE
+    )
+    assert report.checkpoint_anchor_status is AnchorStatus.INVALID
+    assert report.checkpoint_results == ()
+    assert _error_codes(report) == {"CHECKPOINT_RECORD_INVALID"}
 
 
 def test_invalid_workflow_content_cannot_produce_a_valid_claim(evidence_set):
@@ -494,7 +505,15 @@ def test_verifier_never_calls_untrusted_length_hint(evidence_set):
     assert report.claim_status is WorkflowClaimStatus.VALID
 
 
-@pytest.mark.parametrize("failure", [MemoryError, RecursionError, RuntimeError])
+@pytest.mark.parametrize(
+    "failure",
+    [
+        MemoryError,
+        RecursionError,
+        RuntimeError,
+        verification_limits_module.VerificationInputError,
+    ],
+)
 def test_exceptional_invocation_iterable_returns_typed_report(
     evidence_set,
     failure,
@@ -510,6 +529,86 @@ def test_exceptional_invocation_iterable_returns_typed_report(
 
     assert report.claim_status is WorkflowClaimStatus.NOT_EVALUATED
     assert "WORKFLOW_INVOCATIONS_INPUT_INVALID" in _error_codes(report)
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        pytest.param(
+            verification_limits_module.VerificationInputError,
+            id="forged-limit-error",
+        ),
+        pytest.param(UnicodeError, id="unicode-error"),
+        pytest.param(MemoryError, id="memory-error"),
+    ],
+)
+def test_hostile_invocation_classification_uses_sanitized_input_invalid_route(
+    evidence_set,
+    monkeypatch,
+    failure,
+):
+    workflow, _ = evidence_set
+    signature_calls = 0
+
+    class HostileClassification:
+        @property
+        def __class__(self):
+            raise failure("secret-marker-from-classification")
+
+        def __iter__(self):
+            return iter(())
+
+    def record_signature_call(*_args, **_kwargs):
+        nonlocal signature_calls
+        signature_calls += 1
+        return SignatureStatus.UNSIGNED, None
+
+    monkeypatch.setattr(
+        workflow_verification_module,
+        "_verify_signatures",
+        record_signature_call,
+    )
+
+    report = verify_workflow_claim(workflow, HostileClassification())
+
+    assert report.claim_status is WorkflowClaimStatus.NOT_EVALUATED
+    assert _error_codes(report) == {"WORKFLOW_INVOCATIONS_INPUT_INVALID"}
+    assert "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED" not in _error_codes(report)
+    assert "secret-marker" not in repr(report.errors)
+    assert signature_calls == 0
+
+
+@pytest.mark.parametrize("failure", [KeyboardInterrupt, SystemExit])
+def test_noncatchable_invocation_classification_propagates(
+    evidence_set,
+    monkeypatch,
+    failure,
+):
+    workflow, _ = evidence_set
+    signature_calls = 0
+
+    class HostileClassification:
+        @property
+        def __class__(self):
+            raise failure("noncatchable-marker")
+
+        def __iter__(self):
+            return iter(())
+
+    def record_signature_call(*_args, **_kwargs):
+        nonlocal signature_calls
+        signature_calls += 1
+        return SignatureStatus.UNSIGNED, None
+
+    monkeypatch.setattr(
+        workflow_verification_module,
+        "_verify_signatures",
+        record_signature_call,
+    )
+
+    with pytest.raises(failure, match="noncatchable-marker"):
+        verify_workflow_claim(workflow, HostileClassification())
+    assert signature_calls == 0
 
 
 def test_cyclic_workflow_returns_typed_budget_report(evidence_set):
@@ -617,61 +716,49 @@ def test_container_node_budget_is_checked_before_child_expansion(
     monkeypatch,
 ):
     """Hostile wide containers must fail before a count-sized stack is built."""
-    monkeypatch.setattr(
-        workflow_verification_module,
-        "MAX_WORKFLOW_VERIFICATION_NODES",
-        4,
-        raising=False,
-    )
-
     if type(container) is list:
         def unexpected_reversed(_value):
             raise AssertionError("children expanded before node-budget check")
 
         monkeypatch.setattr(
-            workflow_verification_module,
+            verification_limits_module,
             "reversed",
             unexpected_reversed,
             raising=False,
         )
 
-    with pytest.raises(workflow_verification_module._VerificationBudgetExceeded):
-        workflow_verification_module._measure_json_document(
-            container,
-            byte_limit=1024,
-        )
+    with pytest.raises(verification_limits_module.VerificationInputError):
+        verification_limits_module.VerificationBudget(
+            remaining_bytes=1_024,
+            remaining_nodes=4,
+        ).measure(container)
 
 
 def test_depth_budget_is_checked_before_child_expansion(monkeypatch):
     """A container at the depth ceiling must not queue deeper children."""
-    monkeypatch.setattr(
-        workflow_verification_module,
-        "MAX_WORKFLOW_VERIFICATION_DEPTH",
-        1,
-    )
     real_reversed = reversed
     expansion_count = 0
 
     def track_reversed(value):
         nonlocal expansion_count
         expansion_count += 1
-        if expansion_count > 1:
+        if expansion_count > 32:
             raise AssertionError("depth-exceeding children were expanded")
         return real_reversed(value)
 
     monkeypatch.setattr(
-        workflow_verification_module,
+        verification_limits_module,
         "reversed",
         track_reversed,
         raising=False,
     )
+    too_deep: object = None
+    for _ in range(33):
+        too_deep = [too_deep]
 
-    with pytest.raises(workflow_verification_module._VerificationBudgetExceeded):
-        workflow_verification_module._measure_json_document(
-            [[None]],
-            byte_limit=1024,
-        )
-    assert expansion_count == 1
+    with pytest.raises(verification_limits_module.VerificationInputError):
+        verification_limits_module.VerificationBudget().measure(too_deep)
+    assert expansion_count == 32
 
 
 def test_verification_error_collection_has_hard_ceiling(evidence_set):
@@ -687,3 +774,94 @@ def test_verification_error_collection_has_hard_ceiling(evidence_set):
 
     assert report.claim_status is WorkflowClaimStatus.INVALID
     assert 1 <= len(report.errors) <= 100
+
+
+def test_invocation_preflight_finishes_before_workflow_signature_verification(
+    evidence_set,
+    monkeypatch,
+):
+    workflow, _ = evidence_set
+    signature_calls = 0
+
+    def record_signature_call(*_args, **_kwargs):
+        nonlocal signature_calls
+        signature_calls += 1
+        return SignatureStatus.UNSIGNED, None
+
+    monkeypatch.setattr(
+        workflow_verification_module,
+        "_verify_signatures",
+        record_signature_call,
+    )
+
+    report = verify_workflow_claim(
+        workflow,
+        (
+            {}
+            for _ in range(
+                workflow_verification_module.MAX_WORKFLOW_SUPPLIED_ARTIFACTS + 1
+            )
+        ),
+    )
+
+    assert report.claim_status is WorkflowClaimStatus.NOT_EVALUATED
+    assert _error_codes(report) == {"WORKFLOW_VERIFICATION_LIMIT_EXCEEDED"}
+    assert signature_calls == 0
+
+
+def test_aggregate_invocation_node_budget_precedes_signature_verification(
+    evidence_set,
+    monkeypatch,
+):
+    workflow, _ = evidence_set
+    signature_calls = 0
+
+    def record_signature_call(*_args, **_kwargs):
+        nonlocal signature_calls
+        signature_calls += 1
+        return SignatureStatus.UNSIGNED, None
+
+    monkeypatch.setattr(
+        workflow_verification_module,
+        "_verify_signatures",
+        record_signature_call,
+    )
+    supplied = ({"nodes": [None] * 64} for _ in range(1_024))
+
+    report = verify_workflow_claim(workflow, supplied)
+
+    assert report.claim_status is WorkflowClaimStatus.NOT_EVALUATED
+    assert _error_codes(report) == {"WORKFLOW_VERIFICATION_LIMIT_EXCEEDED"}
+    assert signature_calls == 0
+
+
+def test_placeholder_checkpoint_preflight_precedes_signature_verification(
+    evidence_set,
+    monkeypatch,
+):
+    workflow, invocations = evidence_set
+    signature_calls = 0
+
+    def record_signature_call(*_args, **_kwargs):
+        nonlocal signature_calls
+        signature_calls += 1
+        return SignatureStatus.UNSIGNED, None
+
+    monkeypatch.setattr(
+        workflow_verification_module,
+        "_verify_signatures",
+        record_signature_call,
+    )
+    too_deep: object = None
+    for _ in range(33):
+        too_deep = [too_deep]
+
+    report = verify_workflow_claim(
+        workflow,
+        invocations,
+        expected_checkpoint=too_deep,
+    )
+
+    assert report.claim_status is WorkflowClaimStatus.NOT_EVALUATED
+    assert _error_codes(report) == {"WORKFLOW_VERIFICATION_LIMIT_EXCEEDED"}
+    assert signature_calls == 0

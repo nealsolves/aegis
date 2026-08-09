@@ -80,7 +80,10 @@ links. A reordered or internally truncated supplied sequence is invalid.
 A valid prefix is still internally continuous, so completeness always remains `unproven`
 without an external trusted checkpoint. An attacker with storage-write access can remove a
 valid tail or replace an entire valid chain. Hash chaining is tamper-evidence, not immutable
-or WORM storage. Roadmap item #46 separately binds trusted heads to v2 content checksums.
+or WORM storage. Issue #46 (ADR-0015) adds the separate, additive trusted-checkpoint
+control that binds a chain head to externally signed evidence and promotes completeness to
+`checkpoint_proven` for an expected scope; it does not change this ADR's chain-before-sign
+decision.
 
 ## Options Considered
 

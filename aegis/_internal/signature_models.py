@@ -7,7 +7,7 @@ import binascii
 import re
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, TypeVar
+from typing import Any, FrozenSet, TypeVar
 
 from aegis._internal.errors import (
     SignatureMetadataError,
@@ -19,6 +19,9 @@ from aegis._internal.errors import (
 SIGNATURE_METADATA_SCHEMA_VERSION = "1"
 SIGNING_PROFILE = "aegis-signature-v1"
 CANONICALIZATION_VERSION = "aegis-canonical-json-v1"
+CHAIN_CHECKPOINT_SIGNING_PROFILE = "aegis-chain-checkpoint-v1"
+WORKFLOW_CHECKPOINT_SIGNING_PROFILE = "aegis-workflow-checkpoint-v1"
+CHECKPOINT_CANONICALIZATION_VERSION = "aegis-json-v2"
 MAX_SIGNATURE_LENGTH = 16_384
 MAX_VERIFICATION_MESSAGE_LENGTH = 1_024
 
@@ -30,6 +33,23 @@ _HEX_PATTERN = re.compile(r"[0-9a-f]+")
 
 class EvidenceType(str, Enum):
     AUDIT_ARTIFACT = "audit_artifact"
+    CHAIN_CHECKPOINT = "chain_checkpoint"
+    WORKFLOW_CHECKPOINT = "workflow_checkpoint"
+
+
+_SIGNATURE_METADATA_PROFILES: FrozenSet[tuple[EvidenceType, str, str]] = frozenset({
+    (EvidenceType.AUDIT_ARTIFACT, SIGNING_PROFILE, CANONICALIZATION_VERSION),
+    (
+        EvidenceType.CHAIN_CHECKPOINT,
+        CHAIN_CHECKPOINT_SIGNING_PROFILE,
+        CHECKPOINT_CANONICALIZATION_VERSION,
+    ),
+    (
+        EvidenceType.WORKFLOW_CHECKPOINT,
+        WORKFLOW_CHECKPOINT_SIGNING_PROFILE,
+        CHECKPOINT_CANONICALIZATION_VERSION,
+    ),
+})
 
 
 class SignatureEncoding(str, Enum):
@@ -68,39 +88,59 @@ class VerificationReasonCode(str, Enum):
     ANCHOR_INVALID = "anchor_invalid"
 
 
-ALLOWED_VERIFICATION_OUTCOMES = {
-    (SignatureStatus.UNSIGNED, AnchorStatus.NOT_EVALUATED): {
-        VerificationReasonCode.UNSIGNED,
-    },
-    (SignatureStatus.VALID, AnchorStatus.NOT_EVALUATED): {
-        VerificationReasonCode.LEGACY_SIGNATURE_VALID,
-    },
-    (SignatureStatus.VALID, AnchorStatus.UNANCHORED): {
-        VerificationReasonCode.LEGACY_SIGNATURE_VALID,
-        VerificationReasonCode.SIGNATURE_VALID_UNANCHORED,
-    },
-    (SignatureStatus.VALID, AnchorStatus.ANCHORED): {
-        VerificationReasonCode.SIGNATURE_VALID_ANCHORED,
-    },
-    (SignatureStatus.VALID, AnchorStatus.INVALID): {
-        VerificationReasonCode.ANCHOR_INVALID,
-    },
-    (SignatureStatus.INVALID, AnchorStatus.NOT_EVALUATED): {
-        VerificationReasonCode.LEGACY_SIGNATURE_INVALID,
-        VerificationReasonCode.SIGNATURE_INVALID,
-        VerificationReasonCode.ALGORITHM_NOT_ALLOWED,
-    },
-    (SignatureStatus.UNKNOWN_KEY, AnchorStatus.NOT_EVALUATED): {
-        VerificationReasonCode.KEY_UNKNOWN,
-    },
-    (SignatureStatus.REVOKED, AnchorStatus.NOT_EVALUATED): {
-        VerificationReasonCode.KEY_REVOKED,
-    },
-    (SignatureStatus.INDETERMINATE, AnchorStatus.NOT_EVALUATED): {
-        VerificationReasonCode.SIGNATURE_METADATA_MISSING,
-        VerificationReasonCode.VERIFIER_UNAVAILABLE,
-    },
-}
+def _verification_outcome_is_allowed(
+    signature_status: SignatureStatus,
+    anchor_status: AnchorStatus,
+    reason_code: VerificationReasonCode,
+) -> bool:
+    if signature_status is SignatureStatus.UNSIGNED:
+        return (
+            anchor_status is AnchorStatus.NOT_EVALUATED
+            and reason_code is VerificationReasonCode.UNSIGNED
+        )
+    if signature_status is SignatureStatus.VALID:
+        if anchor_status is AnchorStatus.NOT_EVALUATED:
+            return reason_code is VerificationReasonCode.LEGACY_SIGNATURE_VALID
+        if anchor_status is AnchorStatus.UNANCHORED:
+            return reason_code in (
+                VerificationReasonCode.LEGACY_SIGNATURE_VALID,
+                VerificationReasonCode.SIGNATURE_VALID_UNANCHORED,
+            )
+        if anchor_status is AnchorStatus.ANCHORED:
+            return reason_code is VerificationReasonCode.SIGNATURE_VALID_ANCHORED
+        if anchor_status is AnchorStatus.INVALID:
+            return reason_code is VerificationReasonCode.ANCHOR_INVALID
+        return False
+    if signature_status is SignatureStatus.INVALID:
+        return (
+            anchor_status is AnchorStatus.NOT_EVALUATED
+            and reason_code
+            in (
+                VerificationReasonCode.LEGACY_SIGNATURE_INVALID,
+                VerificationReasonCode.SIGNATURE_INVALID,
+                VerificationReasonCode.ALGORITHM_NOT_ALLOWED,
+            )
+        )
+    if signature_status is SignatureStatus.UNKNOWN_KEY:
+        return (
+            anchor_status is AnchorStatus.NOT_EVALUATED
+            and reason_code is VerificationReasonCode.KEY_UNKNOWN
+        )
+    if signature_status is SignatureStatus.REVOKED:
+        return (
+            anchor_status is AnchorStatus.NOT_EVALUATED
+            and reason_code is VerificationReasonCode.KEY_REVOKED
+        )
+    return (
+        signature_status is SignatureStatus.INDETERMINATE
+        and anchor_status is AnchorStatus.NOT_EVALUATED
+        and reason_code
+        in (
+            VerificationReasonCode.SIGNATURE_METADATA_MISSING,
+            VerificationReasonCode.VERIFIER_UNAVAILABLE,
+        )
+    )
+
 
 _EnumType = TypeVar("_EnumType", bound=Enum)
 
@@ -111,8 +151,74 @@ def _require_enum(
     field: str,
     error_type: type[Exception],
 ) -> None:
-    if not isinstance(value, enum_type):
+    if not _is_canonical_enum_member(value, enum_type):
         raise error_type(f"{field} must be a {enum_type.__name__}", details={"field": field})
+
+
+def _is_canonical_enum_member(value: object, enum_type: type[Enum]) -> bool:
+    """Check closed enums without consulting mutable ``EnumMeta`` registries."""
+    if enum_type is EvidenceType:
+        return (
+            value is EvidenceType.AUDIT_ARTIFACT
+            or value is EvidenceType.CHAIN_CHECKPOINT
+            or value is EvidenceType.WORKFLOW_CHECKPOINT
+        )
+    if enum_type is SignatureEncoding:
+        return value is SignatureEncoding.HEX or value is SignatureEncoding.BASE64
+    if enum_type is SignatureStatus:
+        return (
+            value is SignatureStatus.UNSIGNED
+            or value is SignatureStatus.VALID
+            or value is SignatureStatus.INVALID
+            or value is SignatureStatus.UNKNOWN_KEY
+            or value is SignatureStatus.REVOKED
+            or value is SignatureStatus.INDETERMINATE
+        )
+    if enum_type is AnchorStatus:
+        return (
+            value is AnchorStatus.NOT_EVALUATED
+            or value is AnchorStatus.UNANCHORED
+            or value is AnchorStatus.ANCHORED
+            or value is AnchorStatus.INVALID
+        )
+    if enum_type is VerificationReasonCode:
+        return (
+            value is VerificationReasonCode.UNSIGNED
+            or value is VerificationReasonCode.LEGACY_SIGNATURE_VALID
+            or value is VerificationReasonCode.LEGACY_SIGNATURE_INVALID
+            or value is VerificationReasonCode.SIGNATURE_VALID_UNANCHORED
+            or value is VerificationReasonCode.SIGNATURE_VALID_ANCHORED
+            or value is VerificationReasonCode.SIGNATURE_INVALID
+            or value is VerificationReasonCode.SIGNATURE_METADATA_MISSING
+            or value is VerificationReasonCode.ALGORITHM_NOT_ALLOWED
+            or value is VerificationReasonCode.KEY_UNKNOWN
+            or value is VerificationReasonCode.KEY_REVOKED
+            or value is VerificationReasonCode.VERIFIER_UNAVAILABLE
+            or value is VerificationReasonCode.ANCHOR_INVALID
+        )
+    return False
+
+
+def _parse_evidence_type(value: object) -> EvidenceType | None:
+    if type(value) is not str:
+        return None
+    if value == "audit_artifact":
+        return EvidenceType.AUDIT_ARTIFACT
+    if value == "chain_checkpoint":
+        return EvidenceType.CHAIN_CHECKPOINT
+    if value == "workflow_checkpoint":
+        return EvidenceType.WORKFLOW_CHECKPOINT
+    return None
+
+
+def _parse_signature_encoding(value: object) -> SignatureEncoding | None:
+    if type(value) is not str:
+        return None
+    if value == "hex":
+        return SignatureEncoding.HEX
+    if value == "base64":
+        return SignatureEncoding.BASE64
+    return None
 
 
 def _validate_identity_fields(
@@ -180,8 +286,11 @@ def validate_verification_outcome(
     _require_enum(signature_status, SignatureStatus, "signature_status", VerificationContractError)
     _require_enum(anchor_status, AnchorStatus, "anchor_status", VerificationContractError)
     _require_enum(reason_code, VerificationReasonCode, "reason_code", VerificationContractError)
-    allowed_reasons = ALLOWED_VERIFICATION_OUTCOMES.get((signature_status, anchor_status))
-    if allowed_reasons is None or reason_code not in allowed_reasons:
+    if not _verification_outcome_is_allowed(
+        signature_status,
+        anchor_status,
+        reason_code,
+    ):
         raise VerificationContractError("verification outcome is invalid", details={})
 
 
@@ -227,18 +336,23 @@ class SignatureMetadata:
             raise SignatureMetadataError(
                 "schema_version is unsupported", details={"field": "schema_version"}
             )
-        if self.signing_profile != SIGNING_PROFILE:
+        if type(self.signing_profile) is not str:
             raise SignatureMetadataError(
-                "signing_profile is unsupported", details={"field": "signing_profile"}
+                "signing_profile is invalid", details={"field": "signing_profile"}
             )
-        if self.canonicalization_version != CANONICALIZATION_VERSION:
+        if type(self.canonicalization_version) is not str:
             raise SignatureMetadataError(
-                "canonicalization_version is unsupported",
+                "canonicalization_version is invalid",
                 details={"field": "canonicalization_version"},
             )
-        if self.payload_type is not EvidenceType.AUDIT_ARTIFACT:
+        if (
+            self.payload_type,
+            self.signing_profile,
+            self.canonicalization_version,
+        ) not in _SIGNATURE_METADATA_PROFILES:
             raise SignatureMetadataError(
-                "payload_type is unsupported", details={"field": "payload_type"}
+                "signature metadata profile is unsupported",
+                details={},
             )
         if (
             isinstance(self.signed_at, bool)
@@ -288,29 +402,8 @@ class SignatureMetadata:
                     "extra_count": len(extra),
                 },
             )
-        try:
-            payload_type = (
-                EvidenceType(value["payload_type"])
-                if isinstance(value["payload_type"], str)
-                else None
-            )
-            signature_encoding = (
-                SignatureEncoding(value["signature_encoding"])
-                if isinstance(value["signature_encoding"], str)
-                else None
-            )
-        except ValueError:
-            invalid_field = (
-                "payload_type"
-                if (
-                    not isinstance(value["payload_type"], str)
-                    or value["payload_type"] not in EvidenceType._value2member_map_
-                )
-                else "signature_encoding"
-            )
-            raise SignatureMetadataError(
-                "metadata enum is invalid", details={"field": invalid_field}
-            ) from None
+        payload_type = _parse_evidence_type(value["payload_type"])
+        signature_encoding = _parse_signature_encoding(value["signature_encoding"])
         if payload_type is None:
             raise SignatureMetadataError(
                 "metadata enum is invalid", details={"field": "payload_type"}

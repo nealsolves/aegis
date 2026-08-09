@@ -2,13 +2,22 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 import re
 import hashlib
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Iterable, Sequence
+from typing import Any, Callable, Iterable, Sequence
 
 from aegis._internal.canonicalization import CANONICALIZATION_PROFILE_V2
+from aegis._internal.chain_checkpoint_verification import (
+    evaluate_chain_checkpoints,
+    prepare_chain_checkpoint_input,
+)
+from aegis._internal.checkpoint_models import (
+    CheckpointSignatureStatus,
+    CheckpointVerificationResult,
+)
 from aegis._internal.evidence_profiles import (
     ContentIntegrity,
     verify_content_checksum_v2,
@@ -25,10 +34,16 @@ from aegis._internal.signature_models import (
     validate_encoded_signature,
 )
 from aegis._internal.utils import canonical_json_bytes
+from aegis._internal.verification_contracts import Completeness, VerificationError
+from aegis._internal.verification_limits import (
+    BoundedVerificationErrors,
+    VerificationBudget,
+)
 
 
 _HEX64_RE = re.compile(r"^[a-f0-9]{64}$")
 _MAX_CHAIN_IDENTIFIER_LENGTH = 512
+_MAX_CHAIN_ARTIFACTS = 1_024
 _CHAIN_FIELDS = frozenset(
     {
         "chain_id",
@@ -69,19 +84,6 @@ class ChainContinuity(str, Enum):
     NOT_EVALUATED = "not_evaluated"
 
 
-class Completeness(str, Enum):
-    UNPROVEN = "unproven"
-    CHECKPOINT_PROVEN = "checkpoint_proven"
-    CONTRADICTED = "contradicted"
-
-
-@dataclass(frozen=True, slots=True)
-class VerificationError:
-    code: str
-    message: str
-    index: int | None = None
-
-
 @dataclass(frozen=True, slots=True)
 class ChainVerificationReport:
     content_integrity: ContentIntegrity
@@ -90,6 +92,11 @@ class ChainVerificationReport:
     anchor_status: AnchorStatus
     completeness: Completeness
     errors: tuple[VerificationError, ...] = ()
+    checkpoint_signature_status: CheckpointSignatureStatus = (
+        CheckpointSignatureStatus.NOT_EVALUATED
+    )
+    checkpoint_anchor_status: AnchorStatus = AnchorStatus.NOT_EVALUATED
+    checkpoint_results: tuple[CheckpointVerificationResult, ...] = ()
 
     @property
     def internal_valid(self) -> bool:
@@ -211,12 +218,22 @@ def _verify_continuity(
 
     for offset, artifact in enumerate(typed_artifacts):
         expected_index = first_index + offset
-        if artifact["chain_index"] != expected_index:
+        artifact_index = artifact["chain_index"]
+        if type(artifact_index) is not int or artifact_index < 0:
+            errors.append(
+                _error(
+                    "CHAIN_INDEX_INVALID",
+                    f"Index {offset}: chain_index is invalid",
+                    offset,
+                )
+            )
+            continuity = ChainContinuity.INVALID
+        elif artifact_index != expected_index:
             errors.append(
                 _error(
                     "CHAIN_INDEX_MISMATCH",
                     f"Index {offset}: expected chain_index={expected_index}, "
-                    f"got {artifact['chain_index']}",
+                    f"got {artifact_index}",
                     offset,
                 )
             )
@@ -291,25 +308,41 @@ def _legacy_evidence_kind(artifacts: Sequence[object]) -> LegacyFeature | None:
     return next(iter(kinds)) if len(kinds) == 1 else None
 
 
-_SIGNATURE_PRIORITY = {
-    SignatureStatus.INVALID: 5,
-    SignatureStatus.REVOKED: 4,
-    SignatureStatus.UNKNOWN_KEY: 3,
-    SignatureStatus.INDETERMINATE: 2,
-    SignatureStatus.UNSIGNED: 1,
-    SignatureStatus.VALID: 0,
-}
-_ANCHOR_PRIORITY = {
-    AnchorStatus.INVALID: 3,
-    AnchorStatus.UNANCHORED: 2,
-    AnchorStatus.NOT_EVALUATED: 1,
-    AnchorStatus.ANCHORED: 0,
-}
+def _signature_priority(status: SignatureStatus) -> int:
+    if status is SignatureStatus.INVALID:
+        return 5
+    if status is SignatureStatus.REVOKED:
+        return 4
+    if status is SignatureStatus.UNKNOWN_KEY:
+        return 3
+    if status is SignatureStatus.INDETERMINATE:
+        return 2
+    if status is SignatureStatus.UNSIGNED:
+        return 1
+    if status is SignatureStatus.VALID:
+        return 0
+    raise TypeError("signature status is invalid")
 
 
-def _worst(values: Iterable[Enum], priority: dict[Any, int], default: Any) -> Any:
+def _anchor_priority(status: AnchorStatus) -> int:
+    if status is AnchorStatus.INVALID:
+        return 3
+    if status is AnchorStatus.UNANCHORED:
+        return 2
+    if status is AnchorStatus.NOT_EVALUATED:
+        return 1
+    if status is AnchorStatus.ANCHORED:
+        return 0
+    raise TypeError("anchor status is invalid")
+
+
+def _worst(
+    values: Iterable[Enum],
+    priority: Callable[[Any], int],
+    default: Any,
+) -> Any:
     values = tuple(values)
-    return max(values, key=priority.__getitem__) if values else default
+    return max(values, key=priority) if values else default
 
 
 def _verify_signatures(
@@ -414,8 +447,8 @@ def _verify_signatures(
             signature_statuses.append(result.signature_status)
             anchor_statuses.append(result.anchor_status)
     return (
-        _worst(signature_statuses, _SIGNATURE_PRIORITY, SignatureStatus.UNSIGNED),
-        _worst(anchor_statuses, _ANCHOR_PRIORITY, AnchorStatus.NOT_EVALUATED),
+        _worst(signature_statuses, _signature_priority, SignatureStatus.UNSIGNED),
+        _worst(anchor_statuses, _anchor_priority, AnchorStatus.NOT_EVALUATED),
     )
 
 
@@ -480,9 +513,13 @@ def _apply_anchor_verifier(
     if callable(anchor_verifier):
         result = anchor_verifier(tuple(artifacts))
     else:
-        verify = getattr(anchor_verifier, "verify")
-        result = verify(tuple(artifacts))
-    if not isinstance(result, AnchorStatus):
+        result = anchor_verifier.verify(tuple(artifacts))  # type: ignore[attr-defined]
+    if not (
+        result is AnchorStatus.NOT_EVALUATED
+        or result is AnchorStatus.UNANCHORED
+        or result is AnchorStatus.ANCHORED
+        or result is AnchorStatus.INVALID
+    ):
         raise TypeError("anchor verifier must return AnchorStatus")
     return result
 
@@ -493,9 +530,12 @@ def verify_chain_detailed(
     signature_verifier: object | None = None,
     anchor_verifier: object | None = None,
     legacy_authorization: object | None = None,
+    checkpoints: object = (),
+    checkpoint_verifier: object | None = None,
+    expected_chain_id: object | None = None,
 ) -> ChainVerificationReport:
     """Verify supplied evidence without conflating integrity and completeness."""
-    errors: list[VerificationError] = []
+    errors = BoundedVerificationErrors()
     if type(artifacts) is not list:
         error = _error(
             "CHAIN_INPUT_INVALID", "Artifacts must be supplied as a list"
@@ -508,7 +548,42 @@ def verify_chain_detailed(
             completeness=Completeness.UNPROVEN,
             errors=(error,),
         )
-    supplied: Sequence[object] = artifacts
+    if len(artifacts) > _MAX_CHAIN_ARTIFACTS:
+        errors.append(
+            _error(
+                "CHAIN_VERIFICATION_LIMIT_EXCEEDED",
+                "Chain verification input exceeds a configured limit",
+            )
+        )
+        return ChainVerificationReport(
+            content_integrity=ContentIntegrity.NOT_EVALUATED,
+            chain_continuity=ChainContinuity.NOT_EVALUATED,
+            signature_status=SignatureStatus.INDETERMINATE,
+            anchor_status=AnchorStatus.NOT_EVALUATED,
+            completeness=Completeness.UNPROVEN,
+            errors=tuple(errors),
+        )
+
+    budget = VerificationBudget()
+    checkpoint_errors = BoundedVerificationErrors()
+    prepared_checkpoints = prepare_chain_checkpoint_input(
+        artifacts,
+        checkpoints,
+        expected_chain_id,
+        budget,
+        checkpoint_errors,
+    )
+    if prepared_checkpoints is None:
+        return ChainVerificationReport(
+            content_integrity=ContentIntegrity.NOT_EVALUATED,
+            chain_continuity=ChainContinuity.NOT_EVALUATED,
+            signature_status=SignatureStatus.INDETERMINATE,
+            anchor_status=AnchorStatus.NOT_EVALUATED,
+            completeness=Completeness.UNPROVEN,
+            errors=tuple(checkpoint_errors),
+        )
+
+    supplied: Sequence[object] = prepared_checkpoints.artifacts
 
     legacy_kind = _legacy_evidence_kind(supplied)
     legacy_mode = (
@@ -534,7 +609,10 @@ def verify_chain_detailed(
     )
     if anchor_verifier is not None:
         try:
-            anchor_status = _apply_anchor_verifier(anchor_verifier, supplied)
+            anchor_status = _apply_anchor_verifier(
+                anchor_verifier,
+                deepcopy(supplied),
+            )
         except Exception:
             errors.append(
                 _error(
@@ -544,11 +622,32 @@ def verify_chain_detailed(
             )
             anchor_status = AnchorStatus.NOT_EVALUATED
 
+    checkpoint_evaluation = evaluate_chain_checkpoints(
+        prepared_checkpoints,
+        prepared_checkpoints.artifacts,
+        content_valid=content is ContentIntegrity.VALID,
+        continuity_valid=continuity is ChainContinuity.VALID,
+        verifier=checkpoint_verifier,  # type: ignore[arg-type]
+        errors=checkpoint_errors,
+    )
+
+    combined_errors = BoundedVerificationErrors()
+    for error in sorted(
+        checkpoint_errors,
+        key=lambda error: -1 if error.index is None else error.index,
+    ):
+        combined_errors.append(error)
+    for error in errors:
+        combined_errors.append(error)
+
     return ChainVerificationReport(
         content_integrity=content,
         chain_continuity=continuity,
         signature_status=signature_status,
         anchor_status=anchor_status,
-        completeness=Completeness.UNPROVEN,
-        errors=tuple(errors),
+        completeness=checkpoint_evaluation.completeness,
+        errors=tuple(combined_errors),
+        checkpoint_signature_status=checkpoint_evaluation.signature_status,
+        checkpoint_anchor_status=checkpoint_evaluation.anchor_status,
+        checkpoint_results=checkpoint_evaluation.results,
     )

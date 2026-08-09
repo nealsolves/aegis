@@ -2,6 +2,7 @@ import copy
 
 import pytest
 
+import aegis._internal.verification as verification_module
 from aegis._internal.canonicalization import canonicalize_v2
 from aegis._internal.evidence_profiles import build_content_checksum_v2
 from aegis._internal.external_signing import sign_artifact_with_metadata
@@ -129,12 +130,22 @@ def test_tampered_body_does_not_change_independent_unsigned_status():
     assert report.completeness is Completeness.UNPROVEN
 
 
-@pytest.mark.parametrize("entry", [None, [], "artifact", {1: "bad key"}])
+@pytest.mark.parametrize("entry", [None, [], "artifact"])
 def test_malformed_entries_return_typed_invalid_report(entry):
     report = verify_chain_detailed([entry])
     assert report.content_integrity is ContentIntegrity.INVALID
     assert report.chain_continuity is ChainContinuity.INVALID
     assert report.errors
+
+
+def test_non_string_chain_keys_use_the_approved_limit_route():
+    report = verify_chain_detailed([{1: "bad key"}])
+
+    assert report.content_integrity is ContentIntegrity.NOT_EVALUATED
+    assert report.chain_continuity is ChainContinuity.NOT_EVALUATED
+    assert [error.code for error in report.errors] == [
+        "CHAIN_VERIFICATION_LIMIT_EXCEEDED"
+    ]
 
 
 def test_non_list_outer_input_cannot_return_internal_success():
@@ -201,3 +212,57 @@ def test_empty_supplied_set_is_not_evaluated_or_complete():
     assert report.content_integrity is ContentIntegrity.NOT_EVALUATED
     assert report.chain_continuity is ChainContinuity.NOT_EVALUATED
     assert report.completeness is Completeness.UNPROVEN
+
+
+def test_chain_artifact_limit_fails_before_any_verification_axis():
+    report = verify_chain_detailed([None] * 1_025)
+
+    assert report.content_integrity is ContentIntegrity.NOT_EVALUATED
+    assert report.chain_continuity is ChainContinuity.NOT_EVALUATED
+    assert report.signature_status is SignatureStatus.INDETERMINATE
+    assert report.anchor_status is AnchorStatus.NOT_EVALUATED
+    assert [error.code for error in report.errors] == [
+        "CHAIN_VERIFICATION_LIMIT_EXCEEDED"
+    ]
+
+
+def test_chain_aggregate_preflight_precedes_all_axes_and_anchor_callback(
+    monkeypatch,
+):
+    calls: list[str] = []
+
+    def content(*_args, **_kwargs):
+        calls.append("content")
+        return ContentIntegrity.VALID
+
+    def continuity(*_args, **_kwargs):
+        calls.append("continuity")
+        return ChainContinuity.VALID
+
+    def signatures(*_args, **_kwargs):
+        calls.append("signature")
+        return SignatureStatus.VALID, AnchorStatus.UNANCHORED
+
+    def anchor(*_args, **_kwargs):
+        calls.append("anchor")
+        return AnchorStatus.ANCHORED
+
+    monkeypatch.setattr(verification_module, "_verify_content", content)
+    monkeypatch.setattr(verification_module, "_verify_continuity", continuity)
+    monkeypatch.setattr(verification_module, "_verify_signatures", signatures)
+
+    report = verify_chain_detailed(
+        [{"oversized": "x" * (4 * 1024 * 1024 + 1)}],
+        anchor_verifier=anchor,
+    )
+
+    assert [error.code for error in report.errors] == [
+        "CHAIN_VERIFICATION_LIMIT_EXCEEDED"
+    ]
+    assert calls == []
+
+
+def test_chain_verification_error_collection_drops_errors_after_one_hundred():
+    report = verify_chain_detailed([None] * 101)
+
+    assert len(report.errors) == 100

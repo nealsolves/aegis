@@ -3,26 +3,41 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Mapping
+from copy import deepcopy
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+from aegis._internal.checkpoint_models import (
+    CheckpointSignatureStatus,
+    CheckpointVerificationResult,
+)
 from aegis._internal.evidence_profiles import (
     ContentIntegrity,
     verify_content_checksum_v2,
 )
-from aegis._internal.evidence_finalizer import (
-    _audit_validator,
-    _workflow_validator,
+from aegis._internal.checkpoint_source_validation import (
+    is_valid_audit_artifact_v2,
+    is_valid_workflow_artifact_v2,
 )
-from aegis._internal.signature_models import SignatureStatus
-from aegis._internal.verification import (
-    Completeness,
-    VerificationError,
-    _verify_signatures,
+from aegis._internal.signature_models import AnchorStatus, SignatureStatus
+from aegis._internal.verification import _verify_signatures
+from aegis._internal.verification_contracts import Completeness, VerificationError
+from aegis._internal.verification_limits import (
+    BoundedVerificationErrors,
+    VerificationBudget,
+    VerificationInputError,
+    _IterableConsumptionError,
+    materialize_bounded_iterable,
 )
 from aegis._internal.workflow_limits import MAX_WORKFLOW_ATTEMPTS
+from aegis._internal.workflow_checkpoint_verification import (
+    CheckpointEvaluation,
+    detach_workflow_checkpoint_input,
+    evaluate_workflow_checkpoint,
+    invalid_workflow_checkpoint_evaluation,
+    prepare_workflow_checkpoint_input,
+)
 
 
 _HEX64_RE = re.compile(r"^[a-f0-9]{64}$")
@@ -38,108 +53,7 @@ MAX_WORKFLOW_VERIFICATION_BYTES = 4 * 1024 * 1024
 MAX_WORKFLOW_VERIFICATION_DEPTH = 32
 MAX_WORKFLOW_VERIFICATION_NODES = 65_536
 MAX_WORKFLOW_VERIFICATION_ERRORS = 100
-
-
-class _VerificationBudgetExceeded(Exception):
-    pass
-
-
-class _BoundedErrors(list[VerificationError]):
-    def append(self, error: VerificationError) -> None:
-        if len(self) < MAX_WORKFLOW_VERIFICATION_ERRORS:
-            super().append(error)
-
-
-def _measure_json_document(value: object, *, byte_limit: int) -> int:
-    """Measure one JSON document iteratively under byte/depth/cycle bounds."""
-    total = 0
-    scheduled_nodes = 1
-    seen_containers: set[int] = set()
-    stack: list[tuple[object, int]] = [(value, 0)]
-    while stack:
-        current, depth = stack.pop()
-        if depth > MAX_WORKFLOW_VERIFICATION_DEPTH:
-            raise _VerificationBudgetExceeded
-        if current is None or type(current) is bool:
-            total += 5
-        elif type(current) is str:
-            if len(current) > byte_limit - total:
-                raise _VerificationBudgetExceeded
-            total += len(current.encode("utf-8")) + 2
-        elif type(current) is int:
-            total += 32
-        elif type(current) is float:
-            total += 32
-        elif type(current) is list:
-            identity = id(current)
-            if identity in seen_containers:
-                raise _VerificationBudgetExceeded
-            seen_containers.add(identity)
-            total += 2 + len(current)
-            if (
-                total > byte_limit
-                or (current and depth >= MAX_WORKFLOW_VERIFICATION_DEPTH)
-                or len(current)
-                > MAX_WORKFLOW_VERIFICATION_NODES - scheduled_nodes
-            ):
-                raise _VerificationBudgetExceeded
-            scheduled_nodes += len(current)
-            for item in reversed(current):
-                stack.append((item, depth + 1))
-        elif type(current) is dict:
-            identity = id(current)
-            if identity in seen_containers:
-                raise _VerificationBudgetExceeded
-            seen_containers.add(identity)
-            total += 2 + len(current)
-            if (
-                total > byte_limit
-                or (current and depth >= MAX_WORKFLOW_VERIFICATION_DEPTH)
-                or len(current)
-                > MAX_WORKFLOW_VERIFICATION_NODES - scheduled_nodes
-            ):
-                raise _VerificationBudgetExceeded
-            scheduled_nodes += len(current)
-            for key in current:
-                if type(key) is not str:
-                    raise _VerificationBudgetExceeded
-                if len(key) > byte_limit - total:
-                    raise _VerificationBudgetExceeded
-                total += len(key.encode("utf-8")) + 3
-                if total > byte_limit:
-                    raise _VerificationBudgetExceeded
-            for item in current.values():
-                stack.append((item, depth + 1))
-        else:
-            raise _VerificationBudgetExceeded
-        if total > byte_limit:
-            raise _VerificationBudgetExceeded
-    return total
-
-
-def _within_document_budget(
-    value: object,
-    errors: list[VerificationError],
-    *,
-    remaining_bytes: int,
-) -> int | None:
-    try:
-        return _measure_json_document(value, byte_limit=remaining_bytes)
-    except (
-        _VerificationBudgetExceeded,
-        MemoryError,
-        RecursionError,
-        UnicodeError,
-        ValueError,
-        OverflowError,
-    ):
-        errors.append(
-            _error(
-                "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
-                "Workflow verification input exceeds a configured limit",
-            )
-        )
-        return None
+_MISSING_WORKFLOW_FIELD = object()
 
 
 class WorkflowClaimStatus(str, Enum):
@@ -155,6 +69,11 @@ class WorkflowVerificationReport:
     signature_status: SignatureStatus
     completeness: Completeness
     errors: tuple[VerificationError, ...]
+    checkpoint_signature_status: CheckpointSignatureStatus = (
+        CheckpointSignatureStatus.NOT_EVALUATED
+    )
+    checkpoint_anchor_status: AnchorStatus = AnchorStatus.NOT_EVALUATED
+    checkpoint_results: tuple[CheckpointVerificationResult, ...] = ()
 
 
 def _error(code: str, message: str, index: int | None = None) -> VerificationError:
@@ -165,12 +84,23 @@ def _report(
     claim_status: WorkflowClaimStatus,
     signature_status: SignatureStatus,
     errors: list[VerificationError],
+    checkpoint_evaluation: CheckpointEvaluation | None = None,
 ) -> WorkflowVerificationReport:
+    if checkpoint_evaluation is None:
+        checkpoint_evaluation = CheckpointEvaluation(
+            signature_status=CheckpointSignatureStatus.NOT_EVALUATED,
+            anchor_status=AnchorStatus.NOT_EVALUATED,
+            completeness=Completeness.UNPROVEN,
+            results=(),
+        )
     return WorkflowVerificationReport(
         claim_status=claim_status,
         signature_status=signature_status,
-        completeness=Completeness.UNPROVEN,
+        completeness=checkpoint_evaluation.completeness,
         errors=tuple(errors),
+        checkpoint_signature_status=checkpoint_evaluation.signature_status,
+        checkpoint_anchor_status=checkpoint_evaluation.anchor_status,
+        checkpoint_results=checkpoint_evaluation.results,
     )
 
 
@@ -195,21 +125,29 @@ def _materialize_invocations(
     invocations: object,
     errors: list[VerificationError],
     *,
-    consumed_bytes: int,
+    budget: VerificationBudget,
 ) -> list[object] | None:
-    if (
-        isinstance(invocations, (str, bytes, bytearray, Mapping))
-        or not isinstance(invocations, Iterable)
-    ):
+    try:
+        supplied = materialize_bounded_iterable(
+            invocations,
+            max_items=MAX_WORKFLOW_SUPPLIED_ARTIFACTS,
+        )
+    except _IterableConsumptionError:
         errors.append(
             _error(
                 "WORKFLOW_INVOCATIONS_INPUT_INVALID",
-                "Invocations must be supplied as an ordered iterable",
+                "Invocations could not be consumed as an ordered iterable",
             )
         )
         return None
-    try:
-        iterator = iter(invocations)
+    except VerificationInputError:
+        errors.append(
+            _error(
+                "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
+                "Supplied invocation count exceeds the verifier limit",
+            )
+        )
+        return None
     except Exception:
         errors.append(
             _error(
@@ -218,38 +156,41 @@ def _materialize_invocations(
             )
         )
         return None
-    supplied: list[object] = []
-    total_bytes = consumed_bytes
-    while True:
+
+    for artifact in supplied:
         try:
-            artifact = next(iterator)
-        except StopIteration:
-            return supplied
-        except Exception:
-            errors.append(
-                _error(
-                    "WORKFLOW_INVOCATIONS_INPUT_INVALID",
-                    "Invocations could not be consumed as an ordered iterable",
-                )
-            )
-            return None
-        if len(supplied) >= MAX_WORKFLOW_SUPPLIED_ARTIFACTS:
+            budget.measure(artifact)
+        except VerificationInputError:
             errors.append(
                 _error(
                     "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
-                    "Supplied invocation count exceeds the verifier limit",
+                    "Workflow verification input exceeds a configured limit",
                 )
             )
             return None
-        measured = _within_document_budget(
-            artifact,
-            errors,
-            remaining_bytes=MAX_WORKFLOW_VERIFICATION_BYTES - total_bytes,
+    try:
+        # The documents above charge every child.  This bounded core-owned
+        # string charges the remaining JSON list overhead exactly: two bytes,
+        # one comma per item, and one container node.
+        budget.measure("x" * len(supplied))
+    except VerificationInputError:
+        errors.append(
+            _error(
+                "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
+                "Workflow verification input exceeds a configured limit",
+            )
         )
-        if measured is None:
-            return None
-        total_bytes += measured
-        supplied.append(artifact)
+        return None
+    try:
+        return deepcopy(supplied)
+    except Exception:
+        errors.append(
+            _error(
+                "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
+                "Workflow verification input exceeds a configured limit",
+            )
+        )
+        return None
 
 
 def _validate_claim(
@@ -280,7 +221,7 @@ def _validate_claim(
         errors.append(
             _error(
                 "WORKFLOW_CLAIM_COUNT_MISMATCH",
-                f"Claim contains {len(claim)} entries for step_count={step_count}",
+                "Workflow claim count does not match step_count",
             )
         )
     if (
@@ -325,6 +266,96 @@ def _validate_claim(
             )
         )
     return step_count, typed_claim
+
+
+def _reject_oversized_workflow_claim(
+    workflow: dict[str, Any],
+    errors: list[VerificationError],
+) -> bool:
+    step_count: object = _MISSING_WORKFLOW_FIELD
+    claim: object = _MISSING_WORKFLOW_FIELD
+    step_count_confusable = False
+    claim_confusable = False
+    step_count_oversized = False
+    claim_oversized = False
+    if dict.__len__(workflow) > MAX_WORKFLOW_VERIFICATION_NODES:
+        return False
+    for key, value in dict.items(workflow):
+        field = None
+        key_type = type(key)
+        exact_key = key_type is str
+        if exact_key:
+            if key == "step_count":
+                field = "step_count"
+            elif key == "invocations":
+                field = "invocations"
+        elif type.__subclasscheck__(str, key_type):
+            if str.__eq__(key, "step_count") is True:
+                field = "step_count"
+            elif str.__eq__(key, "invocations") is True:
+                field = "invocations"
+        if field == "step_count":
+            if exact_key:
+                step_count = value
+            else:
+                step_count_confusable = True
+            if (
+                type(value) is int
+                and value > MAX_WORKFLOW_CLAIM_ENTRIES
+            ):
+                step_count_oversized = True
+        elif field == "invocations":
+            if exact_key:
+                claim = value
+            else:
+                claim_confusable = True
+            if (
+                type(value) is list
+                and list.__len__(value) > MAX_WORKFLOW_CLAIM_ENTRIES
+            ):
+                claim_oversized = True
+
+    step_count_valid = (
+        not step_count_confusable
+        and type(step_count) is int
+        and step_count >= 0
+    )
+    claim_type_valid = not claim_confusable and type(claim) is list
+    claim_length = list.__len__(claim) if claim_type_valid else None
+    if not step_count_oversized and not claim_oversized:
+        return False
+    if not step_count_valid:
+        errors.append(
+            _error(
+                "WORKFLOW_STEP_COUNT_INVALID",
+                "Workflow step_count is invalid",
+            )
+        )
+    if not claim_type_valid:
+        errors.append(
+            _error(
+                "WORKFLOW_CLAIM_INVALID",
+                "Workflow invocations claim is invalid",
+            )
+        )
+    if (
+        step_count_valid
+        and claim_type_valid
+        and claim_length != step_count
+    ):
+        errors.append(
+            _error(
+                "WORKFLOW_CLAIM_COUNT_MISMATCH",
+                "Workflow claim count does not match step_count",
+            )
+        )
+    errors.append(
+        _error(
+            "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
+            "Workflow claim exceeds the verifier entry limit",
+        )
+    )
+    return True
 
 
 def _valid_workflow_correlation(context: object) -> bool:
@@ -413,7 +444,7 @@ def _compare_selected(
                 )
             )
         try:
-            schema_valid = _audit_validator().is_valid(artifact)
+            schema_valid = is_valid_audit_artifact_v2(artifact)
         except Exception:
             schema_valid = False
         if not schema_valid:
@@ -473,15 +504,11 @@ def _verify_workflow_claim(
     workflow: object,
     invocations: object,
     *,
-    expected_checkpoint: None = None,
+    expected_checkpoint: object | None = None,
+    checkpoint_verifier: object | None = None,
 ) -> WorkflowVerificationReport:
-    """Compare one workflow claim with an ordered, session-filtered artifact set.
-
-    Issue #46 owns the future ``TrustedWorkflowCheckpoint`` contract. Until
-    that type exists, the only accepted checkpoint value is ``None`` and
-    completeness cannot be promoted beyond ``UNPROVEN``.
-    """
-    errors: list[VerificationError] = _BoundedErrors()
+    """Compare one workflow claim with an ordered, session-filtered artifact set."""
+    errors: list[VerificationError] = BoundedVerificationErrors()
     if type(workflow) is not dict:
         errors.append(
             _error("WORKFLOW_INPUT_INVALID", "Workflow must be a plain JSON object")
@@ -492,12 +519,71 @@ def _verify_workflow_claim(
             errors,
         )
 
-    workflow_bytes = _within_document_budget(
-        workflow,
-        errors,
+    if _reject_oversized_workflow_claim(workflow, errors):
+        return _report(
+            WorkflowClaimStatus.INVALID,
+            SignatureStatus.INDETERMINATE,
+            errors,
+        )
+
+    budget = VerificationBudget(
         remaining_bytes=MAX_WORKFLOW_VERIFICATION_BYTES,
+        remaining_nodes=MAX_WORKFLOW_VERIFICATION_NODES,
     )
-    if workflow_bytes is None:
+    try:
+        budget.measure(workflow)
+        workflow_snapshot = deepcopy(workflow)
+        workflow_signature_snapshot = deepcopy(workflow_snapshot)
+    except VerificationInputError:
+        errors.append(
+            _error(
+                "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
+                "Workflow verification input exceeds a configured limit",
+            )
+        )
+        return _report(
+            WorkflowClaimStatus.NOT_EVALUATED,
+            SignatureStatus.INDETERMINATE,
+            errors,
+        )
+    except Exception:
+        errors.append(
+            _error(
+                "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
+                "Workflow verification input exceeds a configured limit",
+            )
+        )
+        return _report(
+            WorkflowClaimStatus.NOT_EVALUATED,
+            SignatureStatus.INDETERMINATE,
+            errors,
+        )
+
+    detached_checkpoint = detach_workflow_checkpoint_input(
+        expected_checkpoint,
+        budget,
+    )
+    supplied = _materialize_invocations(
+        invocations,
+        errors,
+        budget=budget,
+    )
+    if supplied is None:
+        return _report(
+            WorkflowClaimStatus.NOT_EVALUATED,
+            SignatureStatus.INDETERMINATE,
+            errors,
+        )
+
+    prepared_checkpoint = prepare_workflow_checkpoint_input(
+        detached_checkpoint,
+        budget,
+        errors,
+    )
+    if any(
+        error.code == "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED"
+        for error in errors
+    ):
         return _report(
             WorkflowClaimStatus.NOT_EVALUATED,
             SignatureStatus.INDETERMINATE,
@@ -505,7 +591,11 @@ def _verify_workflow_claim(
         )
 
     try:
-        signature_status, _ = _verify_signatures((workflow,), None, errors)
+        signature_status, _ = _verify_signatures(
+            (workflow_signature_snapshot,),
+            None,
+            errors,
+        )
     except Exception:
         errors.append(
             _error(
@@ -514,84 +604,86 @@ def _verify_workflow_claim(
             )
         )
         signature_status = SignatureStatus.INDETERMINATE
-    if expected_checkpoint is not None:
-        errors.append(
-            _error(
-                "WORKFLOW_CHECKPOINT_UNSUPPORTED",
-                "Trusted workflow checkpoints are unavailable until issue #46",
+    workflow_content_valid = False
+    if _legacy_workflow(workflow_snapshot):
+        claim_status = WorkflowClaimStatus.LEGACY
+    else:
+        try:
+            content_status = verify_content_checksum_v2(workflow_snapshot)
+        except Exception:
+            content_status = ContentIntegrity.NOT_EVALUATED
+        workflow_content_valid = content_status is ContentIntegrity.VALID
+        if not workflow_content_valid:
+            errors.append(
+                _error(
+                    "WORKFLOW_CONTENT_INVALID",
+                    "Workflow checksum or v2 content profile is invalid",
+                )
             )
-        )
-        return _report(
-            WorkflowClaimStatus.NOT_EVALUATED,
-            signature_status,
-            errors,
-        )
+            claim_status = WorkflowClaimStatus.INVALID
+        else:
+            initial_error_count = len(errors)
+            validated = _validate_claim(workflow_snapshot, errors)
 
-    if _legacy_workflow(workflow):
-        return _report(WorkflowClaimStatus.LEGACY, signature_status, errors)
+            try:
+                workflow_schema_valid = is_valid_workflow_artifact_v2(
+                    workflow_snapshot
+                )
+            except Exception:
+                workflow_schema_valid = False
+            if not workflow_schema_valid:
+                errors.append(
+                    _error(
+                        "WORKFLOW_SCHEMA_INVALID",
+                        "Workflow does not match the v2 workflow artifact schema",
+                    )
+                )
+                claim_status = WorkflowClaimStatus.INVALID
+            elif validated is None:
+                claim_status = WorkflowClaimStatus.INVALID
+            else:
+                step_count, claim = validated
+                session_id = workflow_snapshot["session_id"]
+                assert isinstance(session_id, str)
+                selected = _select_session_invocations(
+                    supplied,
+                    session_id,
+                    errors,
+                )
+                _compare_selected(selected, step_count, claim, errors)
+                claim_status = (
+                    WorkflowClaimStatus.VALID
+                    if len(errors) == initial_error_count
+                    else WorkflowClaimStatus.INVALID
+                )
 
-    try:
-        content_status = verify_content_checksum_v2(workflow)
-    except Exception:
-        content_status = ContentIntegrity.NOT_EVALUATED
-    if content_status is not ContentIntegrity.VALID:
-        errors.append(
-            _error(
-                "WORKFLOW_CONTENT_INVALID",
-                "Workflow checksum or v2 content profile is invalid",
+    checkpoint_evaluation = None
+    if detached_checkpoint.supplied:
+        if prepared_checkpoint is None:
+            checkpoint_evaluation = invalid_workflow_checkpoint_evaluation()
+        else:
+            checkpoint_evaluation = evaluate_workflow_checkpoint(
+                prepared_checkpoint,
+                workflow_snapshot,
+                workflow_content_valid=workflow_content_valid,
+                claim_valid=claim_status is WorkflowClaimStatus.VALID,
+                verifier=checkpoint_verifier,  # type: ignore[arg-type]
+                errors=errors,
             )
-        )
-        return _report(WorkflowClaimStatus.INVALID, signature_status, errors)
-
-    initial_error_count = len(errors)
-    validated = _validate_claim(workflow, errors)
-
-    try:
-        workflow_schema_valid = _workflow_validator().is_valid(workflow)
-    except Exception:
-        workflow_schema_valid = False
-    if not workflow_schema_valid:
-        errors.append(
-            _error(
-                "WORKFLOW_SCHEMA_INVALID",
-                "Workflow does not match the v2 workflow artifact schema",
-            )
-        )
-        return _report(WorkflowClaimStatus.INVALID, signature_status, errors)
-
-    if validated is None:
-        return _report(WorkflowClaimStatus.INVALID, signature_status, errors)
-
-    supplied = _materialize_invocations(
-        invocations,
+    return _report(
+        claim_status,
+        signature_status,
         errors,
-        consumed_bytes=workflow_bytes,
+        checkpoint_evaluation,
     )
-    if supplied is None:
-        return _report(
-            WorkflowClaimStatus.NOT_EVALUATED,
-            signature_status,
-            errors,
-        )
-
-    step_count, claim = validated
-    session_id = workflow["session_id"]
-    assert isinstance(session_id, str)
-    selected = _select_session_invocations(supplied, session_id, errors)
-    _compare_selected(selected, step_count, claim, errors)
-    claim_status = (
-        WorkflowClaimStatus.VALID
-        if len(errors) == initial_error_count
-        else WorkflowClaimStatus.INVALID
-    )
-    return _report(claim_status, signature_status, errors)
 
 
 def verify_workflow_claim(
     workflow: object,
     invocations: object,
     *,
-    expected_checkpoint: None = None,
+    expected_checkpoint: object | None = None,
+    checkpoint_verifier: object | None = None,
 ) -> WorkflowVerificationReport:
     """Return a typed report for every catchable verifier failure."""
     try:
@@ -599,9 +691,10 @@ def verify_workflow_claim(
             workflow,
             invocations,
             expected_checkpoint=expected_checkpoint,
+            checkpoint_verifier=checkpoint_verifier,
         )
     except (MemoryError, RecursionError):
-        errors: list[VerificationError] = _BoundedErrors()
+        errors: list[VerificationError] = BoundedVerificationErrors()
         errors.append(
             _error(
                 "WORKFLOW_VERIFICATION_LIMIT_EXCEEDED",
@@ -609,7 +702,7 @@ def verify_workflow_claim(
             )
         )
     except Exception:
-        errors = _BoundedErrors()
+        errors = BoundedVerificationErrors()
         errors.append(
             _error(
                 "WORKFLOW_VERIFICATION_ERROR",

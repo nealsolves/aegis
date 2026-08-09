@@ -20,12 +20,14 @@ Governance in AEGIS is runtime enforcement, not documentation and not prompting.
 - Install: `pip install aegis-ai-governance==0.9.0b1`
 - Previous PyPI line: `aegis==0.3.3` (`2026-04-10`)
 - Release matrix: [docs/reference/RELEASE_MATRIX.md](docs/reference/RELEASE_MATRIX.md)
-- Current release scope: invocation governance plus workflow-aware provenance
+- Released `0.9.0b1` scope: invocation governance plus workflow-aware provenance
   and lineage groundwork, audit schema `v1.4`, `AuditLineage`,
   `ProvenanceGate`, `RiskHistory`, and `@governed` defaults to split enforcement
+- Current source after that release emits audit schema `v2.0`; schema `v1.4`
+  remains the released-beta history, not the current-source contract
 - Current beta line: `v0.9.0`, packaged as
   `aegis-ai-governance==0.9.0b1`
-- Current-source verification baseline: `3138 tests` pass in the public-beta environment,
+- Current-source verification baseline: `4826 tests` pass in the public-beta environment,
   including fixture-based optional-adapter coverage;
   coverage remains above the `90%` CI gate
 
@@ -47,6 +49,9 @@ storage controls. A valid signature is not necessarily externally anchored.
 HMAC signatures and hash chains provide tamper-evidence, not immutable storage,
 trusted time, replay prevention, sequence completeness, certification, or a
 compliance determination.
+When a valid, anchored, authoritative checkpoint is retained and presented,
+AEGIS can detect divergence from its pinned chain or workflow evidence. The
+host still owns latest-checkpoint retrieval and omission/rollback protection.
 
 ## Why This Repo Exists
 
@@ -104,6 +109,22 @@ transport, availability behavior, and artifact storage. See the
 [public integration contract](docs/PUBLIC_INTEGRATION_CONTRACT.md#38-artifact-signing-and-external-trust-results)
 and [ADR-0012](docs/decisions/ADR-0012-external-trust-anchor-signing.md) for the
 two-axis signature/anchor contract and its limits.
+
+The same source-only line adds trusted checkpoints (issue #46): the
+provider-neutral `create_chain_checkpoint(...)` / `create_workflow_checkpoint(...)`
+creators plus `verify_chain_detailed(..., expected_chain_id=...)` and
+`verify_workflow_claim(..., expected_checkpoint=...)` add a completeness axis that
+detects whole-chain and finalized-workflow replacement for an expected scope
+when valid, anchored, authoritative checkpoint evidence is presented
+(`checkpoint_proven` / `contradicted`). Invalid, unavailable, unknown-key,
+revoked, or unanchored evidence remains `unproven` even when its structural
+binding matches or conflicts. No-checkpoint calls stay source-compatible
+and report `unproven`. The host owns the signer, verifier, storage, and the signed
+host-supplied `checkpointed_at`; AEGIS never creates an automatic checkpoint sink.
+A `checkpoint_proven` result does not prove latest retrieval, WORM storage, future
+activity, certification, or compliance. See
+[ADR-0015](docs/decisions/ADR-0015-trusted-checkpoints.md) and
+[USAGE.md](docs/USAGE.md) Recipe 13.
 
 That source-only line now includes explicit
 [AWS KMS](docs/reference/external/AWS_KMS_SIGNING.md) and

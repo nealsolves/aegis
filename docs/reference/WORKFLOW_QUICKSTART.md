@@ -94,11 +94,17 @@ signed claimed set. Workflow artifacts are separate from invocation chains.
 
 Workflow-signed proves integrity and order of the claimed supplied set. It does
 not prove the host disclosed every invocation. Completeness remains unproven
-until a trusted checkpoint binds the expected head/count. The public
+until a trusted checkpoint binds the expected head/count. Only valid, anchored,
+authoritative evidence can then detect divergence; latest retrieval and
+checkpoint omission/rollback remain host responsibilities. The public
 `verify_workflow_claim(workflow, invocations)` helper checks claim matching with
 independent claim, signature, and completeness results. A signed workflow is
-`INDETERMINATE` without a trusted verifier, and trusted checkpoints are not
-available until #46.
+`INDETERMINATE` without a trusted verifier. Trusted checkpoints are implemented
+in the current source (issue #46): pass a host-created checkpoint through
+`verify_workflow_claim(..., expected_checkpoint=..., checkpoint_verifier=...)`
+to promote completeness to `checkpoint_proven` for the expected scope. See
+ADR-0015 and `docs/USAGE.md` Recipe 13. This checkpoint surface is
+current-source-only and not in the published `0.9.0b1` wheel.
 
 The verifier bounds claims and supplied artifacts to 1,024 entries each,
 measured input to 4 MiB, nesting to 32 levels, and reports to 100 errors.

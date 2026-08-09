@@ -181,3 +181,23 @@ aegis workflow init --profile minimal
 cd governance
 python workflow_example.py
 ```
+
+## Adding trusted checkpoints (optional, issue #46)
+
+Trusted checkpoints are **fully source-compatible**: existing
+`verify_chain_detailed(...)` and `verify_workflow_claim(...)` calls that pass no
+checkpoint evidence behave exactly as before and report `UNPROVEN`
+completeness. You adopt checkpoints only when you want to detect whole-chain or
+finalized-workflow replacement for a known scope.
+
+To adopt them, create a checkpoint with a host-supplied provider-neutral signer
+and persist `checkpoint.to_dict()` yourself, then pass the reconstructed record
+back at verification time with `expected_chain_id` (chain) or
+`expected_checkpoint` (workflow). A valid, anchored, authoritative match yields
+`checkpoint_proven`; a conflict against that trusted authority yields
+`contradicted`. Invalid, unavailable, unknown-key, revoked, or unanchored
+checkpoint evidence remains `unproven` even when structural binding matches or
+conflicts. See
+[USAGE.md](USAGE.md) for the full recipe and ADR-0015 for the assurance scope
+(a `checkpoint_proven` result does not prove latest-retrieval, WORM storage,
+future activity, certification, or compliance).

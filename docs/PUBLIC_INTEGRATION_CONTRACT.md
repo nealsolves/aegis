@@ -970,8 +970,9 @@ The artifact in those canonical bytes includes all nine strict metadata fields:
 `schema_version`, `signing_profile`, `canonicalization_version`,
 `payload_type`, `algorithm`, `signature_encoding`, `key_reference`,
 `key_version`, and `signed_at`. Missing or extra metadata fields are rejected.
-The top-level audit schema remains `1.4`; `signature_metadata` is optional and
-versioned independently, and `signature` remains `string | null`.
+The top-level current-source audit schema is `2.0`; the published `0.9.0b1`
+release used schema `1.4`. `signature_metadata` is optional and versioned
+independently, and `signature` remains `string | null`.
 
 The fixed public values are
 `SIGNATURE_METADATA_SCHEMA_VERSION = "1"`,
@@ -1064,12 +1065,18 @@ or internally truncated supplied sequence is invalid, but a valid prefix remains
 valid because the verifier cannot know that a later artifact exists. Hash chaining does not
 make storage immutable and cannot detect replacement or tail truncation of an otherwise valid
 chain without an external trusted checkpoint. Trusted-head binding to content checksums is
-tracked separately in roadmap item #46.
+implemented in the current source (issue #46): `verify_chain_detailed(...,
+checkpoints=..., checkpoint_verifier=..., expected_chain_id=...)` reports
+`checkpoint_proven` or `contradicted` for the expected scope. This checkpoint
+surface is current-source-only and not in the published `0.9.0b1` wheel. See
+ADR-0015.
 
-The five result axes are independent: content integrity, chain continuity,
-signature status, anchor status, and completeness. A supplied valid prefix is
-`unproven`, not complete. V2 verification never selects a legacy profile from
-artifact content.
+The eight result axes are independent: content integrity, chain continuity,
+artifact signature status, artifact anchor status, checkpoint signature status,
+checkpoint anchor status, checkpoint binding status, and completeness. Binding
+is recorded per `CheckpointVerificationResult`, rather than collapsed into one
+aggregate report value. A supplied valid prefix is `unproven`, not complete. V2
+verification never selects a legacy profile from artifact content.
 
 Trusted hosts can create an exact legacy capability with
 `create_legacy_authorization(...)`. Checksum-free audit 1.x verification
@@ -1123,15 +1130,22 @@ artifacts from another session are ignored, while extra, missing, duplicate, or
 reordered artifacts for the workflow invalidate `claim_status`.
 
 `claim_status` validates the workflow's claimed supplied set. It does not
-promote `signature_status`, and signature verification has no trusted verifier
-argument in this API: a signed workflow is `INDETERMINATE` without one.
-`completeness` is always `UNPROVEN` in this release. Passing any non-`None`
-`expected_checkpoint` fails closed with `WORKFLOW_CHECKPOINT_UNSUPPORTED` and
-returns a `NOT_EVALUATED` claim; #46 owns the future trusted checkpoint contract.
+promote `signature_status`, and workflow-signature verification has no trusted
+verifier argument in this API: a signed workflow is `INDETERMINATE` without one.
+`completeness` is `UNPROVEN` for no-checkpoint calls, which stay source-compatible.
+In the current source (issue #46), passing a valid, anchored `expected_checkpoint`
+with its `checkpoint_verifier` promotes `completeness` to `checkpoint_proven` for
+the expected scope, and an authoritative mismatch reports `contradicted`.
+Invalid, unavailable, unknown-key, revoked, or unanchored checkpoint evidence
+remains `unproven` even if structural binding matches or conflicts; this checkpoint
+surface is current-source-only and not in the published `0.9.0b1` wheel. See
+ADR-0015.
 
 Workflow-signed proves integrity and order of the claimed supplied set. It does
 not prove the host disclosed every invocation. Completeness remains unproven
-until a trusted checkpoint binds the expected head/count.
+until a trusted checkpoint binds the expected head/count. Only valid, anchored,
+authoritative evidence can then detect divergence; latest retrieval and
+checkpoint omission/rollback remain host responsibilities.
 
 The verifier bounds claims and supplied artifacts to 1,024 entries each,
 measured input to 4 MiB, nesting to 32 levels, and reports to 100 errors.

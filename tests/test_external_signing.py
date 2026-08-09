@@ -60,6 +60,17 @@ def _metadata(**changes: object) -> SignatureMetadata:
 def test_metadata_signing_payload_matches_frozen_profile():
     artifact = {"audit_schema_version": "1.4", "signature": None}
     metadata = _metadata()
+    assert metadata.to_dict() == {
+        "schema_version": "1",
+        "signing_profile": "aegis-signature-v1",
+        "canonicalization_version": "aegis-canonical-json-v1",
+        "payload_type": "audit_artifact",
+        "algorithm": "HSM-SHA256",
+        "signature_encoding": "hex",
+        "key_reference": "audit-key",
+        "key_version": "version/7",
+        "signed_at": 123,
+    }
     expected_json = (
         b'{"audit_schema_version":"1.4","signature_metadata":{'
         b'"algorithm":"HSM-SHA256",'
@@ -304,6 +315,40 @@ def _metadata_artifact(
         "signature_metadata": _metadata(key_version=key_version).to_dict(),
         "signature": "aa",
     }
+
+
+@pytest.mark.parametrize(
+    "payload_type,signing_profile,canonicalization_version",
+    [
+        (
+            EvidenceType.CHAIN_CHECKPOINT,
+            "aegis-chain-checkpoint-v1",
+            "aegis-json-v2",
+        ),
+        (
+            EvidenceType.WORKFLOW_CHECKPOINT,
+            "aegis-workflow-checkpoint-v1",
+            "aegis-json-v2",
+        ),
+    ],
+)
+def test_detailed_audit_verification_rejects_checkpoint_metadata_before_provider_invocation(
+    payload_type, signing_profile, canonicalization_version
+):
+    artifact = _metadata_artifact()
+    artifact["signature_metadata"] = _metadata(
+        payload_type=payload_type,
+        signing_profile=signing_profile,
+        canonicalization_version=canonicalization_version,
+    ).to_dict()
+    snapshot = deepcopy(artifact)
+    verifier = RecordingExternalVerifier(object())
+
+    with pytest.raises(SignatureMetadataError):
+        verify_artifact_detailed(artifact, verifier=verifier)
+
+    assert verifier.calls == []
+    assert artifact == snapshot
 
 
 def _unchecked_outcome(

@@ -16,9 +16,9 @@ distribution_name: "aegis-ai-governance"
 import_package: "aegis"
 console_command: "aegis"
 candidate_status: "released-beta"
-test_count: 3138
+test_count: 4826
 coverage_threshold: 90
-audit_schema_version: "1.4"
+audit_schema_version: "2.0"
 
 candidate_truth_docs:
   - README.md
@@ -87,6 +87,10 @@ documentation_inventory:
     - docs/releases/**
     - docs/spec-driven-dev/BOOTSTRAP.md
     - docs/spec-driven-dev/changes/v0.9.0-pypi-distribution/**
+    - docs/spec-driven-dev/changes/a3-process-affine-operation-registry/**
+    - docs/spec-driven-dev/changes/b3-chain-before-sign-linker/**
+    - docs/spec-driven-dev/changes/b3-publish-authorization/**
+    - docs/spec-driven-dev/changes/b4-workflow-completeness-metadata/**
     - docs/superpowers/plans/2026-04-*
     - docs/superpowers/specs/2026-04-*
     - docs/superpowers/plans/2026-07-28-issue-44-trust-anchor-contracts.md
@@ -101,6 +105,16 @@ documentation_inventory:
     # guidance lives under docs/reference/** and ADRs match docs/decisions/**.
     - docs/superpowers/plans/2026-07-29-issue-45-aws-google-kms-adapters.md
     - docs/superpowers/specs/2026-07-29-issue-45-aws-google-kms-adapters-design.md
+    # Issue #46 plans/specs record implementation history and are not current
+    # contract authority; ADR-0015 and maintained public docs are authoritative.
+    - docs/superpowers/plans/2026-08-04-issue-46-trusted-checkpoints.md
+    - docs/superpowers/plans/2026-08-04-issue-46-task-8-correction-round-2.md
+    - docs/superpowers/plans/2026-08-05-issue-46-task-8-correction-round-3.md
+    - docs/superpowers/plans/2026-08-05-issue-46-task-8-correction-round-4.md
+    - docs/superpowers/plans/2026-08-05-issue-46-task-8-correction-round-5.md
+    - docs/superpowers/specs/2026-08-04-issue-46-trusted-checkpoints-design.md
+    # Explicitly abandoned and non-normative; retained only as design history.
+    - docs/superpowers/specs/2026-08-06-issue-46-tripwire-rescope-design.md
     - .superpowers/sdd/2026-07-29-issue-45-aws-google-kms-adapters/task-9-report.md
     - .superpowers/sdd/2026-07-29-issue-45-aws-google-kms-adapters/final-fix-wave-report.md
     - .superpowers/sdd/2026-07-30-a1-compiled-policy-restriction-envelope/task-5-report.md
@@ -178,4 +192,8 @@ internal_docs:
   - docs/releases/*
   - docs/demo_app/*
   - docs/superpowers/*
+  - docs/spec-driven-dev/changes/a3-process-affine-operation-registry/*
+  - docs/spec-driven-dev/changes/b3-chain-before-sign-linker/*
+  - docs/spec-driven-dev/changes/b3-publish-authorization/*
+  - docs/spec-driven-dev/changes/b4-workflow-completeness-metadata/*
   - demo-app-streamlit/docs/*

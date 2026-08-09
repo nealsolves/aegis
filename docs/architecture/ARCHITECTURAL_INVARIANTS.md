@@ -5,7 +5,8 @@ This document defines the non-negotiable engineering invariants of the AEGIS Gov
 These invariants exist to prevent architectural drift.
 
 Current public beta baseline: `aegis-ai-governance==0.9.0b1`, released from
-`main` with audit schema `v1.4`.
+`main` with audit schema `v1.4`. Current source after that release emits audit
+schema `v2.0`; the `v1.4` statement is release history.
 
 The packaged beta public surface adds `AEGIS.open_session(...)`,
 `GovernanceSession`, `SessionPreCallResult`, `aegis workflow init`,
@@ -180,7 +181,13 @@ the `0.9.0b1` release. It is populated only by
 Hash-chain verification applies to the sequence supplied for verification. It
 does not detect replacement of a complete otherwise-valid chain without an
 external trusted checkpoint, establish sequence completeness, or provide WORM
-storage.
+storage. Trusted checkpoints (issue #46) are the additive, host-driven control
+that detects whole-chain replacement for an expected scope when a validly signed,
+anchored checkpoint is retained and presented; a host that omits or withholds the
+checkpoint keeps the pre-#46 `unproven` result, so checkpoint omission and
+rollback remain host-owned residuals. AEGIS never creates an automatic checkpoint
+sink, discovers a key over the network, retries a host signer, or promotes
+completeness from an artifact signature alone. See ADR-0015.
 
 ---
 
@@ -401,11 +408,13 @@ provider transport, retry and timeout behavior, availability policy, and
 artifact storage. The bundled `AuditChain` is a single-process linker with one
 outstanding reservation and no crash-persistence guarantee; hosts own recovery
 or reconciliation after sink acknowledgement and before commit. AEGIS verifies
-only the supplied sequence's internal continuity. It does not claim replay
-prevention, sequence completeness, complete-chain replacement or tail-truncation
-detection, trusted time, immutable or WORM storage, certification, or regulatory
-compliance. Roadmap item #46 separately binds trusted heads to v2 content
-checksums.
+only the supplied sequence's internal continuity. Those artifact-level axes do
+not claim replay prevention, sequence completeness, complete-chain replacement
+or tail-truncation detection, trusted time, immutable or WORM storage,
+certification, or regulatory compliance. Issue #46's implemented trusted
+checkpoints detect divergence from a valid, anchored, authoritative pin when
+presented; latest retrieval and omission/rollback protection remain host
+responsibilities.
 
 ---
 
@@ -426,12 +435,19 @@ artifacts are separate evidence and are not invocation-chain artifacts.
 the supplied ordered invocation set independently of signature verification.
 Its `claim_status`, `signature_status`, and `completeness` axes are deliberately
 separate. A signed workflow without a trusted verifier has
-`signature_status=INDETERMINATE`; a non-`None` checkpoint is rejected with
-`WORKFLOW_CHECKPOINT_UNSUPPORTED` until #46 defines trusted checkpoints.
+`signature_status=INDETERMINATE`. A non-`None` `expected_checkpoint` is now
+honored (issue #46, current source): a valid, anchored `TrustedWorkflowCheckpoint`
+promotes completeness to `checkpoint_proven` for the expected scope, and an
+authoritative mismatch reports `contradicted`. Invalid, unavailable,
+unknown-key, revoked, or unanchored evidence remains `unproven` even when its
+structural binding matches or conflicts. Completeness from an artifact
+signature alone is never inferred. See ADR-0015.
 
 Workflow-signed proves integrity and order of the claimed supplied set. It does
 not prove the host disclosed every invocation. Completeness remains unproven
-until a trusted checkpoint binds the expected head/count.
+until a trusted checkpoint binds the expected head/count. Only valid, anchored,
+authoritative evidence can then detect divergence; latest retrieval and
+checkpoint omission/rollback remain host responsibilities.
 
 The verifier bounds claims and supplied artifacts to 1,024 entries each,
 measured input to 4 MiB, nesting to 32 levels, and reports to 100 errors.

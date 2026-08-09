@@ -32,12 +32,17 @@ accept a trusted checkpoint. Trace and export correlation is advisory and cannot
 is complete. Workflow-signed proves integrity and order of the claimed supplied
 set. It does not prove the host disclosed every invocation. Completeness remains
 unproven until a trusted checkpoint binds the expected head/count.
+Only valid, anchored, authoritative evidence can then detect divergence;
+latest retrieval and checkpoint omission/rollback remain host responsibilities.
 
 The verifier bounds claims and supplied artifacts to 1,024 entries each,
 measured input to 4 MiB, nesting to 32 levels, and reports to 100 errors.
 Exceeding an input budget fails closed with
-`WORKFLOW_VERIFICATION_LIMIT_EXCEEDED`. Roadmap item #46 owns the future
-trusted-checkpoint contract; the CLI does not implement that upgrade point.
+`WORKFLOW_VERIFICATION_LIMIT_EXCEEDED`. Trusted checkpoints (issue #46) are
+implemented in the current-source Python API — `verify_chain_detailed(...,
+expected_chain_id=...)` and `verify_workflow_claim(..., expected_checkpoint=...)`
+— but the CLI does not create or verify checkpoints; that binding stays a
+programmatic upgrade point. See ADR-0015 and `docs/USAGE.md` Recipe 13.
 
 A session admits at most 1,024 workflow attempts. A later request fails before
 attempt-envelope or step-index allocation with

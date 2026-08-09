@@ -24,9 +24,20 @@ These changes exist in the current source tree but are not in the published
   leave base dependencies unchanged; exact-pair trust resolution, clients,
   credentials, provider configuration, IAM, and retained evidence remain
   host-owned.
-- Current-source verification baseline: `3,138 tests` pass. This does not
+- Add trusted external checkpoints (issue #46): `create_chain_checkpoint`,
+  `create_workflow_checkpoint`, the `TrustedChainCheckpoint` /
+  `TrustedWorkflowCheckpoint` records, and additive detailed-report checkpoint
+  fields (`checkpoint_signature_status`, `checkpoint_anchor_status`,
+  `checkpoint_results`) with the `checkpoint_proven` / `contradicted`
+  completeness values. Verification stays source-compatible: calls that pass no
+  checkpoint evidence remain `unproven`. Signer, storage, and `checkpointed_at`
+  host time remain host-owned. See ADR-0015.
+- Current source emits audit schema `2.0`. The published `0.9.0b1` release used
+  schema `1.4`; that value remains release history rather than current-source
+  schema truth.
+- Current-source verification baseline: `4,826 tests` pass. This does not
   rewrite the released `0.9.0b1` evidence below. The manifest notation is
-  `3138 tests`.
+  `4826 tests`.
 
 ## [0.9.0b1] — 2026-07-25
 

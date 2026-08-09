@@ -300,19 +300,22 @@ External signer or verifier availability cannot change the governance result
 already recorded in an artifact.
 
 Residual limits are deliberate: HMAC and hash chaining are tamper-evidence, not
-immutable storage. A valid or anchored result does not prevent replay, prove
-sequence completeness, detect replacement of a complete valid chain without a
-trusted checkpoint, provide WORM retention, or establish certification or
-regulatory compliance. An attacker with storage-write access can replace a
-complete chain or remove a valid tail while leaving the supplied sequence
-internally consistent. Roadmap item #46 is the separate control that binds
-trusted heads to v2 content checksums. The bundled `AuditChain` is in-memory and
-does not claim crash persistence; hosts must reconcile the emit/commit crash
-window or provide a persistent linker.
+immutable storage. An artifact signature or generic anchor alone does not
+prevent replay, prove sequence completeness, detect replacement of a complete
+valid chain, provide WORM retention, or establish certification or regulatory
+compliance. An attacker with storage-write access can replace a complete chain
+or remove a valid tail while leaving the supplied sequence internally
+consistent. Issue #46's implemented trusted checkpoints detect divergence from
+a valid, anchored, authoritative pin when it is presented; the host still owns
+latest retrieval and omission/rollback protection. The bundled `AuditChain` is
+in-memory and does not claim crash persistence; hosts must reconcile the
+emit/commit crash window or provide a persistent linker.
 
 Workflow-signed proves integrity and order of the claimed supplied set. It does
 not prove the host disclosed every invocation. Completeness remains unproven
 until a trusted checkpoint binds the expected head/count.
+Only valid, anchored, authoritative evidence can then detect divergence;
+latest retrieval and checkpoint omission/rollback remain host responsibilities.
 
 The verifier bounds claims and supplied artifacts to 1,024 entries each,
 measured input to 4 MiB, nesting to 32 levels, and reports to 100 errors.
@@ -447,6 +450,27 @@ immutable. Chain verification reasons about the chain presented to it and,
 without an external trusted checkpoint, does not detect replacement of the
 complete chain.
 
+### Trusted checkpoints (issue #46)
+
+`create_chain_checkpoint` / `create_workflow_checkpoint` let a host pin a chain
+or a finalized workflow claim to externally signed, provider-neutral evidence,
+and `verify_chain_detailed(..., expected_chain_id=...)` /
+`verify_workflow_claim(..., expected_checkpoint=...)` then detect **whole-chain
+replacement** and finalized-workflow replacement for the expected scope: a
+substituted complete chain no longer matches the signed checkpoint and reports
+`contradicted` rather than `unproven`.
+
+Residual risk remains and is accepted, because the checkpoint lifecycle is
+host-owned:
+
+* **Checkpoint omission / rollback.** A host that owns storage can omit a
+  checkpoint entirely, or present an older validly signed checkpoint (rollback).
+  A `checkpoint_proven` result never proves the checkpoint is the latest one.
+* **Untrusted host time.** `checkpointed_at` is signed but host-supplied; AEGIS
+  does not prove it is accurate, monotonic, or recent.
+
+See ADR-0015 for the full assurance scope.
+
 ---
 
 ## Supply Chain Security
@@ -468,9 +492,12 @@ AEGIS does not attempt to solve:
 * model hallucinations
 * model bias
 * provider safety systems
-* replay prevention or proof that a supplied sequence is complete
+* replay prevention or absolute proof that a supplied sequence is complete;
+  valid, anchored, authoritative checkpoints detect divergence relative to a
+  presented pin, while latest retrieval and omission/rollback remain host-owned
 * trusted timestamping or timestamp-authority evidence
-* trusted complete-chain checkpoints or whole-chain replacement detection
+* proof that a presented trusted checkpoint is the latest one (checkpoint
+  omission and rollback remain host-owned residual risk; see issue #46 above)
 * WORM storage, retention, object locking, or disaster recovery
 * provider signing transport, credentials, retries, or key-rotation operations
 * certification or a regulatory-compliance determination
