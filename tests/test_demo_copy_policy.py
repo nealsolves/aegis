@@ -1,10 +1,42 @@
 import sys
 from pathlib import Path
 
+import pytest
+
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from scripts.check_demo_copy import main, scan_text  # noqa: E402
+from scripts.check_demo_copy import (  # noqa: E402
+    extract_frontend_public_copy,
+    iter_frontend_public_files,
+    main,
+    scan_text,
+)
+
+
+def test_frontend_extraction_helpers_are_public_and_reusable(tmp_path):
+    page = tmp_path / "VisiblePage.tsx"
+    page.write_text(
+        "export function VisiblePage() { return <p>Visible assurance copy.</p> }",
+        encoding="utf-8",
+    )
+
+    paths = list(iter_frontend_public_files(tmp_path))
+    documents = extract_frontend_public_copy(paths)
+
+    assert paths == [page]
+    assert "Visible assurance copy." in documents[page]
+
+
+def test_frontend_extraction_helper_rejects_oversized_output(tmp_path):
+    page = tmp_path / "VisiblePage.tsx"
+    page.write_text(
+        "export const visibleCopy = 'This output exceeds the test limit.'",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="extractor output limit"):
+        extract_frontend_public_copy([page], max_output_bytes=8)
 
 
 def test_scanner_flags_banned_marketing_language():
