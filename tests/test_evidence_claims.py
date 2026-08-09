@@ -592,3 +592,160 @@ def test_scan_claims_deduplicates_overlapping_adjacent_windows_and_sorts_finding
         ("INTEGRITY_IS_STORAGE", Path("a.md"), 8),
         ("AEGIS_CERTIFICATION_CLAIM", Path("z.md"), 3),
     ]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Azure immutable storage.",
+        "The archive uses immutable storage.",
+    ],
+)
+def test_scan_claims_rejects_unqualified_storage_capabilities(text):
+    findings = scan_claims((TextBlock(Path("public.md"), 14, text),))
+
+    assert [finding.rule_id for finding in findings] == [
+        "IMMUTABLE_EVIDENCE_RECORD"
+    ]
+    assert findings[0].line == 14
+
+
+def test_scan_claims_does_not_launder_a_positive_coordinated_predicate():
+    findings = scan_claims(
+        (
+            TextBlock(
+                Path("public.md"),
+                15,
+                (
+                    "Hash chaining does not prove compliance and guarantees "
+                    "immutable storage."
+                ),
+            ),
+        )
+    )
+
+    assert [finding.rule_id for finding in findings] == [
+        "INTEGRITY_IS_STORAGE"
+    ]
+
+
+def test_scan_claims_scopes_provider_exemption_to_the_capability_relation():
+    findings = scan_claims(
+        (
+            TextBlock(
+                Path("public.md"),
+                16,
+                (
+                    "Azure immutable evidence records are illustrative and "
+                    "non-normative. Each invocation creates an immutable "
+                    "audit record."
+                ),
+            ),
+        )
+    )
+
+    assert [finding.rule_id for finding in findings] == [
+        "IMMUTABLE_EVIDENCE_RECORD"
+    ]
+    assert "invocation creates an immutable audit record" in findings[0].excerpt
+
+
+def test_scan_claims_does_not_flow_provider_exemption_across_a_clause():
+    findings = scan_claims(
+        (
+            TextBlock(
+                Path("public.md"),
+                16,
+                (
+                    "Azure immutable evidence records are illustrative and "
+                    "non-normative, but each invocation creates an immutable "
+                    "audit record."
+                ),
+            ),
+        )
+    )
+
+    assert [finding.rule_id for finding in findings] == [
+        "IMMUTABLE_EVIDENCE_RECORD"
+    ]
+
+
+def test_scan_claims_accepts_provider_qualification_from_an_adjacent_block():
+    blocks = (
+        TextBlock(Path("public.md"), 21, "Azure immutable storage"),
+        TextBlock(
+            Path("public.md"),
+            22,
+            "is an illustrative and non-normative provider example.",
+        ),
+    )
+
+    assert scan_claims(blocks) == ()
+
+
+def test_scan_claims_rejects_negated_provider_qualification():
+    findings = scan_claims(
+        (
+            TextBlock(
+                Path("public.md"),
+                17,
+                (
+                    "Azure immutable storage is not an illustrative and "
+                    "non-normative example."
+                ),
+            ),
+        )
+    )
+
+    assert [finding.rule_id for finding in findings] == [
+        "IMMUTABLE_EVIDENCE_RECORD"
+    ]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "AEGIS certifies compliance.",
+        "AEGIS proves compliance.",
+    ],
+)
+def test_scan_claims_rejects_active_aegis_certification_claims(text):
+    findings = scan_claims((TextBlock(Path("public.md"), 18, text),))
+
+    assert [finding.rule_id for finding in findings] == [
+        "AEGIS_CERTIFICATION_CLAIM"
+    ]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "AEGIS does not certify compliance.",
+        "AEGIS cannot certify compliance.",
+    ],
+)
+def test_scan_claims_accepts_negated_aegis_certification_actions(text):
+    assert scan_claims((TextBlock(Path("public.md"), 18, text),)) == ()
+
+
+def test_scan_claims_accepts_aegis_immutable_python_value():
+    blocks = (
+        TextBlock(
+            Path("public.md"),
+            19,
+            "AEGIS stores approved algorithms in an immutable Python tuple.",
+        ),
+    )
+
+    assert scan_claims(blocks) == ()
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "AEGIS does not provide immutable storage.",
+        "The archive does not use immutable storage.",
+    ],
+)
+def test_scan_claims_accepts_negated_storage_capability_claims(text):
+    assert scan_claims((TextBlock(Path("public.md"), 20, text),)) == ()
