@@ -7,6 +7,8 @@ import pytest
 from scripts.check_evidence_claims import (
     ClaimsGuardError,
     ScanLimits,
+    extract_document_blocks,
+    normalize_public_text,
     read_text_source,
     select_current_paths,
 )
@@ -202,3 +204,100 @@ def test_read_text_source_enforces_aggregate_limit(tmp_path):
     assert read_text_source(first, tmp_path, limits, counters) == "123"
     with pytest.raises(ClaimsGuardError, match="aggregate source limit"):
         read_text_source(second, tmp_path, limits, counters)
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("immutable\u00a0storage", "immutable storage"),
+        ("ｉｍｍｕｔａｂｌｅ storage", "immutable storage"),
+        ("immut\u200bable storage", "immutable storage"),
+        ("immut&#97;ble storage", "immutable storage"),
+        ("[immutable storage](https://example.test)", "immutable storage"),
+        ("![immutable evidence](diagram.png)", "immutable evidence"),
+    ],
+)
+def test_normalize_public_text_closes_encoding_bypasses(source, expected):
+    assert normalize_public_text(source) == expected
+
+
+def test_extract_html_blocks_includes_visible_attributes(tmp_path):
+    path = tmp_path / "public.html"
+    blocks = extract_document_blocks(
+        path,
+        '<img alt="Immutable evidence"><div aria-label="Certified by AEGIS">Body</div>',
+        ScanLimits(),
+        {"normalized_bytes": 0, "public_blocks": 0},
+    )
+
+    text = "\n".join(block.text for block in blocks)
+    assert "Immutable evidence" in text
+    assert "Certified by AEGIS" in text
+    assert "Body" in text
+
+
+def test_extract_svg_blocks_includes_title_desc_and_text(tmp_path):
+    path = tmp_path / "diagram.svg"
+    blocks = extract_document_blocks(
+        path,
+        "<svg><title>Hash chain</title><desc>Immutable storage</desc><text>AEGIS</text></svg>",
+        ScanLimits(),
+        {"normalized_bytes": 0, "public_blocks": 0},
+    )
+
+    assert [block.text for block in blocks] == [
+        "Hash chain",
+        "Immutable storage",
+        "AEGIS",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("limits", "message"),
+    [
+        (ScanLimits(max_normalized_block_bytes=3), "normalized block limit"),
+        (ScanLimits(max_normalized_bytes=3), "aggregate normalized text limit"),
+        (ScanLimits(max_public_blocks=0), "public copy block limit"),
+    ],
+)
+def test_extract_document_blocks_enforces_normalized_limits(
+    tmp_path,
+    limits,
+    message,
+):
+    path = tmp_path / "public.md"
+    with pytest.raises(ClaimsGuardError, match=message):
+        extract_document_blocks(
+            path,
+            "four",
+            limits,
+            {"normalized_bytes": 0, "public_blocks": 0},
+        )
+
+
+def test_extract_document_blocks_preserves_adjacent_markdown_lines(tmp_path):
+    path = tmp_path / "public.md"
+    blocks = extract_document_blocks(
+        path,
+        "# Hash chaining\n\nMakes storage immutable.\n",
+        ScanLimits(),
+        {"normalized_bytes": 0, "public_blocks": 0},
+    )
+
+    assert [(block.line, block.text) for block in blocks] == [
+        (1, "Hash chaining"),
+        (3, "Makes storage immutable."),
+    ]
+
+
+def test_extract_html_blocks_scans_source_and_visible_copy(tmp_path):
+    path = tmp_path / "public.html"
+    blocks = extract_document_blocks(
+        path,
+        '<meta name="description" content="AEGIS evidence"><p>Public claim</p>',
+        ScanLimits(),
+        {"normalized_bytes": 0, "public_blocks": 0},
+    )
+
+    assert any("AEGIS evidence" in block.text for block in blocks)
+    assert any(block.text == "Public claim" for block in blocks)

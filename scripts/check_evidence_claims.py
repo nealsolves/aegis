@@ -4,14 +4,30 @@
 from __future__ import annotations
 
 import fnmatch
+import html
 from dataclasses import dataclass
+from html.parser import HTMLParser
 from pathlib import Path
+import re
+import unicodedata
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_PATH = REPO_ROOT / "doc_parity_manifest.yaml"
 FRONTEND_ROOT = REPO_ROOT / "demo-app-react" / "src"
 TEXT_SUFFIXES = frozenset({".html", ".md", ".mermaid", ".svg"})
 BINARY_SUFFIXES = frozenset({".png"})
+_ZERO_WIDTH_TRANSLATION = str.maketrans(
+    {"\u200b": "", "\u200c": "", "\u200d": "", "\ufeff": ""}
+)
+_WHITESPACE_RE = re.compile(r"\s+")
+_MARKDOWN_IMAGE_RE = re.compile(r"!\[([^\]\r\n]{0,8192})\]\([^\r\n)]{0,16384}\)")
+_MARKDOWN_LINK_RE = re.compile(r"\[([^\]\r\n]{0,8192})\]\([^\r\n)]{0,16384}\)")
+_MARKDOWN_PREFIX_RE = re.compile(
+    r"^[ \t]{0,3}(?:#{1,6}[ \t]+|[-*+][ \t]+|>[ \t]?|\d{1,9}[.)][ \t]+)"
+)
+_PUBLIC_ATTRIBUTES = frozenset(
+    {"alt", "aria-description", "aria-label", "placeholder", "title"}
+)
 MANDATORY_CURRENT_PATHS = frozenset(
     {
         "README.md",
@@ -54,6 +70,98 @@ class ClaimFinding:
     path: Path
     line: int
     excerpt: str
+
+
+def normalize_public_text(text: str) -> str:
+    """Canonicalize user-visible text before evaluating assurance claims."""
+    normalized = html.unescape(text)
+    normalized = unicodedata.normalize("NFKC", normalized)
+    normalized = normalized.translate(_ZERO_WIDTH_TRANSLATION)
+    normalized = _MARKDOWN_IMAGE_RE.sub(r"\1", normalized)
+    normalized = _MARKDOWN_LINK_RE.sub(r"\1", normalized)
+    return _WHITESPACE_RE.sub(" ", normalized).strip()
+
+
+def _bounded_block(
+    path: Path,
+    line: int,
+    text: str,
+    limits: ScanLimits,
+    counters: dict[str, int],
+) -> TextBlock | None:
+    normalized = normalize_public_text(text)
+    if not normalized:
+        return None
+    encoded_size = len(normalized.encode("utf-8"))
+    if encoded_size > limits.max_normalized_block_bytes:
+        raise ClaimsGuardError(f"{path}: normalized block limit exceeded")
+    counters["normalized_bytes"] += encoded_size
+    counters["public_blocks"] += 1
+    if counters["normalized_bytes"] > limits.max_normalized_bytes:
+        raise ClaimsGuardError("aggregate normalized text limit exceeded")
+    if counters["public_blocks"] > limits.max_public_blocks:
+        raise ClaimsGuardError("public copy block limit exceeded")
+    return TextBlock(path=path, line=line, text=normalized)
+
+
+class _PublicCopyParser(HTMLParser):
+    """Extract public HTML/SVG strings without combining rendered blocks."""
+
+    def __init__(
+        self,
+        path: Path,
+        limits: ScanLimits,
+        counters: dict[str, int],
+    ) -> None:
+        super().__init__(convert_charrefs=True)
+        self._path = path
+        self._limits = limits
+        self._counters = counters
+        self.blocks: list[TextBlock] = []
+
+    def _append(self, text: str) -> None:
+        block = _bounded_block(
+            self._path,
+            self.getpos()[0],
+            text,
+            self._limits,
+            self._counters,
+        )
+        if block is not None:
+            self.blocks.append(block)
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attributes = {name.lower(): value for name, value in attrs}
+        for name, value in attrs:
+            if name.lower() in _PUBLIC_ATTRIBUTES and value is not None:
+                self._append(value)
+        if tag.lower() == "meta" and attributes.get("content") is not None:
+            self._append(attributes["content"])
+
+    def handle_data(self, data: str) -> None:
+        self._append(data)
+
+
+def extract_document_blocks(
+    path: Path,
+    text: str,
+    limits: ScanLimits,
+    counters: dict[str, int],
+) -> tuple[TextBlock, ...]:
+    """Return bounded public text blocks from a maintained document."""
+    if path.suffix.lower() in {".html", ".svg"}:
+        parser = _PublicCopyParser(path, limits, counters)
+        parser.feed(text)
+        parser.close()
+        return tuple(parser.blocks)
+
+    blocks: list[TextBlock] = []
+    for line_number, source_line in enumerate(text.splitlines(), start=1):
+        public_line = _MARKDOWN_PREFIX_RE.sub("", source_line)
+        block = _bounded_block(path, line_number, public_line, limits, counters)
+        if block is not None:
+            blocks.append(block)
+    return tuple(blocks)
 
 
 def _category_matches(relative: str, inventory: dict) -> tuple[str, ...]:
