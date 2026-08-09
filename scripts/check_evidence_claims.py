@@ -73,11 +73,16 @@ STORAGE_SUBJECT = re.compile(
 STORAGE_TERM = re.compile(r"\bstorage\b", re.IGNORECASE)
 _PREDICATE_BEFORE_STORAGE = re.compile(
     r"^\s*(?:(?:cloud|object|blob|audit|evidence|record|records|archive|"
-    r"provider)\s+)*$",
+    r"provider|managed|archival)\s+)*$",
     re.IGNORECASE,
 )
 _STORAGE_BEFORE_PREDICATE = re.compile(
-    r"^\s*(?:(?:is|are|remains?|provides?|offers?|guarantees?)\s*)?$",
+    r"^\s*(?:(?:(?:that|which) )?(?:is|are|remains?)|provides?|offers?|"
+    r"guarantees?)?\s*$",
+    re.IGNORECASE,
+)
+_STORAGE_REFERENCE_SUFFIX = re.compile(
+    r"^(?:[- ]release)? reference(?: (?:for|of) (?:the )?release)?\b",
     re.IGNORECASE,
 )
 STORAGE_PREDICATE = re.compile(
@@ -101,8 +106,8 @@ PSEUDO_NEGATION = re.compile(
     re.IGNORECASE,
 )
 BOUNDED_NEGATIVE = re.compile(
-    r"\b(?:(?:do|does) not|cannot|can not|never) (?:provide|create|make|"
-    r"guarantee|establish|prove|certify|constitute|mean)\b|"
+    r"\b(?:(?:do|does) not|cannot|can not|never) (?:provide|create|make|use|"
+    r"offer|guarantee|establish|prove|certify|constitute|mean)\b|"
     r"\bprovides? tamper[- ]evidence, not\b|\balone (?:do|does) not\b",
     re.IGNORECASE,
 )
@@ -111,7 +116,8 @@ CERTIFICATION_ACTION = re.compile(
     re.IGNORECASE,
 )
 CERTIFICATION_OBJECT = re.compile(
-    r"\b(?:(?:regulatory|legal|policy|technical|ongoing) )?"
+    r"\b(?:(?:(?:full|ongoing|complete|continuous|regulatory|legal|policy|"
+    r"technical) ){0,3}|(?:SOC 2(?: Type (?:I|II))? ))"
     r"(?:compliance|certification)\b",
     re.IGNORECASE,
 )
@@ -295,6 +301,8 @@ def scan_claims(blocks: tuple[TextBlock, ...]) -> tuple[ClaimFinding, ...]:
     ) -> bool:
         for storage in related_matches(STORAGE_TERM, predicate):
             if relation_context(text, storage, predicate) is None:
+                continue
+            if _STORAGE_REFERENCE_SUFFIX.match(text[storage.end():]) is not None:
                 continue
             if predicate.end() <= storage.start():
                 connector = text[predicate.end():storage.start()]

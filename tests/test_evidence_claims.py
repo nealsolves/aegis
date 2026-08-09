@@ -855,3 +855,59 @@ def test_scan_claims_rejects_coordinated_active_certification_claim():
     assert [finding.rule_id for finding in findings] == [
         "AEGIS_CERTIFICATION_CLAIM"
     ]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "AEGIS retains the immutable storage-release reference.",
+        "AEGIS retains the immutable storage reference for the release.",
+        "AEGIS retains the immutable Cloud Storage release reference.",
+    ],
+)
+def test_scan_claims_accepts_storage_qualified_release_references(text):
+    assert scan_claims((TextBlock(Path("public.md"), 29, text),)) == ()
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "AEGIS provides storage that is immutable.",
+        "AEGIS uses immutable managed storage.",
+        "Azure uses immutable archival storage.",
+    ],
+)
+def test_scan_claims_rejects_extended_storage_assurance_connectors(text):
+    findings = scan_claims((TextBlock(Path("public.md"), 30, text),))
+
+    assert [finding.rule_id for finding in findings] == [
+        "IMMUTABLE_EVIDENCE_RECORD"
+    ]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "AEGIS does not use immutable managed storage.",
+        "Azure does not use immutable archival storage.",
+        "Azure does not offer immutable archival storage.",
+    ],
+)
+def test_scan_claims_accepts_negated_extended_storage_connectors(text):
+    assert scan_claims((TextBlock(Path("public.md"), 30, text),)) == ()
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "AEGIS certifies full compliance.",
+        "AEGIS certifies ongoing regulatory compliance.",
+        "AEGIS certifies SOC 2 compliance.",
+    ],
+)
+def test_scan_claims_rejects_modified_compliance_objects(text):
+    findings = scan_claims((TextBlock(Path("public.md"), 31, text),))
+
+    assert [finding.rule_id for finding in findings] == [
+        "AEGIS_CERTIFICATION_CLAIM"
+    ]
