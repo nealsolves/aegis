@@ -180,7 +180,18 @@ checkpoint cadence, required recovery point and recovery time, and the clock
 or audit source used for operational timelines. AEGIS does not choose or
 validate these values.
 
-Object names must be unique and non-overwriting. A successful write is not
+The adopter also minimizes and classifies sensitive data before finalization.
+Append-only retention can make later secret removal, privacy erasure, or
+redaction impossible without destroying the retained object, and modifying a
+finalized record invalidates its integrity evidence. Credentials and secret key
+material never belong in retained artifacts, checkpoints, manifests, alerts,
+or provider debug logs. Confidentiality, encryption, privacy, and lawful-erasure
+controls remain separate from the integrity and retention properties in this
+design.
+
+Object names must be unique and non-overwriting. Storage keys are host-generated
+or constructed from validated, bounded encodings; raw artifact fields do not
+become paths or object keys without validation. A successful write is not
 accepted as proof that retention is active: deployment validation must test the
 configured inability to overwrite, shorten retention, or delete protected
 records using the identities that operate the system.
@@ -258,6 +269,8 @@ The maintained checklist covers at least:
 - invalid, revoked, unknown-key, unanchored, unavailable, `unproven`, or
   `contradicted` verification outcomes;
 - inventory/count gaps, unexpected chain heads, and export omissions;
+- unexpected reads, bulk exports, disclosure attempts, and abnormal evidence
+  access volume;
 - backup failures, replication lag, recovery-test failures, and restored
   storage with weaker controls;
 - provider audit-log loss or unexpected disabling of monitoring.
@@ -289,7 +302,11 @@ Backups and replicas must preserve evidence and the material required to verify
 it historically. The backup set includes exact public keys or approved retained
 verification material, key identities and dispositions, resolver-policy
 history, checkpoints, latest-scope records, retention configuration, and
-control-plane audit evidence.
+control-plane audit evidence. It also preserves the approved means to use that
+verification material: some providers require the historical key resource to
+remain available, while an adapter-supported retained public-key path can
+permit offline verification. Encryption and recovery-key availability are
+tested separately from signature verification.
 
 Recovery follows a fail-closed promotion flow:
 
@@ -314,9 +331,13 @@ properties explicitly.
 2. Add the new exact pair and allowed algorithm to host trust policy.
 3. Retain the old public verification material and disposition for at least the
    full historical evidence requirement.
-4. Switch new signatures and checkpoints to the new version.
-5. Verify both new evidence and representative historical evidence.
-6. Retire signing permission separately from historical verification.
+4. Keep the old provider verification resource available when the configured
+   verifier has no approved offline retained-key path. Do not schedule key
+   destruction before the historical verification and retention requirement
+   ends.
+5. Switch new signatures and checkpoints to the new version.
+6. Verify both new evidence and representative historical evidence.
+7. Retire signing permission separately from historical verification.
 
 Rotation does not require rewriting or re-signing historical evidence.
 
@@ -419,7 +440,9 @@ policy file or independently drifting rule source is introduced.
 1. Add a public `collect_repository_files()` helper to
    `scripts/check_doc_parity.py`. It enumerates cached files and untracked,
    non-ignored files with
-   `git ls-files --cached --others --exclude-standard`. Update
+   `git ls-files -z --cached --others --exclude-standard`, parses the
+   NUL-delimited output without line splitting, and rejects undecodable or
+   otherwise unsupported path representations. Update
    `collect_documentation_files()` to filter that shared complete list by the
    documentation suffixes it already owns.
 2. Import and call `load_manifest`, `collect_repository_files`, and
@@ -441,6 +464,10 @@ policy file or independently drifting rule source is introduced.
 Every candidate path must be a regular repository-contained file after
 resolution. Symlinks, paths that resolve outside the repository, unreadable
 files, and special files fail closed before content is read.
+`collect_repository_files(require_git=True)` is used by the claims guard, so a
+Git enumeration failure cannot fall back to a broader or different filesystem
+walk. Other parity-checker callers may retain the existing explicit fallback
+when they are tested outside a repository.
 
 Named resource ceilings bound per-file bytes, aggregate source bytes, file
 count, public-copy block count, and extracted output. The initial ceilings are
@@ -448,6 +475,9 @@ count, public-copy block count, and extracted output. The initial ceilings are
 public-copy blocks, and 50 MiB of serialized extractor output. A ceiling breach
 is an infrastructure failure, not a clean scan. Normal rule matching uses
 bounded text blocks and patterns that avoid nested, ambiguous repetition.
+Each normalized block is limited to 1 MiB and aggregate normalized text is
+limited to 100 MiB so Unicode expansion or markup decoding cannot bypass the
+post-read memory boundary.
 
 Raster artwork must not be the sole carrier of a security or assurance claim.
 Claim-bearing raster text requires a maintained, scanned SVG source, caption,
@@ -488,9 +518,18 @@ Rules evaluate normalized public text blocks while preserving original path,
 line, and excerpt. Normalization covers case, whitespace, inline markup,
 hyphen/space variants, and ordinary line wrapping. It also applies Unicode
 NFKC normalization, removes claim-splitting zero-width format characters,
-decodes HTML character references, preserves Markdown link labels while
-discarding their targets, and removes HTML/SVG tags without joining separate
-rendered blocks into one claim.
+decodes HTML character references, preserves Markdown link labels and image
+alternative text while discarding their targets, and removes HTML/SVG tags
+without joining unrelated rendered blocks. For HTML and SVG, the guard scans
+both normalized source and extracted visible text, including `alt`,
+`aria-label`, `aria-description`, `title`, and `placeholder` attributes plus
+SVG `text`, `title`, and `desc` content.
+
+Rules evaluate individual visible blocks and bounded adjacent-block pairs so a
+heading such as “Hash chaining” followed by “Immutable storage guaranteed”
+cannot split the forbidden relationship. Negation never flows from an unrelated
+prior block into the next claim. Diagnostics point to the predicate-bearing
+block when a paired relationship fails.
 
 The forbidden relationships include:
 
@@ -501,7 +540,8 @@ The forbidden relationships include:
   inactivity, certification, or compliance;
 - AEGIS APIs, reports, commands, evidence, or exports described as providing or
   guaranteeing certification, regulatory approval, legal sufficiency, or
-  compliance;
+  compliance, including “certified,” “compliant,” “audit-ready,”
+  “regulatory-ready,” and “legally admissible/sufficient” equivalents;
 - unqualified “immutable audit artifact/record/evidence/log/storage” language
   that assigns a storage property to an in-memory finalized record.
 
@@ -520,10 +560,10 @@ The guard permits:
 Negation handling is relationship-specific. The presence of a nearby word
 `not` is not a blanket exemption: “not only does hash chaining provide
 immutable storage” remains a finding. Tests freeze the accepted negative forms
-and common evasions. A provider label such as “immutable storage” is not a
-blanket exemption either: the surrounding block must identify a provider
-capability, mark the example non-normative, and avoid attributing that
-capability to AEGIS.
+and common evasions, including double negatives and “does not merely” positive
+reframes. A provider label such as “immutable storage” is not a blanket
+exemption either: the surrounding block must identify a provider capability,
+mark the example non-normative, and avoid attributing that capability to AEGIS.
 
 ### Diagnostics and exit behavior
 
@@ -571,6 +611,7 @@ control case. The matrix includes:
 - capitalization, punctuation, multiline, hyphenation, Markdown, HTML, SVG,
   HTML entities, Unicode compatibility forms, zero-width separators, inline
   JSX, and split static-string variants;
+- split heading/body and adjacent JSX-block relationships;
 - legitimate immutable key versions, frozen values, release references,
   provider feature names, and compliance command/field names.
 
@@ -592,6 +633,8 @@ Tests prove that:
 - symlinks, out-of-root paths, special files, per-file/aggregate byte overflow,
   file-count overflow, extracted-block overflow, and extracted-output overflow
   fail closed before unbounded processing;
+- newline-bearing or undecodable Git paths, Git enumeration failure, normalized
+  block overflow, and aggregate normalized-text overflow fail closed;
 - diagnostics retain the correct path and line without leaking unbounded text.
 
 ### Documentation contract tests
@@ -699,6 +742,14 @@ cached-plus-untracked scope discovery, unknown-suffix detection, path and
 symlink rejection, explicit resource ceilings, Unicode/HTML normalization,
 pseudo-negation tests, provider-label constraints, untrusted-time handling,
 rollback separation, and recovery-control validation.
+
+An additional adversarial review completed on 2026-08-09 at the user's
+request. It added sensitive-data minimization before WORM retention,
+confidentiality and erasure boundaries, read/export monitoring, preservation of
+provider verification resources, NUL-safe Git path enumeration, fail-closed Git
+requirements, post-normalization resource bounds, visible HTML/SVG attribute
+coverage, adjacent-block relationship checks, and additional certification
+synonyms and negation evasions.
 
 No blocking or internally contradictory finding remains. The accepted
 limitations are recorded in **Security and maintenance residuals** rather than
