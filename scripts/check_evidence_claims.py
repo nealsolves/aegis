@@ -104,9 +104,11 @@ def _strip_markdown_targets(text: str) -> str:
             marker,
         )
         target_end = _balanced_markdown_target_end(text, marker + 1)
-        if label_opening < 0 or target_end is None:
+        if label_opening < 0:
             marker_start = marker + 2
             continue
+        if target_end is None:
+            break
         source_start = label_opening
         if label_opening > copied_until and text[label_opening - 1] == "!":
             source_start -= 1

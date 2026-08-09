@@ -239,6 +239,12 @@ def test_normalize_public_text_removes_balanced_markdown_targets(source, expecte
     assert normalize_public_text(source) == expected
 
 
+def test_normalize_public_text_preserves_unclosed_outer_markdown_target():
+    source = "[outer](one [inner](two)"
+
+    assert normalize_public_text(source) == source
+
+
 def test_extract_html_blocks_includes_visible_attributes(tmp_path):
     path = tmp_path / "public.html"
     blocks = extract_document_blocks(
