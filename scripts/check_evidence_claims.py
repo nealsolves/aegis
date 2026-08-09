@@ -6,11 +6,26 @@ from __future__ import annotations
 from bisect import bisect_left
 import fnmatch
 import html
+import json
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from pathlib import Path
 import re
+import subprocess
+import sys
 import unicodedata
+
+import yaml
+
+from scripts.check_demo_copy import (
+    extract_frontend_public_copy,
+    iter_frontend_public_files,
+)
+from scripts.check_doc_parity import (
+    check_documentation_inventory,
+    collect_repository_files,
+    load_manifest,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_PATH = REPO_ROOT / "doc_parity_manifest.yaml"
@@ -188,6 +203,13 @@ class ClaimFinding:
     path: Path
     line: int
     excerpt: str
+
+
+@dataclass(frozen=True)
+class ScanResult:
+    findings: tuple[ClaimFinding, ...]
+    scanned_files: int
+    binary_files: int
 
 
 def scan_claims(blocks: tuple[TextBlock, ...]) -> tuple[ClaimFinding, ...]:
@@ -837,3 +859,257 @@ def read_text_source(
         return payload.decode("utf-8", errors="strict")
     except UnicodeDecodeError as error:
         raise ClaimsGuardError(f"{relative}: source is not valid UTF-8") from error
+
+
+def _validated_parity_docs(manifest: dict) -> frozenset[str]:
+    parity_docs = manifest.get("parity_docs")
+    if not isinstance(parity_docs, list):
+        raise ClaimsGuardError("manifest has malformed parity_docs")
+    validated: set[str] = set()
+    for relative in parity_docs:
+        if (
+            not isinstance(relative, str)
+            or not relative
+            or Path(relative).is_absolute()
+            or ".." in Path(relative).parts
+        ):
+            raise ClaimsGuardError("manifest has malformed parity_docs")
+        validated.add(relative)
+    return frozenset(validated)
+
+
+def _preflight_frontend_sources(
+    frontend_paths: list[Path],
+    frontend_root: Path,
+    current_file_count: int,
+    limits: ScanLimits,
+    counters: dict[str, int],
+) -> None:
+    if current_file_count + len(frontend_paths) > limits.max_files:
+        raise ClaimsGuardError("frontend file limit exceeded")
+    try:
+        resolved_frontend_root = frontend_root.resolve(strict=True)
+    except OSError as error:
+        raise ClaimsGuardError("frontend path resolution failed") from error
+
+    for path in frontend_paths:
+        try:
+            relative = path.relative_to(frontend_root).as_posix()
+        except ValueError as error:
+            raise ClaimsGuardError("frontend path is outside frontend root") from error
+        if path.is_symlink():
+            raise ClaimsGuardError(f"{relative}: frontend symlink is not scannable")
+        try:
+            resolved = path.resolve(strict=True)
+        except OSError as error:
+            raise ClaimsGuardError(
+                f"{relative}: frontend path resolution failed"
+            ) from error
+        if not resolved.is_relative_to(resolved_frontend_root):
+            raise ClaimsGuardError(
+                f"{relative}: frontend path resolves outside frontend root"
+            )
+        if not resolved.is_file():
+            raise ClaimsGuardError(
+                f"{relative}: frontend special file is not scannable"
+            )
+        try:
+            size = path.stat().st_size
+            if size > limits.max_file_bytes:
+                raise ClaimsGuardError(
+                    f"{relative}: frontend source file limit exceeded"
+                )
+            with path.open("rb") as source_file:
+                payload = source_file.read(limits.max_file_bytes + 1)
+        except OSError as error:
+            raise ClaimsGuardError(
+                f"{relative}: frontend source read failed"
+            ) from error
+        if len(payload) > limits.max_file_bytes:
+            raise ClaimsGuardError(
+                f"{relative}: frontend source file limit exceeded"
+            )
+        try:
+            payload.decode("utf-8", errors="strict")
+        except UnicodeDecodeError as error:
+            raise ClaimsGuardError(
+                f"{relative}: frontend source is not valid UTF-8"
+            ) from error
+        counters["source_bytes"] += len(payload)
+        if counters["source_bytes"] > limits.max_source_bytes:
+            raise ClaimsGuardError("aggregate source limit exceeded")
+
+
+def _extract_frontend_blocks(
+    path: Path,
+    document: str,
+    limits: ScanLimits,
+    counters: dict[str, int],
+) -> tuple[TextBlock, ...]:
+    blocks: list[TextBlock] = []
+    offset = 0
+    for segment in document.split("\0"):
+        content_offset = 0
+        while content_offset < len(segment) and segment[content_offset].isspace():
+            content_offset += 1
+        line = document.count("\n", 0, offset + content_offset) + 1
+        block = _bounded_block(path, line, segment, limits, counters)
+        if block is not None:
+            blocks.append(block)
+        offset += len(segment) + 1
+    return tuple(blocks)
+
+
+def run_guard(
+    repo_root: Path = REPO_ROOT,
+    frontend_root: Path = FRONTEND_ROOT,
+    limits: ScanLimits = ScanLimits(),
+) -> ScanResult:
+    """Scan maintained documentation and frontend copy for overclaims."""
+    try:
+        manifest = load_manifest()
+    except (OSError, UnicodeError, ValueError, yaml.YAMLError) as error:
+        raise ClaimsGuardError("manifest load failed") from error
+    if not isinstance(manifest, dict):
+        raise ClaimsGuardError("manifest load failed")
+
+    try:
+        inventory_errors = check_documentation_inventory(manifest)
+    except (OSError, UnicodeError, ValueError, RuntimeError) as error:
+        raise ClaimsGuardError("documentation inventory validation failed") from error
+    if inventory_errors:
+        raise ClaimsGuardError("documentation inventory validation failed")
+    parity_docs = _validated_parity_docs(manifest)
+
+    try:
+        repository_files = collect_repository_files(require_git=True)
+    except (OSError, UnicodeError, ValueError, RuntimeError) as error:
+        raise ClaimsGuardError("Git repository enumeration failed") from error
+    current_paths = select_current_paths(
+        repo_root,
+        manifest,
+        repository_files,
+        limits,
+    )
+    current_relatives = {
+        path.relative_to(repo_root).as_posix() for path in current_paths
+    }
+    mandatory_paths = MANDATORY_CURRENT_PATHS | parity_docs
+    missing = sorted(mandatory_paths - current_relatives)
+    if missing:
+        raise ClaimsGuardError(
+            f"mandatory current path is missing: {missing[0]}"
+        )
+
+    source_counters = {"source_bytes": 0, "binary_files": 0}
+    block_counters = {"normalized_bytes": 0, "public_blocks": 0}
+    blocks: list[TextBlock] = []
+    text_document_count = 0
+    for path in current_paths:
+        text = read_text_source(path, repo_root, limits, source_counters)
+        if path.suffix.lower() in BINARY_SUFFIXES:
+            continue
+        text_document_count += 1
+        try:
+            blocks.extend(
+                extract_document_blocks(path, text, limits, block_counters)
+            )
+        except (OSError, UnicodeError, ValueError) as error:
+            raise ClaimsGuardError("document block extraction failed") from error
+
+    try:
+        frontend_paths = sorted(set(iter_frontend_public_files(frontend_root)))
+    except (OSError, UnicodeError, ValueError) as error:
+        raise ClaimsGuardError("frontend enumeration failed") from error
+    _preflight_frontend_sources(
+        frontend_paths,
+        frontend_root,
+        len(current_paths),
+        limits,
+        source_counters,
+    )
+    try:
+        frontend_documents = extract_frontend_public_copy(
+            frontend_paths,
+            max_output_bytes=limits.max_extractor_bytes,
+        )
+    except (
+        OSError,
+        UnicodeError,
+        subprocess.SubprocessError,
+        json.JSONDecodeError,
+        ValueError,
+        KeyError,
+        TypeError,
+    ) as error:
+        raise ClaimsGuardError("frontend extraction failed") from error
+    if not isinstance(frontend_documents, dict):
+        raise ClaimsGuardError("frontend extraction returned invalid documents")
+    if set(frontend_documents) != set(frontend_paths):
+        raise ClaimsGuardError("frontend extraction returned invalid documents")
+
+    extracted_bytes = 0
+    for path in frontend_paths:
+        document = frontend_documents[path]
+        if not isinstance(document, str):
+            raise ClaimsGuardError("frontend extraction returned invalid documents")
+        try:
+            extracted_bytes += len(document.encode("utf-8"))
+        except UnicodeError as error:
+            raise ClaimsGuardError(
+                "frontend extraction returned invalid documents"
+            ) from error
+        if extracted_bytes > limits.max_extractor_bytes:
+            raise ClaimsGuardError("frontend extractor output limit exceeded")
+        blocks.extend(
+            _extract_frontend_blocks(path, document, limits, block_counters)
+        )
+
+    findings = tuple(
+        sorted(
+            scan_claims(tuple(blocks)),
+            key=lambda finding: (
+                finding.path.as_posix(),
+                finding.line,
+                finding.rule_id,
+            ),
+        )
+    )
+    return ScanResult(
+        findings=findings,
+        scanned_files=text_document_count + len(frontend_paths),
+        binary_files=source_counters["binary_files"],
+    )
+
+
+def _display_path(path: Path) -> str:
+    if not path.is_absolute():
+        return path.as_posix()
+    try:
+        return path.relative_to(REPO_ROOT).as_posix()
+    except ValueError:
+        return path.name
+
+
+def main(argv: list[str] | None = None) -> int:
+    del argv
+    try:
+        result = run_guard()
+    except ClaimsGuardError as error:
+        print(f"claims guard failed: {error}", file=sys.stderr)
+        return 2
+    for finding in result.findings:
+        display = _display_path(finding.path)
+        print(f"{finding.rule_id}: {display}:{finding.line}: {finding.excerpt}")
+    if result.findings:
+        return 1
+    print(
+        "PASS: evidence claims guard scanned "
+        f"{result.scanned_files} text files and accounted for "
+        f"{result.binary_files} binary files"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

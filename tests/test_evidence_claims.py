@@ -1,16 +1,24 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
+import subprocess
 
 import pytest
+import yaml
 
 from scripts.check_evidence_claims import (
+    MANDATORY_CURRENT_PATHS,
+    ClaimFinding,
     ClaimsGuardError,
+    ScanResult,
     ScanLimits,
     TextBlock,
     extract_document_blocks,
+    main,
     normalize_public_text,
     read_text_source,
+    run_guard,
     scan_claims,
     select_current_paths,
 )
@@ -26,6 +34,512 @@ def _manifest(*current: str) -> dict:
         },
         "parity_docs": [],
     }
+
+
+def _guard_fixture(tmp_path, monkeypatch, *, document_text="Bounded language.\n"):
+    current = sorted(MANDATORY_CURRENT_PATHS | {"CHANGELOG.md"})
+    for relative in current:
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(document_text, encoding="utf-8")
+    frontend = tmp_path / "demo-app-react" / "src"
+    react_path = frontend / "Visible.tsx"
+    react_path.parent.mkdir(parents=True)
+    react_path.write_text(
+        "export const copy = 'Bounded language.';",
+        encoding="utf-8",
+    )
+    manifest = _manifest(*current)
+    manifest["parity_docs"] = ["README.md", "CHANGELOG.md"]
+    repository_files = [tmp_path / relative for relative in current]
+
+    monkeypatch.setattr(
+        "scripts.check_evidence_claims.load_manifest",
+        lambda: manifest,
+    )
+    monkeypatch.setattr(
+        "scripts.check_evidence_claims.check_documentation_inventory",
+        lambda _manifest: [],
+    )
+    monkeypatch.setattr(
+        "scripts.check_evidence_claims.collect_repository_files",
+        lambda **_kwargs: repository_files,
+    )
+    monkeypatch.setattr(
+        "scripts.check_evidence_claims.iter_frontend_public_files",
+        lambda _root: iter((react_path,)),
+    )
+    return frontend, react_path, manifest, repository_files
+
+
+def test_main_returns_one_and_prints_bounded_finding(monkeypatch, capsys):
+    finding = ClaimFinding(
+        rule_id="INTEGRITY_IS_STORAGE",
+        path=Path("README.md"),
+        line=4,
+        excerpt="Hash chaining makes storage immutable.",
+    )
+    monkeypatch.setattr(
+        "scripts.check_evidence_claims.run_guard",
+        lambda **_kwargs: ScanResult(
+            findings=(finding,),
+            scanned_files=1,
+            binary_files=0,
+        ),
+    )
+
+    assert main([]) == 1
+    assert "INTEGRITY_IS_STORAGE: README.md:4" in capsys.readouterr().out
+
+
+def test_main_prints_bounded_name_for_absolute_external_path(
+    tmp_path,
+    monkeypatch,
+    capsys,
+):
+    finding = ClaimFinding(
+        rule_id="INTEGRITY_IS_STORAGE",
+        path=tmp_path / "Visible.tsx",
+        line=9,
+        excerpt="Checksums make storage immutable.",
+    )
+    monkeypatch.setattr(
+        "scripts.check_evidence_claims.run_guard",
+        lambda **_kwargs: ScanResult(
+            findings=(finding,),
+            scanned_files=1,
+            binary_files=0,
+        ),
+    )
+
+    assert main([]) == 1
+    output = capsys.readouterr().out
+    assert "INTEGRITY_IS_STORAGE: Visible.tsx:9" in output
+    assert tmp_path.as_posix() not in output
+
+
+def test_main_returns_two_on_infrastructure_failure(monkeypatch, capsys):
+    def fail(**_kwargs):
+        raise ClaimsGuardError("React extraction failed")
+
+    monkeypatch.setattr("scripts.check_evidence_claims.run_guard", fail)
+
+    assert main([]) == 2
+    assert (
+        "claims guard failed: React extraction failed"
+        in capsys.readouterr().err
+    )
+
+
+def test_main_returns_zero_and_prints_accounting(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "scripts.check_evidence_claims.run_guard",
+        lambda **_kwargs: ScanResult(
+            findings=(),
+            scanned_files=7,
+            binary_files=2,
+        ),
+    )
+
+    assert main([]) == 0
+    assert (
+        "scanned 7 text files and accounted for 2 binary files"
+        in capsys.readouterr().out
+    )
+
+
+def test_run_guard_requires_mandatory_current_paths(tmp_path, monkeypatch):
+    manifest = _manifest("docs/**")
+    monkeypatch.setattr(
+        "scripts.check_evidence_claims.load_manifest",
+        lambda: manifest,
+    )
+    monkeypatch.setattr(
+        "scripts.check_evidence_claims.check_documentation_inventory",
+        lambda _manifest: [],
+    )
+    monkeypatch.setattr(
+        "scripts.check_evidence_claims.collect_repository_files",
+        lambda **_kwargs: [],
+    )
+
+    with pytest.raises(ClaimsGuardError, match="mandatory current path"):
+        run_guard(repo_root=tmp_path, frontend_root=tmp_path / "frontend")
+
+
+def test_run_guard_requires_parity_docs_to_be_current(tmp_path, monkeypatch):
+    manifest = _manifest(*MANDATORY_CURRENT_PATHS)
+    manifest["parity_docs"] = ["CHANGELOG.md"]
+    repository_files = []
+    for relative in MANDATORY_CURRENT_PATHS:
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("Bounded language.\n", encoding="utf-8")
+        repository_files.append(path)
+    monkeypatch.setattr(
+        "scripts.check_evidence_claims.load_manifest",
+        lambda: manifest,
+    )
+    monkeypatch.setattr(
+        "scripts.check_evidence_claims.check_documentation_inventory",
+        lambda _manifest: [],
+    )
+    monkeypatch.setattr(
+        "scripts.check_evidence_claims.collect_repository_files",
+        lambda **_kwargs: repository_files,
+    )
+
+    with pytest.raises(ClaimsGuardError, match="CHANGELOG.md"):
+        run_guard(repo_root=tmp_path, frontend_root=tmp_path / "frontend")
+
+
+def test_run_guard_rejects_malformed_parity_docs_before_git(tmp_path, monkeypatch):
+    manifest = _manifest()
+    manifest["parity_docs"] = [42]
+    monkeypatch.setattr(
+        "scripts.check_evidence_claims.load_manifest",
+        lambda: manifest,
+    )
+    monkeypatch.setattr(
+        "scripts.check_evidence_claims.check_documentation_inventory",
+        lambda _manifest: [],
+    )
+
+    def unexpected_collect(**_kwargs):
+        raise AssertionError("Git must not run after malformed parity_docs")
+
+    monkeypatch.setattr(
+        "scripts.check_evidence_claims.collect_repository_files",
+        unexpected_collect,
+    )
+
+    with pytest.raises(ClaimsGuardError, match="malformed parity_docs"):
+        run_guard(repo_root=tmp_path, frontend_root=tmp_path / "frontend")
+
+
+def test_run_guard_scans_fixture_documents_and_react_copy(tmp_path, monkeypatch):
+    frontend, react_path, _manifest_data, repository_files = _guard_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    monkeypatch.setattr(
+        "scripts.check_evidence_claims.extract_frontend_public_copy",
+        lambda _paths, **_kwargs: {
+            react_path: "Checksums make storage immutable."
+        },
+    )
+
+    result = run_guard(repo_root=tmp_path, frontend_root=frontend)
+
+    assert [finding.rule_id for finding in result.findings] == [
+        "INTEGRITY_IS_STORAGE"
+    ]
+    assert result.findings[0].path == react_path
+    assert result.scanned_files == len(repository_files) + 1
+    assert result.binary_files == 0
+
+
+def test_run_guard_preserves_react_block_source_lines(tmp_path, monkeypatch):
+    frontend, react_path, _manifest_data, _repository_files = _guard_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    monkeypatch.setattr(
+        "scripts.check_evidence_claims.extract_frontend_public_copy",
+        lambda _paths, **_kwargs: {
+            react_path: "\n\nHash chaining\0\n\nMakes storage immutable."
+        },
+    )
+
+    result = run_guard(repo_root=tmp_path, frontend_root=frontend)
+
+    assert [(finding.rule_id, finding.line) for finding in result.findings] == [
+        ("INTEGRITY_IS_STORAGE", 5)
+    ]
+
+
+def test_run_guard_passes_required_boundary_arguments(tmp_path, monkeypatch):
+    frontend, react_path, manifest, repository_files = _guard_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    calls = []
+
+    def load():
+        calls.append("load")
+        return manifest
+
+    def inventory(loaded_manifest):
+        calls.append("inventory")
+        assert loaded_manifest is manifest
+        return []
+
+    def collect(*, require_git):
+        calls.append(("collect", require_git))
+        return repository_files
+
+    def iterate(root):
+        calls.append(("iterate", root))
+        return iter((react_path,))
+
+    def extract(paths, *, max_output_bytes):
+        calls.append(("extract", paths, max_output_bytes))
+        return {react_path: "Bounded language."}
+
+    monkeypatch.setattr("scripts.check_evidence_claims.load_manifest", load)
+    monkeypatch.setattr(
+        "scripts.check_evidence_claims.check_documentation_inventory",
+        inventory,
+    )
+    monkeypatch.setattr(
+        "scripts.check_evidence_claims.collect_repository_files",
+        collect,
+    )
+    monkeypatch.setattr(
+        "scripts.check_evidence_claims.iter_frontend_public_files",
+        iterate,
+    )
+    monkeypatch.setattr(
+        "scripts.check_evidence_claims.extract_frontend_public_copy",
+        extract,
+    )
+    limits = ScanLimits(max_extractor_bytes=1234)
+
+    run_guard(repo_root=tmp_path, frontend_root=frontend, limits=limits)
+
+    assert calls == [
+        "load",
+        "inventory",
+        ("collect", True),
+        ("iterate", frontend),
+        ("extract", [react_path], 1234),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("boundary", "failure", "message"),
+    [
+        ("load_manifest", ValueError("SECRET manifest payload"), "manifest load"),
+        (
+            "load_manifest",
+            yaml.YAMLError("SECRET malformed YAML payload"),
+            "manifest load",
+        ),
+        (
+            "collect_repository_files",
+            RuntimeError("SECRET git payload"),
+            "Git repository enumeration",
+        ),
+    ],
+)
+def test_run_guard_bounds_manifest_and_git_failures(
+    tmp_path,
+    monkeypatch,
+    boundary,
+    failure,
+    message,
+):
+    if boundary != "load_manifest":
+        monkeypatch.setattr(
+            "scripts.check_evidence_claims.load_manifest",
+            lambda: _manifest(),
+        )
+        monkeypatch.setattr(
+            "scripts.check_evidence_claims.check_documentation_inventory",
+            lambda _manifest: [],
+        )
+
+    def fail(*_args, **_kwargs):
+        raise failure
+
+    monkeypatch.setattr(f"scripts.check_evidence_claims.{boundary}", fail)
+
+    with pytest.raises(ClaimsGuardError, match=message) as captured:
+        run_guard(repo_root=tmp_path, frontend_root=tmp_path / "frontend")
+
+    assert "SECRET" not in str(captured.value)
+    assert len(str(captured.value).encode("utf-8")) <= 120
+
+
+def test_run_guard_rejects_inventory_errors_before_git(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "scripts.check_evidence_claims.load_manifest",
+        lambda: _manifest(),
+    )
+    monkeypatch.setattr(
+        "scripts.check_evidence_claims.check_documentation_inventory",
+        lambda _manifest: ["SECRET inventory payload" * 100],
+    )
+
+    def unexpected_collect(**_kwargs):
+        raise AssertionError("Git must not run after invalid inventory")
+
+    monkeypatch.setattr(
+        "scripts.check_evidence_claims.collect_repository_files",
+        unexpected_collect,
+    )
+
+    with pytest.raises(ClaimsGuardError, match="inventory validation") as captured:
+        run_guard(repo_root=tmp_path, frontend_root=tmp_path / "frontend")
+
+    assert "SECRET" not in str(captured.value)
+
+
+def test_run_guard_bounds_frontend_enumeration_failure(tmp_path, monkeypatch):
+    frontend, _react_path, _manifest_data, _repository_files = _guard_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+
+    def fail(_root):
+        raise OSError("SECRET frontend path payload")
+
+    monkeypatch.setattr(
+        "scripts.check_evidence_claims.iter_frontend_public_files",
+        fail,
+    )
+
+    with pytest.raises(ClaimsGuardError, match="frontend enumeration") as captured:
+        run_guard(repo_root=tmp_path, frontend_root=frontend)
+
+    assert "SECRET" not in str(captured.value)
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        FileNotFoundError("SECRET missing node"),
+        subprocess.CalledProcessError(
+            1,
+            ["node", "extractor.mjs"],
+            output=b"SECRET stdout",
+            stderr=b"SECRET stderr",
+        ),
+        json.JSONDecodeError("SECRET JSON", "SECRET child output", 0),
+    ],
+)
+def test_run_guard_bounds_frontend_extraction_failures(
+    tmp_path,
+    monkeypatch,
+    failure,
+):
+    frontend, _react_path, _manifest_data, _repository_files = _guard_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+
+    def fail(_paths, **_kwargs):
+        raise failure
+
+    monkeypatch.setattr(
+        "scripts.check_evidence_claims.extract_frontend_public_copy",
+        fail,
+    )
+
+    with pytest.raises(ClaimsGuardError, match="frontend extraction") as captured:
+        run_guard(repo_root=tmp_path, frontend_root=frontend)
+
+    assert "SECRET" not in str(captured.value)
+    assert len(str(captured.value).encode("utf-8")) <= 120
+
+
+@pytest.mark.parametrize(
+    ("limits", "document", "message"),
+    [
+        (ScanLimits(max_extractor_bytes=4), "12345", "extractor output limit"),
+        (
+            ScanLimits(max_normalized_block_bytes=4),
+            "12345",
+            "normalized block limit",
+        ),
+    ],
+)
+def test_run_guard_rejects_oversized_extracted_documents(
+    tmp_path,
+    monkeypatch,
+    limits,
+    document,
+    message,
+):
+    frontend, react_path, _manifest_data, _repository_files = _guard_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    monkeypatch.setattr(
+        "scripts.check_evidence_claims.extract_frontend_public_copy",
+        lambda _paths, **_kwargs: {react_path: document},
+    )
+
+    with pytest.raises(ClaimsGuardError, match=message):
+        run_guard(repo_root=tmp_path, frontend_root=frontend, limits=limits)
+
+
+@pytest.mark.parametrize(
+    ("limits", "message"),
+    [
+        (ScanLimits(max_files=len(MANDATORY_CURRENT_PATHS) + 1), "file limit"),
+        (ScanLimits(max_file_bytes=4), "source file limit"),
+        (ScanLimits(max_source_bytes=4), "aggregate source limit"),
+    ],
+)
+def test_run_guard_preflights_frontend_limits_before_extraction(
+    tmp_path,
+    monkeypatch,
+    limits,
+    message,
+):
+    frontend, _react_path, _manifest_data, _repository_files = _guard_fixture(
+        tmp_path,
+        monkeypatch,
+        document_text="",
+    )
+
+    def unexpected_extract(_paths, **_kwargs):
+        raise AssertionError("extractor must not run after failed preflight")
+
+    monkeypatch.setattr(
+        "scripts.check_evidence_claims.extract_frontend_public_copy",
+        unexpected_extract,
+    )
+
+    with pytest.raises(ClaimsGuardError, match=message):
+        run_guard(repo_root=tmp_path, frontend_root=frontend, limits=limits)
+
+
+def test_run_guard_accounts_for_binary_current_files(tmp_path, monkeypatch):
+    frontend, react_path, manifest, repository_files = _guard_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    binary = tmp_path / "docs" / "diagram.png"
+    binary.write_bytes(b"\x89PNG\r\n")
+    manifest["documentation_inventory"]["current"].append("docs/diagram.png")
+    repository_files.append(binary)
+    monkeypatch.setattr(
+        "scripts.check_evidence_claims.extract_frontend_public_copy",
+        lambda _paths, **_kwargs: {react_path: "Bounded language."},
+    )
+
+    result = run_guard(repo_root=tmp_path, frontend_root=frontend)
+
+    assert result.binary_files == 1
+    assert result.scanned_files == len(repository_files)
+
+
+def test_scan_claims_sorts_and_bounds_findings():
+    first = TextBlock(Path("a.md"), 2, "Hash chaining guarantees immutable storage.")
+    second = TextBlock(
+        Path("z.md"),
+        8,
+        "AEGIS provides certified compliance evidence.",
+    )
+    findings = scan_claims((second, first))
+
+    assert [(finding.path.as_posix(), finding.line) for finding in findings] == [
+        ("a.md", 2),
+        ("z.md", 8),
+    ]
+    assert all(len(finding.excerpt.encode("utf-8")) <= 240 for finding in findings)
 
 
 def test_select_current_paths_includes_unknown_suffix_for_fail_closed_check(tmp_path):
