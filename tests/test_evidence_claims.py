@@ -900,6 +900,38 @@ def test_scan_claims_accepts_negated_extended_storage_connectors(text):
 @pytest.mark.parametrize(
     "text",
     [
+        "AEGIS retains the immutable managed storage identifier.",
+        "AEGIS retains the immutable archival storage identifier.",
+    ],
+)
+def test_scan_claims_accepts_managed_and_archival_storage_identifiers(text):
+    assert scan_claims((TextBlock(Path("public.md"), 31, text),)) == ()
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        (
+            "AEGIS does not use archival storage and uses immutable managed "
+            "storage."
+        ),
+        (
+            "Azure does not offer archival storage but offers immutable "
+            "managed storage."
+        ),
+    ],
+)
+def test_scan_claims_rejects_coordinated_storage_uses_and_offers(text):
+    findings = scan_claims((TextBlock(Path("public.md"), 32, text),))
+
+    assert [finding.rule_id for finding in findings] == [
+        "IMMUTABLE_EVIDENCE_RECORD"
+    ]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
         "AEGIS certifies full compliance.",
         "AEGIS certifies ongoing regulatory compliance.",
         "AEGIS certifies SOC 2 compliance.",

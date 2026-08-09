@@ -81,8 +81,9 @@ _STORAGE_BEFORE_PREDICATE = re.compile(
     r"guarantees?)?\s*$",
     re.IGNORECASE,
 )
-_STORAGE_REFERENCE_SUFFIX = re.compile(
-    r"^(?:[- ]release)? reference(?: (?:for|of) (?:the )?release)?\b",
+_STORAGE_NON_ASSURANCE_SUFFIX = re.compile(
+    r"^(?:(?:[- ]release)? reference(?: (?:for|of) (?:the )?release)?|"
+    r" identifier)\b",
     re.IGNORECASE,
 )
 STORAGE_PREDICATE = re.compile(
@@ -135,8 +136,12 @@ _SENTENCE_BOUNDARY = re.compile(r"[.;!?]")
 _CLAUSE_BOUNDARY = re.compile(
     r"[.;!?]|,\s*(?:and|but|while|yet)\b|"
     r"\b(?:and|but|while|yet)\b(?:\s+\w+){0,3}\s+"
-    r"(?:provides?|creates?|makes?|guarantees?|establishes?|proves?|"
-    r"certif(?:y|ies)|constitutes?|means?)\b",
+    r"(?:provides?|creates?|makes?|uses?|offers?|guarantees?|establishes?|"
+    r"proves?|certif(?:y|ies)|constitutes?|means?)\b",
+    re.IGNORECASE,
+)
+_SHARED_PROVIDER_SUBJECT_BOUNDARY = re.compile(
+    r"\b(?:and|but|while|yet)\s+(?:uses?|offers?)\b",
     re.IGNORECASE,
 )
 MAX_RELATION_DISTANCE = 400
@@ -283,6 +288,28 @@ def scan_claims(blocks: tuple[TextBlock, ...]) -> tuple[ClaimFinding, ...]:
             _CLAUSE_BOUNDARY,
         )
 
+    def provider_subject_carries_to_predicate(
+        text: str,
+        subject: re.Match[str],
+        predicate: re.Match[str],
+    ) -> bool:
+        if subject.end() > predicate.start():
+            return False
+        boundaries = tuple(
+            _CLAUSE_BOUNDARY.finditer(
+                text,
+                subject.end(),
+                predicate.start(),
+            )
+        )
+        return (
+            len(boundaries) == 1
+            and _SHARED_PROVIDER_SUBJECT_BOUNDARY.fullmatch(
+                boundaries[0].group()
+            )
+            is not None
+        )
+
     def sentence_context(
         text: str,
         subject: re.Match[str],
@@ -302,7 +329,7 @@ def scan_claims(blocks: tuple[TextBlock, ...]) -> tuple[ClaimFinding, ...]:
         for storage in related_matches(STORAGE_TERM, predicate):
             if relation_context(text, storage, predicate) is None:
                 continue
-            if _STORAGE_REFERENCE_SUFFIX.match(text[storage.end():]) is not None:
+            if _STORAGE_NON_ASSURANCE_SUFFIX.match(text[storage.end():]) is not None:
                 continue
             if predicate.end() <= storage.start():
                 connector = text[predicate.end():storage.start()]
@@ -437,7 +464,17 @@ def scan_claims(blocks: tuple[TextBlock, ...]) -> tuple[ClaimFinding, ...]:
                 if not has_unnegated_relation(text, subject_pattern, predicate):
                     continue
                 if subject_pattern in {STORAGE_SUBJECT, PROVIDER_SUBJECT} and not any(
-                    relation_context(text, subject, predicate) is not None
+                    (
+                        relation_context(text, subject, predicate) is not None
+                        or (
+                            subject_pattern is PROVIDER_SUBJECT
+                            and provider_subject_carries_to_predicate(
+                                text,
+                                subject,
+                                predicate,
+                            )
+                        )
+                    )
                     and not negates_relation(text, subject, predicate)
                     for subject in related_matches(subject_pattern, predicate)
                 ):
