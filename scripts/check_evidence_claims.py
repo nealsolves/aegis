@@ -62,12 +62,24 @@ PROVIDER_SUBJECT = re.compile(
     re.IGNORECASE,
 )
 STORAGE_SUBJECT = re.compile(
-    r"\b(?:archives?|repositories?|systems?|services?|backends?)\b"
-    r"(?= (?:is|are|has|have|uses?|provides?|offers?|creates?) "
+    r"\bstorage\b(?= (?:(?:is|are|remains?) (?:immutable|immutability|"
+    r"append[- ]only|WORM|unalterable|indelible|tamper[- ]proof|"
+    r"deletion[- ]proof)|cannot be (?:changed|deleted|modified|rewritten))\b)|"
+    r"\b(?:archives?|repositories?|databases?|systems?|services?|backends?)\b"
+    r"(?= (?:is|are|has|have|uses?|provides?|offers?|creates?|guarantees?) "
     r"(?:(?:an?|the) )?(?:\w+ ){0,3}storage\b)",
     re.IGNORECASE,
 )
 STORAGE_TERM = re.compile(r"\bstorage\b", re.IGNORECASE)
+_PREDICATE_BEFORE_STORAGE = re.compile(
+    r"^\s*(?:(?:cloud|object|blob|audit|evidence|record|records|archive|"
+    r"provider)\s+)*$",
+    re.IGNORECASE,
+)
+_STORAGE_BEFORE_PREDICATE = re.compile(
+    r"^\s*(?:(?:is|are|remains?|provides?|offers?|guarantees?)\s*)?$",
+    re.IGNORECASE,
+)
 STORAGE_PREDICATE = re.compile(
     r"\b(?:immutable|immutability|append[- ]only|WORM|unalterable|indelible|"
     r"tamper[- ]proof|deletion[- ]proof|cannot be (?:changed|deleted|modified|rewritten))\b",
@@ -98,20 +110,27 @@ CERTIFICATION_ACTION = re.compile(
     r"\b(?:certif(?:y|ies)|proves?)\b",
     re.IGNORECASE,
 )
-COMPLIANCE_OBJECT = re.compile(r"\bcompliance\b", re.IGNORECASE)
+CERTIFICATION_OBJECT = re.compile(
+    r"\b(?:(?:regulatory|legal|policy|technical|ongoing) )?"
+    r"(?:compliance|certification)\b",
+    re.IGNORECASE,
+)
+_ACTION_OBJECT_CONNECTOR = re.compile(r"^\s*$")
 _ILLUSTRATIVE_PROVIDER_CONTEXT = re.compile(
     r"\billustrative and non[- ]normative\b",
     re.IGNORECASE,
 )
 _NEGATED_PROVIDER_CONTEXT = re.compile(
-    r"\b(?:not|never) (?:an? )?illustrative and non[- ]normative\b",
+    r"\b(?:(?:is|are|was|were)n['’]t|(?:is|are|was|were) not|not|never)"
+    r"(?: [A-Za-z]+){0,3} illustrative and non[- ]normative\b",
     re.IGNORECASE,
 )
+_SENTENCE_BOUNDARY = re.compile(r"[.;!?]")
 _CLAUSE_BOUNDARY = re.compile(
     r"[.;!?]|,\s*(?:and|but|while|yet)\b|"
     r"\b(?:and|but|while|yet)\b(?:\s+\w+){0,3}\s+"
     r"(?:provides?|creates?|makes?|guarantees?|establishes?|proves?|"
-    r"constitutes?|means?)\b",
+    r"certif(?:y|ies)|constitutes?|means?)\b",
     re.IGNORECASE,
 )
 MAX_RELATION_DISTANCE = 400
@@ -221,39 +240,98 @@ def scan_claims(blocks: tuple[TextBlock, ...]) -> tuple[ClaimFinding, ...]:
             for subject in related_matches(subject_pattern, predicate)
         )
 
-    def relation_context(
+    def bounded_relation_context(
         text: str,
         subject: re.Match[str],
         predicate: re.Match[str],
+        boundary_pattern: re.Pattern[str],
     ) -> str | None:
         relation_start = min(subject.start(), predicate.start())
         relation_end = max(subject.end(), predicate.end())
-        if _CLAUSE_BOUNDARY.search(text, relation_start, relation_end):
+        if boundary_pattern.search(text, relation_start, relation_end):
             return None
         context_floor = max(0, relation_start - MAX_RELATION_DISTANCE)
         context_start = context_floor
-        for boundary in _CLAUSE_BOUNDARY.finditer(
+        for boundary in boundary_pattern.finditer(
             text,
             context_floor,
             relation_start,
         ):
             context_start = boundary.end()
         context_ceiling = min(len(text), relation_end + MAX_RELATION_DISTANCE)
-        boundary = _CLAUSE_BOUNDARY.search(text, relation_end, context_ceiling)
+        boundary = boundary_pattern.search(text, relation_end, context_ceiling)
         context_end = (
             boundary.start() if boundary is not None else context_ceiling
         )
         return text[context_start:context_end]
 
+    def relation_context(
+        text: str,
+        subject: re.Match[str],
+        predicate: re.Match[str],
+    ) -> str | None:
+        return bounded_relation_context(
+            text,
+            subject,
+            predicate,
+            _CLAUSE_BOUNDARY,
+        )
+
+    def sentence_context(
+        text: str,
+        subject: re.Match[str],
+        predicate: re.Match[str],
+    ) -> str | None:
+        return bounded_relation_context(
+            text,
+            subject,
+            predicate,
+            _SENTENCE_BOUNDARY,
+        )
+
+    def predicate_describes_storage(
+        text: str,
+        predicate: re.Match[str],
+    ) -> bool:
+        for storage in related_matches(STORAGE_TERM, predicate):
+            if relation_context(text, storage, predicate) is None:
+                continue
+            if predicate.end() <= storage.start():
+                connector = text[predicate.end():storage.start()]
+                pattern = _PREDICATE_BEFORE_STORAGE
+            elif storage.end() <= predicate.start():
+                connector = text[storage.end():predicate.start()]
+                pattern = _STORAGE_BEFORE_PREDICATE
+            else:
+                continue
+            if pattern.fullmatch(connector) is not None:
+                return True
+        return False
+
     def action_connects(
+        text: str,
         subject: re.Match[str],
         action: re.Match[str],
         predicate: re.Match[str],
     ) -> bool:
         if subject.end() <= predicate.start():
-            return subject.end() <= action.start() and action.end() <= predicate.start()
+            return (
+                subject.end() <= action.start()
+                and action.end() <= predicate.start()
+                and _ACTION_OBJECT_CONNECTOR.fullmatch(
+                    text[action.end():predicate.start()]
+                )
+                is not None
+            )
         if predicate.end() <= subject.start():
-            return predicate.end() <= action.start() and action.end() <= subject.start()
+            return (
+                predicate.end() <= action.start()
+                and action.end() <= subject.start()
+                and _ACTION_OBJECT_CONNECTOR.fullmatch(
+                    text[predicate.end():action.start()]
+                )
+                is not None
+            )
         return False
 
     def bounded_excerpt(text: str, predicate_offset: int) -> str:
@@ -280,7 +358,7 @@ def scan_claims(blocks: tuple[TextBlock, ...]) -> tuple[ClaimFinding, ...]:
         pattern
         for _, subject_pattern, predicate_pattern in _CONTEXTUAL_RULES
         for pattern in (subject_pattern, predicate_pattern)
-    ) | frozenset({CERTIFICATION_ACTION, COMPLIANCE_OBJECT, STORAGE_TERM})
+    ) | frozenset({CERTIFICATION_ACTION, CERTIFICATION_OBJECT, STORAGE_TERM})
 
     for text, first, second in iter_windows():
         pattern_matches = {
@@ -331,7 +409,7 @@ def scan_claims(blocks: tuple[TextBlock, ...]) -> tuple[ClaimFinding, ...]:
                     continue
                 active_certification = (
                     CERTIFICATION_ACTION.search(context) is not None
-                    and COMPLIANCE_OBJECT.search(context) is not None
+                    and CERTIFICATION_OBJECT.search(context) is not None
                 )
                 if (
                     _ILLUSTRATIVE_PROVIDER_CONTEXT.search(context) is not None
@@ -357,6 +435,11 @@ def scan_claims(blocks: tuple[TextBlock, ...]) -> tuple[ClaimFinding, ...]:
                 ):
                     continue
                 if (
+                    subject_pattern in {STORAGE_SUBJECT, PROVIDER_SUBJECT}
+                    and not predicate_describes_storage(text, predicate)
+                ):
+                    continue
+                if (
                     rule_id == "IMMUTABLE_EVIDENCE_RECORD"
                     and subject_pattern
                     in {EVIDENCE_RECORD_SUBJECT, STORAGE_SUBJECT, PROVIDER_SUBJECT}
@@ -373,32 +456,27 @@ def scan_claims(blocks: tuple[TextBlock, ...]) -> tuple[ClaimFinding, ...]:
                 record_finding(rule_id, predicate)
 
         for predicate in pattern_matches[STORAGE_PREDICATE]:
-            storage_terms = related_matches(STORAGE_TERM, predicate)
-            if not storage_terms:
+            if not predicate_describes_storage(text, predicate):
                 continue
             for subject in related_matches(AEGIS_SUBJECT, predicate):
-                if relation_context(text, subject, predicate) is None:
+                if sentence_context(text, subject, predicate) is None:
                     continue
                 if negates_relation(text, subject, predicate):
                     continue
-                if any(
-                    relation_context(text, storage, predicate) is not None
-                    for storage in storage_terms
-                ):
-                    record_finding("IMMUTABLE_EVIDENCE_RECORD", predicate)
-                    break
+                record_finding("IMMUTABLE_EVIDENCE_RECORD", predicate)
+                break
 
-        for predicate in pattern_matches[COMPLIANCE_OBJECT]:
+        for predicate in pattern_matches[CERTIFICATION_OBJECT]:
             actions = related_matches(CERTIFICATION_ACTION, predicate)
             if not actions:
                 continue
             for subject in related_matches(AEGIS_SUBJECT, predicate):
-                if relation_context(text, subject, predicate) is None:
+                if sentence_context(text, subject, predicate) is None:
                     continue
                 if negates_relation(text, subject, predicate):
                     continue
                 if any(
-                    action_connects(subject, action, predicate)
+                    action_connects(text, subject, action, predicate)
                     for action in actions
                 ):
                     record_finding("AEGIS_CERTIFICATION_CLAIM", predicate)
