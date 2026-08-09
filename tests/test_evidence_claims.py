@@ -221,6 +221,24 @@ def test_normalize_public_text_closes_encoding_bypasses(source, expected):
     assert normalize_public_text(source) == expected
 
 
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        (
+            "[immutable storage](https://example.test/Function_(math))",
+            "immutable storage",
+        ),
+        ("![immutable evidence](diagram_(final).png)", "immutable evidence"),
+        (
+            "[immutable storage](https://example.test/Function_(math)",
+            "[immutable storage](https://example.test/Function_(math)",
+        ),
+    ],
+)
+def test_normalize_public_text_removes_balanced_markdown_targets(source, expected):
+    assert normalize_public_text(source) == expected
+
+
 def test_extract_html_blocks_includes_visible_attributes(tmp_path):
     path = tmp_path / "public.html"
     blocks = extract_document_blocks(
@@ -245,7 +263,7 @@ def test_extract_svg_blocks_includes_title_desc_and_text(tmp_path):
         {"normalized_bytes": 0, "public_blocks": 0},
     )
 
-    assert [block.text for block in blocks] == [
+    assert [block.text for block in blocks if not block.text.startswith("<")] == [
         "Hash chain",
         "Immutable storage",
         "AEGIS",
@@ -301,3 +319,18 @@ def test_extract_html_blocks_scans_source_and_visible_copy(tmp_path):
 
     assert any("AEGIS evidence" in block.text for block in blocks)
     assert any(block.text == "Public claim" for block in blocks)
+
+
+def test_extract_document_blocks_adds_normalized_html_source_by_line(tmp_path):
+    path = tmp_path / "public.html"
+    blocks = extract_document_blocks(
+        path,
+        '<meta name="description" content="AEGIS evidence">\n<p>immut\u200bable evidence</p>',
+        ScanLimits(),
+        {"normalized_bytes": 0, "public_blocks": 0},
+    )
+
+    assert [(block.line, block.text) for block in blocks if block.text.startswith("<")] == [
+        (1, '<meta name="description" content="AEGIS evidence">'),
+        (2, "<p>immutable evidence</p>"),
+    ]

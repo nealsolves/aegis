@@ -20,8 +20,8 @@ _ZERO_WIDTH_TRANSLATION = str.maketrans(
     {"\u200b": "", "\u200c": "", "\u200d": "", "\ufeff": ""}
 )
 _WHITESPACE_RE = re.compile(r"\s+")
-_MARKDOWN_IMAGE_RE = re.compile(r"!\[([^\]\r\n]{0,8192})\]\([^\r\n)]{0,16384}\)")
-_MARKDOWN_LINK_RE = re.compile(r"\[([^\]\r\n]{0,8192})\]\([^\r\n)]{0,16384}\)")
+_MAX_MARKDOWN_LABEL_CHARS = 8_192
+_MAX_MARKDOWN_TARGET_CHARS = 16_384
 _MARKDOWN_PREFIX_RE = re.compile(
     r"^[ \t]{0,3}(?:#{1,6}[ \t]+|[-*+][ \t]+|>[ \t]?|\d{1,9}[.)][ \t]+)"
 )
@@ -72,13 +72,58 @@ class ClaimFinding:
     excerpt: str
 
 
+def _balanced_markdown_target_end(text: str, opening: int) -> int | None:
+    """Return the closing parenthesis for a bounded Markdown target."""
+    depth = 0
+    limit = min(len(text), opening + _MAX_MARKDOWN_TARGET_CHARS + 2)
+    for position in range(opening, limit):
+        character = text[position]
+        if character in "\r\n":
+            return None
+        if character == "(":
+            depth += 1
+        elif character == ")":
+            depth -= 1
+            if depth == 0:
+                return position
+    return None
+
+
+def _strip_markdown_targets(text: str) -> str:
+    """Retain Markdown labels while safely dropping bounded link targets."""
+    parts: list[str] = []
+    copied_until = 0
+    marker_start = 0
+    while True:
+        marker = text.find("](", marker_start)
+        if marker < 0:
+            break
+        label_opening = text.rfind(
+            "[",
+            max(copied_until, marker - _MAX_MARKDOWN_LABEL_CHARS - 1),
+            marker,
+        )
+        target_end = _balanced_markdown_target_end(text, marker + 1)
+        if label_opening < 0 or target_end is None:
+            marker_start = marker + 2
+            continue
+        source_start = label_opening
+        if label_opening > copied_until and text[label_opening - 1] == "!":
+            source_start -= 1
+        parts.append(text[copied_until:source_start])
+        parts.append(text[label_opening + 1:marker])
+        copied_until = target_end + 1
+        marker_start = copied_until
+    parts.append(text[copied_until:])
+    return "".join(parts)
+
+
 def normalize_public_text(text: str) -> str:
     """Canonicalize user-visible text before evaluating assurance claims."""
     normalized = html.unescape(text)
     normalized = unicodedata.normalize("NFKC", normalized)
     normalized = normalized.translate(_ZERO_WIDTH_TRANSLATION)
-    normalized = _MARKDOWN_IMAGE_RE.sub(r"\1", normalized)
-    normalized = _MARKDOWN_LINK_RE.sub(r"\1", normalized)
+    normalized = _strip_markdown_targets(normalized)
     return _WHITESPACE_RE.sub(" ", normalized).strip()
 
 
@@ -112,12 +157,13 @@ class _PublicCopyParser(HTMLParser):
         path: Path,
         limits: ScanLimits,
         counters: dict[str, int],
+        blocks: list[TextBlock],
     ) -> None:
         super().__init__(convert_charrefs=True)
         self._path = path
         self._limits = limits
         self._counters = counters
-        self.blocks: list[TextBlock] = []
+        self.blocks = blocks
 
     def _append(self, text: str) -> None:
         block = _bounded_block(
@@ -150,7 +196,12 @@ def extract_document_blocks(
 ) -> tuple[TextBlock, ...]:
     """Return bounded public text blocks from a maintained document."""
     if path.suffix.lower() in {".html", ".svg"}:
-        parser = _PublicCopyParser(path, limits, counters)
+        blocks: list[TextBlock] = []
+        for line_number, source_line in enumerate(text.splitlines(), start=1):
+            block = _bounded_block(path, line_number, source_line, limits, counters)
+            if block is not None:
+                blocks.append(block)
+        parser = _PublicCopyParser(path, limits, counters, blocks)
         parser.feed(text)
         parser.close()
         return tuple(parser.blocks)
