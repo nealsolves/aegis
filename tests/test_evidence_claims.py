@@ -929,6 +929,28 @@ def test_scan_claims_rejects_coordinated_storage_uses_and_offers(text):
     ]
 
 
+def test_scan_claims_accepts_qualified_carried_provider_claim():
+    text = (
+        "Azure does not offer archival storage but offers immutable managed "
+        "storage as an illustrative and non-normative example."
+    )
+
+    assert scan_claims((TextBlock(Path("public.md"), 33, text),)) == ()
+
+
+def test_scan_claims_does_not_carry_provider_qualification_to_a_later_claim():
+    text = (
+        "Azure does not offer archival storage as an illustrative and "
+        "non-normative example but offers immutable managed storage."
+    )
+
+    findings = scan_claims((TextBlock(Path("public.md"), 33, text),))
+
+    assert [finding.rule_id for finding in findings] == [
+        "IMMUTABLE_EVIDENCE_RECORD"
+    ]
+
+
 @pytest.mark.parametrize(
     "text",
     [

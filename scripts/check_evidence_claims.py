@@ -310,6 +310,33 @@ def scan_claims(blocks: tuple[TextBlock, ...]) -> tuple[ClaimFinding, ...]:
             is not None
         )
 
+    def carried_provider_clause_context(
+        text: str,
+        subject: re.Match[str],
+        predicate: re.Match[str],
+    ) -> str | None:
+        if not provider_subject_carries_to_predicate(text, subject, predicate):
+            return None
+        boundary = _SHARED_PROVIDER_SUBJECT_BOUNDARY.search(
+            text,
+            subject.end(),
+            predicate.start(),
+        )
+        if boundary is None:
+            return None
+        context_ceiling = min(len(text), predicate.end() + MAX_RELATION_DISTANCE)
+        next_boundary = _CLAUSE_BOUNDARY.search(
+            text,
+            predicate.end(),
+            context_ceiling,
+        )
+        context_end = (
+            next_boundary.start()
+            if next_boundary is not None
+            else context_ceiling
+        )
+        return text[boundary.start():context_end]
+
     def sentence_context(
         text: str,
         subject: re.Match[str],
@@ -440,6 +467,12 @@ def scan_claims(blocks: tuple[TextBlock, ...]) -> tuple[ClaimFinding, ...]:
         def provider_example_qualifies(predicate: re.Match[str]) -> bool:
             for provider in related_matches(PROVIDER_SUBJECT, predicate):
                 context = relation_context(text, provider, predicate)
+                if context is None:
+                    context = carried_provider_clause_context(
+                        text,
+                        provider,
+                        predicate,
+                    )
                 if context is None:
                     continue
                 active_certification = (
