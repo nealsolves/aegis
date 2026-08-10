@@ -194,6 +194,11 @@ aegis_baseline:
   published_version: 0.9.0b1
   mapped_channel: current_source
   release_matrix: docs/reference/RELEASE_MATRIX.md
+  runtime_paths:
+    - "aegis/**"
+    - "schemas/**"
+    - "policies/**"
+    - "pyproject.toml"
 framework_modules:
   - compliance/frameworks/nist-ai-rmf-1.0.yaml
   - compliance/frameworks/iso-iec-42001-2023.yaml
@@ -212,6 +217,13 @@ update_triggers:
 
 The final manifest contains complete display names, authoritative disclaimer
 text, and review metadata in addition to this structural core.
+
+`aegis_baseline.runtime_paths` is the complete tracked source surface imported
+or consumed by the regulated fixture. Publication mode compares those paths in
+the catalog checkout with the pinned commit and rejects any tracked,
+untracked, ignored, or staged difference. A runtime change therefore requires
+a new baseline commit and affected-framework review before the fixture or
+generated pages can be published against it.
 
 ### Framework module
 
@@ -272,7 +284,13 @@ For ISO, `source_access_method` must be
 `licensed_human_review_without_ai_processing`. Publication is blocked unless a
 qualified maintainer records that review. The licensed standard, excerpts,
 screenshots, or local file path are never committed or passed to automated
-processing.
+processing. The qualified maintainer must author or directly supply the
+sanitized `control_id`, `source_reference`, `interpretation`, and every other
+source-derived limitation or host responsibility for each ISO row. Automated
+work may attach repository evidence to that approved input and run mechanical
+validation, but it may not generate, infer, or paraphrase ISO requirements.
+Publication requires the `iso_licensed_source` role in both the recorded scope
+and mapping reviews.
 
 ### Control and mapping row
 
@@ -332,7 +350,9 @@ All evidence references share this closed base shape:
   `aegis_baseline.git_commit`; or
 - `catalog_asset` — the reference is a fixture, generated artifact, catalog
   contract test, or documentation asset introduced with the catalog and is
-  resolved in the catalog checkout.
+  resolved in the catalog checkout. It must be a tracked, non-ignored Git file;
+  untracked, ignored, intent-to-add, or generated-only local files are not
+  evidence.
 
 `command` references additionally contain `invocation`; all other kinds reject
 that field. `invocation` is rendered and compared with maintained
@@ -347,10 +367,13 @@ that judgment.
 For `aegis_source`, resolution reads the pinned Git object rather than the
 working-tree file, and generated links use the full commit SHA. For
 `catalog_asset`, resolution uses the strict working-tree path rules and
-generated links are relative to the catalog documentation. This prevents a
-later source edit from silently changing evidence attributed to the pinned
-AEGIS baseline while still allowing the new regulated fixture and catalog
-tests to be cited honestly.
+requires the path to appear as a normal tracked file in `git ls-files`;
+generated links are relative to the catalog documentation. Publication also
+compares every `aegis_baseline.runtime_paths` entry with the pinned commit and
+rejects runtime drift before executing the fixed fixture harness. This
+prevents a later source edit from silently changing evidence attributed to the
+pinned AEGIS baseline while still allowing tracked regulated-fixture and
+catalog-test assets to be cited honestly.
 
 Catalog values never select executable functions. Fixture tests and command
 tests use fixed Python-owned test code, fixed argument arrays, and no shell.
@@ -362,10 +385,10 @@ evidence contribution.”
 
 | Status | Meaning | Minimum required content |
 | --- | --- | --- |
-| `supported_evidence` | AEGIS directly produces concrete technical evidence relevant to the reviewed interpretation. This does not mean the control is satisfied. | At least one artifact, policy, command, or fixture reference; at least one executable test reference; limitations and host controls. |
-| `partial_evidence` | AEGIS produces indirect, incomplete, or condition-dependent evidence relevant to part of the reviewed interpretation. | Concrete evidence; an explicit description of the unsupported portion; limitations and host controls. |
-| `external_control` | The reviewed interpretation identifies a host, provider, or organizational responsibility for which AEGIS supplies no relevant evidence. | Named external owner and required external control; no positive AEGIS evidence claim. |
-| `not_addressed` | The identifier is inside declared scope, but this catalog identifies neither an AEGIS evidence contribution nor a specific implemented external-control mapping. | Explicit gap statement and review note. |
+| `supported_evidence` | AEGIS directly produces concrete technical evidence relevant to the reviewed interpretation. This does not mean the control is satisfied. | At least one non-documentation `aegis_source` artifact, policy, command, or test reference; at least one executable test reference; limitations and host controls. A `catalog_asset` may demonstrate reproducibility but cannot be the sole positive basis. |
+| `partial_evidence` | AEGIS produces indirect, incomplete, or condition-dependent evidence relevant to part of the reviewed interpretation. | At least one non-documentation `aegis_source` reference; an explicit description of the unsupported portion; an executable test reference; limitations and host controls. A `catalog_asset` cannot be the sole positive basis. |
+| `external_control` | The reviewed interpretation identifies a host, provider, or organizational responsibility for which AEGIS supplies no relevant evidence. | `evidence: []`; named external owner and required external control. External explanatory material belongs in `host_controls` or `limitations`. |
+| `not_addressed` | The identifier is inside declared scope, but this catalog identifies neither an AEGIS evidence contribution nor a specific implemented external-control mapping. | `evidence: []`; explicit gap statement and review note. Explanatory material belongs in `limitations`. |
 
 No rendered heading or summary shortens these labels to “supported,”
 “compliant,” “covered,” “passed,” or “satisfied.”
@@ -396,10 +419,15 @@ No rendered heading or summary shortens these labels to “supported,”
   identified by a qualified maintainer using a licensed copy.
 - The qualified maintainer freezes the exact clause and Annex A identifier
   inventory through scope validation before any ISO evidence mapping begins.
+- The same qualified maintainer completes or explicitly approves every
+  source-derived interpretation, limitation, host responsibility, and support
+  classification before the module's mapping review is recorded. Automated
+  work is limited to attaching AEGIS repository evidence to those sanitized
+  human-authored inputs and validating the result.
 - Only identifiers, permitted titles, citations, and original interpretations
   are published.
-- The qualified reviewer performs human-only verification and does not provide
-  licensed text to an AI system.
+- The qualified reviewer performs human-only authorship and verification and
+  does not provide licensed text to an AI system.
 - The module remains unpublished until this review is recorded.
 
 ### SOC 2 Trust Services Criteria
@@ -554,11 +582,18 @@ In their applicable modes, checks fail when:
 - the catalog or a module fails strict loading or schema validation;
 - publication mode does not list exactly the four approved modules or finds an
   unlisted framework module;
+- an `authoritative_sources[].source_id` is duplicated or a control references
+  an absent or ambiguous source ID;
 - a framework ID, control ID, or mapping row is duplicated;
 - the actual mapping count differs from the reviewed expected count;
 - a status omits its required evidence, limitation, gap, or external owner;
+- a positive status lacks a non-documentation `aegis_source` reference or an
+  executable test reference;
+- `external_control` or `not_addressed` contains a non-empty `evidence` array;
 - an evidence path or locator cannot be resolved;
-- a positive evidence row lacks an executable test reference;
+- a `catalog_asset` is not a normal tracked, non-ignored Git file;
+- a tracked, staged, untracked, or ignored path under
+  `aegis_baseline.runtime_paths` differs from the pinned commit;
 - catalog prose violates the issue #47 claims rules;
 - publication mode lacks a source version, date, authoritative URL, review
   date, next-review date, or any required focused review PR;
@@ -614,13 +649,17 @@ Review responsibilities are:
   references are relevant without claiming control satisfaction.
 - **Claims reviewer:** checks terminology, assurance boundaries, and public
   presentation.
-- **ISO qualified maintainer:** performs the source review using licensed
-  access without supplying protected content to automated processing.
+- **ISO qualified maintainer:** uses licensed access to author or directly
+  supply the sanitized identifier inventory and every source-derived
+  interpretation, limitation, host responsibility, and support classification
+  without supplying protected content to automated processing; the maintainer
+  records both the scope and mapping approvals.
 
-One person may fill multiple roles except that the ISO licensed-source review
-must be explicitly identified. The repository does not claim that a YAML field
-authenticates any reviewer. PR review and repository governance provide the
-approval record.
+One person may fill multiple roles. For ISO, a qualified maintainer with
+licensed access must fill the framework-scope and mapping-review roles, and the
+`iso_licensed_source` role must be explicitly recorded for both approvals. The
+repository does not claim that a YAML field authenticates any reviewer. PR
+review and repository governance provide the approval record.
 
 An update changes only affected modules unless a catalog-wide contract,
 baseline, renderer, or claims-policy change affects all modules. The catalog
@@ -661,13 +700,17 @@ Implementation follows test-driven development.
 ### Schema and semantic tests
 
 Cover valid minimal modules and failures for duplicate keys, aliases, custom
-tags, unknown keys, malformed dates, invalid enums, duplicate IDs, count
-mismatch, missing status-specific fields, unsafe paths, symlinks, missing
-locators, oversized input, and overdue reviews. Freeze scope-, mapping-, and
+tags, unknown keys, malformed dates, invalid enums, duplicate framework,
+source, and control IDs, missing source IDs, count mismatch, missing
+status-specific fields, non-empty gap-state evidence, positive rows backed only
+by catalog assets, unsafe paths, symlinks, untracked or ignored catalog assets,
+missing locators, oversized input, baseline-owned tracked, staged, untracked,
+or ignored drift, and overdue reviews. Freeze scope-, mapping-, and
 publication-mode requirements separately. Tests resolve `aegis_source`
-references from a fixed Git commit fixture, resolve `catalog_asset` references
-from the strict checkout root, reject baseline mismatches, and pass explicit
-`--as-of` dates around each expiry boundary.
+references from a fixed Git commit fixture, resolve tracked `catalog_asset`
+references from the strict
+checkout root, reject baseline mismatches, and pass explicit `--as-of` dates
+around each expiry boundary.
 
 ### Claims tests
 
@@ -686,8 +729,11 @@ text, and byte-for-byte generated-file parity.
 
 Run the regulated example in a temporary directory, validate schemas and
 checksums, verify applicable signature, chain, and checkpoint states, and
-assert each fixture-backed catalog locator. Negative tests prove malformed or
-altered evidence is not reported as successful.
+assert each fixture-backed catalog locator. Run the fixture only after the
+publication checker proves that all baseline-owned runtime paths match the
+pinned commit. Negative tests prove malformed or altered evidence is not
+reported as successful and prove that runtime drift prevents fixture
+execution.
 
 ### Repository integration tests
 
@@ -703,8 +749,12 @@ or summarizes the catalog.
 2. **Regulated fixture:** public example, deterministic evidence generation,
    negative cases, and locator contract tests.
 3. **NIST module:** full reviewed AI RMF 1.0 Core scope and generated page.
-4. **ISO module:** reviewed clauses and Annex A scope, qualified licensed
-   human-review gate, and generated page.
+4. **ISO module:** a qualified maintainer with licensed access authors or
+   directly supplies the sanitized clauses and Annex A inventory plus every
+   source-derived interpretation, limitation, host responsibility, and support
+   classification; automated work attaches repository evidence, validates the
+   completed module, enforces the human scope-and-mapping approval gate, and
+   generates the page.
 5. **SOC 2 module:** reviewed five-category criteria scope and generated page.
 6. **EU AI Act module:** first obtain qualified approval of the exact
    article-and-paragraph inventory through focused scope validation and review;
