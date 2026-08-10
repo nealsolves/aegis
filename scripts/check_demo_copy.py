@@ -7,6 +7,7 @@ import argparse
 import json
 import re
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -120,8 +121,12 @@ def _iter_files(paths: Iterable[Path]) -> Iterable[Path]:
             )
 
 
-def _iter_frontend_public_files(root: Path) -> Iterable[Path]:
+def iter_frontend_public_files(root: Path) -> Iterable[Path]:
+    if root.is_symlink():
+        raise ValueError("frontend symlink is not scannable")
     for candidate in root.rglob("*"):
+        if candidate.is_symlink():
+            raise ValueError("frontend symlink is not scannable")
         if not candidate.is_file() or candidate.suffix not in FRONTEND_SUFFIXES:
             continue
         relative = candidate.relative_to(root)
@@ -136,17 +141,42 @@ def _iter_frontend_public_files(root: Path) -> Iterable[Path]:
         yield candidate
 
 
-def _frontend_public_copy(paths: list[Path]) -> dict[Path, str]:
+DEFAULT_MAX_EXTRACTOR_BYTES = 50 * 1024 * 1024
+FRONTEND_EXTRACTOR_BATCH_SIZE = 200
+
+
+def extract_frontend_public_copy(
+    paths: list[Path],
+    *,
+    max_output_bytes: int = DEFAULT_MAX_EXTRACTOR_BYTES,
+) -> dict[Path, str]:
     """Return rendered public-copy documents extracted from TypeScript syntax."""
     if not paths:
         return {}
-    completed = subprocess.run(
-        ["node", str(FRONTEND_EXTRACTOR), *(str(path) for path in paths)],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    extracted = json.loads(completed.stdout)
+    extracted: list[dict] = []
+    consumed_output_bytes = 0
+    for offset in range(0, len(paths), FRONTEND_EXTRACTOR_BATCH_SIZE):
+        batch = paths[offset: offset + FRONTEND_EXTRACTOR_BATCH_SIZE]
+        with (
+            tempfile.TemporaryFile(mode="w+b") as output_file,
+            tempfile.TemporaryFile(mode="w+b") as error_file,
+        ):
+            subprocess.run(
+                ["node", str(FRONTEND_EXTRACTOR), *(str(path) for path in batch)],
+                check=True,
+                stdout=output_file,
+                stderr=error_file,
+            )
+            output_bytes = output_file.tell()
+            consumed_output_bytes += output_bytes
+            if consumed_output_bytes > max_output_bytes:
+                raise ValueError("frontend extractor output limit exceeded")
+            output_file.seek(0)
+            payload = output_file.read(output_bytes + 1)
+        parsed = json.loads(payload.decode("utf-8", errors="strict"))
+        if not isinstance(parsed, list):
+            raise ValueError("frontend extractor output must be a JSON list")
+        extracted.extend(parsed)
     documents: dict[Path, str] = {}
     for item in extracted:
         output: list[str] = []
@@ -183,8 +213,8 @@ def main(argv: list[str] | None = None) -> int:
         for path in _iter_files(arguments.paths)
     ]
     if arguments.frontend_root is not None:
-        frontend_paths = list(_iter_frontend_public_files(arguments.frontend_root))
-        frontend_documents = _frontend_public_copy(frontend_paths)
+        frontend_paths = list(iter_frontend_public_files(arguments.frontend_root))
+        frontend_documents = extract_frontend_public_copy(frontend_paths)
         inputs.extend(
             (path, frontend_documents[path])
             for path in frontend_paths

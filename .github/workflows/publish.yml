@@ -24,16 +24,28 @@ jobs:
           python-version: "3.12"
           cache: pip
 
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: demo-app-react/package-lock.json
+
       - name: Install validation and build dependencies
         run: >-
           python -m pip install "build==1.5.0" "setuptools"
           -e ".[dev,aws-kms,gcp-kms]"
+
+      - name: Install frontend extraction dependencies
+        working-directory: demo-app-react
+        run: npm ci
 
       - name: Run release validation
         run: |
           python -m pytest -q
           flake8 aegis
           python scripts/check_doc_parity.py
+          python scripts/check_evidence_claims.py
           python scripts/validate_v090_release_freeze.py
 
       - name: Build wheel and source distribution

@@ -40,6 +40,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install Python validation dependencies
+        run: python -m pip install -e ".[dev]"
+
       - name: Configure GitHub Pages
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
 
@@ -70,6 +73,9 @@ jobs:
 
       - name: Check public copy
         run: python scripts/check_demo_copy.py --frontend-root demo-app-react/src
+
+      - name: Reject evidence assurance overclaims
+        run: python scripts/check_evidence_claims.py
 
       - name: Build frontend
         working-directory: demo-app-react

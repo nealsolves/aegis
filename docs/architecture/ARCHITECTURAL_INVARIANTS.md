@@ -180,8 +180,8 @@ the `0.9.0b1` release. It is populated only by
 
 Hash-chain verification applies to the sequence supplied for verification. It
 does not detect replacement of a complete otherwise-valid chain without an
-external trusted checkpoint, establish sequence completeness, or provide WORM
-storage. Trusted checkpoints (issue #46) are the additive, host-driven control
+external trusted checkpoint, establish sequence completeness, or enforce host
+retention. Trusted checkpoints (issue #46) are the additive, host-driven control
 that detects whole-chain replacement for an expected scope when a validly signed,
 anchored checkpoint is retained and presented; a host that omits or withholds the
 checkpoint keeps the pre-#46 `unproven` result, so checkpoint omission and
@@ -410,11 +410,11 @@ outstanding reservation and no crash-persistence guarantee; hosts own recovery
 or reconciliation after sink acknowledgement and before commit. AEGIS verifies
 only the supplied sequence's internal continuity. Those artifact-level axes do
 not claim replay prevention, sequence completeness, complete-chain replacement
-or tail-truncation detection, trusted time, immutable or WORM storage,
-certification, or regulatory compliance. Issue #46's implemented trusted
-checkpoints detect divergence from a valid, anchored, authoritative pin when
-presented; latest retrieval and omission/rollback protection remain host
-responsibilities.
+or tail-truncation detection, trusted time, host storage controls, or
+organizational assurance status. Issue #46's implemented trusted checkpoints
+detect divergence from a valid, anchored, authoritative pin when presented;
+hosts still select the authoritative current checkpoint and protect that
+authority against omission or rollback.
 
 ---
 
@@ -445,9 +445,10 @@ signature alone is never inferred. See ADR-0015.
 
 Workflow-signed proves integrity and order of the claimed supplied set. It does
 not prove the host disclosed every invocation. Completeness remains unproven
-until a trusted checkpoint binds the expected head/count. Only valid, anchored,
-authoritative evidence can then detect divergence; latest retrieval and
-checkpoint omission/rollback remain host responsibilities.
+until a trusted checkpoint binds the expected head/count. Verification against
+valid, anchored, authoritative evidence can then expose divergence from the
+presented pin. Hosts still select the authoritative current checkpoint and
+protect that authority against omission or rollback.
 
 The verifier bounds claims and supplied artifacts to 1,024 entries each,
 measured input to 4 MiB, nesting to 32 levels, and reports to 100 errors.

@@ -186,6 +186,12 @@ interpreter's import or module trust anchors before the first lazy load. That
 requires prior arbitrary in-process code execution and is not a provider
 vulnerability.
 
+For host-owned rotation, revocation, retention, checkpoint selection,
+historical verification, backup, and recovery, see the
+[Append-Only Evidence Operations Guide](../APPEND_ONLY_EVIDENCE_OPERATIONS.md).
+That guide separates library-produced results from host retention, write
+protection, and organizational assurance decisions.
+
 ## Logging and assurance limits
 
 Do not enable unrestricted Google client debug logging in paths that handle
@@ -197,3 +203,8 @@ The adapter does not create immutable logging, trusted time, complete history,
 HSM/FIPS status, or certification. It does not create, rotate, disable,
 destroy, attest, or certify keys. Encryption, decryption, MAC, raw private-key,
 and certificate operations are outside this adapter.
+
+Related provider-neutral assurance boundaries are defined in the
+[Append-Only Evidence Operations Guide](../APPEND_ONLY_EVIDENCE_OPERATIONS.md).
+This adapter guide does not prescribe retention configuration or legal
+conclusions.

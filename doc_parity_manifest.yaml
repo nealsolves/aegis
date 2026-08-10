@@ -115,6 +115,10 @@ documentation_inventory:
     - docs/superpowers/specs/2026-08-04-issue-46-trusted-checkpoints-design.md
     # Explicitly abandoned and non-normative; retained only as design history.
     - docs/superpowers/specs/2026-08-06-issue-46-tripwire-rescope-design.md
+    # Issue #47 design history is non-authoritative; maintained evidence
+    # operations guidance lives under docs/reference/**.
+    - docs/superpowers/plans/2026-08-09-issue-47-append-only-evidence-operations.md
+    - docs/superpowers/specs/2026-08-09-issue-47-append-only-evidence-operations-design.md
     - .superpowers/sdd/2026-07-29-issue-45-aws-google-kms-adapters/task-9-report.md
     - .superpowers/sdd/2026-07-29-issue-45-aws-google-kms-adapters/final-fix-wave-report.md
     - .superpowers/sdd/2026-07-30-a1-compiled-policy-restriction-envelope/task-5-report.md

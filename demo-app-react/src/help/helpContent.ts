@@ -82,7 +82,7 @@ export const helpContent: Record<number, LabHelp> = {
       { term: 'enforce_invocation()', definition: 'The SDK entry point. Accepts policy, input, output, context, model identity, and role, then returns an audit artifact or raises with one attached.' },
       { term: 'enforce_pre_call()', definition: 'The split-mode Phase A entry point. It authorizes the invocation before the model call and returns a PreCallResult token for Phase B.' },
       { term: 'GovernanceSession', definition: 'The v0.9 workflow surface that governs steps, participants, budgets, approvals, transitions, lifecycle, and evidence correlation.' },
-      { term: 'Invocation artifact', definition: 'The immutable per-attempt record produced after enforcement. It contains checksums, policy metadata, result, and supporting evidence.' },
+      { term: 'Invocation artifact', definition: 'The finalized per-attempt record produced after enforcement. It contains checksums, policy metadata, result, and supporting evidence.' },
       { term: 'Workflow artifact', definition: 'A separate session-level record containing workflow status, governed steps, invocation checksums, and lifecycle evidence.' },
       { term: '@governed', definition: 'A decorator that defaults to split enforcement since v0.3.3 (Phase A before the model call, Phase B after). Pass pre_call_enforcement=False for legacy unified mode (deprecated).' },
       { term: 'Fail-closed', definition: 'If a core governance check fails, the invocation is rejected and a FAIL artifact is emitted. The system does not silently continue.' },
@@ -449,7 +449,7 @@ export const helpContent: Record<number, LabHelp> = {
     takeaway:
       'AEGIS ends with usable evidence: a filterable audit trail that operators can inspect and export, not just internal enforcement logic.',
     glossary: [
-      { term: 'Audit artifact', definition: 'The immutable record produced by each enforcement call. It carries the result plus evidence such as checksums, metadata, and optional signature.' },
+      { term: 'Audit artifact', definition: 'The finalized record produced by each enforcement call. It carries the result plus evidence such as checksums, metadata, and optional signature.' },
       { term: 'Enforcement result', definition: 'The final governance decision: PASS when allowed, FAIL when blocked.' },
       { term: 'Signed (checkmark)', definition: 'Indicates signing was enabled for that invocation. Verification still requires the original signing key.' },
       { term: 'Sample mode', definition: 'An explicit mode activated by clicking Load Sample Data. It shows fixture records with a banner and can be cleared.' },

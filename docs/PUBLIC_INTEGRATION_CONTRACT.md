@@ -664,7 +664,7 @@ class ComplianceTagGate(EnforcementGate):
         return INSERTION_POST_OUTPUT
 
     def evaluate(self, invocation, policy, context):
-        return GateResult(passed=True, metadata={"compliance": "sox-compliant"})
+        return GateResult(passed=True, metadata={"assessment_scope": "sox"})
 
 
 aegis = AEGIS(
@@ -674,7 +674,7 @@ aegis = AEGIS(
 ```
 
 Gate metadata is merged into `metadata.custom_gate_metadata` in the audit artifact.
-`invocation` and `policy` are detached, recursively immutable `Mapping` projections.
+`invocation` and `policy` are detached, recursively read-only `Mapping` projections.
 Failures are append-only — a gate cannot suppress earlier failures. Unhandled exceptions
 become sanitized execution failures (code `CUSTOM_GATE_ERROR`), never crashes.
 
@@ -945,8 +945,9 @@ least privilege, rotation, revocation, outages, and retained evidence:
 explicit non-negative integer Unix second; `bool` is rejected. `signed_at`
 records the host's observation of when signing began. It is not trusted time,
 timestamp-authority evidence, or replay protection. The signer identity and
-receipt pin the same algorithm, encoding, key reference, and immutable key
-version. AEGIS attaches `signature_metadata` and `signature` together only
+receipt pin the same algorithm, encoding, key reference, and exact stable
+key-version identifier. AEGIS attaches `signature_metadata` and `signature`
+together only
 after every value is validated; failure leaves the input unchanged. This
 atomic update does not make concurrent signing of the same mutable dictionary
 thread-safe. Re-signing and asynchronous signer/verifier contracts are not
@@ -1062,14 +1063,20 @@ Each artifact gains `chain_id`, `chain_index`, `previous_audit_checksum`, and
 `reservation_id` before its checksum and signature are created. Verification establishes
 content integrity and continuity within the sequence supplied by the caller. A reordered
 or internally truncated supplied sequence is invalid, but a valid prefix remains internally
-valid because the verifier cannot know that a later artifact exists. Hash chaining does not
-make storage immutable and cannot detect replacement or tail truncation of an otherwise valid
-chain without an external trusted checkpoint. Trusted-head binding to content checksums is
+valid because the verifier cannot know that a later artifact exists. Hash chaining supplies no
+underlying storage controls and cannot detect replacement or tail truncation of an otherwise
+valid chain without an external trusted checkpoint. Trusted-head binding to content checksums is
 implemented in the current source (issue #46): `verify_chain_detailed(...,
 checkpoints=..., checkpoint_verifier=..., expected_chain_id=...)` reports
 `checkpoint_proven` or `contradicted` for the expected scope. This checkpoint
 surface is current-source-only and not in the published `0.9.0b1` wheel. See
 ADR-0015.
+
+For host-owned retention, object locking, checkpoint selection, historical
+verification, backup, and recovery, see the
+[Append-Only Evidence Operations Guide](reference/APPEND_ONLY_EVIDENCE_OPERATIONS.md).
+That guide separates library-produced results from host retention, write
+protection, and organizational assurance decisions.
 
 The eight result axes are independent: content integrity, chain continuity,
 artifact signature status, artifact anchor status, checkpoint signature status,
@@ -1143,9 +1150,10 @@ ADR-0015.
 
 Workflow-signed proves integrity and order of the claimed supplied set. It does
 not prove the host disclosed every invocation. Completeness remains unproven
-until a trusted checkpoint binds the expected head/count. Only valid, anchored,
-authoritative evidence can then detect divergence; latest retrieval and
-checkpoint omission/rollback remain host responsibilities.
+until a trusted checkpoint binds the expected head/count. Verification against
+valid, anchored, authoritative evidence can then expose divergence from the
+presented pin. Hosts still select the authoritative current checkpoint and
+protect that authority against omission or rollback.
 
 The verifier bounds claims and supplied artifacts to 1,024 entries each,
 measured input to 4 MiB, nesting to 32 levels, and reports to 100 errors.

@@ -1,10 +1,69 @@
 import sys
 from pathlib import Path
 
+import pytest
+
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from scripts.check_demo_copy import main, scan_text  # noqa: E402
+from scripts.check_demo_copy import (  # noqa: E402
+    extract_frontend_public_copy,
+    iter_frontend_public_files,
+    main,
+    scan_text,
+)
+
+
+def test_frontend_extraction_helpers_are_public_and_reusable(tmp_path):
+    page = tmp_path / "VisiblePage.tsx"
+    page.write_text(
+        "export function VisiblePage() { return <p>Visible assurance copy.</p> }",
+        encoding="utf-8",
+    )
+
+    paths = list(iter_frontend_public_files(tmp_path))
+    documents = extract_frontend_public_copy(paths)
+
+    assert paths == [page]
+    assert "Visible assurance copy." in documents[page]
+
+
+@pytest.mark.parametrize("target_kind", ["file", "directory"])
+def test_frontend_file_inventory_rejects_symlinks(tmp_path, target_kind):
+    """Fails if traversal filters a symlink before the public preflight sees it."""
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    if target_kind == "file":
+        target = outside / "Visible.tsx"
+        target.write_text("export const copy = 'Visible copy.'", encoding="utf-8")
+        link = tmp_path / "Linked.tsx"
+    else:
+        target = outside
+        (target / "Visible.tsx").write_text(
+            "export const copy = 'Visible copy.'",
+            encoding="utf-8",
+        )
+        source = tmp_path / "source"
+        source.mkdir()
+        link = source / "linked"
+    try:
+        link.symlink_to(target, target_is_directory=target_kind == "directory")
+    except OSError:
+        pytest.skip("symlink creation unavailable")
+
+    with pytest.raises(ValueError, match="frontend symlink"):
+        list(iter_frontend_public_files(tmp_path))
+
+
+def test_frontend_extraction_helper_rejects_oversized_output(tmp_path):
+    page = tmp_path / "VisiblePage.tsx"
+    page.write_text(
+        "export const visibleCopy = 'This output exceeds the test limit.'",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="extractor output limit"):
+        extract_frontend_public_copy([page], max_output_bytes=8)
 
 
 def test_scanner_flags_banned_marketing_language():

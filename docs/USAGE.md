@@ -421,7 +421,14 @@ authoritative match or `contradicted` for a conflict with that trusted
 authority, instead of `unproven`. Invalid, unavailable, unknown-key, revoked,
 or unanchored evidence remains `unproven`. See
 ADR-0015 for the full assurance scope — a `checkpoint_proven` result does not
-prove latest-retrieval, WORM storage, future activity, or compliance.
+identify the authoritative current checkpoint, enforce retention, predict
+future activity, or determine organizational assurance status.
+
+For host-owned retention, object locking, checkpoint selection, historical
+verification, backup, and recovery, see the
+[Append-Only Evidence Operations Guide](reference/APPEND_ONLY_EVIDENCE_OPERATIONS.md).
+That guide separates library-produced results from host retention, write
+protection, and organizational assurance decisions.
 
 The signer and verifier are **host-supplied and provider-neutral**; AEGIS ships
 no key store or network client for this path. `checkpointed_at` is a signed but

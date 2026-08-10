@@ -32,8 +32,9 @@ accept a trusted checkpoint. Trace and export correlation is advisory and cannot
 is complete. Workflow-signed proves integrity and order of the claimed supplied
 set. It does not prove the host disclosed every invocation. Completeness remains
 unproven until a trusted checkpoint binds the expected head/count.
-Only valid, anchored, authoritative evidence can then detect divergence;
-latest retrieval and checkpoint omission/rollback remain host responsibilities.
+Verification against valid, anchored, authoritative evidence can then expose
+divergence from the presented pin. Hosts still select the authoritative current
+checkpoint and protect that authority against omission or rollback.
 
 The verifier bounds claims and supplied artifacts to 1,024 entries each,
 measured input to 4 MiB, nesting to 32 levels, and reports to 100 errors.

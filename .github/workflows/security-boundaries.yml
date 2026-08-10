@@ -28,3 +28,26 @@ jobs:
         run: python -m pytest tests/test_architecture_security_boundaries.py tests/test_evidence_emission_inventory.py -v
       - name: enforcement-boundaries
         run: python -m pytest tests/test_custom_gate_result_consistency.py tests/test_validator_hook_fail_closed.py tests/test_critical_risk_ceiling.py -v
+
+  evidence-claims:
+    name: evidence claims
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: demo-app-react/package-lock.json
+      - name: Install Python validation dependencies
+        run: python -m pip install -e ".[dev]"
+      - name: Install frontend extraction dependencies
+        working-directory: demo-app-react
+        run: npm ci
+      - name: Reject evidence assurance overclaims
+        run: python scripts/check_evidence_claims.py

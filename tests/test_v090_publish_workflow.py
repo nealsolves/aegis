@@ -12,6 +12,7 @@ WORKFLOW = REPO_ROOT / ".github" / "workflows" / "publish.yml"
 PINNED_ACTIONS = {
     "actions/checkout": "de0fac2e4500dabe0009e67214ff5f5447ce83dd",
     "actions/setup-python": "a309ff8b426b58ec0e2a45f0f869d46889d02405",
+    "actions/setup-node": "49933ea5288caeca8642d1e84afbd3f7d6820020",
     "actions/upload-artifact": "330a01c490aca151604b8cf639adc76d48f6c5d4",
     "actions/download-artifact": "018cc2cf5baa6db3ef3c5f8a56943fffe632ef53",
     "pypa/gh-action-pypi-publish": "cef221092ed1bacb1cc03d23a2d87d1d172e277b",

@@ -137,40 +137,61 @@ def collect_md_files() -> list[Path]:
 _DOCUMENTATION_SUFFIXES = {".html", ".md", ".mermaid", ".png", ".svg"}
 
 
-def collect_documentation_files() -> list[Path]:
-    """Collect tracked files that are maintained as docs or visual doc assets."""
+def _fallback_repository_files() -> list[Path]:
+    excluded = {
+        ".git",
+        ".pytest_cache",
+        ".venv",
+        "aegis-env",
+        "dist",
+        "node_modules",
+        "venv",
+    }
+    return sorted(
+        path
+        for path in REPO_ROOT.rglob("*")
+        if (path.is_file() or path.is_symlink())
+        and not any(part in excluded for part in path.relative_to(REPO_ROOT).parts)
+        and not any(
+            part.endswith(".egg-info")
+            for part in path.relative_to(REPO_ROOT).parts
+        )
+    )
+
+
+def collect_repository_files(*, require_git: bool = False) -> list[Path]:
+    """Return cached and untracked non-ignored repository paths, NUL-safely."""
     try:
         output = subprocess.check_output(
-            ["git", "ls-files", "--cached"],
+            ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
             cwd=REPO_ROOT,
-            text=True,
         )
-        result = [
-            REPO_ROOT / line
-            for line in output.splitlines()
-            if line
-            and Path(line).suffix.lower() in _DOCUMENTATION_SUFFIXES
-            and (REPO_ROOT / line).exists()
-        ]
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        excluded = {
-            ".git",
-            ".pytest_cache",
-            ".venv",
-            "aegis-env",
-            "dist",
-            "node_modules",
-            "venv",
-        }
-        result = []
-        for path in REPO_ROOT.rglob("*"):
-            if not path.is_file() or path.suffix.lower() not in _DOCUMENTATION_SUFFIXES:
-                continue
-            parts = path.relative_to(REPO_ROOT).parts
-            if any(part in excluded for part in parts):
-                continue
+    except (subprocess.CalledProcessError, OSError) as error:
+        if require_git:
+            raise RuntimeError("Git repository enumeration failed") from error
+        return _fallback_repository_files()
+
+    result: list[Path] = []
+    for encoded in output.split(b"\0"):
+        if not encoded:
+            continue
+        try:
+            relative = encoded.decode("utf-8", errors="strict")
+        except UnicodeDecodeError as error:
+            raise RuntimeError("Git returned a non-UTF-8 repository path") from error
+        path = REPO_ROOT / relative
+        if path.exists() or path.is_symlink():
             result.append(path)
     return sorted(result)
+
+
+def collect_documentation_files() -> list[Path]:
+    """Collect maintained documentation and visual assets from repository files."""
+    return [
+        path
+        for path in collect_repository_files()
+        if path.suffix.lower() in _DOCUMENTATION_SUFFIXES
+    ]
 
 
 def get_manifest_doc_list(
