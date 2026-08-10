@@ -11,7 +11,8 @@ Dependency baseline:
 - Issue #39 is closed as completed.
 - Issue #47 and PR #69 established the maintained-public-copy evidence claims
   guard and the terminology boundaries this design consumes.
-- Current `main` is pinned at commit `a9d0e49` for the first catalog version.
+- The AEGIS runtime baseline is pinned at full commit
+  `a9d0e4967070a11474ab11b23b047a5cde4b0892` for the first catalog version.
 
 ## Executive decision
 
@@ -103,7 +104,8 @@ storage implementation, or host responsibilities.
 
 ## Product baseline
 
-Catalog version `1.0.0` maps AEGIS current source at commit `a9d0e49`.
+Catalog version `1.0.0` maps AEGIS current source at full commit
+`a9d0e4967070a11474ab11b23b047a5cde4b0892`.
 
 The catalog is not a mapping of the published
 `aegis-ai-governance==0.9.0b1` wheel. The current source includes external
@@ -187,7 +189,7 @@ schema_version: "1.0"
 catalog_version: "1.0.0"
 catalog_status: current_source
 aegis_baseline:
-  git_commit: a9d0e49
+  git_commit: a9d0e4967070a11474ab11b23b047a5cde4b0892
   distribution_name: aegis-ai-governance
   published_version: 0.9.0b1
   mapped_channel: current_source
@@ -221,7 +223,15 @@ framework:
   name: Human-readable source name
   version: Exact version or legal baseline
   source_date: YYYY-MM-DD
-  authoritative_sources: []
+  authoritative_sources:
+    - source_id: stable-source-id
+      role: control_source
+      title: Human-readable source title
+      version: Exact source version
+      publication_date: YYYY-MM-DD
+      publication_id: Stable DOI, report number, ELI, or edition
+      url: https://authoritative.example/source
+      accessed_on: YYYY-MM-DD
 declared_scope:
   summary: Original non-authoritative scope statement
   mapping_unit: Stable identifier type
@@ -230,15 +240,33 @@ declared_scope:
 review:
   reviewed_on: YYYY-MM-DD
   next_review_due: YYYY-MM-DD
-  reviewer_role: Qualified maintainer role
-  reviewed_in: str
+  reviewer_roles: []
+  scope_reviewed_in: str
+  mapping_reviewed_in: str
+  claims_reviewed_in: str
   source_access_method: public_authoritative_source
-mappings: []
+controls: []
 ```
 
-`reviewed_in` records review provenance but local validation does not claim to
-authenticate the reviewer. Repository permissions, branch protection, and PR
+`authoritative_sources[].role` is one of `control_source`, `amending_act`,
+`official_guidance`, or `metadata`. Only a `control_source` or `amending_act`
+source can define a control identifier. Guidance may inform an interpretation
+but cannot silently expand the declared scope. `publication_id` is the most
+stable identifier supplied by the source owner: DOI or report number for NIST,
+edition for ISO, publication title/version for AICPA, and ELI/CELEX identifier
+for EU law.
+
+The three `*_reviewed_in` fields record focused pull-request review provenance;
+they may contain the same PR URL when one PR includes separately identifiable
+scope, mapping, and claims approvals. Local validation does not claim to
+authenticate reviewers. Repository permissions, branch protection, and PR
 review establish identity and approval.
+
+`reviewer_roles` is a non-empty subset of `framework_scope`,
+`evidence_mapping`, `claims`, `iso_licensed_source`, and `eu_legal_scope`.
+Each `*_reviewed_in` value, when required by publication mode, is an HTTPS pull
+request URL for `nealsolves/aegis`. ISO requires `iso_licensed_source`; the EU
+scope gate requires `eu_legal_scope`.
 
 For ISO, `source_access_method` must be
 `licensed_human_review_without_ai_processing`. Publication is blocked unless a
@@ -246,24 +274,36 @@ qualified maintainer records that review. The licensed standard, excerpts,
 screenshots, or local file path are never committed or passed to automated
 processing.
 
-### Mapping row
+### Control and mapping row
 
-Every row contains:
+The `controls` array is both the declared identifier inventory and the mapping
+collection, avoiding a second list that could drift. Scope review freezes each
+`control_id` and `source_reference` before evidence mapping begins. Every row
+contains:
 
 ```yaml
 - control_id: stable-source-identifier
-  source_reference: bounded-source-locator
-  aegis_evidence_status: supported_evidence
-  interpretation: Original, non-authoritative interpretation
-  evidence: []
-  host_controls: []
-  limitations: []
-  retention_assumptions: []
+  source_reference:
+    source_id: stable-source-id
+    locator: Stable clause, criterion, subcategory, article, or paragraph
+  mapping:
+    aegis_evidence_status: supported_evidence
+    interpretation: Original, non-authoritative interpretation
+    evidence: []
+    host_controls: []
+    limitations: []
+    retention_assumptions: []
 ```
 
 Framework-provided titles are included only when their reuse is allowed. A
 neutral original label is used otherwise. Normative requirement text is not
 stored.
+
+The scope-validation phase requires `control_id` and `source_reference` for
+every row and verifies `expected_mapping_count == len(controls)`. The mapping
+and publication phases additionally require the complete `mapping` object for
+every row. This makes the reviewed control inventory explicit without
+duplicating it.
 
 ### Evidence references
 
@@ -276,9 +316,41 @@ Evidence references are declarative and use a closed set of kinds:
 - `fixture` — fixture path plus a fixed scenario identifier; and
 - `documentation` — maintained path plus section anchor.
 
+All evidence references share this closed base shape:
+
+```yaml
+- kind: artifact_field
+  baseline: aegis_source
+  path: schemas/audit_artifact.schema.json
+  locator: /properties/checksum
+  demonstrates: Original bounded statement of the observed evidence
+```
+
+`baseline` is one of:
+
+- `aegis_source` — the referenced path and locator must exist at the exact
+  `aegis_baseline.git_commit`; or
+- `catalog_asset` — the reference is a fixture, generated artifact, catalog
+  contract test, or documentation asset introduced with the catalog and is
+  resolved in the catalog checkout.
+
+`command` references additionally contain `invocation`; all other kinds reject
+that field. `invocation` is rendered and compared with maintained
+documentation, never executed from catalog data. `source_reference.source_id`
+must resolve to the module's `authoritative_sources`; evidence paths must be
+repository-relative, and `locator` is required for every kind.
+
 The validator proves that a target and locator exist. It does not claim that
 the reference is sufficient or legally relevant. The framework reviewer owns
 that judgment.
+
+For `aegis_source`, resolution reads the pinned Git object rather than the
+working-tree file, and generated links use the full commit SHA. For
+`catalog_asset`, resolution uses the strict working-tree path rules and
+generated links are relative to the catalog documentation. This prevents a
+later source edit from silently changing evidence attributed to the pinned
+AEGIS baseline while still allowing the new regulated fixture and catalog
+tests to be cited honestly.
 
 Catalog values never select executable functions. Fixture tests and command
 tests use fixed Python-owned test code, fixed argument arrays, and no shell.
@@ -309,6 +381,8 @@ No rendered heading or summary shortens these labels to “supported,”
   `10.6028/NIST.AI.100-1`.
 - Declared scope: every AI RMF 1.0 Core subcategory under GOVERN, MAP,
   MEASURE, and MANAGE.
+- The scope-review phase records every Core subcategory identifier as a
+  `controls[]` row before evidence mapping starts.
 - The Playbook is supporting guidance and is not a separate mapping inventory.
 - A future AI RMF revision triggers a new catalog review; it does not silently
   alter the 1.0 module.
@@ -320,6 +394,8 @@ No rendered heading or summary shortens these labels to “supported,”
 - Version/date: Edition 1, 2023-12.
 - Declared scope: the reviewed requirements clauses and Annex A controls
   identified by a qualified maintainer using a licensed copy.
+- The qualified maintainer freezes the exact clause and Annex A identifier
+  inventory through scope validation before any ISO evidence mapping begins.
 - Only identifiers, permitted titles, citations, and original interpretations
   are published.
 - The qualified reviewer performs human-only verification and does not provide
@@ -333,6 +409,8 @@ No rendered heading or summary shortens these labels to “supported,”
 - Source owner: AICPA Assurance Services Executive Committee.
 - Declared scope: every criterion in the five Trust Services categories for
   the pinned publication.
+- Scope validation freezes the exact criterion identifiers before evidence
+  mapping starts.
 - Points of focus inform human review but do not become separate mapping rows.
 - The module stores identifiers and original interpretations, not copied
   normative text. Source-access and reuse terms are checked during human
@@ -344,11 +422,21 @@ No rendered heading or summary shortens these labels to “supported,”
 - Primary act: Regulation (EU) 2024/1689.
 - Amending act: Regulation (EU) 2026/1744 of 8 July 2026, published in OJ L on
   24 July 2026 and in force from 27 July 2026.
-- Declared scope: an explicit reviewed list of provisions addressing
-  governance, risk management, technical documentation, logging,
-  record-retention, transparency, human oversight, provider/deployer duties,
-  post-market monitoring, and incident records where an AEGIS evidence mapping
-  is intelligible.
+- Declared-scope categories are governance, risk management, technical
+  documentation, logging, record-retention, transparency, human oversight,
+  provider/deployer duties, post-market monitoring, and incident records where
+  an AEGIS evidence mapping is intelligible.
+- Before the EU mapping task begins, a qualified EU compliance or legal
+  reviewer must author and approve the exact article-and-paragraph inventory
+  as `controls[].control_id` and `controls[].source_reference`. The scope phase
+  runs `check_compliance_catalog.py --module
+  compliance/frameworks/eu-ai-act-2024-1689-amended-2026.yaml --phase scope`.
+  Evidence mapping cannot begin until that focused scope check passes and the
+  inventory's dedicated PR review is recorded in
+  `review.scope_reviewed_in`.
+- The approved inventory is the declared scope. Adding or removing an
+  identifier after scope approval invalidates that review and requires a new
+  scope review before mapping resumes.
 - The scope is not the whole Act and is not a legal applicability matrix.
 - Each row states relevant actor and system-category conditions without
   deciding that they apply to an adopter.
@@ -392,9 +480,17 @@ responsibilities as external, partial, or not addressed where applicable.
 The implementation reuses `scan_claims(...)` from
 `scripts/check_evidence_claims.py`. The compliance checker supplies catalog
 prose as bounded text blocks. Generated pages already fall under
-`docs/reference/**` and the repository-wide claims guard. The documentation
-inventory also classifies `compliance/**` as current maintained content so the
-raw canonical files cannot be silently moved outside public-copy review.
+`docs/reference/**` and the repository-wide claims guard.
+
+Canonical YAML does not enter `doc_parity_manifest.yaml`'s documentation
+inventory: the existing comprehensive claims guard intentionally does not
+support `.yaml` input. Instead, the mandatory compliance checker strictly
+loads every module listed by `compliance/catalog.yaml`, extracts every
+schema-designated public prose field with its YAML field location, and passes
+those bounded values to `scan_claims(...)`. The publication check fails when a
+listed module is missing, an unlisted framework module exists, or catalog prose
+cannot be extracted. This gives canonical YAML fail-closed coverage without
+teaching the general documentation scanner a second structured-data format.
 
 Schema `additionalProperties: false` prevents overclaims from moving into an
 unknown unscanned field. Every string is either public prose scanned by the
@@ -433,25 +529,51 @@ disclaimers, status labels, and current-source availability language.
 
 ## Validation rules
 
-`scripts/check_compliance_catalog.py` fails when:
+`scripts/check_compliance_catalog.py` has three validation modes:
+
+1. `--module PATH --phase scope` validates one module's strict source metadata,
+   unique `controls[].control_id` inventory, source references, exclusions, and
+   expected count. Mapping objects and completed review records are not
+   required in this pre-review mode.
+2. `--module PATH --phase mapping` validates the same scope plus complete
+   status-specific mapping objects, baseline-aware evidence locators, and
+   catalog-prose claims. Review URLs may remain absent until focused review is
+   recorded.
+3. The no-module publication mode validates the complete manifest and all four
+   modules, requires scope, mapping, and claims review records, enforces review
+   dates, verifies all generated pages and the regulated fixture contract, and
+   rejects unlisted framework modules.
+
+This separation lets the core, fixture, and four framework tasks remain
+focused and green while preserving one strict final publication gate. CI adds
+the no-module command only in the publication-integration task; earlier tasks
+run their focused unit, scope, or mapping checks.
+
+In their applicable modes, checks fail when:
 
 - the catalog or a module fails strict loading or schema validation;
-- the manifest does not list exactly the four approved modules;
+- publication mode does not list exactly the four approved modules or finds an
+  unlisted framework module;
 - a framework ID, control ID, or mapping row is duplicated;
 - the actual mapping count differs from the reviewed expected count;
 - a status omits its required evidence, limitation, gap, or external owner;
 - an evidence path or locator cannot be resolved;
 - a positive evidence row lacks an executable test reference;
 - catalog prose violates the issue #47 claims rules;
-- a source version, date, authoritative URL, review date, next-review date, or
-  review PR is absent;
+- publication mode lacks a source version, date, authoritative URL, review
+  date, next-review date, or any required focused review PR;
 - an ISO module lacks the licensed human-review record;
-- a review is overdue;
+- publication mode finds a review overdue as of the supplied validation date;
 - a generated page differs from deterministic output; or
 - the regulated fixture contract fails.
 
 The checker does not fetch URLs. A reachable URL would not prove that a source
 interpretation is current. Source review remains a dated human process.
+
+All modes accept `--as-of YYYY-MM-DD`. Unit and fixture tests always supply it.
+Publication CI supplies the current UTC calendar date explicitly. Validation
+is reproducible for identical repository input and the same `--as-of` value;
+expiry enforcement is intentionally time-dependent across different dates.
 
 ## Regulated workflow fixture
 
@@ -476,8 +598,9 @@ YAML.
 
 ## Review and update process
 
-Every module records `reviewed_on`, `next_review_due`, `reviewer_role`,
-`reviewed_in`, and `source_access_method`.
+Every module records `reviewed_on`, `next_review_due`, `reviewer_roles`,
+`scope_reviewed_in`, `mapping_reviewed_in`, `claims_reviewed_in`, and
+`source_access_method`.
 
 Default review cadence is 180 days. The EU AI Act module uses 90 days because
 its implementation and amendments are changing more rapidly. Event-driven
@@ -516,11 +639,13 @@ Add one compliance-catalog command to the existing documentation/security
 gates:
 
 ```bash
-python scripts/check_compliance_catalog.py
+python scripts/check_compliance_catalog.py --as-of "$COMPLIANCE_REVIEW_DATE"
 ```
 
-The check is deterministic and offline. The existing comprehensive public-copy
-guard remains:
+The workflow sets `COMPLIANCE_REVIEW_DATE` once from the current UTC calendar
+date. The check is offline and reproducible for that explicit date; it is
+intentionally date-sensitive so overdue reviews fail publication. The existing
+comprehensive public-copy guard remains:
 
 ```bash
 python scripts/check_evidence_claims.py
@@ -538,7 +663,11 @@ Implementation follows test-driven development.
 Cover valid minimal modules and failures for duplicate keys, aliases, custom
 tags, unknown keys, malformed dates, invalid enums, duplicate IDs, count
 mismatch, missing status-specific fields, unsafe paths, symlinks, missing
-locators, oversized input, and overdue reviews.
+locators, oversized input, and overdue reviews. Freeze scope-, mapping-, and
+publication-mode requirements separately. Tests resolve `aegis_source`
+references from a fixed Git commit fixture, resolve `catalog_asset` references
+from the strict checkout root, reject baseline mismatches, and pass explicit
+`--as-of` dates around each expiry boundary.
 
 ### Claims tests
 
@@ -577,8 +706,10 @@ or summarizes the catalog.
 4. **ISO module:** reviewed clauses and Annex A scope, qualified licensed
    human-review gate, and generated page.
 5. **SOC 2 module:** reviewed five-category criteria scope and generated page.
-6. **EU AI Act module:** reviewed bounded legal scope against Regulations
-   2024/1689 and 2026/1744, actor/applicability conditions, and generated page.
+6. **EU AI Act module:** first obtain qualified approval of the exact
+   article-and-paragraph inventory through focused scope validation and review;
+   then add mappings against Regulations 2024/1689 and 2026/1744,
+   actor/applicability conditions, and the generated page.
 7. **Publication integration:** index, maintained-entry-point links, CI and
    operations-runbook commands, full claims scan, and acceptance traceability.
 
