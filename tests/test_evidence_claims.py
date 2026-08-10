@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+from time import perf_counter
 
 import pytest
 import yaml
@@ -116,6 +117,35 @@ def test_main_returns_one_and_prints_bounded_finding(monkeypatch, capsys):
 
     assert main([]) == 1
     assert "INTEGRITY_IS_STORAGE: README.md:4" in capsys.readouterr().out
+
+
+def test_main_reports_when_additional_findings_are_truncated(monkeypatch, capsys):
+    """Fails if the CLI can silently print an unbounded findings stream."""
+    findings = tuple(
+        ClaimFinding(
+            rule_id="INTEGRITY_IS_STORAGE",
+            path=Path(f"docs/{index}.md"),
+            line=1,
+            excerpt="Hash chaining makes storage immutable.",
+        )
+        for index in range(2)
+    )
+    monkeypatch.setattr(
+        "scripts.check_evidence_claims.run_guard",
+        lambda **_kwargs: ScanResult(
+            findings=findings,
+            scanned_files=3,
+            binary_files=0,
+            findings_truncated=True,
+        ),
+    )
+
+    assert main([]) == 1
+    output = capsys.readouterr().out.splitlines()
+    assert len(output) == 3
+    assert output[-1] == (
+        "FINDINGS_TRUNCATED: displayed 2 findings; additional findings omitted"
+    )
 
 
 def test_main_prints_bounded_name_for_absolute_external_path(
@@ -405,6 +435,31 @@ def test_run_guard_counts_empty_react_segments_before_processing_next_block(
 
     with pytest.raises(ClaimsGuardError, match="public copy block limit"):
         run_guard(repo_root=tmp_path, frontend_root=frontend, limits=limits)
+
+
+def test_run_guard_caps_retained_findings_and_marks_truncation(
+    tmp_path,
+    monkeypatch,
+):
+    """Fails if run_guard again retains every public-copy diagnostic."""
+    frontend, react_path, _manifest_data, _repository_files = _guard_fixture(
+        tmp_path,
+        monkeypatch,
+        document_text="Hash chaining makes storage immutable.\n",
+    )
+    monkeypatch.setattr(
+        "scripts.check_evidence_claims.extract_frontend_public_copy",
+        lambda _paths, **_kwargs: {react_path: "Bounded language."},
+    )
+
+    result = run_guard(
+        repo_root=tmp_path,
+        frontend_root=frontend,
+        limits=ScanLimits(max_findings=2),
+    )
+
+    assert len(result.findings) == 2
+    assert result.findings_truncated is True
 
 
 def test_run_guard_passes_required_boundary_arguments(tmp_path, monkeypatch):
@@ -707,6 +762,22 @@ def test_scan_claims_sorts_and_bounds_findings():
     assert all(len(finding.excerpt.encode("utf-8")) <= 240 for finding in findings)
 
 
+def test_scan_claims_applies_an_explicit_aggregate_finding_cap():
+    """Fails if direct policy evaluation can retain an unbounded result."""
+    blocks = tuple(
+        TextBlock(
+            Path("public.md"),
+            line,
+            "Hash chaining makes storage immutable.",
+        )
+        for line in range(1, 5)
+    )
+
+    findings = scan_claims(blocks, max_findings=2)
+
+    assert len(findings) == 2
+
+
 def test_select_current_paths_includes_unknown_suffix_for_fail_closed_check(tmp_path):
     current = tmp_path / "docs" / "reference" / "claims.rst"
     current.parent.mkdir(parents=True)
@@ -927,6 +998,18 @@ def test_normalize_public_text_preserves_unclosed_outer_markdown_target():
     assert normalize_public_text(source) == source
 
 
+def test_normalize_public_text_handles_adversarial_markdown_targets_linearly():
+    """Fails if each Markdown marker restores a bounded forward rescan."""
+    source = "](" * 11_000 + ")" * 11_000
+
+    started = perf_counter()
+    normalized = normalize_public_text(source)
+    elapsed = perf_counter() - started
+
+    assert normalized == source
+    assert elapsed < 0.5
+
+
 def test_extract_html_blocks_includes_visible_attributes(tmp_path):
     path = tmp_path / "public.html"
     blocks = extract_document_blocks(
@@ -1025,6 +1108,113 @@ def test_extract_document_blocks_adds_normalized_html_source_by_line(tmp_path):
 
 
 @pytest.mark.parametrize(
+    ("suffix", "source"),
+    [
+        (".md", "Hash **chaining** makes storage immutable."),
+        (".md", "Hash _chaining_ makes storage immutable."),
+        (".md", "Hash <em>chaining</em> makes storage immutable."),
+        (".html", "<p>Hash <em>chaining</em> makes storage immutable.</p>"),
+        (".svg", "<text>Hash <tspan>chaining</tspan> makes storage immutable.</text>"),
+    ],
+)
+def test_extract_document_blocks_joins_inline_visible_text_for_claims(
+    tmp_path,
+    suffix,
+    source,
+):
+    """Fails if inline formatting can split a policy subject or predicate."""
+    path = tmp_path / f"public{suffix}"
+    blocks = extract_document_blocks(
+        path,
+        source,
+        ScanLimits(),
+        {"normalized_bytes": 0, "public_blocks": 0},
+    )
+
+    assert [finding.rule_id for finding in scan_claims(blocks)] == [
+        "INTEGRITY_IS_STORAGE"
+    ]
+
+
+def test_extract_html_blocks_retains_true_block_boundaries(tmp_path):
+    """Fails if joining inline children also merges sibling paragraphs."""
+    path = tmp_path / "public.html"
+    blocks = extract_document_blocks(
+        path,
+        "<div><p>First sentence.</p><p>Second sentence.</p></div>",
+        ScanLimits(),
+        {"normalized_bytes": 0, "public_blocks": 0},
+    )
+
+    visible = [block.text for block in blocks if "<" not in block.text]
+    assert visible == ["First sentence.", "Second sentence."]
+
+
+def test_extract_json_blocks_decodes_unicode_escapes_with_source_lines(tmp_path):
+    """Fails if JSON is scanned as raw source instead of decoded values."""
+    path = tmp_path / "public.json"
+    blocks = extract_document_blocks(
+        path,
+        "{\n"
+        '  "mechanism": "H\\u0061sh chaining",\n'
+        '  "claim": "Makes storage immutable."\n'
+        "}\n",
+        ScanLimits(),
+        {"normalized_bytes": 0, "public_blocks": 0},
+    )
+
+    assert [(block.line, block.text) for block in blocks] == [
+        (2, "Hash chaining"),
+        (3, "Makes storage immutable."),
+    ]
+    assert [(finding.rule_id, finding.line) for finding in scan_claims(blocks)] == [
+        ("INTEGRITY_IS_STORAGE", 3)
+    ]
+
+
+def test_extract_json_blocks_rejects_malformed_input(tmp_path):
+    """Fails if malformed maintained JSON can be treated as a clean scan."""
+    path = tmp_path / "public.json"
+
+    with pytest.raises(ClaimsGuardError, match="malformed JSON"):
+        extract_document_blocks(
+            path,
+            '{"claim": "Hash chaining"',
+            ScanLimits(),
+            {"normalized_bytes": 0, "public_blocks": 0},
+        )
+
+
+def test_extract_json_blocks_scans_nested_string_values_not_keys(tmp_path):
+    """Fails if nested JSON values disappear or object keys become copy."""
+    path = tmp_path / "public.json"
+    blocks = extract_document_blocks(
+        path,
+        '{"outer": {"values": ["Hash chaining", "Makes storage immutable."]}}',
+        ScanLimits(),
+        {"normalized_bytes": 0, "public_blocks": 0},
+    )
+
+    assert [block.text for block in blocks] == [
+        "Hash chaining",
+        "Makes storage immutable.",
+    ]
+
+
+def test_extract_json_blocks_enforces_public_block_limit(tmp_path):
+    """Fails if decoded JSON strings bypass the shared block ceiling."""
+    path = tmp_path / "public.json"
+
+    with pytest.raises(ClaimsGuardError, match="public copy block limit"):
+        extract_document_blocks(
+            path,
+            '["one", "two"]',
+            ScanLimits(max_public_blocks=1),
+            {"normalized_bytes": 0, "public_blocks": 0},
+        )
+
+
+@pytest.mark.parametrize(
     ("rule_id", "text"),
     [
         ("INTEGRITY_IS_STORAGE", "Checksums make the audit log immutable."),
@@ -1067,6 +1257,113 @@ def test_scan_claims_rejects_overclaims(tmp_path, rule_id, text):
 
     assert [finding.rule_id for finding in findings] == [rule_id]
     assert findings[0].line == 7
+
+
+@pytest.mark.parametrize(
+    ("rule_id", "unsafe", "safe"),
+    [
+        (
+            "IMMUTABLE_EVIDENCE_RECORD",
+            "AEGIS evidence is immutable.",
+            "AEGIS evidence is not immutable.",
+        ),
+        (
+            "AEGIS_CERTIFICATION_CLAIM",
+            "AEGIS guarantees compliance.",
+            "AEGIS does not guarantee compliance.",
+        ),
+        (
+            "INTEGRITY_IS_STORAGE",
+            "Hash chaining makes evidence impossible to rewrite.",
+            "Hash chaining does not make evidence impossible to rewrite.",
+        ),
+        (
+            "CHECKPOINT_OVERCLAIM",
+            "A checkpoint makes storage append-only.",
+            "A checkpoint does not make storage append-only.",
+        ),
+        (
+            "CHECKPOINT_OVERCLAIM",
+            "A trusted checkpoint proves this is the newest record.",
+            "A trusted checkpoint does not prove this is the newest record.",
+        ),
+        (
+            "CHECKPOINT_OVERCLAIM",
+            "A checkpoint proves no subsequent activity occurred.",
+            "A checkpoint does not prove no subsequent activity occurred.",
+        ),
+        (
+            "CHECKPOINT_OVERCLAIM",
+            "A checkpoint proves this is the most-recent record.",
+            "A checkpoint does not prove this is the most-recent record.",
+        ),
+        (
+            "INTEGRITY_IS_STORAGE",
+            "Hash-chaining makes evidence impossible-to-rewrite.",
+            "Hash-chaining does not make evidence impossible-to-rewrite.",
+        ),
+    ],
+)
+def test_scan_claims_covers_direct_contract_claims_and_negated_forms(
+    rule_id,
+    unsafe,
+    safe,
+):
+    """Fails if approved subject/predicate relationships are narrowed again."""
+    unsafe_findings = scan_claims((TextBlock(Path("public.md"), 7, unsafe),))
+
+    assert [finding.rule_id for finding in unsafe_findings] == [rule_id]
+    assert scan_claims((TextBlock(Path("public.md"), 8, safe),)) == ()
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "AEGIS is not compliant.",
+        "AEGIS isn't compliant.",
+        "An audit record is not immutable.",
+        "An audit record isn't immutable.",
+    ],
+)
+def test_scan_claims_accepts_copular_and_contracted_negatives(text):
+    """Fails if copular negatives stop suppressing their own relationship."""
+    assert scan_claims((TextBlock(Path("public.md"), 9, text),)) == ()
+
+
+@pytest.mark.parametrize(
+    ("rule_id", "text"),
+    [
+        (
+            "AEGIS_CERTIFICATION_CLAIM",
+            "AEGIS is not a storage provider but is compliant.",
+        ),
+        (
+            "IMMUTABLE_EVIDENCE_RECORD",
+            "An audit record is not provisional but is immutable.",
+        ),
+    ],
+)
+def test_scan_claims_does_not_apply_copular_negation_to_a_later_clause(
+    rule_id,
+    text,
+):
+    """Fails if an unrelated copular negative suppresses a later claim."""
+    findings = scan_claims((TextBlock(Path("public.md"), 9, text),))
+
+    assert [finding.rule_id for finding in findings] == [rule_id]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "AEGIS is a library. The external auditor is certified.",
+        "A checkpoint records scope. Compliance remains an organizational conclusion.",
+        "An audit record is finalized. The immutable Python tuple is internal.",
+    ],
+)
+def test_scan_claims_does_not_join_relationships_across_sentences(text):
+    """Fails if the relationship window again ignores sentence boundaries."""
+    assert scan_claims((TextBlock(Path("public.md"), 10, text),)) == ()
 
 
 @pytest.mark.parametrize(

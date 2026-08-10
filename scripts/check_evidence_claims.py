@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from bisect import bisect_left
+from collections import deque
 import fnmatch
 import html
 import json
@@ -50,12 +51,65 @@ _WHITESPACE_RE = re.compile(r"\s+")
 _MAX_MARKDOWN_LABEL_CHARS = 8_192
 _MAX_MARKDOWN_TARGET_CHARS = 16_384
 _MAX_PARITY_DOC_PATH_BYTES = 1_024
+DEFAULT_MAX_FINDINGS = 1_000
 _MARKDOWN_PREFIX_RE = re.compile(
     r"^[ \t]{0,3}(?:#{1,6}[ \t]+|[-*+][ \t]+|>[ \t]?|\d{1,9}[.)][ \t]+)"
+)
+_MARKDOWN_INLINE_MARKER_RE = re.compile(r"(?<!\\)(?:\*{1,3}|`{1,3}|~{2})")
+_MARKDOWN_UNDERSCORE_OPEN_RE = re.compile(r"(?<![\w\\])_{1,3}(?=\S)")
+_MARKDOWN_UNDERSCORE_CLOSE_RE = re.compile(
+    r"(?<=\S)_{1,3}(?=$|[\s.,;:!?)}\]])"
+)
+_MARKDOWN_INLINE_TAG_RE = re.compile(
+    r"</?[A-Za-z][A-Za-z0-9:-]*(?:\s[^>\r\n]{0,1024})?/?>"
 )
 _PUBLIC_ATTRIBUTES = frozenset(
     {"alt", "aria-description", "aria-label", "placeholder", "title"}
 )
+_HTML_BLOCK_TAGS = frozenset(
+    {
+        "address",
+        "article",
+        "aside",
+        "blockquote",
+        "body",
+        "dd",
+        "desc",
+        "div",
+        "dl",
+        "dt",
+        "figcaption",
+        "figure",
+        "footer",
+        "form",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "header",
+        "html",
+        "li",
+        "main",
+        "nav",
+        "ol",
+        "p",
+        "pre",
+        "section",
+        "table",
+        "tbody",
+        "td",
+        "text",
+        "tfoot",
+        "th",
+        "thead",
+        "title",
+        "tr",
+        "ul",
+    }
+)
+_HTML_HIDDEN_TAGS = frozenset({"script", "style", "template"})
 MANDATORY_CURRENT_PATHS = frozenset(
     {
         "README.md",
@@ -69,7 +123,7 @@ MANDATORY_CURRENT_PATHS = frozenset(
     }
 )
 INTEGRITY_SUBJECT = re.compile(
-    r"\b(?:checksums?|signatures?|hash(?:[- ]?chains?| chaining))\b",
+    r"\b(?:checksums?|signatures?|hash[- ]?(?:chains?|chaining))\b",
     re.IGNORECASE,
 )
 CHECKPOINT_SUBJECT = re.compile(
@@ -81,7 +135,9 @@ AEGIS_SUBJECT = re.compile(
     re.IGNORECASE,
 )
 EVIDENCE_RECORD_SUBJECT = re.compile(
-    r"\b(?:audit|invocation|workflow|evidence) (?:artifacts?|records?|logs?)\b",
+    r"\b(?:AEGIS evidence|evidence(?: (?:artifacts?|objects?|records?|logs?))?|"
+    r"(?:audit|invocation|workflow) "
+    r"(?:artifacts?|records?|logs?|evidence))\b(?! operations?\b)",
     re.IGNORECASE,
 )
 PROVIDER_SUBJECT = re.compile(
@@ -115,7 +171,8 @@ _STORAGE_NON_ASSURANCE_SUFFIX = re.compile(
 )
 STORAGE_PREDICATE = re.compile(
     r"\b(?:immutable|immutability|append[- ]only|WORM|unalterable|indelible|"
-    r"tamper[- ]proof|deletion[- ]proof|cannot be (?:changed|deleted|modified|rewritten))\b",
+    r"tamper[- ]proof|deletion[- ]proof|cannot be (?:changed|deleted|modified|rewritten)|"
+    r"impossible[- ]to[- ](?:change|delete|modify|rewrite))\b",
     re.IGNORECASE,
 )
 CERTIFICATION_PREDICATE = re.compile(
@@ -124,8 +181,13 @@ CERTIFICATION_PREDICATE = re.compile(
     re.IGNORECASE,
 )
 CHECKPOINT_EXCESS_PREDICATE = re.compile(
-    r"\b(?:latest retrieval|latest record|no later activity|future inactivity|"
-    r"immutable storage|WORM storage|certification|compliance)\b",
+    r"\b(?:(?:latest|newest|most[- ]recent) (?:retrieval|record|evidence)|"
+    r"no (?:later|newer|subsequent) (?:activity|events?|records?|evidence)|"
+    r"future inactivity|immutable(?: storage)?|immutability|append[- ]only|WORM|"
+    r"unalterable|indelible|tamper[- ]proof|deletion[- ]proof|"
+    r"cannot be (?:changed|deleted|modified|rewritten)|"
+    r"impossible[- ]to[- ](?:change|delete|modify|rewrite)|"
+    r"certification|compliance)\b",
     re.IGNORECASE,
 )
 PSEUDO_NEGATION = re.compile(
@@ -134,13 +196,23 @@ PSEUDO_NEGATION = re.compile(
     re.IGNORECASE,
 )
 BOUNDED_NEGATIVE = re.compile(
-    r"\b(?:(?:do|does) not|cannot|can not|never) (?:provide|create|make|use|"
-    r"offer|guarantee|establish|prove|certify|constitute|mean)\b|"
+    r"\b(?:(?:do|does|did) not|(?:do|does|did)n['’]t|cannot|can not|"
+    r"can['’]t|never) (?:provide|create|make|use|offer|guarantee|establish|"
+    r"prove|certify|constitute|mean)\b|"
     r"\bprovides? tamper[- ]evidence, not\b|\balone (?:do|does) not\b",
     re.IGNORECASE,
 )
+_COPULAR_NEGATIVE = re.compile(
+    r"\b(?:(?:is|are|was|were) not|(?:is|are|was|were)n['’]t|never)\b",
+    re.IGNORECASE,
+)
+_COPULAR_NEGATIVE_TAIL = re.compile(
+    r"\s*(?:(?:an?|the|automatically|currently|fully|legally|necessarily|"
+    r"really|strictly|technically)\s+){0,3}",
+    re.IGNORECASE,
+)
 CERTIFICATION_ACTION = re.compile(
-    r"\b(?:certif(?:y|ies)|proves?)\b",
+    r"\b(?:certif(?:y|ies)|proves?|guarantees?|establishes?|provides?)\b",
     re.IGNORECASE,
 )
 CERTIFICATION_OBJECT = re.compile(
@@ -200,6 +272,7 @@ class ScanLimits:
     max_extractor_bytes: int = 50 * 1024 * 1024
     max_normalized_block_bytes: int = 1024 * 1024
     max_normalized_bytes: int = 100 * 1024 * 1024
+    max_findings: int = DEFAULT_MAX_FINDINGS
 
 
 @dataclass(frozen=True)
@@ -222,10 +295,15 @@ class ScanResult:
     findings: tuple[ClaimFinding, ...]
     scanned_files: int
     binary_files: int
+    findings_truncated: bool = False
 
 
-def scan_claims(blocks: tuple[TextBlock, ...]) -> tuple[ClaimFinding, ...]:
-    """Return contextual assurance overclaims from normalized public blocks."""
+def _scan_claims(
+    blocks: tuple[TextBlock, ...],
+    *,
+    max_findings: int | None,
+) -> tuple[tuple[ClaimFinding, ...], bool]:
+    """Return bounded contextual findings and whether more were omitted."""
 
     def relation_distance(subject: re.Match[str], predicate: re.Match[str]) -> int:
         if subject.end() <= predicate.start():
@@ -253,6 +331,11 @@ def scan_claims(blocks: tuple[TextBlock, ...]) -> tuple[ClaimFinding, ...]:
             subject_precedes = True
         if PSEUDO_NEGATION.search(between) is not None:
             return False
+        if subject_precedes and any(
+            _COPULAR_NEGATIVE_TAIL.fullmatch(between[negative.end():]) is not None
+            for negative in _COPULAR_NEGATIVE.finditer(between)
+        ):
+            return True
         for negative in BOUNDED_NEGATIVE.finditer(between):
             connection = (
                 between[negative.end():]
@@ -285,10 +368,17 @@ def scan_claims(blocks: tuple[TextBlock, ...]) -> tuple[ClaimFinding, ...]:
         subject_pattern: re.Pattern[str],
         predicate: re.Match[str],
     ) -> bool:
-        return any(
-            not negates_relation(text, subject, predicate)
-            for subject in related_matches(subject_pattern, predicate)
-        )
+        for subject in related_matches(subject_pattern, predicate):
+            relation_start = min(subject.end(), predicate.end())
+            relation_end = max(subject.start(), predicate.start())
+            scoped = sentence_context(text, subject, predicate) is not None
+            if not scoped and PSEUDO_NEGATION.search(
+                text[relation_start:relation_end]
+            ) is None:
+                continue
+            if not negates_relation(text, subject, predicate):
+                return True
+        return False
 
     def bounded_relation_context(
         text: str,
@@ -418,9 +508,35 @@ def scan_claims(blocks: tuple[TextBlock, ...]) -> tuple[ClaimFinding, ...]:
                 connector = text[storage.end():predicate.start()]
                 pattern = _STORAGE_BEFORE_PREDICATE
             else:
-                continue
+                return True
             if pattern.fullmatch(connector) is not None:
                 return True
+        return False
+
+    def predicate_describes_evidence_record(
+        text: str,
+        subject: re.Match[str],
+        predicate: re.Match[str],
+    ) -> bool:
+        if predicate.end() <= subject.start():
+            connector = text[predicate.end():subject.start()]
+            return re.fullmatch(r"\s*(?:(?:an?|the)\s+)?", connector) is not None
+        if subject.end() <= predicate.start():
+            connector = text[subject.end():predicate.start()]
+            direct = re.fullmatch(
+                r"\s*(?:(?:that|which)\s+)?(?:is|are|was|were|remains?|"
+                r"becomes?|provides?|creates?|makes?|guarantees?|"
+                r"constitutes?|means?)?\s*",
+                connector,
+                re.IGNORECASE,
+            )
+            carried = re.fullmatch(
+                r"\s*(?:is|are|was|were|remains?)\b[^.;!?]{0,120}"
+                r"\b(?:and|but|yet)\s+(?:is|are|was|were|remains?)\s*",
+                connector,
+                re.IGNORECASE,
+            )
+            return direct is not None or carried is not None
         return False
 
     def action_connects(
@@ -469,6 +585,7 @@ def scan_claims(blocks: tuple[TextBlock, ...]) -> tuple[ClaimFinding, ...]:
         ClaimFinding,
     ] = {}
     provider_exemptions: set[tuple[Path, int, int, str]] = set()
+    findings_truncated = False
     patterns = frozenset(
         pattern
         for _, subject_pattern, predicate_pattern in _CONTEXTUAL_RULES
@@ -506,15 +623,19 @@ def scan_claims(blocks: tuple[TextBlock, ...]) -> tuple[ClaimFinding, ...]:
             )
 
         def record_finding(rule_id: str, predicate: re.Match[str]) -> None:
+            nonlocal findings_truncated
             identity = predicate_identity(predicate)
-            candidate_findings.setdefault(
-                (rule_id, identity),
-                ClaimFinding(
-                    rule_id=rule_id,
-                    path=identity[0],
-                    line=identity[1],
-                    excerpt=bounded_excerpt(text, predicate.start()),
-                ),
+            key = (rule_id, identity)
+            if key in candidate_findings:
+                return
+            if max_findings is not None and len(candidate_findings) >= max_findings:
+                findings_truncated = True
+                return
+            candidate_findings[key] = ClaimFinding(
+                rule_id=rule_id,
+                path=identity[0],
+                line=identity[1],
+                excerpt=bounded_excerpt(text, predicate.start()),
             )
 
         def provider_example_qualifies(predicate: re.Match[str]) -> bool:
@@ -567,6 +688,21 @@ def scan_claims(blocks: tuple[TextBlock, ...]) -> tuple[ClaimFinding, ...]:
                     continue
                 if (
                     subject_pattern in {STORAGE_SUBJECT, PROVIDER_SUBJECT}
+                    and not predicate_describes_storage(text, predicate)
+                ):
+                    continue
+                if (
+                    subject_pattern is EVIDENCE_RECORD_SUBJECT
+                    and not any(
+                        predicate_describes_evidence_record(text, subject, predicate)
+                        and not negates_relation(text, subject, predicate)
+                        for subject in related_matches(subject_pattern, predicate)
+                    )
+                ):
+                    continue
+                if (
+                    rule_id == "CHECKPOINT_OVERCLAIM"
+                    and STORAGE_PREDICATE.search(predicate.group()) is not None
                     and not predicate_describes_storage(text, predicate)
                 ):
                     continue
@@ -625,7 +761,7 @@ def scan_claims(blocks: tuple[TextBlock, ...]) -> tuple[ClaimFinding, ...]:
             finding,
         )
 
-    return tuple(
+    ordered = tuple(
         sorted(
             findings.values(),
             key=lambda finding: (
@@ -635,54 +771,103 @@ def scan_claims(blocks: tuple[TextBlock, ...]) -> tuple[ClaimFinding, ...]:
             ),
         )
     )
+    if max_findings is not None and len(ordered) > max_findings:
+        findings_truncated = True
+        ordered = ordered[:max_findings]
+    return ordered, findings_truncated
 
 
-def _balanced_markdown_target_end(text: str, opening: int) -> int | None:
-    """Return the closing parenthesis for a bounded Markdown target."""
-    depth = 0
-    limit = min(len(text), opening + _MAX_MARKDOWN_TARGET_CHARS + 2)
-    for position in range(opening, limit):
-        character = text[position]
-        if character in "\r\n":
-            return None
-        if character == "(":
-            depth += 1
-        elif character == ")":
-            depth -= 1
-            if depth == 0:
-                return position
-    return None
+def scan_claims(
+    blocks: tuple[TextBlock, ...],
+    *,
+    max_findings: int | None = DEFAULT_MAX_FINDINGS,
+) -> tuple[ClaimFinding, ...]:
+    """Return contextual assurance overclaims from normalized public blocks."""
+    return _scan_claims(blocks, max_findings=max_findings)[0]
 
 
 def _strip_markdown_targets(text: str) -> str:
-    """Retain Markdown labels while safely dropping bounded link targets."""
-    parts: list[str] = []
-    copied_until = 0
-    marker_start = 0
-    while True:
-        marker = text.find("](", marker_start)
-        if marker < 0:
-            break
-        label_opening = text.rfind(
-            "[",
-            max(copied_until, marker - _MAX_MARKDOWN_LABEL_CHARS - 1),
-            marker,
-        )
-        target_end = _balanced_markdown_target_end(text, marker + 1)
-        if label_opening < 0:
-            marker_start = marker + 2
+    """Retain Markdown labels while dropping targets in one bounded pass."""
+    output: list[str] = []
+    label_stack: deque[tuple[int, int, int | None]] = deque()
+    position = 0
+    while position < len(text):
+        character = text[position]
+        if character == "\\" and position + 1 < len(text):
+            output.extend((character, text[position + 1]))
+            position += 2
             continue
-        if target_end is None:
-            break
-        source_start = label_opening
-        if label_opening > copied_until and text[label_opening - 1] == "!":
-            source_start -= 1
-        parts.append(text[copied_until:source_start])
-        parts.append(text[label_opening + 1:marker])
-        copied_until = target_end + 1
-        marker_start = copied_until
-    parts.append(text[copied_until:])
-    return "".join(parts)
+        if character == "[":
+            while (
+                label_stack
+                and position - label_stack[0][0] > _MAX_MARKDOWN_LABEL_CHARS + 1
+            ):
+                label_stack.popleft()
+            image_marker = (
+                len(output) - 1
+                if (
+                    position > 0
+                    and text[position - 1] == "!"
+                    and output[-1:] == ["!"]
+                )
+                else None
+            )
+            label_stack.append((position, len(output), image_marker))
+            output.append(character)
+            position += 1
+            continue
+        if character != "]":
+            output.append(character)
+            position += 1
+            continue
+
+        while (
+            label_stack
+            and position - label_stack[0][0] > _MAX_MARKDOWN_LABEL_CHARS + 1
+        ):
+            label_stack.popleft()
+        label = label_stack.pop() if label_stack else None
+        if label is None or position + 1 >= len(text) or text[position + 1] != "(":
+            output.append(character)
+            position += 1
+            continue
+        label_source, label_output, image_marker = label
+        if position - label_source - 1 > _MAX_MARKDOWN_LABEL_CHARS:
+            output.append(character)
+            position += 1
+            continue
+
+        marker_start = position
+        target_opening = position + 1
+        target_depth = 1
+        cursor = target_opening + 1
+        while cursor < len(text):
+            target_character = text[cursor]
+            if (
+                target_character in "\r\n"
+                or cursor - target_opening > _MAX_MARKDOWN_TARGET_CHARS
+            ):
+                output.append(text[marker_start:])
+                return "".join(output)
+            if target_character == "\\" and cursor + 1 < len(text):
+                cursor += 2
+                continue
+            if target_character == "(":
+                target_depth += 1
+            elif target_character == ")":
+                target_depth -= 1
+                if target_depth == 0:
+                    break
+            cursor += 1
+        if target_depth != 0:
+            output.append(text[marker_start:])
+            return "".join(output)
+
+        output[label_output] = ""
+        if image_marker is not None:
+            output[image_marker] = ""
+        position = cursor + 1
+    return "".join(output)
 
 
 def normalize_public_text(text: str) -> str:
@@ -691,6 +876,9 @@ def normalize_public_text(text: str) -> str:
     normalized = unicodedata.normalize("NFKC", normalized)
     normalized = normalized.translate(_ZERO_WIDTH_TRANSLATION)
     normalized = _strip_markdown_targets(normalized)
+    normalized = _MARKDOWN_INLINE_MARKER_RE.sub("", normalized)
+    normalized = _MARKDOWN_UNDERSCORE_OPEN_RE.sub("", normalized)
+    normalized = _MARKDOWN_UNDERSCORE_CLOSE_RE.sub("", normalized)
     return _WHITESPACE_RE.sub(" ", normalized).strip()
 
 
@@ -731,11 +919,14 @@ class _PublicCopyParser(HTMLParser):
         self._limits = limits
         self._counters = counters
         self.blocks = blocks
+        self._parts: list[str] = []
+        self._line: int | None = None
+        self._hidden_depth = 0
 
-    def _append(self, text: str) -> None:
+    def _append_block(self, text: str, line: int) -> None:
         block = _bounded_block(
             self._path,
-            self.getpos()[0],
+            line,
             text,
             self._limits,
             self._counters,
@@ -743,16 +934,101 @@ class _PublicCopyParser(HTMLParser):
         if block is not None:
             self.blocks.append(block)
 
+    def _flush(self) -> None:
+        if self._parts:
+            self._append_block("".join(self._parts), self._line or 1)
+        self._parts = []
+        self._line = None
+
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        tag = tag.lower()
+        if tag in _HTML_BLOCK_TAGS:
+            self._flush()
+        if tag in _HTML_HIDDEN_TAGS:
+            self._hidden_depth += 1
+            return
+        if self._hidden_depth:
+            return
         attributes = {name.lower(): value for name, value in attrs}
         for name, value in attrs:
             if name.lower() in _PUBLIC_ATTRIBUTES and value is not None:
-                self._append(value)
-        if tag.lower() == "meta" and attributes.get("content") is not None:
-            self._append(attributes["content"])
+                self._append_block(value, self.getpos()[0])
+        if tag == "meta" and attributes.get("content") is not None:
+            self._append_block(attributes["content"], self.getpos()[0])
+        if tag == "br":
+            self._parts.append(" ")
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        if tag in _HTML_HIDDEN_TAGS:
+            self._hidden_depth = max(0, self._hidden_depth - 1)
+            return
+        if not self._hidden_depth and tag in _HTML_BLOCK_TAGS:
+            self._flush()
 
     def handle_data(self, data: str) -> None:
-        self._append(data)
+        if self._hidden_depth:
+            return
+        if self._line is None and data.strip():
+            self._line = self.getpos()[0]
+        self._parts.append(data)
+
+    def close(self) -> None:
+        super().close()
+        self._flush()
+
+
+def _extract_json_blocks(
+    path: Path,
+    text: str,
+    limits: ScanLimits,
+    counters: dict[str, int],
+) -> tuple[TextBlock, ...]:
+    """Validate JSON and return decoded string values with source lines."""
+    try:
+        json.loads(text)
+    except json.JSONDecodeError as error:
+        raise ClaimsGuardError(f"{path}: malformed JSON") from error
+    except RecursionError as error:
+        raise ClaimsGuardError(f"{path}: JSON nesting limit exceeded") from error
+
+    blocks: list[TextBlock] = []
+    position = 0
+    line = 1
+    while position < len(text):
+        if text[position] != '"':
+            if text[position] == "\n":
+                line += 1
+            position += 1
+            continue
+
+        string_start = position
+        string_line = line
+        position += 1
+        while position < len(text):
+            if text[position] == "\\":
+                position += 2
+                continue
+            if text[position] == '"':
+                break
+            position += 1
+        string_end = position + 1
+        decoded = json.loads(text[string_start:string_end])
+        following = string_end
+        while following < len(text) and text[following].isspace():
+            following += 1
+        if following >= len(text) or text[following] != ":":
+            block = _bounded_block(
+                path,
+                string_line,
+                decoded,
+                limits,
+                counters,
+            )
+            if block is not None:
+                blocks.append(block)
+        position = string_end
+    return tuple(blocks)
 
 
 def extract_document_blocks(
@@ -762,6 +1038,8 @@ def extract_document_blocks(
     counters: dict[str, int],
 ) -> tuple[TextBlock, ...]:
     """Return bounded public text blocks from a maintained document."""
+    if path.suffix.lower() == ".json":
+        return _extract_json_blocks(path, text, limits, counters)
     if path.suffix.lower() in {".html", ".svg"}:
         blocks: list[TextBlock] = []
         for line_number, source_line in enumerate(text.splitlines(), start=1):
@@ -776,6 +1054,7 @@ def extract_document_blocks(
     blocks: list[TextBlock] = []
     for line_number, source_line in enumerate(text.splitlines(), start=1):
         public_line = _MARKDOWN_PREFIX_RE.sub("", source_line)
+        public_line = _MARKDOWN_INLINE_TAG_RE.sub("", public_line)
         block = _bounded_block(path, line_number, public_line, limits, counters)
         if block is not None:
             blocks.append(block)
@@ -1100,20 +1379,15 @@ def run_guard(
             _extract_frontend_blocks(path, document, limits, block_counters)
         )
 
-    findings = tuple(
-        sorted(
-            scan_claims(tuple(blocks)),
-            key=lambda finding: (
-                finding.path.as_posix(),
-                finding.line,
-                finding.rule_id,
-            ),
-        )
+    findings, findings_truncated = _scan_claims(
+        tuple(blocks),
+        max_findings=limits.max_findings,
     )
     return ScanResult(
         findings=findings,
         scanned_files=text_document_count + len(frontend_paths),
         binary_files=source_counters["binary_files"],
+        findings_truncated=findings_truncated,
     )
 
 
@@ -1136,7 +1410,12 @@ def main(argv: list[str] | None = None) -> int:
     for finding in result.findings:
         display = _display_path(finding.path)
         print(f"{finding.rule_id}: {display}:{finding.line}: {finding.excerpt}")
-    if result.findings:
+    if result.findings_truncated:
+        print(
+            "FINDINGS_TRUNCATED: displayed "
+            f"{len(result.findings)} findings; additional findings omitted"
+        )
+    if result.findings or result.findings_truncated:
         return 1
     print(
         "PASS: evidence claims guard scanned "

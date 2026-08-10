@@ -28,6 +28,33 @@ def test_frontend_extraction_helpers_are_public_and_reusable(tmp_path):
     assert "Visible assurance copy." in documents[page]
 
 
+@pytest.mark.parametrize("target_kind", ["file", "directory"])
+def test_frontend_file_inventory_rejects_symlinks(tmp_path, target_kind):
+    """Fails if traversal filters a symlink before the public preflight sees it."""
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    if target_kind == "file":
+        target = outside / "Visible.tsx"
+        target.write_text("export const copy = 'Visible copy.'", encoding="utf-8")
+        link = tmp_path / "Linked.tsx"
+    else:
+        target = outside
+        (target / "Visible.tsx").write_text(
+            "export const copy = 'Visible copy.'",
+            encoding="utf-8",
+        )
+        source = tmp_path / "source"
+        source.mkdir()
+        link = source / "linked"
+    try:
+        link.symlink_to(target, target_is_directory=target_kind == "directory")
+    except OSError:
+        pytest.skip("symlink creation unavailable")
+
+    with pytest.raises(ValueError, match="frontend symlink"):
+        list(iter_frontend_public_files(tmp_path))
+
+
 def test_frontend_extraction_helper_rejects_oversized_output(tmp_path):
     page = tmp_path / "VisiblePage.tsx"
     page.write_text(

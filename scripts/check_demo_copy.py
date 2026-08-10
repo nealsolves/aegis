@@ -122,7 +122,11 @@ def _iter_files(paths: Iterable[Path]) -> Iterable[Path]:
 
 
 def iter_frontend_public_files(root: Path) -> Iterable[Path]:
+    if root.is_symlink():
+        raise ValueError("frontend symlink is not scannable")
     for candidate in root.rglob("*"):
+        if candidate.is_symlink():
+            raise ValueError("frontend symlink is not scannable")
         if not candidate.is_file() or candidate.suffix not in FRONTEND_SUFFIXES:
             continue
         relative = candidate.relative_to(root)

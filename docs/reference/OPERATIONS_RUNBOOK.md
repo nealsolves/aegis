@@ -16,6 +16,7 @@ protection, and organizational assurance decisions.
 python -m pytest
 flake8 aegis
 python scripts/check_doc_parity.py
+python scripts/check_evidence_claims.py
 pytest demo-app-api/tests -q
 npm --prefix demo-app-react test
 npm --prefix demo-app-react run build

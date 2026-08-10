@@ -1,6 +1,7 @@
 """CI contracts for the maintained evidence-claims guard."""
 
 from pathlib import Path
+import re
 
 import yaml
 
@@ -37,6 +38,143 @@ def _setup_node_index(steps: list[dict]) -> int:
 
 def _setup_python_index(steps: list[dict]) -> int:
     return _step_index(steps, lambda step: step.get("uses") == PYTHON_ACTION)
+
+
+def _markdown_link_targets(relative_path: str) -> set[str]:
+    text = (ROOT / relative_path).read_text(encoding="utf-8")
+    return {
+        bracketed or plain
+        for bracketed, plain in re.findall(
+            r"\[[^]]*\]\(<([^>]+)>\)|\[[^]]*\]\(([^ )]+)",
+            text,
+        )
+    }
+
+
+def _section(text: str, heading: str) -> str:
+    start = text.index(f"## {heading}")
+    following = text.find("\n## ", start + 1)
+    return text[start:] if following < 0 else text[start:following]
+
+
+def _table_row_labels(section: str) -> set[str]:
+    labels = set()
+    for line in section.splitlines():
+        if not line.startswith("|"):
+            continue
+        label = line.split("|", 2)[1].strip()
+        if label and not set(label) <= {"-", ":"}:
+            labels.add(label)
+    return labels
+
+
+def test_canonical_guide_has_required_sections_and_contract_tables():
+    """Fails if a required lifecycle section or assurance table row is removed."""
+    guide = (
+        ROOT / "docs/reference/APPEND_ONLY_EVIDENCE_OPERATIONS.md"
+    ).read_text(encoding="utf-8")
+    headings = {
+        line[3:]
+        for line in guide.splitlines()
+        if line.startswith("## ")
+    }
+    assert {
+        "Assurance model",
+        "Provider-neutral reference architecture",
+        "Ownership matrix",
+        "Evidence set and data minimization",
+        "Ingest verification",
+        "Retention and object locking",
+        "Least privilege",
+        "Trusted checkpoint operations",
+        "Monitoring",
+        "Export verification",
+        "Backup and disaster recovery",
+        "Key rotation",
+        "Revocation",
+        "Suspected or confirmed compromise",
+        "Provider outage",
+        "Non-normative provider examples",
+    } <= headings
+    assert {
+        "Tamper-evidence",
+        "External anchoring",
+        "Checkpoint-backed completeness",
+        "Append-only/WORM retention",
+        "Legal/compliance status",
+    } <= _table_row_labels(_section(guide, "Assurance model"))
+    assert {
+        "Evidence creation",
+        "Tamper-evidence",
+        "External anchoring",
+        "Checkpoints",
+        "Retention",
+        "Operations",
+        "Assurance claims",
+    } <= _table_row_labels(_section(guide, "Ownership matrix"))
+
+
+def test_canonical_guide_links_its_contract_authorities():
+    """Fails if the canonical guide is detached from a designated authority."""
+    assert {
+        "https://github.com/nealsolves/aegis/issues/44",
+        "../decisions/ADR-0012-external-trust-anchor-signing.md",
+        "https://github.com/nealsolves/aegis/issues/46",
+        "../decisions/ADR-0015-trusted-checkpoints.md",
+        "https://github.com/nealsolves/aegis/issues/58",
+    } <= _markdown_link_targets(
+        "docs/reference/APPEND_ONLY_EVIDENCE_OPERATIONS.md"
+    )
+
+
+def test_all_designated_entry_points_link_to_the_canonical_guide():
+    """Fails if any maintained entry point drops its canonical destination."""
+    destinations = {
+        "README.md": "docs/reference/APPEND_ONLY_EVIDENCE_OPERATIONS.md",
+        "SECURITY.md": "docs/reference/APPEND_ONLY_EVIDENCE_OPERATIONS.md",
+        "CHANGELOG.md": "docs/reference/APPEND_ONLY_EVIDENCE_OPERATIONS.md",
+        "docs/USAGE.md": "reference/APPEND_ONLY_EVIDENCE_OPERATIONS.md",
+        "docs/INTEGRATION_GUIDE.md": "reference/APPEND_ONLY_EVIDENCE_OPERATIONS.md",
+        "docs/PUBLIC_INTEGRATION_CONTRACT.md": (
+            "reference/APPEND_ONLY_EVIDENCE_OPERATIONS.md"
+        ),
+        "docs/architecture/AEGIS_THREAT_MODEL.md": (
+            "../reference/APPEND_ONLY_EVIDENCE_OPERATIONS.md"
+        ),
+        "docs/reference/OPERATIONS_RUNBOOK.md": (
+            "APPEND_ONLY_EVIDENCE_OPERATIONS.md"
+        ),
+        "docs/reference/external/AWS_KMS_SIGNING.md": (
+            "../APPEND_ONLY_EVIDENCE_OPERATIONS.md"
+        ),
+        "docs/reference/external/GOOGLE_CLOUD_KMS_SIGNING.md": (
+            "../APPEND_ONLY_EVIDENCE_OPERATIONS.md"
+        ),
+    }
+
+    for relative, destination in destinations.items():
+        assert destination in _markdown_link_targets(relative), relative
+        resolved = ((ROOT / relative).parent / destination).resolve()
+        assert resolved == (
+            ROOT / "docs/reference/APPEND_ONLY_EVIDENCE_OPERATIONS.md"
+        ).resolve()
+
+
+def test_operations_runbook_core_validation_includes_claims_guard():
+    """Fails if the mandated local guard command leaves core validation."""
+    runbook = (ROOT / "docs/reference/OPERATIONS_RUNBOOK.md").read_text(
+        encoding="utf-8"
+    )
+    core_validation = _section(runbook, "Core Validation Commands")
+    fenced_blocks = re.findall(r"```(?:\w+)?\n(.*?)```", core_validation, re.DOTALL)
+
+    assert fenced_blocks
+    commands = {
+        line.strip()
+        for line in fenced_blocks[0].splitlines()
+        if line.strip()
+    }
+    assert GUARD_COMMAND in commands
 
 
 def test_claims_guard_is_wired_into_all_required_workflows():
