@@ -216,9 +216,9 @@ CERTIFICATION_ACTION = re.compile(
     re.IGNORECASE,
 )
 CERTIFICATION_OBJECT = re.compile(
-    r"\b(?:(?:(?:full|ongoing|complete|continuous|regulatory|legal|policy|"
+    r"\b(?:(?:(?:(?:full|ongoing|complete|continuous|regulatory|legal|policy|"
     r"technical) ){0,3}|(?:SOC 2(?: Type (?:I|II))? ))"
-    r"(?:compliance|certification)\b",
+    r"(?:compliance|certification)|legal (?:sufficiency|admissibility))\b",
     re.IGNORECASE,
 )
 _ACTION_OBJECT_CONNECTOR = re.compile(r"^\s*$")
@@ -231,7 +231,7 @@ _NEGATED_PROVIDER_CONTEXT = re.compile(
     r"(?: [A-Za-z]+){0,3} illustrative and non[- ]normative\b",
     re.IGNORECASE,
 )
-_SENTENCE_BOUNDARY = re.compile(r"[.;!?]")
+_SENTENCE_BOUNDARY = re.compile(r"[.!?]")
 _CLAUSE_BOUNDARY = re.compile(
     r"[.;!?]|,\s*(?:and|but|while|yet)\b|"
     r"\b(?:and|but|while|yet)\b(?:\s+\w+){0,3}\s+"
@@ -369,12 +369,7 @@ def _scan_claims(
         predicate: re.Match[str],
     ) -> bool:
         for subject in related_matches(subject_pattern, predicate):
-            relation_start = min(subject.end(), predicate.end())
-            relation_end = max(subject.start(), predicate.start())
-            scoped = sentence_context(text, subject, predicate) is not None
-            if not scoped and PSEUDO_NEGATION.search(
-                text[relation_start:relation_end]
-            ) is None:
+            if sentence_context(text, subject, predicate) is None:
                 continue
             if not negates_relation(text, subject, predicate):
                 return True

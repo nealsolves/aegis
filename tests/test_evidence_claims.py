@@ -1317,6 +1317,25 @@ def test_scan_claims_covers_direct_contract_claims_and_negated_forms(
 
 
 @pytest.mark.parametrize(
+    "legal_object",
+    ["legal sufficiency", "legal admissibility"],
+)
+def test_scan_claims_covers_legal_sufficiency_and_admissibility_noun_forms(
+    legal_object,
+):
+    """Fails if noun-form legal certification objects lose coverage."""
+    unsafe = f"AEGIS guarantees {legal_object}."
+    safe = f"AEGIS does not guarantee {legal_object}."
+
+    unsafe_findings = scan_claims((TextBlock(Path("public.md"), 8, unsafe),))
+
+    assert [finding.rule_id for finding in unsafe_findings] == [
+        "AEGIS_CERTIFICATION_CLAIM"
+    ]
+    assert scan_claims((TextBlock(Path("public.md"), 9, safe),)) == ()
+
+
+@pytest.mark.parametrize(
     "text",
     [
         "AEGIS is not compliant.",
@@ -1364,6 +1383,24 @@ def test_scan_claims_does_not_apply_copular_negation_to_a_later_clause(
 def test_scan_claims_does_not_join_relationships_across_sentences(text):
     """Fails if the relationship window again ignores sentence boundaries."""
     assert scan_claims((TextBlock(Path("public.md"), 10, text),)) == ()
+
+
+def test_scan_claims_does_not_join_pseudo_negation_across_sentences():
+    """Fails if pseudo-negation can bypass mandatory sentence scope."""
+    text = "AEGIS is a library. Not only is the external auditor certified."
+
+    assert scan_claims((TextBlock(Path("public.md"), 10, text),)) == ()
+
+
+def test_scan_claims_keeps_same_sentence_pseudo_negation_unsafe():
+    """Fails if pseudo-negation becomes a same-sentence disclaimer."""
+    text = "AEGIS not only guarantees compliance."
+
+    findings = scan_claims((TextBlock(Path("public.md"), 11, text),))
+
+    assert [finding.rule_id for finding in findings] == [
+        "AEGIS_CERTIFICATION_CLAIM"
+    ]
 
 
 @pytest.mark.parametrize(
