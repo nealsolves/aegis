@@ -56,11 +56,15 @@ retention. AEGIS does not choose the latest checkpoint or supply trusted time.
 AEGIS does not manage keys or perform backup or recovery. AEGIS does not
 certify compliance or make legal determinations.
 
-`JsonFileAuditSink` remains a local JSONL convenience sink. Issue
-[#58](https://github.com/nealsolves/aegis/issues/58) tracks its separate symlink
-and file-mode hardening work. Nothing in this guide implies that
-`JsonFileAuditSink` is durable, append-only, WORM, or hardened storage; issue
-#47 does not change or harden it.
+`JsonFileAuditSink` remains a local JSONL convenience sink. Its issue
+[#58](https://github.com/nealsolves/aegis/issues/58) hardening creates new files
+with mode `0600`. It rejects symlinks and rejects non-regular filesystem objects,
+preserves append behavior for regular files, and fails closed when the platform cannot
+safely create a new path without following symlinks. These controls secure the
+file-opening boundary only. Directory ownership, mount options, rotation,
+retention, backup, disaster recovery, and append-only or WORM lifecycle controls
+remain host responsibilities. The sink does not provide durable, immutable,
+append-only, or WORM storage.
 
 ## Provider-neutral reference architecture
 

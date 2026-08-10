@@ -13,14 +13,77 @@ from __future__ import annotations
 import abc
 import json
 import logging
+import os
+import stat
 from pathlib import Path
 from typing import Any, Callable
+
+from aegis._internal.errors import AuditSinkError
 
 logger = logging.getLogger("aegis.sinks")
 
 _registered_sink: AuditSink | None = None
 _sink_failure_mode: str = "log"
 _SENTINEL = object()  # distinguish "not passed" from explicit None
+_O_NOFOLLOW = getattr(os, "O_NOFOLLOW", None)
+_O_NONBLOCK = getattr(os, "O_NONBLOCK", 0)
+_SECURE_SINK_ERROR = "Secure JSONL audit delivery failed"
+
+
+def _raise_secure_sink_error() -> None:
+    raise AuditSinkError(_SECURE_SINK_ERROR) from None
+
+
+def _open_secure_append_descriptor(path: Path) -> int:
+    """Open *path* for secure append without following an unsafe target."""
+    flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | _O_NONBLOCK
+    expected_identity: tuple[int, int] | None = None
+
+    try:
+        existing = os.lstat(path)
+    except FileNotFoundError:
+        existing = None
+    except (OSError, ValueError):
+        _raise_secure_sink_error()
+
+    if existing is not None and not stat.S_ISREG(existing.st_mode):
+        _raise_secure_sink_error()
+
+    if _O_NOFOLLOW is None:
+        if existing is None:
+            _raise_secure_sink_error()
+        expected_identity = (existing.st_dev, existing.st_ino)
+    else:
+        flags |= _O_NOFOLLOW
+
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(path, flags, 0o600)
+        opened = os.fstat(descriptor)
+        if not stat.S_ISREG(opened.st_mode):
+            _raise_secure_sink_error()
+
+        if expected_identity is not None:
+            current = os.lstat(path)
+            identities = {
+                expected_identity,
+                (opened.st_dev, opened.st_ino),
+                (current.st_dev, current.st_ino),
+            }
+            if not stat.S_ISREG(current.st_mode) or len(identities) != 1:
+                _raise_secure_sink_error()
+
+        result = descriptor
+        descriptor = None
+        return result
+    except (OSError, ValueError, AuditSinkError):
+        _raise_secure_sink_error()
+    finally:
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
 
 
 class AuditSink(abc.ABC):
@@ -37,14 +100,27 @@ class AuditSink(abc.ABC):
 
 
 class JsonFileAuditSink(AuditSink):
-    """Appends one JSON line per audit artifact to a file (JSONL format)."""
+    """Securely appends one JSON line per audit artifact to a regular file."""
 
     def __init__(self, path: str | Path) -> None:
         self._path = Path(path)
 
     def emit(self, audit_artifact: dict[str, Any]) -> None:
-        with open(self._path, "a", encoding="utf-8") as fh:
-            fh.write(json.dumps(audit_artifact) + "\n")
+        line = json.dumps(audit_artifact) + "\n"
+        descriptor = _open_secure_append_descriptor(self._path)
+        try:
+            with os.fdopen(descriptor, "a", encoding="utf-8", newline="") as fh:
+                descriptor = -1
+                fh.write(line)
+                fh.flush()
+        except (OSError, ValueError):
+            _raise_secure_sink_error()
+        finally:
+            if descriptor >= 0:
+                try:
+                    os.close(descriptor)
+                except OSError:
+                    pass
 
 
 class CallbackAuditSink(AuditSink):

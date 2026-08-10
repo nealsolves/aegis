@@ -127,6 +127,28 @@ def test_canonical_guide_links_its_contract_authorities():
     )
 
 
+def test_canonical_guide_bounds_secure_local_jsonl_storage():
+    """Fails if local-file hardening is confused with lifecycle controls."""
+    guide = (
+        ROOT / "docs/reference/APPEND_ONLY_EVIDENCE_OPERATIONS.md"
+    ).read_text(encoding="utf-8")
+    normalized = " ".join(guide.lower().split())
+
+    for required in (
+        "mode `0600`",
+        "rejects symlinks",
+        "rejects non-regular filesystem objects",
+        "fails closed",
+        "directory ownership",
+        "mount options",
+        "rotation",
+        "retention",
+        "backup",
+        "worm",
+    ):
+        assert required in normalized
+
+
 def test_all_designated_entry_points_link_to_the_canonical_guide():
     """Fails if any maintained entry point drops its canonical destination."""
     destinations = {
