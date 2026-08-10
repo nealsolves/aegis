@@ -3,6 +3,13 @@
 This runbook covers the `aegis-ai-governance==0.9.0b1` public beta released
 from `main`.
 
+Trusted checkpoint APIs are implemented only in the current source tree and
+are not part of that released beta. For host-owned retention, object locking,
+checkpoint selection, historical verification, backup, and recovery, see the
+[Append-Only Evidence Operations Guide](APPEND_ONLY_EVIDENCE_OPERATIONS.md).
+That guide separates library-produced results from host retention, write
+protection, and organizational assurance decisions.
+
 ## Core Validation Commands
 
 ```bash

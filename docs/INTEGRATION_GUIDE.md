@@ -624,9 +624,9 @@ history = RiskHistory("my-agent", stability_band=0.10)
 
 ---
 
-## 13. Compliance Checklist
+## 13. Governance Integration Checklist
 
-An integration is AEGIS-compliant when:
+An integration using AEGIS should confirm:
 
 - [ ] Every model invocation is wrapped in `enforce_invocation()` or `@governed`
 - [ ] Each invocation declares a role from the policy allowlist
@@ -791,3 +791,9 @@ No-checkpoint calls stay source-compatible and report `unproven`. Finalized
 workflow claims use the parallel `create_workflow_checkpoint(...)` /
 `verify_workflow_claim(..., expected_checkpoint=...)` pair. See ADR-0015 and
 `docs/USAGE.md` Recipe 13 for the full assurance scope and residuals.
+
+For host-owned retention, object locking, checkpoint selection, historical
+verification, backup, and recovery, see the
+[Append-Only Evidence Operations Guide](reference/APPEND_ONLY_EVIDENCE_OPERATIONS.md).
+That guide separates library-produced results from host retention, write
+protection, and organizational assurance decisions.

@@ -165,6 +165,12 @@ produce an indeterminate verifier-unavailable result; unexpected or malformed
 responses fail with sanitized contract errors. The host decides whether to
 queue verification, fail a workflow, or use previously retained evidence.
 
+For host-owned rotation, revocation, retention, checkpoint selection,
+historical verification, backup, and recovery, see the
+[Append-Only Evidence Operations Guide](../APPEND_ONLY_EVIDENCE_OPERATIONS.md).
+That guide separates library-produced results from host retention, write
+protection, and organizational assurance decisions.
+
 ## Logging and assurance limits
 
 Do not enable unrestricted botocore debug logging in paths that handle
@@ -177,3 +183,8 @@ HSM/FIPS status, or certification. It does not manage keys, aliases, grants,
 rotation, deletion, compromise response, or evidence retention. It supports
 asymmetric signing and verification only; encryption, decryption, MAC,
 key-generation, and certificate workflows are outside this adapter.
+
+Related provider-neutral assurance boundaries are defined in the
+[Append-Only Evidence Operations Guide](../APPEND_ONLY_EVIDENCE_OPERATIONS.md).
+This adapter guide does not prescribe retention configuration or legal
+conclusions.

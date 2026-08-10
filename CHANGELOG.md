@@ -31,7 +31,14 @@ These changes exist in the current source tree but are not in the published
   `checkpoint_results`) with the `checkpoint_proven` / `contradicted`
   completeness values. Verification stays source-compatible: calls that pass no
   checkpoint evidence remain `unproven`. Signer, storage, and `checkpointed_at`
-  host time remain host-owned. See ADR-0015.
+  host time remain host-owned. See ADR-0015 and the
+  [Append-Only Evidence Operations Guide](docs/reference/APPEND_ONLY_EVIDENCE_OPERATIONS.md)
+  for host-owned retention, object locking, checkpoint selection, historical
+  verification, backup, and recovery. This guide and the checkpoint surface
+  describe current source, not the released `0.9.0b1` package. Checksums,
+  signatures, hash chains, and checkpoints provide bounded verification
+  results. Host controls remain necessary for retention, write protection, and
+  organizational assurance decisions.
 - Current source emits audit schema `2.0`. The published `0.9.0b1` release used
   schema `1.4`; that value remains release history rather than current-source
   schema truth.

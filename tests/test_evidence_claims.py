@@ -90,24 +90,12 @@ def test_direct_script_runs_from_repository_root_without_pythonpath():
         timeout=60,
     )
 
-    assert completed.returncode == 1, completed.stderr
+    assert completed.returncode == 0, completed.stderr
     assert completed.stderr == ""
-    assert "ModuleNotFoundError" not in completed.stderr
-    assert "claims guard failed:" not in completed.stderr
-    finding_lines = completed.stdout.splitlines()
-    assert finding_lines
-    assert all(len(line.encode("utf-8")) <= 512 for line in finding_lines)
-    sort_keys = []
-    for finding_line in finding_lines:
-        rule_id, location_and_excerpt = finding_line.split(": ", 1)
-        location, _excerpt = location_and_excerpt.split(": ", 1)
-        path, line = location.rsplit(":", 1)
-        sort_keys.append((path, int(line), rule_id))
-    assert sort_keys == sorted(sort_keys)
-    assert sum(
-        "demo-app-react/src/help/helpContent.ts:" in line
-        for line in finding_lines
-    ) == 2
+    output_lines = completed.stdout.splitlines()
+    assert len(output_lines) == 1
+    assert output_lines[0].startswith("PASS: evidence claims guard scanned ")
+    assert output_lines[0].endswith(" binary files")
 
 
 def test_main_returns_one_and_prints_bounded_finding(monkeypatch, capsys):

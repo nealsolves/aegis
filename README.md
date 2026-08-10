@@ -46,9 +46,9 @@ AEGIS does not sandbox hostile in-process Python code, contain malicious
 dependencies, isolate tenants, protect secrets placed into audit context by the
 host, or replace provider, runtime, network, credential, trusted-checkpoint, or
 storage controls. A valid signature is not necessarily externally anchored.
-HMAC signatures and hash chains provide tamper-evidence, not immutable storage,
-trusted time, replay prevention, sequence completeness, certification, or a
-compliance determination.
+HMAC signatures and hash chains provide tamper-evidence, not host-enforced
+storage controls, trusted time, replay prevention, sequence completeness, or
+an organizational assurance determination.
 When a valid, anchored, authoritative checkpoint is retained and presented,
 AEGIS can detect divergence from its pinned chain or workflow evidence. The
 host still owns latest-checkpoint retrieval and omission/rollback protection.
@@ -126,6 +126,15 @@ activity, certification, or compliance. See
 [ADR-0015](docs/decisions/ADR-0015-trusted-checkpoints.md) and
 [USAGE.md](docs/USAGE.md) Recipe 13.
 
+For current-source checkpoint operations and host-owned retention, object
+locking, checkpoint selection, historical verification, backup, and recovery,
+see the
+[Append-Only Evidence Operations Guide](docs/reference/APPEND_ONLY_EVIDENCE_OPERATIONS.md).
+The guide distinguishes these source-only checkpoint APIs from the released
+`0.9.0b1` package. Checksums, signatures, hash chains, and checkpoints provide
+bounded verification results. Host controls remain necessary for retention,
+write protection, and organizational assurance decisions.
+
 That source-only line now includes explicit
 [AWS KMS](docs/reference/external/AWS_KMS_SIGNING.md) and
 [Google Cloud KMS](docs/reference/external/GOOGLE_CLOUD_KMS_SIGNING.md)
@@ -168,6 +177,7 @@ python workflow_example.py
 7. [Supported Environments](docs/reference/SUPPORTED_ENVIRONMENTS.md)
 8. [Operations Runbook](docs/reference/OPERATIONS_RUNBOOK.md)
 9. [External Adapter Docs](docs/reference/external/README.md)
+10. [Append-Only Evidence Operations Guide](docs/reference/APPEND_ONLY_EVIDENCE_OPERATIONS.md)
 
 ## Release Narrative
 

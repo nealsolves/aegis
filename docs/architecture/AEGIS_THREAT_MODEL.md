@@ -254,13 +254,14 @@ Model output is treated as untrusted input.
 * false external-anchor claims
 * partial mutation that leaves misleading evidence
 * disclosure of payloads, signatures, credentials, or provider errors
-* treating tamper-evidence as immutable storage or complete-chain proof
+* mistaking tamper-evidence for host-enforced write protection or
+  complete-chain proof
 
 **Mitigations and boundary:**
 
 * all strict `signature_metadata` fields are included in the signed bytes
 * signer identity and receipt must pin the same opaque key reference and exact
-  immutable key version
+  stable key-version identifier
 * AEGIS retains untouched core identity and metadata snapshots and gives
   adapters disposable equal copies
 * the host-configured verifier resolves key reference and version; AEGIS never
@@ -299,23 +300,26 @@ provider transport, retries, timeouts, availability behavior, and storage.
 External signer or verifier availability cannot change the governance result
 already recorded in an artifact.
 
-Residual limits are deliberate: HMAC and hash chaining are tamper-evidence, not
-immutable storage. An artifact signature or generic anchor alone does not
+Residual limits are deliberate: HMAC and hash chaining are tamper-evidence;
+underlying storage mutation controls remain host-owned. An artifact signature
+or generic anchor alone does not
 prevent replay, prove sequence completeness, detect replacement of a complete
 valid chain, provide WORM retention, or establish certification or regulatory
 compliance. An attacker with storage-write access can replace a complete chain
 or remove a valid tail while leaving the supplied sequence internally
 consistent. Issue #46's implemented trusted checkpoints detect divergence from
-a valid, anchored, authoritative pin when it is presented; the host still owns
-latest retrieval and omission/rollback protection. The bundled `AuditChain` is
+a valid, anchored, authoritative pin when it is presented; the host still
+selects the authoritative current checkpoint and protects against omission or
+rollback. The bundled `AuditChain` is
 in-memory and does not claim crash persistence; hosts must reconcile the
 emit/commit crash window or provide a persistent linker.
 
 Workflow-signed proves integrity and order of the claimed supplied set. It does
 not prove the host disclosed every invocation. Completeness remains unproven
 until a trusted checkpoint binds the expected head/count.
-Only valid, anchored, authoritative evidence can then detect divergence;
-latest retrieval and checkpoint omission/rollback remain host responsibilities.
+Verification against valid, anchored, authoritative evidence can then expose
+divergence from the presented pin. Hosts still select the authoritative current
+checkpoint and protect that authority against omission or rollback.
 
 The verifier bounds claims and supplied artifacts to 1,024 entries each,
 measured input to 4 MiB, nesting to 32 levels, and reports to 100 errors.
@@ -494,13 +498,14 @@ AEGIS does not attempt to solve:
 * provider safety systems
 * replay prevention or absolute proof that a supplied sequence is complete;
   valid, anchored, authoritative checkpoints detect divergence relative to a
-  presented pin, while latest retrieval and omission/rollback remain host-owned
+  presented pin, while selection and rollback protection for the authoritative
+  current checkpoint remain host-owned
 * trusted timestamping or timestamp-authority evidence
 * proof that a presented trusted checkpoint is the latest one (checkpoint
   omission and rollback remain host-owned residual risk; see issue #46 above)
 * WORM storage, retention, object locking, or disaster recovery
 * provider signing transport, credentials, retries, or key-rotation operations
-* certification or a regulatory-compliance determination
+* organization-level assurance determinations
 
 AEGIS governs invocation boundaries, not model reasoning.
 
@@ -532,6 +537,12 @@ AEGIS provides the following guarantees:
 * plugin-safe extension architecture
 
 These guarantees can supply inputs to host-owned audit and assurance programs.
-They do not certify a deployment, establish compliance, or replace operational
-controls for credentials, transport, availability, trusted checkpoints, and
-storage.
+Organizational assurance determinations and operational controls for
+credentials, transport, availability, trusted checkpoints, and storage remain
+outside these technical results.
+
+For host-owned retention, object locking, checkpoint selection, historical
+verification, backup, and recovery, see the
+[Append-Only Evidence Operations Guide](../reference/APPEND_ONLY_EVIDENCE_OPERATIONS.md).
+That guide separates library-produced results from host retention, write
+protection, and organizational assurance decisions.

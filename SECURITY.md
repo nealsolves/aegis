@@ -44,6 +44,14 @@ AEGIS is a governance enforcement library. Security concerns include:
 - Determinism violations that could mask governance failures
 - Exception handling that silently degrades enforcement
 
+Storage-control or evidence-handling vulnerabilities may be reported through
+this process, but host storage configuration remains outside the AEGIS runtime
+boundary. For host-owned retention, object locking, checkpoint selection,
+historical verification, backup, and recovery, see the
+[Append-Only Evidence Operations Guide](docs/reference/APPEND_ONLY_EVIDENCE_OPERATIONS.md).
+That guide separates library-produced results from host retention, write
+protection, and organizational assurance decisions.
+
 ## Disclosure
 
 Confirmed vulnerabilities will be disclosed via GitHub Security Advisories
