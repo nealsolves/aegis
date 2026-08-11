@@ -1451,8 +1451,13 @@ def load_policy_async(
     return _load_policy_async_runner(bound_ref, visited, effective_loader)
 
 
+_FileCacheKey = tuple[str, str, float]
+_OpaqueCacheKey = tuple[str, float]
+_PolicyCacheKey = _FileCacheKey | _OpaqueCacheKey
+
+
 class PolicyCache:
-    """LRU cache for loaded policies, keyed by (canonical_path, file_mtime).
+    """LRU cache for loaded policies, isolated by loader authority.
 
     Thread-safe via threading.Lock. Cache lives on an AEGIS instance to
     eliminate global mutable state.
@@ -1467,8 +1472,8 @@ class PolicyCache:
         if max_size < 1:
             raise ValueError("max_size must be >= 1")
         self._max_size = max_size
-        self._cache: dict[tuple[str, float], dict[str, Any]] = {}
-        self._access_order: list[tuple[str, float]] = []
+        self._cache: dict[_PolicyCacheKey, dict[str, Any]] = {}
+        self._access_order: list[_PolicyCacheKey] = []
         self._lock = threading.Lock()
 
     @property
@@ -1490,35 +1495,45 @@ class PolicyCache:
         :param loader: Optional custom policy loader (bypasses filesystem)
         :return: Loaded policy dict
         """
-        if loader is not None and not isinstance(loader, FilePolicyLoader):
-            # Custom loaders: use policy_file as opaque key (no filesystem
-            # resolution).  Mtime is not meaningful for non-file sources so
-            # we use a sentinel; callers who need cache-busting should call
-            # cache.clear().
-            key = (policy_file, 0.0)
-
-            with self._lock:
-                if key in self._cache:
-                    logger.debug("Policy cache hit (custom loader): %s",
-                                 policy_file)
-                    if key in self._access_order:
-                        self._access_order.remove(key)
-                    self._access_order.append(key)
-                    return self._cache[key]
-
-            policy = load_policy(policy_file, visited, loader=loader)
-
-            with self._lock:
-                if len(self._cache) >= self._max_size:
-                    self._evict_oldest()
-                self._cache[key] = policy
-                self._access_order.append(key)
-            return policy
-
-        # Default filesystem path
-        canonical = str(_resolve_policy_path(policy_file))
-        mtime = os.path.getmtime(canonical)
-        key = (canonical, mtime)
+        bound_ref, effective_loader = _bind_policy_authority(
+            policy_file,
+            loader,
+        )
+        if isinstance(effective_loader, FilePolicyLoader):
+            context = _FileLoadContext.create(
+                policy_file,
+                bound_ref,
+                effective_loader.policy_root,
+            )
+            canonical = effective_loader._preflight(
+                bound_ref,
+                context=context,
+            )
+            metadata_failure: PolicyLoadError | None = None
+            try:
+                mtime = canonical.stat().st_mtime
+            except (OSError, RuntimeError) as exc:
+                normalized = context.normalize(
+                    exc,
+                    fallback="Policy metadata is unavailable",
+                )
+                metadata_failure = (
+                    normalized
+                    if isinstance(normalized, PolicyLoadError)
+                    else PolicyLoadError("Policy metadata is unavailable")
+                )
+                mtime = 0.0
+            if metadata_failure is not None:
+                raise metadata_failure from None
+            key: _PolicyCacheKey = (
+                str(effective_loader.policy_root),
+                str(canonical),
+                mtime,
+            )
+        else:
+            # Opaque sources have no filesystem metadata. Callers needing
+            # cache-busting can clear the per-AEGIS cache explicitly.
+            key = (bound_ref, 0.0)
 
         with self._lock:
             if key in self._cache:
@@ -1530,7 +1545,11 @@ class PolicyCache:
                 return self._cache[key]
 
         # Load outside lock to avoid blocking other threads
-        policy = load_policy(policy_file, visited, loader=loader)
+        policy = load_policy(
+            bound_ref,
+            visited,
+            loader=effective_loader,
+        )
 
         with self._lock:
             if len(self._cache) >= self._max_size:
