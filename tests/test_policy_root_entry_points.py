@@ -26,8 +26,16 @@ from aegis._internal.policy_loader import (
 )
 from aegis._internal.sinks import CallbackAuditSink
 from aegis._internal.retry import RetryExhaustedError, with_retry
-from aegis._internal.workflow_doctor import diagnose_workflow_policy
-from aegis._internal.workflow_lint import lint_policy, lint_starter_dir
+from aegis._internal.workflow_doctor import (
+    diagnose_starter_dir,
+    diagnose_target,
+    diagnose_workflow_policy,
+)
+from aegis._internal.workflow_lint import (
+    lint_policy,
+    lint_starter_dir,
+    lint_target,
+)
 
 
 MINIMAL_POLICY = "policy_version: '1.0'\nroles: [reviewer]\n"
@@ -82,6 +90,13 @@ def _write_starter(directory: Path) -> Path:
     )
     (directory / "README.md").write_text("# Starter\n", encoding="utf-8")
     return directory
+
+
+def _directory_symlink_or_skip(link: Path, target: Path) -> None:
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"symlinks unavailable for test account: {exc}")
 
 
 def test_cache_key_isolated_by_authority_root(tmp_path: Path) -> None:
@@ -261,6 +276,54 @@ def test_aegis_cached_enforcement_retains_configured_root(tmp_path: Path) -> Non
     assert engine.policy_cache.size == 1
 
 
+@pytest.mark.parametrize("surface", ["module", "aegis"])
+def test_enforcement_compiler_failures_are_path_confidential(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    surface: str,
+) -> None:
+    root = tmp_path / "protected-root"
+    entry = _write_policy(root / "entry.yaml")
+    invocation = _valid_invocation(entry.name)
+
+    def reject_compilation(*args: object, **kwargs: object) -> object:
+        raise PolicyValidationError(
+            str(entry),
+            details={"path": str(root)},
+        ) from RuntimeError(str(root))
+
+    monkeypatch.setattr(
+        enforcement_module,
+        "compile_policy",
+        reject_compilation,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        policy_loader_module,
+        "compile_policy",
+        reject_compilation,
+    )
+    loader = FilePolicyLoader(root)
+    if surface == "module":
+        configure_module_enforcement(
+            sink=CallbackAuditSink(lambda artifact: None),
+            policy_loader=loader,
+        )
+        enforce = enforce_invocation
+    else:
+        enforce = AEGIS(
+            sink=CallbackAuditSink(lambda artifact: None),
+            policy_loader=loader,
+        ).enforce
+
+    with pytest.raises(PolicyValidationError) as caught:
+        enforce(invocation)
+
+    rendered = _exception_text(caught.value)
+    assert str(root) not in rendered
+    assert str(entry) not in rendered
+
+
 def test_aegis_session_pin_uses_configured_root(tmp_path: Path) -> None:
     root, _ = _policy_tree_and_invocation(tmp_path)
     engine = AEGIS(
@@ -358,9 +421,123 @@ def test_explicit_root_rejects_starter_symlink_before_fixture_detection(
     root = tmp_path / "authorized"
     root.mkdir()
     outside = _write_starter(tmp_path / "outside")
-    (root / "linked-starter").symlink_to(outside, target_is_directory=True)
+    _directory_symlink_or_skip(root / "linked-starter", outside)
     findings = lint_starter_dir("linked-starter", policy_root=root)
     assert findings[0]["code"] == "POLICY_PATH_OUTSIDE_ROOT"
+
+
+@pytest.mark.parametrize("surface", ["lint", "doctor"])
+def test_nested_starter_policy_is_contained_before_metadata_access(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    surface: str,
+) -> None:
+    root = tmp_path / "authorized"
+    starter = root / "starter"
+    starter.mkdir(parents=True)
+    outside = _write_policy(tmp_path / "outside.yaml")
+    policy_link = starter / "policy.yaml"
+    try:
+        policy_link.symlink_to(outside)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"symlinks unavailable for test account: {exc}")
+    (starter / "workflow_example.py").write_text("pass\n", encoding="utf-8")
+    (starter / "README.md").write_text("# Starter\n", encoding="utf-8")
+    original_is_file = Path.is_file
+    original_stat = Path.stat
+
+    def guarded_is_file(path: Path, *args: object, **kwargs: object) -> bool:
+        if path == policy_link:
+            raise AssertionError("nested policy metadata accessed before containment")
+        return original_is_file(path, *args, **kwargs)
+
+    def guarded_stat(path: Path, *args: object, **kwargs: object):
+        if path == policy_link:
+            raise AssertionError("nested policy metadata accessed before containment")
+        return original_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "is_file", guarded_is_file)
+    monkeypatch.setattr(Path, "stat", guarded_stat)
+    diagnose = lint_starter_dir if surface == "lint" else diagnose_starter_dir
+    findings = diagnose("starter", policy_root=root)
+    assert findings[0]["code"] == "POLICY_PATH_OUTSIDE_ROOT"
+
+
+@pytest.mark.parametrize("surface", ["lint", "doctor"])
+def test_auto_policy_diagnostics_bind_before_target_detection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    surface: str,
+) -> None:
+    outside = _write_policy(tmp_path / "outside" / "policy.yaml")
+    lexical = tmp_path / "inside"
+    lexical.mkdir()
+    entry = lexical / "entry.yaml"
+    try:
+        entry.symlink_to(outside)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"symlinks unavailable for test account: {exc}")
+    original_exists = Path.exists
+    original_is_file = Path.is_file
+
+    def guarded_exists(path: Path, *args: object, **kwargs: object) -> bool:
+        if path == entry:
+            raise AssertionError("auto detection accessed entry metadata")
+        return original_exists(path, *args, **kwargs)
+
+    def guarded_is_file(path: Path, *args: object, **kwargs: object) -> bool:
+        if path == entry:
+            raise AssertionError("auto detection accessed entry metadata")
+        return original_is_file(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "exists", guarded_exists)
+    monkeypatch.setattr(Path, "is_file", guarded_is_file)
+    diagnose = lint_target if surface == "lint" else diagnose_target
+    findings = diagnose(str(entry))
+    assert findings[0]["code"] == "POLICY_PATH_OUTSIDE_ROOT"
+
+
+@pytest.mark.parametrize("surface", ["lint", "doctor"])
+def test_starter_diagnostics_preserve_host_label_without_root_disclosure(
+    tmp_path: Path,
+    surface: str,
+) -> None:
+    root = tmp_path / "protected-root"
+    starter = root / "starter"
+    _write_policy(starter / "policy.yaml")
+    (starter / "README.md").write_text("# Starter\n", encoding="utf-8")
+    diagnose = lint_starter_dir if surface == "lint" else diagnose_starter_dir
+    findings = diagnose("starter", policy_root=root)
+    rendered = repr(findings)
+    assert findings
+    assert str(root) not in rendered
+    if surface == "lint":
+        assert findings[0]["path"] == "starter"
+
+
+@pytest.mark.parametrize("command", ["lint", "doctor"])
+def test_starter_cli_json_does_not_disclose_configured_root(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    command: str,
+) -> None:
+    root = tmp_path / "protected-root"
+    starter = root / "starter"
+    _write_policy(starter / "policy.yaml")
+    (starter / "README.md").write_text("# Starter\n", encoding="utf-8")
+    status = main([
+        "workflow",
+        command,
+        "--kind",
+        "starter_dir",
+        "--policy-root",
+        str(root),
+        "starter",
+        "--json",
+    ])
+    rendered = capsys.readouterr().out
+    assert status == 1
+    assert str(root) not in rendered
 
 
 def test_implicit_starter_cannot_inherit_from_sibling(tmp_path: Path) -> None:

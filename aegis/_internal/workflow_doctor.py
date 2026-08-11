@@ -35,10 +35,10 @@ from aegis._internal.policy_loader import (
     _prepare_resolve_compile_policy,
 )
 from aegis._internal.workflow_lint import (
+    _lint_prepared_starter,
     _lint_prepared_policy,
     _prepare_starter_target,
     detect_target_kind,
-    lint_starter_dir,
     lint_workflow_artifact,
     _audit_schema,
 )
@@ -463,10 +463,7 @@ def diagnose_starter_dir(
     findings: list[dict] = []
 
     # 1. Lint
-    lint_findings = lint_starter_dir(
-        str(prepared.directory),
-        policy_root=prepared.loader.policy_root,
-    )
+    lint_findings = _lint_prepared_starter(prepared)
     if lint_findings:
         findings.extend(_lint_to_doctor(lint_findings))
         return findings
@@ -786,7 +783,9 @@ def diagnose_target(
     Returns:
         List of finding dicts (empty = no issues).
     """
-    if kind == "auto":
+    if kind == "auto" and Path(path).suffix.lower() in {".yaml", ".yml"}:
+        kind = "policy"
+    elif kind == "auto":
         detection_path = path
         if policy_root is not None:
             try:

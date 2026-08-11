@@ -44,6 +44,11 @@ def test_file_loader_requires_existing_directory_root(tmp_path: Path) -> None:
     assert str(tmp_path) not in str(missing.value)
 
 
+def test_legacy_unbound_path_resolver_is_removed() -> None:
+    assert not hasattr(policy_loader_module, "_resolve_policy_path")
+    assert not hasattr(policy_loader_module, "_resolve_extends")
+
+
 def test_explicit_loader_is_root_relative_after_chdir(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -343,6 +348,80 @@ def _assert_path_confidential(exc: BaseException, protected: list[str]) -> None:
     rendered = "\n".join(values)
     for secret in protected:
         assert secret not in rendered
+
+
+@pytest.mark.parametrize(
+    "failure_kind",
+    [
+        "containment",
+        "cycle",
+        "missing",
+        "non_file",
+        "malformed_yaml",
+        "schema",
+        "composition",
+        "symlink_loop",
+    ],
+)
+def test_file_graph_failures_are_path_confidential(
+    tmp_path: Path,
+    failure_kind: str,
+) -> None:
+    root = tmp_path / "protected-root"
+    root.mkdir()
+    entry = root / "entry.yaml"
+    protected = [str(root), str(entry)]
+
+    if failure_kind == "containment":
+        outside = _write_policy(tmp_path / "outside-secret.yaml")
+        extends = "../outside-secret.yaml"
+        _write_policy(
+            entry,
+            f"extends: {extends}\n{MINIMAL_POLICY}",
+        )
+        protected.extend([extends, str(outside)])
+    elif failure_kind == "cycle":
+        extends = "entry.yaml"
+        _write_policy(entry, f"extends: {extends}\n{MINIMAL_POLICY}")
+        protected.append(extends)
+    elif failure_kind == "missing":
+        extends = "missing-secret.yaml"
+        _write_policy(entry, f"extends: {extends}\n{MINIMAL_POLICY}")
+        protected.extend([extends, str(root / extends)])
+    elif failure_kind == "non_file":
+        extends = "directory-secret.yaml"
+        (root / extends).mkdir()
+        _write_policy(entry, f"extends: {extends}\n{MINIMAL_POLICY}")
+        protected.extend([extends, str(root / extends)])
+    elif failure_kind == "malformed_yaml":
+        extends = "malformed-secret.yaml"
+        _write_policy(root / extends, "roles: [unterminated\n")
+        _write_policy(entry, f"extends: {extends}\n{MINIMAL_POLICY}")
+        protected.extend([extends, str(root / extends)])
+    elif failure_kind == "schema":
+        extends = "invalid-secret.yaml"
+        _write_policy(root / extends, "policy_version: '1.0'\n")
+        _write_policy(entry, f"extends: {extends}\n{MINIMAL_POLICY}")
+        protected.extend([extends, str(root / extends)])
+    elif failure_kind == "composition":
+        extends = "base-secret.yaml"
+        _write_policy(root / extends)
+        _write_policy(
+            entry,
+            f"extends: {extends}\npolicy_version: '1.0'\nroles: [admin]\n",
+        )
+        protected.extend([extends, str(root / extends)])
+    else:
+        extends = "loop-secret.yaml"
+        loop = root / extends
+        _symlink_or_skip(loop, loop)
+        _write_policy(entry, f"extends: {extends}\n{MINIMAL_POLICY}")
+        protected.extend([extends, str(loop)])
+
+    with pytest.raises((PolicyLoadError, PolicyValidationError)) as caught:
+        load_policy(entry.name, loader=FilePolicyLoader(root))
+
+    _assert_path_confidential(caught.value, protected)
 
 
 def test_schema_failure_does_not_disclose_file_or_schema_paths(

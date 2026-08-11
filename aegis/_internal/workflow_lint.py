@@ -679,7 +679,9 @@ def _lint_policy_with_loader(
     *,
     target_kind: str,
     loader: FilePolicyLoader | None,
+    target_label: str | None = None,
 ) -> list[dict]:
+    display_label = path if target_label is None else target_label
     try:
         result = _prepare_resolve_compile_policy(
             path,
@@ -687,14 +689,14 @@ def _lint_policy_with_loader(
             capture_date_failures=True,
         )
     except (PolicyLoadError, PolicyValidationError) as exc:
-        return [_policy_exception_finding(exc, target_kind, path)]
+        return [_policy_exception_finding(exc, target_kind, display_label)]
     if result.prepared is None:
         raise AssertionError("file diagnostics require a prepared source")
     return _lint_prepared_policy(
         result.prepared,
         result.compiled,
         target_kind=target_kind,
-        target_label=path,
+        target_label=display_label,
     )
 
 
@@ -712,6 +714,7 @@ class _PreparedStarterTarget:
     directory: Path
     policy_ref: str
     loader: FilePolicyLoader
+    target_label: str
 
 
 def _prepare_starter_target(
@@ -741,6 +744,7 @@ def _prepare_starter_target(
             directory,
             str(directory / "policy.yaml"),
             loader,
+            path,
         )
 
     loader = FilePolicyLoader(policy_root)
@@ -758,6 +762,7 @@ def _prepare_starter_target(
         directory,
         str(directory / "policy.yaml"),
         loader,
+        path,
     )
 
 
@@ -780,9 +785,29 @@ def lint_starter_dir(
         prepared = _prepare_starter_target(path, policy_root=policy_root)
     except PolicyLoadError as exc:
         return [_policy_exception_finding(exc, "starter_dir", path)]
+    return _lint_prepared_starter(prepared)
+
+
+def _lint_prepared_starter(
+    prepared: _PreparedStarterTarget,
+) -> list[dict]:
+    """Lint one authorized starter while retaining its host display label."""
 
     findings: list[dict] = []
     p = prepared.directory
+
+    policy_findings = _lint_policy_with_loader(
+        prepared.policy_ref,
+        target_kind="starter_dir",
+        loader=prepared.loader,
+        target_label=prepared.target_label,
+    )
+    findings.extend(policy_findings)
+    if any(
+        finding["code"] == "POLICY_PATH_OUTSIDE_ROOT"
+        for finding in policy_findings
+    ):
+        return findings
 
     required_files = ["policy.yaml", "workflow_example.py", "README.md"]
     for fname in required_files:
@@ -792,7 +817,7 @@ def lint_starter_dir(
                 "WORKFLOW_STARTER_INTEGRITY_ERROR",
                 f"Required file '{fname}' is missing from starter directory.",
                 "starter_dir",
-                str(p),
+                prepared.target_label,
             ))
             continue
         if fpath.stat().st_size == 0:
@@ -800,31 +825,23 @@ def lint_starter_dir(
                 "WORKFLOW_STARTER_INTEGRITY_ERROR",
                 f"Required file '{fname}' is empty.",
                 "starter_dir",
-                str(p),
+                prepared.target_label,
             ))
 
     # Stop here if files are missing — subsequent checks will error
     if any(f["code"] == "WORKFLOW_STARTER_INTEGRITY_ERROR" for f in findings):
         return findings
 
-    # Lint nested policy.yaml
-    policy_findings = _lint_policy_with_loader(
-        prepared.policy_ref,
-        target_kind="starter_dir",
-        loader=prepared.loader,
-    )
-    findings.extend(policy_findings)
-
     # Validate workflow_example.py
     workflow_py = p / "workflow_example.py"
     try:
         source = workflow_py.read_text(encoding="utf-8")
-    except OSError as exc:
+    except OSError:
         findings.append(_finding(
             "WORKFLOW_STARTER_INTEGRITY_ERROR",
-            f"Cannot read workflow_example.py: {exc}",
+            "Cannot read workflow_example.py",
             "starter_dir",
-            str(p),
+            prepared.target_label,
         ))
         return findings
 
@@ -836,7 +853,7 @@ def lint_starter_dir(
             "WORKFLOW_STARTER_INTEGRITY_ERROR",
             f"workflow_example.py has a syntax error: {exc}",
             "starter_dir",
-            str(p),
+            prepared.target_label,
         ))
 
     # Public-import safety check
@@ -846,7 +863,7 @@ def lint_starter_dir(
             "workflow_example.py imports from aegis._internal, which is not "
             "part of the public API. Use public aegis imports only.",
             "starter_dir",
-            str(p),
+            prepared.target_label,
         ))
 
     return findings
@@ -1065,7 +1082,9 @@ def lint_target(
     Returns:
         List of finding dicts (empty = clean).
     """
-    if kind == "auto":
+    if kind == "auto" and Path(path).suffix.lower() in {".yaml", ".yml"}:
+        kind = "policy"
+    elif kind == "auto":
         detection_path = path
         if policy_root is not None:
             try:

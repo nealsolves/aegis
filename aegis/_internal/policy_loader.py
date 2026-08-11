@@ -420,37 +420,6 @@ def _resolve_policy_schema_path() -> Path:
     return LEGACY_POLICY_SCHEMA_PATH
 
 
-def _resolve_policy_path(policy_file: str) -> Path:
-    candidate = Path(policy_file)
-    if not candidate.is_absolute():
-        # Relative paths are resolved against the caller's working directory
-        # so that pip-installed users can pass paths like "policies/my_policy.yaml"
-        # relative to their project root.  See ADR-0005.
-        candidate = (Path.cwd() / candidate).resolve()
-    else:
-        # Absolute paths are accepted as-is.  The caller is responsible for
-        # ensuring the path is intentional (e.g. a consumer project's own
-        # policy directory).  See ADR-0005.
-        candidate = candidate.resolve()
-
-    if candidate.suffix not in {".yaml", ".yml"}:
-        raise PolicyLoadError(
-            "Policy file must be YAML",
-            details={"policy_file": policy_file},
-        )
-    if not candidate.exists():
-        raise PolicyLoadError(
-            "Policy file does not exist",
-            details={"policy_file": policy_file},
-        )
-    if not candidate.is_file():
-        raise PolicyLoadError(
-            "Policy path must reference a file",
-            details={"policy_file": policy_file},
-        )
-    return candidate
-
-
 def _bind_policy_authority(
     policy_file: str,
     loader: PolicyLoaderBase | None,
@@ -1200,75 +1169,6 @@ def _load_opaque_policy(
     )
 
 
-def _resolve_extends(
-    policy: dict[str, Any],
-    policy_path: Path,
-    visited: set[Path] | None = None,
-    *,
-    loader: FilePolicyLoader,
-    context: _FileLoadContext | None = None,
-) -> dict[str, Any]:
-    """
-    Resolve policy inheritance via extends field.
-
-    :param policy: Policy dict that may contain "extends"
-    :param policy_path: Path to current policy file (for relative resolution)
-    :param visited: Set of visited paths (for cycle detection)
-    :return: Merged policy with inheritance applied
-    :raises PolicyLoadError: On circular extends or missing base policy
-    """
-    if visited is None:
-        visited = set()
-
-    visited.add(policy_path)
-
-    extends = policy.get("extends")
-    if not extends:
-        return policy
-
-    effective_context = context or _FileLoadContext.create(
-        policy_path,
-        loader.policy_root,
-    )
-    effective_context.protect(extends)
-
-    parent = loader._prepare(
-        extends,
-        relative_to=policy_path,
-        reject_paths=visited,
-        context=effective_context,
-    )
-    base_policy_dict = _resolve_extends(
-        copy.deepcopy(parent.raw_policy),
-        parent.source_path,
-        visited,
-        loader=loader,
-        context=effective_context,
-    )
-
-    # Get composition strategy from overlay policy
-    strategy = policy.get("composition_strategy")
-    if strategy is not None and strategy not in VALID_COMPOSITION_STRATEGIES:
-        raise PolicyValidationError(
-            f"Invalid composition_strategy: {strategy!r}; "
-            f"expected one of {VALID_COMPOSITION_STRATEGIES}",
-            details={"composition_strategy": strategy},
-        )
-
-    # Merge current policy into base (current overrides base)
-    merged = _merge_policies(base_policy_dict, policy, strategy)
-
-    # Compare both the raw child and compiled merged policy.  The raw check
-    # prevents a merge strategy from hiding an attempted widening.
-    _compile_and_compare_composition(base_policy_dict, policy, merged)
-
-    # Remove extends and composition_strategy from merged policy
-    merged.pop("extends", None)
-    merged.pop("composition_strategy", None)
-
-    return merged
-
-
 # ── Core load_policy ─────────────────────────────────────────────
 
 
@@ -1330,6 +1230,7 @@ def load_policy(
 @dataclass(frozen=True, slots=True)
 class _PreparedCompilationResult:
     prepared: _PreparedFilePolicy | None
+    policy: dict[str, Any]
     compiled: CompiledPolicy
     date_failures: tuple[PolicyValidationError, ...]
 
@@ -1394,6 +1295,7 @@ def _prepare_resolve_compile_policy(
     assert compiled is not None
     return _PreparedCompilationResult(
         prepared=prepared,
+        policy=copy.deepcopy(policy),
         compiled=compiled,
         date_failures=tuple(context.date_failures),
     )
@@ -1473,6 +1375,7 @@ class PolicyCache:
             raise ValueError("max_size must be >= 1")
         self._max_size = max_size
         self._cache: dict[_PolicyCacheKey, dict[str, Any]] = {}
+        self._compiled_cache: dict[_PolicyCacheKey, CompiledPolicy] = {}
         self._access_order: list[_PolicyCacheKey] = []
         self._lock = threading.Lock()
 
@@ -1564,14 +1467,82 @@ class PolicyCache:
 
         return policy
 
+    def get_or_load_compiled(
+        self,
+        policy_file: str,
+        *,
+        loader: PolicyLoaderBase | None = None,
+    ) -> CompiledPolicy:
+        """Load and compile through one normalized, root-bound cache boundary."""
+        bound_ref, effective_loader = _bind_policy_authority(
+            policy_file,
+            loader,
+        )
+        if isinstance(effective_loader, FilePolicyLoader):
+            context = _FileLoadContext.create(
+                policy_file,
+                bound_ref,
+                effective_loader.policy_root,
+            )
+            canonical = effective_loader._preflight(
+                bound_ref,
+                context=context,
+            )
+            metadata_failure: PolicyLoadError | None = None
+            try:
+                mtime = canonical.stat().st_mtime
+            except (OSError, RuntimeError) as exc:
+                normalized = context.normalize(
+                    exc,
+                    fallback="Policy metadata is unavailable",
+                )
+                metadata_failure = (
+                    normalized
+                    if isinstance(normalized, PolicyLoadError)
+                    else PolicyLoadError("Policy metadata is unavailable")
+                )
+                mtime = 0.0
+            if metadata_failure is not None:
+                raise metadata_failure from None
+            key: _PolicyCacheKey = (
+                str(effective_loader.policy_root),
+                str(canonical),
+                mtime,
+            )
+        else:
+            key = (bound_ref, 0.0)
+
+        with self._lock:
+            if key in self._compiled_cache:
+                if key in self._access_order:
+                    self._access_order.remove(key)
+                self._access_order.append(key)
+                return self._compiled_cache[key]
+
+        result = _prepare_resolve_compile_policy(
+            bound_ref,
+            loader=effective_loader,
+        )
+        with self._lock:
+            if key not in self._cache and len(self._cache) >= self._max_size:
+                self._evict_oldest()
+            self._cache[key] = copy.deepcopy(result.policy)
+            self._compiled_cache[key] = result.compiled
+            if key in self._access_order:
+                self._access_order.remove(key)
+            self._access_order.append(key)
+        return result.compiled
+
     def _evict_oldest(self) -> None:
         """Evict the least recently used cache entry. Must hold lock."""
         if self._access_order:
             oldest = self._access_order.pop(0)
             self._cache.pop(oldest, None)
+            self._compiled_cache.pop(oldest, None)
 
     def clear(self) -> None:
         """Clear the cache."""
         with self._lock:
             self._cache.clear()
+            self._compiled_cache.clear()
             self._access_order.clear()

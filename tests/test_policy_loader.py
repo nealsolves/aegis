@@ -1,18 +1,15 @@
 import asyncio
 import json
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from aegis._internal.errors import PolicyLoadError, PolicyValidationError
 from aegis._internal.policy_loader import (
-    FilePolicyLoader,
     load_policy,
     load_policy_async,
     _path_to_pointer,
     _merge_policies,
-    _resolve_extends,
     _resolve_policy_schema_path,
     POLICY_DSL_SCHEMA_PATH,
     LEGACY_POLICY_SCHEMA_PATH,
@@ -100,18 +97,6 @@ def test_merge_policies_key_only_in_overlay():
     assert merged["new_key"] == "new_value"
     assert merged["roles"] == ["verifier"]
     assert merged["policy_version"] == "1.0"
-
-
-def test_resolve_extends_no_extends_returns_policy():
-    """_resolve_extends returns policy unchanged when extends is falsy (line 141)."""
-    policy = {"policy_version": "1.0", "roles": ["planner"], "extends": None}
-    fake_path = Path("tests/golden_replays/golden_policy_v1.yaml").resolve()
-    result = _resolve_extends(
-        policy,
-        fake_path,
-        loader=FilePolicyLoader(fake_path.parent),
-    )
-    assert result is policy
 
 
 def test_load_policy_async_returns_same_as_sync():

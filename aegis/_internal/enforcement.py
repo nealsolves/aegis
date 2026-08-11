@@ -40,7 +40,7 @@ from aegis._internal.evidence_diagnostics import EvidenceDiagnostics
 
 from aegis._internal.policy_loader import (
     _bind_policy_authority,
-    load_policy,
+    _prepare_resolve_compile_policy,
     PolicyCache,
     PolicyLoaderBase,
 )
@@ -48,10 +48,7 @@ from aegis._internal.compiled_policy import (
     CompiledPolicy,
     freeze,
 )
-from aegis._internal.policy_compiler import (
-    compile_policy,
-    resolve_runtime_risk,
-)
+from aegis._internal.policy_compiler import resolve_runtime_risk
 from aegis._internal.audit import build_audit_evidence_body, sanitize_failure_message
 from aegis._internal.guards import evaluate_compiled_guards
 from aegis._internal.tools import validate_tool_constraints
@@ -448,15 +445,11 @@ def _load_compiled_policy(
         loader,
         invocation=invocation,
     )
-    raw = load_policy(
+    return _prepare_resolve_compile_policy(
         authority.bound_policy_ref,
         loader=authority.loader,
-    )
-    return compile_policy(
-        raw,
-        source=authority.requested_policy_ref,
         allow_legacy=False,
-    )
+    ).compiled
 
 
 def _compile_cached_policy(
@@ -472,14 +465,9 @@ def _compile_cached_policy(
         loader,
         invocation=invocation,
     )
-    raw = cache.get_or_load(
+    return cache.get_or_load_compiled(
         authority.bound_policy_ref,
         loader=authority.loader,
-    )
-    return compile_policy(
-        raw,
-        source=authority.requested_policy_ref,
-        allow_legacy=False,
     )
 
 
