@@ -2,7 +2,7 @@
 
 Date: 2026-08-11
 
-Status: Approved design; awaiting review of this written specification
+Status: Revised after end-to-end and adversarial review; awaiting approval
 
 Issue: [#42 — define stateful policy providers before evaluating CEL](https://github.com/nealsolves/aegis/issues/42)
 
@@ -127,7 +127,7 @@ The descriptor is a declared contract, not runtime proof. AEGIS validates and sn
 
 ### Addresses and scope
 
-`StateAddressV1` is an immutable ordered address with these typed dimensions:
+`StateAddressV1` is an immutable ordered address with two parts. Its control identity contains the host state namespace, stable `policy_state_id`, and stable constraint ID. Its scope tuple can contain these typed dimensions:
 
 - invocation;
 - participant;
@@ -136,7 +136,9 @@ The descriptor is a declared contract, not runtime proof. AEGIS validates and sn
 - tool;
 - policy.
 
-Dimension values are nonempty canonical strings with byte limits. Identifiers and host namespaces use a narrower bounded ASCII grammar. No address value is taken from model output or an invocation mapping merely because it has a matching field name.
+Dimension values are nonempty canonical strings with byte limits. Identifiers and host namespaces use a narrower bounded ASCII grammar. Only dimensions selected by the compiled operation's scope shape are present. No address value is taken from model output or an invocation mapping merely because it has a matching field name.
+
+Addresses are not delimiter-joined strings. Their normative encoding is a domain-separated, versioned tuple whose UTF-8 components are individually type-tagged and length-framed. It encodes the control identity first and then all contract-defined scope slots in fixed order, tagging each slot as absent or present. Present empty values are invalid before encoding, dimension names cannot repeat, and caller-provided ordering is irrelevant. Provider implementations may use a native structured key instead of these bytes only when it is injective over the same accepted address model. The conformance suite includes ambiguous-delimiter, Unicode, rejected-empty, reordered-input, absent-dimension, cross-field-shift, and maximum-length collision cases.
 
 The initial DSL primitive constructs this provider key:
 
@@ -154,7 +156,9 @@ Host state namespace, `policy_state_id`, and constraint ID are migration identit
 
 ### Operations
 
-`StateOperationV1` is a closed union of frozen dataclasses. All integers are built-in, non-boolean, nonnegative, bounded values. All operations include an AEGIS-minted operation ID, canonical request fingerprint, address, deadline, and retry horizon.
+`StateOperationV1` is a closed union of frozen dataclasses. All integers are built-in, non-boolean, nonnegative, bounded values. All operations include an AEGIS-minted operation ID, canonical request fingerprint, address, relative `timeout_ms`, and retry horizon. No absolute deadline crosses the AEGIS/provider clock boundary.
+
+The canonical request fingerprint is exactly 64 lowercase hexadecimal characters encoding `SHA-256(b"aegis-state-operation-v1\x00" + canonicalize_v2(projection).data)`. The detached projection excludes the fingerprint field itself and includes the contract version, operation family, operation ID, structured address, operation parameters, `timeout_ms`, and `retry_horizon_ms`. A provider must independently reconstruct the projection, recompute the digest, and constant-time compare it before idempotency lookup or mutation; it may not trust a caller-supplied projection or digest. A mismatch returns `INVALID_REQUEST_NO_EFFECT`.
 
 #### Monotonic increment
 
@@ -172,32 +176,36 @@ Host state namespace, `policy_state_id`, and constraint ID are migration identit
 
 #### TTL replay claim
 
-- Atomically claims an absent replay address through a provider-time TTL.
+- Uses a stable replay-control address plus one bounded claim key below that control.
+- Atomically claims an absent claim key through a provider-time TTL.
 - A duplicate before expiry is denied without replacing or extending the original claim.
 - A claim is expired exactly when `now >= expires_at`.
-- TTL is bounded by the descriptor and uses provider time.
+- TTL is bounded by the descriptor, uses provider time, and is fixed for the stable replay-control address.
+- A different TTL at an already-bound replay-control address returns `INVALID_REQUEST_NO_EFFECT`; changing TTL requires a new control identity plus an explicit drain or warm-up migration.
 
 #### Sliding-window admission
 
 - Uses provider-controlled time for the address's consistency domain.
+- Samples one bounded provider `now` value inside the atomic operation and uses that same value for every expiry, count, decision, and inserted event in the operation.
 - Removes entries whose timestamps satisfy `timestamp <= now - window`.
 - Counts entries in `(now - window, now]`.
 - Atomically admits all requested units only when `current + units <= effective_limit`.
 - Denial does not add window entries.
 - Multi-unit requests are all-or-nothing.
+- A rejection's `retry_after_ms` is the smallest nonnegative integer duration until enough currently live units expire under the sampled clock; it is absent when `requested_units > effective_limit`.
 - An admission is not rolled back after later execution or evidence failure.
 
 ### Constraint binding and mixed versions
 
-On first use, the provider atomically binds an address to:
+On first use, the provider atomically binds an address, or the stable control-address portion of a replay claim, for the active namespace's lifetime within its declared durability domain to:
 
 - operation family;
 - scope shape;
 - counted unit;
 - fixed window or TTL semantics where applicable;
-- strictest observed limit.
+- strictest observed limit where applicable.
 
-Later operations must match the bound family, shape, unit, and fixed window. A family or configuration conflict returns `INVALID_REQUEST_NO_EFFECT`.
+All fingerprint, structural, numeric, and descriptor-bound validation occurs before an operation may create a binding. Later valid operations must match the bound family, shape, unit, and fixed window or TTL. A family or configuration conflict returns `INVALID_REQUEST_NO_EFFECT`. Normal garbage collection never removes this control binding or its strictest observed limit; only an explicitly authorized namespace retirement or provider reset may do so. This rule prevents an idle period from allowing an older process to recreate the address with a wider limit or incompatible TTL.
 
 For quota and sliding-window operations, the provider atomically computes:
 
@@ -209,35 +217,50 @@ An older process sending a former higher limit therefore cannot relax a newer lo
 
 ### Result model
 
-`StateOperationResultV1` is a closed union:
+`StateOperationResultV1` is a closed union of operation-specific frozen result types under these common effect classes:
 
-- `DECIDED_ADMITTED`;
-- `DECIDED_DENIED`;
+- `APPLIED`;
+- `REJECTED_NO_CONSUMPTION`;
 - `UNAVAILABLE_NO_EFFECT`;
 - `INDETERMINATE_MAY_HAVE_COMMITTED`;
 - `INVALID_REQUEST_NO_EFFECT`.
 
-AEGIS authorizes only from an exact, validated `DECIDED_ADMITTED` result for the current operation and fingerprint. Result validation covers contract version, operation family, operation ID, request fingerprint, typed decision, provider clock observation, consistency metadata, numeric bounds, and optional fixed-format provider record digest.
+Applied and rejected payloads are specific to the operation family:
+
+- monotonic increment returns `CounterApplied(value, state_version)`;
+- quota consumption returns `QuotaApplied(used, remaining, state_version)` or `QuotaRejected(used, effective_limit, state_version)`;
+- TTL replay claim returns `ReplayClaimed(expires_at, state_version)` or `ReplayDuplicate(expires_at, state_version)`;
+- sliding-window admission returns `WindowApplied(used, remaining, state_version)` or `WindowRejected(used, effective_limit, retry_after_ms, state_version)`, where `retry_after_ms` is absent when the requested units can never fit under the effective limit.
+
+Every result carries the exact contract version, operation family, operation ID, request fingerprint, effect class, and the descriptor-claim snapshot needed for validation. A bounded provider state version and provider-time observation are present only when the result's exact type requires them. `REJECTED_NO_CONSUMPTION` means no requested units, event, or replay claim were added; first-use configuration binding or monotonic limit tightening may still have occurred and is reported by a bounded `control_state_changed` boolean. Maintenance removal of records that were already expired may also occur and is not consumption. The exact common failure types are `StateUnavailableNoEffect`, `StateIndeterminateMayHaveCommitted`, and `StateInvalidRequestNoEffect`; they use closed reason enums and no provider-defined strings. An operation family cannot return another family's payload. Counter increment has no ordinary rejected result: invalid input or overflow returns `StateInvalidRequestNoEffect`, capacity or a known pre-mutation outage returns `StateUnavailableNoEffect`, and an uncertain commit returns `StateIndeterminateMayHaveCommitted`.
+
+AEGIS authorizes a stateful tool call only from an exact, validated `WindowApplied` result for the current operation and fingerprint. Result validation covers contract version, operation family, operation ID, independently recomputed request fingerprint, exact payload type, typed effect, provider clock observation when applicable, consistency metadata, numeric bounds, and optional fixed-format provider record digest.
 
 An explicit stale marker can never authorize. A cached result is acceptable only for an exact idempotent replay of the same operation.
 
-Once provider execution begins, any raised exception, cancellation, or unvalidated return value maps to `INDETERMINATE_MAY_HAVE_COMMITTED`. AEGIS does not call arbitrary `str()` or `repr()` on provider exceptions or results. `UNAVAILABLE_NO_EFFECT` is valid only as a successfully returned typed result whose provider contract guarantees that no mutation occurred.
+Once provider execution begins, any raised exception, cancellation, late result, or unvalidated return value enters `INDETERMINATE_MAY_HAVE_COMMITTED` reconciliation; only an exact validated terminal result for the same operation can subsequently resolve it. AEGIS does not call arbitrary `str()` or `repr()` on provider exceptions or results. `UNAVAILABLE_NO_EFFECT` is valid only as a successfully returned typed result whose provider contract guarantees that no mutation occurred.
 
 ## Clock and time semantics
 
 Provider time is authoritative for enforcement and is not trusted audit time. It does not prove real-world chronology, recency, or a legal timestamp.
 
-The provider must use a clock appropriate to its declared consistency domain. It must prevent time from moving backward for an active address and detect clock uncertainty or discontinuity that could prematurely expire state. Detected rollback or unsafe discontinuity fails closed without using the uncertain time to admit work.
+All contract durations and provider-time observations are bounded integer milliseconds. The provider must use a clock appropriate to its declared consistency domain. It must prevent time from moving backward for an active address and detect clock uncertainty or discontinuity that could prematurely expire state. Detected rollback or unsafe discontinuity fails closed without using the uncertain time to admit work.
 
 The in-memory provider uses an injected monotonic clock for tests and a monotonic runtime clock by default. A future distributed provider is responsible for a server-side or otherwise coordinated clock source and must document its guarantees and failure modes.
+
+The operation's `timeout_ms`, sourced from the compiled constraint's `provider_timeout_ms`, is a relative budget, not a timestamp. The provider measures it from operation receipt using the provider's own monotonic duration source. AEGIS separately measures the call from immediately before dispatch using its local monotonic clock. Before mutation, an exhausted provider budget returns `UNAVAILABLE_NO_EFFECT`; after mutation begins, the provider must return the exact decided result or `INDETERMINATE_MAY_HAVE_COMMITTED`, never a claimed no-effect timeout.
+
+Async AEGIS enforcement applies its local timeout to the await. Cancellation or timeout after dispatch is indeterminate because the provider may still commit. Sync AEGIS enforcement cannot safely preempt an arbitrary provider call; sync liveness is therefore a declared provider obligation tested by conformance. If a sync provider returns after the local budget, AEGIS discards that return and enters bounded reconciliation; the final outcome is indeterminate if reconciliation does not obtain the exact stored result. A provider that never returns can block the calling thread, so hosts that require enforceable wall-clock cancellation must use the async protocol or isolate their provider outside the core contract.
 
 ## Idempotency and retry semantics
 
 AEGIS mints high-entropy operation IDs internally from authenticated attempt state and the compiled constraint identity. Caller tool-call IDs, invocation fields, model output, and tenant keys are not replay authority.
 
-The same operation ID and canonical request fingerprint returns the original result without applying the operation again. Reuse of an operation ID with a different fingerprint returns `INVALID_REQUEST_NO_EFFECT`.
+The first valid use of an operation ID binds it to its canonical request fingerprint. An exact duplicate returns the stored terminal result without applying the operation again; a different fingerprint returns `INVALID_REQUEST_NO_EFFECT`. Concurrent exact duplicates must converge on one mutation and one terminal result rather than both executing. Fingerprint failures do not reserve an operation ID. Typed pre-mutation unavailability is retryable and does not become a terminal result. The idempotency lookup or reservation, configuration binding, state mutation or denial, and storage of the replayable terminal result occur in one atomic provider transaction for the address.
 
-Provider descriptors declare a minimum idempotency-retention horizon. AEGIS verifies that it covers the complete configured timeout and internal retry horizon before the first mutation and never retries after that horizon. Providers retain decided and reconciliation records through the horizon. Sliding-window events and TTL claims have their own longer semantic retention where required.
+`timeout_ms` is the budget for one provider dispatch. `retry_horizon_ms` is a larger bounded total operation budget, fixed by trusted AEGIS configuration rather than invocation or model data, and measured by AEGIS from immediately before the first dispatch. A provider measures retention from first receipt and retains the operation record through at least `first_receipt + retry_horizon_ms + timeout_ms`; its descriptor must declare a minimum that covers this requested interval. AEGIS verifies that bound before the first mutation and never starts a retry at or after its local retry-horizon cutoff. The documented worst-case provider latency is the retry horizon, not one dispatch timeout. Sliding-window events and TTL claims have their own longer semantic retention where required.
+
+AEGIS does not retry applied, rejected, invalid-request, stale, malformed, or wrong-family results. It may retry a typed `UNAVAILABLE_NO_EFFECT` and may perform bounded reconciliation after an exception or local timeout, always with the identical operation ID and fingerprint. Only an exact validated terminal result obtained by a dispatch completed within its own timeout resolves reconciliation and, for `WindowApplied`, can authorize. A direct return that exceeded its dispatch timeout remains unusable even if its shape is valid. Exhausting the retry horizon returns `INDETERMINATE_MAY_HAVE_COMMITTED`. Caller cancellation returns indeterminate without detached background retries.
 
 An AEGIS-internal retry reuses the same operation identity. A later independent enforcement attempt receives a new operation identity and may conservatively consume another unit if an earlier attempt had an indeterminate commit.
 
@@ -245,7 +268,7 @@ An AEGIS-internal retry reuses the same operation identity. A later independent 
 
 Version 1 supports only `on_provider_failure: deny`. There is no stale-read allow, cached allow from a different operation, or process-local fallback.
 
-The in-memory provider has configured hard bounds for addresses, live entries, replay records, units, and input sizes. It rejects an over-capacity operation without mutation. It never evicts live state or idempotency records merely to free space. Garbage collection removes a record only after both its enforcement semantics and idempotency horizon have expired.
+The in-memory provider has configured hard bounds for control bindings, addresses, live entries, replay records, units, and input sizes. It rejects an over-capacity operation without mutation. It never evicts live state or idempotency records merely to free space. Garbage collection may remove window events, expired replay claims, and operation-id records only after both their enforcement semantics and idempotency horizon have expired. It does not remove control bindings or stored strictest limits; reclaiming those requires an explicit reset of an isolated namespace and is never an enforcement side effect.
 
 Capacity, timeout, malformed result, unknown version, stale result, clock uncertainty, and indeterminate commit produce separate stable reason codes and audit outcomes.
 
@@ -275,6 +298,8 @@ The compiler produces immutable `CompiledStatefulPolicy` and `CompiledSlidingWin
 
 `stateful` is registered in the closed security-sensitive schema and restriction registry. A child policy cannot remove an inherited stateful section or constraint.
 
+Version 1 prohibits `stateful` inside guard effects. Stateful constraints may be declared by a root policy and narrowed through compile-time policy composition only. The compiler rejects a guard `then` object containing `stateful`, and `CompiledPolicyOverlay` has no stateful field. This prevents a transient runtime condition from permanently lowering a provider's stored strictest limit after the guard stops matching.
+
 For an inherited constraint, a child may only:
 
 - preserve the host-independent policy and constraint state IDs;
@@ -294,6 +319,7 @@ Public types are exported through `aegis.stateful` and the stable top-level faca
 - provider protocols and descriptor;
 - state address and trusted scope values;
 - operation and result types;
+- normative address-encoding and operation-fingerprint helpers plus fixed test vectors;
 - in-memory provider;
 - conformance fixture/report types;
 - typed provider, scope, protocol, availability, indeterminate, and limit errors.
@@ -316,16 +342,24 @@ handle = governance.enforce_pre_call(
 
 `AEGIS.open_session(..., state_scope=scope)` stores a detached trusted scope for the session. Existing policies without `stateful` require neither a provider nor a scope.
 
-Stateful policies used without the required provider, execution mode, descriptor capability, namespace, or scope fail before mutation. Invocation keys resembling state scope are ignored as authority. Decorator and module-level compatibility surfaces may not bypass stateful constraints; an unsupported binding fails with a stable reason code. Version 1 does not add a general scope-resolver callback.
+Version 1 supports stateful policies only through:
+
+- `AEGIS.enforce_pre_call(..., state_scope=...)` with a sync provider;
+- `AEGIS.enforce_pre_call_async(..., state_scope=...)` with an async provider;
+- `AEGIS.open_session(..., state_scope=...)` with a sync provider, including the session's static and adapter-mediated dynamic tool calls.
+
+Version 1 rejects stateful policies on unified `AEGIS.enforce`/`enforce_async`, module-level enforcement, and `@governed` surfaces. Module-level and split-decorator paths have no trusted provider/scope binding. A split decorator encounters the rejection during Phase A before the wrapped function runs. A deprecated unified decorator must preflight and reject a stateful policy before calling the wrapped sync or async function; it may not rely on the existing post-execution unified check. Direct callers of a unified API receive `STATEFUL_PRECALL_REQUIRED`, with documentation stating that a unified call cannot retroactively provide pre-action enforcement.
+
+Stateful policies used without the required provider, execution mode, descriptor capability, namespace, or scope fail before provider mutation. Invocation keys resembling state scope are ignored as authority. Version 1 does not extend `configure_module_enforcement` and does not add a decorator or general scope-resolver callback.
 
 ## Enforcement flow
 
 For each invocation, AEGIS performs these steps:
 
 1. Load and compile the complete policy once.
-2. Prove all composition and guard effects are non-widening.
+2. Prove compile-time composition is non-widening and reject stateful guard effects.
 3. Allocate authenticated attempt identity and sanitize the trusted state scope.
-4. Complete stateless Phase-A role, precondition, guard, tool, gate, and risk checks.
+4. Complete stateless Phase-A role, precondition, guard, tool, and pre/post-authorization custom-gate checks.
 5. Resolve applicable stateful tool constraints from the effective compiled policy.
 6. Aggregate repeated calls to the same constrained tool into one bounded unit request.
 7. Preflight provider capabilities, evidence capacity, descriptor limits, and retry horizon before the first provider call.
@@ -334,11 +368,13 @@ For each invocation, AEGIS performs these steps:
 10. Mint the existing process-affine operation handle.
 11. Carry detached state decision evidence into the ordinary evidence draft and finalizer.
 
-Dynamic adapter tool calls use the same internal admission seam immediately before each intercepted tool call, after adapter surface filtering.
+Direct split pre-call enforcement and static session steps aggregate declared repeated calls to the same constrained tool into one atomic unit request. An adapter-mediated step is marked as dynamic dispatch and defers state admission: it does not charge merely exposed or proposed tools during the enclosing step, then uses the same internal admission seam for each actual intercepted tool call immediately before dispatch and after adapter surface filtering. A tool call is charged by exactly one of these paths.
 
 Different tools are separate provider operations. If an earlier tool is admitted and a later tool denies or becomes indeterminate, the overall invocation fails and earlier admissions remain consumed. This is explicit conservative attempt accounting. Cross-key rollback and distributed transactions are out of scope.
 
 An admission also remains consumed if handle minting, Phase B, tool execution, evidence finalization, or sink emission later fails. Rollback would enable replay-based capacity recovery and is prohibited.
+
+Risk scoring remains in the existing Phase-B pipeline after output validation. A Phase-B risk denial therefore leaves any Phase-A state admission consumed and records that conservative outcome in the FAIL artifact.
 
 The state provider never receives or returns an operation handle. Existing issuer-instance and process-affinity rules remain unchanged.
 
@@ -372,11 +408,14 @@ Each decision record contains only:
 
 - state decision evidence version;
 - provider contract version and safe provider identifier;
+- provider-declared consistency and durability domain enums;
+- provider-declared clock source class;
 - stable policy and constraint identifiers;
 - policy digest and tool name;
 - scope dimension names, not values;
 - requested units, configured limit, and window;
 - typed outcome and stable reason code;
+- bounded attempt count, reconciliation status, and `control_state_changed` when applicable;
 - bounded provider clock observation and informational remaining capacity;
 - optional fixed-format provider record digest;
 - a one-way AEGIS operation fingerprint.
@@ -387,7 +426,7 @@ Provider exception text, tenant values, host namespaces, operation IDs, idempote
 
 The compiler and enforcement preflight bound the number and size of prospective state decision records before any provider mutation. PASS and FAIL artifacts both carry applicable decisions. Workflow evidence binds the invocation checksum instead of duplicating provider details.
 
-The existing finalizer makes the state metadata checksum- and signature-covered. This proves what AEGIS recorded; it does not prove the provider's actual state or deployment behavior.
+Consistency, durability, and clock fields are explicitly labeled provider claims. The existing finalizer makes the state metadata checksum- and signature-covered. This proves what AEGIS recorded; it does not prove the provider's actual state or deployment behavior.
 
 ## In-memory reference provider
 
@@ -409,16 +448,17 @@ The dependency-free public conformance runner accepts a test-only fixture that c
 
 It returns a typed report with passed, failed, and not-applicable scenarios plus fixture limitations. A mandatory scenario for a declared capability cannot be skipped while retaining an overall conformant result.
 
+The normative provider suite contains only behavior observable through a correct provider and its fixture. A fixture may optionally expose a test-only fault controller for provider-specific outage or reconciliation testing, but fault injection is not part of the production provider protocol. Commit-then-timeout, commit-then-exception, malicious stale results, malformed objects, and unknown result variants are mandatory hostile-provider AEGIS integration tests rather than mandatory conformance scenarios that an ordinary backend fixture cannot induce.
+
 Normative scenarios cover:
 
 - monotonic increment, overflow, and invalid units;
 - quota boundaries and monotonic limit tightening;
-- TTL claim creation, duplicate claims, and exact expiry;
+- TTL claim creation, duplicate claims, exact expiry, and incompatible-TTL rejection;
 - sliding-window admission and exact lower-bound expiry;
 - atomic multi-unit operations;
 - duplicate requests and conflicting operation-ID reuse;
-- timeout or exception after commit;
-- stale, malformed, and unknown-version results;
+- incompatible operation versions and request fingerprints are rejected without effect;
 - clock rollback and discontinuity;
 - isolation for every scope dimension;
 - concurrent clients and lost-update prevention;
@@ -437,6 +477,7 @@ The in-memory provider must pass every scenario applicable to its declared capab
 - unknown versions, fields, scopes, failure modes, and numeric types fail;
 - booleans and coercible strings are rejected as numeric limits;
 - duplicate IDs, duplicate tool constraints, oversized values, and invalid identifiers fail;
+- stateful declarations inside guard effects fail;
 - schema copies and security-sensitive registry remain synchronized;
 - stateful constraints never grant tool authority.
 
@@ -446,14 +487,20 @@ The in-memory provider must pass every scenario applicable to its declared capab
 - raising the limit, changing window, tool, scope, IDs, or failure behavior fails;
 - lengthening provider timeout fails;
 - lowering the limit and shortening the timeout pass;
-- guards and merged effective policies receive the same checks.
+- guard effects containing `stateful` are rejected;
+- root and merged compile-time policies receive the same restriction checks.
 
 ### Provider tests
 
 - the reference provider passes its conformance report;
 - barriers prove concurrent atomic admission without timing assumptions;
 - injected clocks prove exact TTL and window boundaries;
+- address and operation encodings are injective across the adversarial collision corpus;
+- fixed public encoding and fingerprint vectors match the implementation;
+- providers independently reject a forged or mismatched request fingerprint;
+- operation families accept only their exact applied or rejected payload types;
 - hostile providers exercise stale allows, malformed objects, exception bombs, delayed commit, descriptor mutation, and oversized fields;
+- wrappers exercise commit-then-timeout and commit-then-exception reconciliation against AEGIS;
 - provider-controlled objects whose `str()` or `repr()` raises or exposes secrets do not escape.
 
 ### Enforcement tests
@@ -461,10 +508,13 @@ The in-memory provider must pass every scenario applicable to its declared capab
 - stateless denial occurs before provider mutation;
 - missing provider or trusted scope fails before mutation;
 - invocation data cannot override tenant scope;
+- supported instance pre-call and session surfaces enforce stateful policies;
+- unified, module-level, and decorator surfaces reject stateful policies before user code where AEGIS controls execution;
 - static and dynamic tool calls use the shared admission seam;
 - repeated tool calls aggregate atomically;
 - multiple tools have deterministic conservative partial-consumption behavior;
 - internal retries reuse operation identity;
+- relative sync and async dispatch timeouts reject late direct returns, permit only exact bounded reconciliation, and become indeterminate when unresolved;
 - state outcomes cannot mint transferable handles;
 - Phase B and evidence failures do not roll back admission;
 - existing stateless policies and sessions remain behaviorally compatible.
@@ -473,6 +523,7 @@ The in-memory provider must pass every scenario applicable to its declared capab
 
 - caller metadata cannot inject the reserved field;
 - PASS and FAIL artifacts contain bounded state decisions;
+- artifacts record provider-declared consistency, durability, and clock-source enums as claims;
 - tenant keys, namespaces, replay keys, raw provider objects, and exception text are absent;
 - old audit-schema 2.0 validators accept new artifacts;
 - new validators accept artifacts without state metadata;
@@ -538,12 +589,17 @@ Provider state is never automatically deleted during rollback. Reusing the same 
 
 - The initial primitive is a tenant-scoped sliding-window tool-call limit.
 - The provider API is a typed governance-operation executor, not generic storage.
+- Each operation family has exact applied/rejected result payload types under a closed common effect model.
 - Scope is supplied outside invocation data.
+- Provider addresses and request fingerprints use collision-resistant domain-separated canonical encodings that providers independently verify.
 - Policy and constraint state IDs are stable migration identities.
 - Window duration is fixed for an existing constraint ID.
+- Replay TTL is fixed for an existing replay-control ID.
 - Limits tighten monotonically at the provider across mixed versions.
+- Timeout budgets are relative; async AEGIS can cancel locally while sync liveness remains provider-owned.
 - Version 1 fails closed on every provider failure and has no local fallback.
 - Partial admissions remain consumed.
+- Stateful guard effects, unified enforcement, module-level enforcement, and decorators are unsupported in version 1.
 - In-memory consistency is instance-local and non-durable.
 - State evidence extends audit metadata without changing audit schema version `2.0`.
 - Arbitrary provider evidence strings are not recorded.
