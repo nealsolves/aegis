@@ -260,6 +260,12 @@ def _reset_module_enforcement_for_test() -> None:
     _MODULE_OPERATION_REGISTRY = OperationRegistry()
 
 
+def _module_policy_loader_for_retry() -> PolicyLoaderBase | None:
+    """Return the loader from the sealed module enforcement snapshot."""
+    _, _, _, policy_loader = _MODULE_RUNTIME.begin()
+    return policy_loader
+
+
 def _attempt_invocation(
     function_name: str,
     args: tuple[Any, ...],

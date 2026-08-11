@@ -25,6 +25,7 @@ from aegis._internal.policy_loader import (
     load_policy,
 )
 from aegis._internal.sinks import CallbackAuditSink
+from aegis._internal.retry import RetryExhaustedError, with_retry
 from aegis._internal.workflow_doctor import diagnose_workflow_policy
 from aegis._internal.workflow_lint import lint_policy, lint_starter_dir
 
@@ -668,3 +669,119 @@ def test_module_split_and_unified_surfaces_use_configured_root(
         assert enforce_pre_call(invocation) is not None
     else:
         assert enforce_invocation(invocation) is not None
+
+
+RETRY_POLICY_WITH_OUTPUT_SCHEMA = """\
+policy_version: '1.0'
+roles: [reviewer]
+output_schema:
+  type: object
+  required: [result]
+  properties:
+    result: {type: string}
+retry_policy:
+  max_retries: 2
+  backoff_ms: 0
+"""
+
+
+def _valid_retry_invocation(
+    policy_file: str,
+    *,
+    valid_output: bool,
+) -> dict[str, object]:
+    return {
+        "model_provider": "test",
+        "model_identifier": "test-model",
+        "role": "reviewer",
+        "policy_file": policy_file,
+        "input": {"task": "review"},
+        "output": {"result": "done"} if valid_output else {},
+        "context": {},
+    }
+
+
+def test_custom_retry_callable_requires_attested_loader(
+    tmp_path: Path,
+) -> None:
+    entry = _write_policy(tmp_path / "entry.yaml", RETRY_POLICY_WITH_OUTPUT_SCHEMA)
+    invocation = _valid_retry_invocation(str(entry), valid_output=True)
+
+    def custom_enforce(value: object) -> dict[str, object]:
+        return {"enforcement_result": "PASS"}
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "^policy_loader is required when enforcement authority "
+            "cannot be inferred$"
+        ),
+    ):
+        with_retry(invocation, enforcement_fn=custom_enforce)
+
+
+def test_retry_rejects_loader_conflict_before_policy_access(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "root"
+    entry = _write_policy(root / "entry.yaml", RETRY_POLICY_WITH_OUTPUT_SCHEMA)
+    invocation = _valid_retry_invocation(entry.name, valid_output=True)
+    engine_loader = FilePolicyLoader(root)
+    other_loader = FilePolicyLoader(root)
+    engine = AEGIS(
+        sink=CallbackAuditSink(lambda artifact: None),
+        policy_loader=engine_loader,
+    )
+    monkeypatch.setattr(
+        other_loader,
+        "load",
+        lambda ref: pytest.fail("policy accessed"),
+    )
+    with pytest.raises(
+        ValueError,
+        match="^policy_loader does not match enforcement authority$",
+    ):
+        with_retry(
+            invocation,
+            enforcement_fn=engine.enforce,
+            policy_loader=other_loader,
+        )
+
+
+@pytest.mark.parametrize("surface", ["module", "aegis"])
+@pytest.mark.parametrize("exhaust", [False, True])
+def test_retry_implicit_authority_is_cleared(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    surface: str,
+    exhaust: bool,
+) -> None:
+    entry = _write_policy(tmp_path / "entry.yaml", RETRY_POLICY_WITH_OUTPUT_SCHEMA)
+    invocation = _valid_retry_invocation(str(entry), valid_output=not exhaust)
+    seen: list[int] = []
+    original_prepare = FilePolicyLoader._prepare
+
+    def recording_prepare(
+        self: FilePolicyLoader,
+        *args: object,
+        **kwargs: object,
+    ):
+        seen.append(id(self))
+        return original_prepare(self, *args, **kwargs)
+
+    monkeypatch.setattr(FilePolicyLoader, "_prepare", recording_prepare)
+    enforcement_fn = enforce_invocation
+    if surface == "aegis":
+        engine = AEGIS(sink=CallbackAuditSink(lambda artifact: None))
+        enforcement_fn = engine.enforce
+    if exhaust:
+        with pytest.raises(RetryExhaustedError) as caught:
+            with_retry(invocation, enforcement_fn=enforcement_fn)
+        assert caught.value.details["attempts"] == 3
+    else:
+        result = with_retry(invocation, enforcement_fn=enforcement_fn)
+        assert result["enforcement_result"] == "PASS"
+    assert seen
+    assert len(set(seen)) == 1
+    assert enforcement_module._POLICY_AUTHORITY_OVERRIDE.get() is None

@@ -1,4 +1,5 @@
 import aegis
+import inspect
 from aegis import __version__, AEGIS, AIGC
 from aegis.enforcement import enforce_invocation
 from aegis.errors import (
@@ -45,6 +46,14 @@ def test_public_api_imports():
     assert callable(enforce_invocation)
     assert __version__ == "0.9.0b1"
     assert InvocationValidationError.__name__ == "InvocationValidationError"
+
+
+def test_with_retry_exposes_attested_policy_loader() -> None:
+    from aegis.retry import with_retry
+
+    signature = inspect.signature(with_retry)
+    assert "policy_loader" in signature.parameters
+    assert signature.parameters["policy_loader"].default is None
 
 
 def test_aegis_class_exported():

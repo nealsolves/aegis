@@ -268,6 +268,7 @@ _DIAGNOSTIC_HELPER_ALLOWLIST = {
     ("workflow_lint", "lint_policy"),
     ("cli", "_lint_policy"),
     ("cli", "_validate_policy"),
+    ("retry", "with_retry"),
 }
 _BANNED_SNAPSHOT_FIELDS = {
     "raw",
