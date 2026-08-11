@@ -21,18 +21,23 @@ An empty list means the target is clean.
 from __future__ import annotations
 
 import ast
+import copy
 import json
 import re
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import yaml
 from jsonschema import Draft7Validator
 
+from aegis._internal.compiled_policy import CompiledPolicy
 from aegis._internal.policy_loader import (
+    FilePolicyLoader,
     SCHEMAS_DIR,
-    load_resolve_compile_policy,
+    _FileLoadContext,
+    _PreparedFilePolicy,
+    _prepare_resolve_compile_policy,
 )
 from aegis._internal.errors import PolicyLoadError, PolicyValidationError
 
@@ -504,88 +509,31 @@ def detect_target_kind(path: str) -> str:
 # Policy lint
 # ---------------------------------------------------------------------------
 
-def lint_policy(path: str, *, target_kind: str = "policy") -> list[dict]:
-    """
-    Lint a policy YAML file.
-
-    Checks performed:
-    1. File readability
-    2. YAML parse
-    3. Root must be a mapping
-    4. JSON-schema validation against policy_dsl.schema.json
-    5. Date consistency: effective_date <= expiration_date
-    6. Duplicate entries in tools.allowed_tools
-    7. output_schema must itself be a valid Draft 7 JSON schema
-    """
+def _lint_prepared_policy(
+    prepared: _PreparedFilePolicy,
+    compiled: CompiledPolicy,
+    *,
+    target_kind: str,
+    target_label: str,
+) -> list[dict]:
+    """Run mapping-only diagnostics on one authorized prepared source."""
     findings: list[dict] = []
-    p = Path(path)
+    p = Path(target_label)
+    policy = copy.deepcopy(prepared.raw_policy)
 
-    # 1. Readability
-    try:
-        raw = p.read_text(encoding="utf-8")
-    except OSError as exc:
-        findings.append(_finding(
-            "POLICY_LOAD_ERROR",
-            f"Cannot read policy file: {exc}",
-            target_kind,
-            str(p),
-        ))
-        return findings
-
-    # 2. YAML parse
-    try:
-        policy = yaml.safe_load(raw)
-    except yaml.YAMLError as exc:
-        findings.append(_finding(
-            "POLICY_LOAD_ERROR",
-            f"YAML parse error: {exc}",
-            target_kind,
-            str(p),
-        ))
-        return findings
-
-    # 3. Root type
-    if not isinstance(policy, dict):
-        findings.append(_finding(
-            "POLICY_LOAD_ERROR",
-            "Policy file must be a YAML mapping (dict), got "
-            f"{type(policy).__name__}.",
-            target_kind,
-            str(p),
-        ))
-        return findings
-
-    # 4. The loader/compiler boundary owns source-aware inheritance and returns
-    # only typed compiled output. Standalone parsed input retains the existing
-    # compiler-first diagnostic normalization.
-    try:
-        compiled = load_resolve_compile_policy(
-            str(p),
-            allow_legacy=False,
-        )
-    except (PolicyLoadError, PolicyValidationError) as exc:
-        details = (
-            dict(exc.details)
-            if isinstance(exc.details, dict)
-            else {}
-        )
-        findings.append(_finding(
-            exc.code,
-            str(exc),
-            target_kind,
-            str(p),
-            details=details,
-        ))
-        return findings
-
-    # 6. Date consistency
+    # Date consistency is static. Runtime activation/expiration belongs to
+    # workflow doctor, which injects its evaluation date.
     eff = policy.get("effective_date")
     exp = policy.get("expiration_date")
-    if "extends" not in policy and eff and exp and eff > exp:
+    if (
+        "extends" not in policy
+        and isinstance(eff, str)
+        and isinstance(exp, str)
+        and eff > exp
+    ):
         findings.append(_finding(
             "POLICY_LOAD_ERROR",
-            f"effective_date ({eff}) is after expiration_date ({exp}); "
-            "policy can never be valid.",
+            "effective_date is after expiration_date; policy can never be valid.",
             target_kind,
             str(p),
         ))
@@ -693,6 +641,63 @@ def lint_policy(path: str, *, target_kind: str = "policy") -> list[dict]:
     return findings
 
 
+def _policy_exception_finding(
+    exc: PolicyLoadError | PolicyValidationError,
+    target_kind: str,
+    target_label: str,
+) -> dict:
+    details = dict(exc.details) if isinstance(exc.details, dict) else {}
+    return _finding(
+        exc.code,
+        str(exc),
+        target_kind,
+        target_label,
+        details=details,
+    )
+
+
+def lint_policy(
+    path: str,
+    *,
+    target_kind: str = "policy",
+    policy_root: str | Path | None = None,
+) -> list[dict]:
+    """Lint a policy through one root-bound prepared-source boundary."""
+    try:
+        loader = (
+            FilePolicyLoader(policy_root)
+            if policy_root is not None
+            else None
+        )
+    except PolicyLoadError as exc:
+        return [_policy_exception_finding(exc, target_kind, path)]
+    return _lint_policy_with_loader(path, target_kind=target_kind, loader=loader)
+
+
+def _lint_policy_with_loader(
+    path: str,
+    *,
+    target_kind: str,
+    loader: FilePolicyLoader | None,
+) -> list[dict]:
+    try:
+        result = _prepare_resolve_compile_policy(
+            path,
+            loader=loader,
+            capture_date_failures=True,
+        )
+    except (PolicyLoadError, PolicyValidationError) as exc:
+        return [_policy_exception_finding(exc, target_kind, path)]
+    if result.prepared is None:
+        raise AssertionError("file diagnostics require a prepared source")
+    return _lint_prepared_policy(
+        result.prepared,
+        result.compiled,
+        target_kind=target_kind,
+        target_label=path,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Starter directory lint
 # ---------------------------------------------------------------------------
@@ -702,7 +707,65 @@ _INTERNAL_IMPORT_RE = re.compile(
 )
 
 
-def lint_starter_dir(path: str) -> list[dict]:
+@dataclass(frozen=True, slots=True)
+class _PreparedStarterTarget:
+    directory: Path
+    policy_ref: str
+    loader: FilePolicyLoader
+
+
+def _prepare_starter_target(
+    path: str,
+    *,
+    policy_root: str | Path | None,
+) -> _PreparedStarterTarget:
+    failure: PolicyLoadError | None = None
+    if policy_root is None:
+        lexical = Path(path)
+        if not lexical.is_absolute():
+            lexical = Path.cwd() / lexical
+        try:
+            directory = lexical.resolve(strict=False)
+            available = directory.is_dir()
+        except (OSError, RuntimeError):
+            directory = lexical
+            available = False
+        if not available:
+            failure = PolicyLoadError(
+                "Workflow starter directory is unavailable"
+            )
+        if failure is not None:
+            raise failure from None
+        loader = FilePolicyLoader(directory)
+        return _PreparedStarterTarget(
+            directory,
+            str(directory / "policy.yaml"),
+            loader,
+        )
+
+    loader = FilePolicyLoader(policy_root)
+    context = _FileLoadContext.create(path, loader.policy_root)
+    directory = loader._canonical_candidate(path, context=context)
+    try:
+        available = directory.is_dir()
+    except (OSError, RuntimeError):
+        available = False
+    if not available:
+        failure = PolicyLoadError("Workflow starter directory is unavailable")
+    if failure is not None:
+        raise failure from None
+    return _PreparedStarterTarget(
+        directory,
+        str(directory / "policy.yaml"),
+        loader,
+    )
+
+
+def lint_starter_dir(
+    path: str,
+    *,
+    policy_root: str | Path | None = None,
+) -> list[dict]:
     """
     Lint a starter directory generated by ``aegis workflow init``.
 
@@ -713,8 +776,13 @@ def lint_starter_dir(path: str) -> list[dict]:
     - workflow_example.py parses as valid Python (AST)
     - workflow_example.py does not import aegis._internal
     """
+    try:
+        prepared = _prepare_starter_target(path, policy_root=policy_root)
+    except PolicyLoadError as exc:
+        return [_policy_exception_finding(exc, "starter_dir", path)]
+
     findings: list[dict] = []
-    p = Path(path)
+    p = prepared.directory
 
     required_files = ["policy.yaml", "workflow_example.py", "README.md"]
     for fname in required_files:
@@ -740,8 +808,11 @@ def lint_starter_dir(path: str) -> list[dict]:
         return findings
 
     # Lint nested policy.yaml
-    nested_policy = str(p / "policy.yaml")
-    policy_findings = lint_policy(nested_policy, target_kind="starter_dir")
+    policy_findings = _lint_policy_with_loader(
+        prepared.policy_ref,
+        target_kind="starter_dir",
+        loader=prepared.loader,
+    )
     findings.extend(policy_findings)
 
     # Validate workflow_example.py
@@ -976,7 +1047,12 @@ def lint_audit_artifact(path: str, *, target_kind: str = "audit_artifact") -> li
 # Unified entry-point
 # ---------------------------------------------------------------------------
 
-def lint_target(path: str, *, kind: str = "auto") -> list[dict]:
+def lint_target(
+    path: str,
+    *,
+    kind: str = "auto",
+    policy_root: str | Path | None = None,
+) -> list[dict]:
     """
     Lint any supported target.
 
@@ -990,12 +1066,22 @@ def lint_target(path: str, *, kind: str = "auto") -> list[dict]:
         List of finding dicts (empty = clean).
     """
     if kind == "auto":
-        kind = detect_target_kind(path)
+        detection_path = path
+        if policy_root is not None:
+            try:
+                loader = FilePolicyLoader(policy_root)
+                context = _FileLoadContext.create(path, loader.policy_root)
+                detection_path = str(
+                    loader._canonical_candidate(path, context=context)
+                )
+            except PolicyLoadError as exc:
+                return [_policy_exception_finding(exc, "unknown", path)]
+        kind = detect_target_kind(detection_path)
 
     if kind == "policy":
-        return lint_policy(path)
+        return lint_policy(path, policy_root=policy_root)
     elif kind == "starter_dir":
-        return lint_starter_dir(path)
+        return lint_starter_dir(path, policy_root=policy_root)
     elif kind == "workflow_artifact":
         return lint_workflow_artifact(path)
     elif kind == "audit_artifact":

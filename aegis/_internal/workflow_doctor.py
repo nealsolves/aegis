@@ -18,22 +18,26 @@ The CLI exits 1 only if any finding has severity "ERROR".
 
 from __future__ import annotations
 
+import copy
 import json
 import re
 from datetime import date
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 from aegis._internal.errors import (
     PolicyLoadError,
     PolicyValidationError,
 )
-from aegis._internal.policy_loader import load_policy
+from aegis._internal.policy_loader import (
+    FilePolicyLoader,
+    _FileLoadContext,
+    _prepare_resolve_compile_policy,
+)
 from aegis._internal.workflow_lint import (
+    _lint_prepared_policy,
+    _prepare_starter_target,
     detect_target_kind,
-    lint_policy,
     lint_starter_dir,
     lint_workflow_artifact,
     _audit_schema,
@@ -126,6 +130,10 @@ _NEXT_ACTIONS: dict[str, str] = {
     "POLICY_LOAD_ERROR": (
         "Fix the policy file syntax or structure. "
         "See policies/policy_dsl_spec.md for the full policy DSL reference."
+    ),
+    "POLICY_PATH_OUTSIDE_ROOT": (
+        "Select a target contained by the configured policy root, or supply "
+        "the intended broader root with 'workflow doctor --policy-root ROOT'."
     ),
     "POLICY_SCHEMA_VALIDATION_ERROR": (
         "Fix the schema violation in policy.yaml. "
@@ -302,110 +310,74 @@ def _audit_source_provenance_warnings(artifact: dict[str, Any]) -> list[dict]:
     )]
 
 
+def _date_failure_finding(exc: PolicyValidationError) -> dict:
+    details = dict(exc.details) if isinstance(exc.details, dict) else {}
+    effective = details.get("effective_date")
+    expiration = details.get("expiration_date")
+    today = details.get("today")
+    if (
+        isinstance(effective, str)
+        and isinstance(today, str)
+        and today < effective
+    ):
+        return _finding(
+            exc.code,
+            "WARNING",
+            f"Policy not yet active: effective_date is {effective}, "
+            f"today is {today}",
+        )
+    if (
+        isinstance(expiration, str)
+        and isinstance(today, str)
+        and today > expiration
+    ):
+        return _finding(
+            exc.code,
+            "ERROR",
+            f"Policy expired: expiration_date is {expiration}, today is {today}",
+        )
+    return _finding(exc.code, "ERROR", "Policy date validation failed")
+
+
 def diagnose_workflow_policy(
     path: str,
     *,
     now: date | None = None,
+    policy_root: str | Path | None = None,
 ) -> list[dict]:
-    """
-    Run doctor diagnostics on a policy YAML file.
-
-    Steps:
-    1. Lint (static checks)
-    2. Date checks (expired / future-effective) using injected clock
-    3. Full semantic validation via load_policy with same clock
-    4. Unsupported binding pattern detection
-    5. Session-token precondition advisory
-    """
-    findings: list[dict] = []
-    if now is None:
-        now = date.today()
-
-    # 1. Run lint
-    lint_findings = lint_policy(path)
-    if lint_findings:
-        findings.extend(_lint_to_doctor(lint_findings))
-        return findings
-
-    # Load the policy dict for deeper checks (already validated by lint)
-    p = Path(path)
+    """Run policy diagnostics from one authorized prepared source."""
+    today = now or date.today()
     try:
-        raw = yaml.safe_load(p.read_text(encoding="utf-8"))
-    except Exception:
-        return findings  # lint already caught this
+        loader = (
+            FilePolicyLoader(policy_root)
+            if policy_root is not None
+            else None
+        )
+        result = _prepare_resolve_compile_policy(
+            path,
+            loader=loader,
+            clock=lambda: today,
+            capture_date_failures=True,
+        )
+    except (PolicyLoadError, PolicyValidationError) as exc:
+        return [_finding(exc.code, "ERROR", str(exc))]
 
-    if not isinstance(raw, dict):
-        return findings
+    if result.prepared is None:
+        raise AssertionError("file diagnostics require a prepared source")
+    findings = [
+        _date_failure_finding(exc)
+        for exc in result.date_failures
+    ]
+    lint_findings = _lint_prepared_policy(
+        result.prepared,
+        result.compiled,
+        target_kind="policy",
+        target_label=path,
+    )
+    findings.extend(_lint_to_doctor(lint_findings))
+    raw = copy.deepcopy(result.prepared.raw_policy)
 
-    # 2. Date checks with injected clock
-    eff_raw = raw.get("effective_date")
-    exp_raw = raw.get("expiration_date")
-
-    if exp_raw:
-        if isinstance(exp_raw, str):
-            try:
-                from datetime import date as _date
-                exp = _date.fromisoformat(exp_raw)
-            except ValueError:
-                exp = None
-        elif hasattr(exp_raw, "year"):
-            exp = exp_raw
-        else:
-            exp = None
-
-        if exp and now > exp:
-            findings.append(_finding(
-                "POLICY_LOAD_ERROR",
-                "ERROR",
-                f"Policy expired on {exp}. Today is {now}. "
-                "Expired policies are rejected at runtime.",
-            ))
-
-    if eff_raw:
-        if isinstance(eff_raw, str):
-            try:
-                from datetime import date as _date
-                eff = _date.fromisoformat(eff_raw)
-            except ValueError:
-                eff = None
-        elif hasattr(eff_raw, "year"):
-            eff = eff_raw
-        else:
-            eff = None
-
-        if eff and now < eff:
-            findings.append(_finding(
-                "POLICY_LOAD_ERROR",
-                "WARNING",
-                f"Policy is not yet effective (effective_date: {eff}, today: {now}). "
-                "The policy will be rejected until its effective date.",
-            ))
-
-    # 3. Full semantic validation via load_policy (extends, composition, etc.)
-    # Guard: skip only this semantic-validation step if date findings already
-    # exist — load_policy uses the same validate_policy_dates path and would
-    # otherwise duplicate those date-specific errors. The later advisory checks
-    # still run on the raw policy payload.
-    _has_date_findings = bool(findings)
-    if not _has_date_findings:
-        try:
-            load_policy(str(path), clock=lambda: now)
-        except (PolicyLoadError, PolicyValidationError) as exc:
-            findings.append(_finding(
-                exc.code,
-                "ERROR",
-                str(exc),
-            ))
-            return findings
-        except Exception as exc:
-            findings.append(_finding(
-                "POLICY_LOAD_ERROR",
-                "ERROR",
-                f"Unexpected error during semantic validation: {exc}",
-            ))
-            return findings
-
-    # 4. Unsupported binding detection
+    # Unsupported binding detection
     conditions: dict = raw.get("conditions", {}) or {}
     guards: list = raw.get("guards", []) or []
     guard_condition_names = set()
@@ -430,7 +402,7 @@ def diagnose_workflow_policy(
             _next_action("WORKFLOW_UNSUPPORTED_BINDING"),
         ))
 
-    # 5. Session-token precondition advisory
+    # Session-token precondition advisory
     pre_conditions = raw.get("pre_conditions", {}) or {}
     pre_required = pre_conditions.get("required", {}) or {}
     if isinstance(pre_required, dict):
@@ -470,7 +442,11 @@ _PROVENANCE_PATTERNS = [
 ]
 
 
-def diagnose_starter_dir(path: str) -> list[dict]:
+def diagnose_starter_dir(
+    path: str,
+    *,
+    policy_root: str | Path | None = None,
+) -> list[dict]:
     """
     Run doctor diagnostics on a starter directory.
 
@@ -479,16 +455,24 @@ def diagnose_starter_dir(path: str) -> list[dict]:
     2. Detect approval checkpoint pattern -> WORKFLOW_APPROVAL_REQUIRED advisory
     3. Detect regulated provenance requirement -> WORKFLOW_SOURCE_REQUIRED advisory
     """
+    try:
+        prepared = _prepare_starter_target(path, policy_root=policy_root)
+    except PolicyLoadError as exc:
+        return [_finding(exc.code, "ERROR", str(exc))]
+
     findings: list[dict] = []
 
     # 1. Lint
-    lint_findings = lint_starter_dir(path)
+    lint_findings = lint_starter_dir(
+        str(prepared.directory),
+        policy_root=prepared.loader.policy_root,
+    )
     if lint_findings:
         findings.extend(_lint_to_doctor(lint_findings))
         return findings
 
     # Read workflow_example.py for pattern detection
-    p = Path(path)
+    p = prepared.directory
     workflow_py = p / "workflow_example.py"
     try:
         source = workflow_py.read_text(encoding="utf-8")
@@ -788,6 +772,7 @@ def diagnose_target(
     *,
     kind: str = "auto",
     now: date | None = None,
+    policy_root: str | Path | None = None,
 ) -> list[dict]:
     """
     Run doctor diagnostics on any supported target.
@@ -802,12 +787,26 @@ def diagnose_target(
         List of finding dicts (empty = no issues).
     """
     if kind == "auto":
-        kind = detect_target_kind(path)
+        detection_path = path
+        if policy_root is not None:
+            try:
+                loader = FilePolicyLoader(policy_root)
+                context = _FileLoadContext.create(path, loader.policy_root)
+                detection_path = str(
+                    loader._canonical_candidate(path, context=context)
+                )
+            except PolicyLoadError as exc:
+                return [_finding(exc.code, "ERROR", str(exc))]
+        kind = detect_target_kind(detection_path)
 
     if kind == "policy":
-        return diagnose_workflow_policy(path, now=now)
+        return diagnose_workflow_policy(
+            path,
+            now=now,
+            policy_root=policy_root,
+        )
     elif kind == "starter_dir":
-        return diagnose_starter_dir(path)
+        return diagnose_starter_dir(path, policy_root=policy_root)
     elif kind == "workflow_artifact":
         return diagnose_workflow_artifact(path)
     elif kind == "audit_artifact":

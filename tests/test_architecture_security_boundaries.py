@@ -295,6 +295,9 @@ _POLICY_VIEW_ALLOWLIST = {
     ("enforcement", "_compiled_policy_to_dto"),
     ("enforcement", "_compiled_overlay_to_dto"),
 }
+_RAW_POLICY_ATTRIBUTE_ALLOWLIST = {
+    ("workflow_lint", "_lint_prepared_policy"),
+}
 _COMPILED_BOUNDARIES = {
     "_run_phase_a": {"policy"},
     "_run_phase_b": {"effective_policy", "policy"},
@@ -363,6 +366,18 @@ def _parent_maps(
 
     visit(tree)
     return parents, classes
+
+
+def _enclosing_function_name(
+    node: ast.AST,
+    parents: dict[ast.AST, ast.AST],
+) -> str | None:
+    current = node
+    while current in parents:
+        current = parents[current]
+        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            return current.name
+    return None
 
 
 def _semantic_import_aliases(tree: ast.AST) -> dict[str, str]:
@@ -795,6 +810,10 @@ def _fitness_violations(
                 module_name == "policy_loader"
                 and node.attr == "raw_policy"
             )
+            and (
+                module_name,
+                _enclosing_function_name(node, parents),
+            ) not in _RAW_POLICY_ATTRIBUTE_ALLOWLIST
         ):
             violations.append(
                 f"{module_name}:{node.lineno}:snapshot-attribute:{node.attr}"
