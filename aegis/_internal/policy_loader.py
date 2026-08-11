@@ -19,8 +19,9 @@ import logging
 import os
 import threading
 import yaml
+from dataclasses import dataclass
 from datetime import date, datetime
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Any, Callable
 
 from jsonschema import Draft7Validator
@@ -89,31 +90,119 @@ class PolicyLoaderBase(abc.ABC):
         """
 
 
+@dataclass(frozen=True, slots=True)
+class _PreparedFilePolicy:
+    authority_token: object
+    source_path: Path
+    raw_policy: dict[str, Any]
+
+
+_OUTSIDE_ROOT_MESSAGE = "Policy path is outside the configured policy root"
+
+
+def _is_contained(candidate: PurePath, root: PurePath) -> bool:
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        return False
+    return True
+
+
 class FilePolicyLoader(PolicyLoaderBase):
-    """Default filesystem-based policy loader."""
+    """Filesystem policy loader bound to one immutable canonical root."""
+
+    def __init__(self, policy_root: str | Path) -> None:
+        try:
+            canonical_root = Path(policy_root).resolve(strict=True)
+            is_directory = canonical_root.is_dir()
+        except (OSError, RuntimeError):
+            canonical_root = Path(".")
+            is_directory = False
+        if not is_directory:
+            raise PolicyLoadError("Configured policy root is unavailable") from None
+        self._policy_root = canonical_root
+        self._authority_token = object()
+
+    @property
+    def policy_root(self) -> Path:
+        return self._policy_root
+
+    def _canonicalize(self, lexical: Path) -> Path:
+        return lexical.resolve(strict=False)
+
+    def _canonical_candidate(
+        self,
+        policy_ref: str | Path,
+        *,
+        relative_to: Path | None = None,
+    ) -> Path:
+        ref = Path(policy_ref)
+        base = self._policy_root if relative_to is None else relative_to.parent
+        lexical = ref if ref.is_absolute() else base / ref
+        try:
+            candidate = self._canonicalize(lexical)
+        except (OSError, RuntimeError):
+            raise PolicyLoadError("Policy path could not be resolved") from None
+        if not _is_contained(candidate, self._policy_root):
+            raise PolicyLoadError(
+                _OUTSIDE_ROOT_MESSAGE,
+                code="POLICY_PATH_OUTSIDE_ROOT",
+            ) from None
+        return candidate
+
+    def _validate_candidate(self, candidate: Path) -> None:
+        if candidate.suffix.lower() not in {".yaml", ".yml"}:
+            raise PolicyLoadError("Policy file must be YAML")
+        if not candidate.exists():
+            raise PolicyLoadError("Policy file does not exist")
+        if not candidate.is_file():
+            raise PolicyLoadError("Policy path must reference a file")
+
+    def _prepare(
+        self,
+        policy_ref: str | Path,
+        *,
+        relative_to: Path | None = None,
+        reject_paths: set[Path] | None = None,
+    ) -> _PreparedFilePolicy:
+        candidate = self._canonical_candidate(policy_ref, relative_to=relative_to)
+        if reject_paths is not None and candidate in reject_paths:
+            raise PolicyLoadError("Circular policy inheritance detected")
+        self._validate_candidate(candidate)
+        parsed: object = None
+        parse_failed = False
+        try:
+            with candidate.open("r", encoding="utf-8") as file_obj:
+                parsed = yaml.safe_load(file_obj)
+        except (OSError, yaml.YAMLError):
+            parse_failed = True
+        if parse_failed:
+            raise PolicyLoadError("Policy YAML parsing failed") from None
+        if not isinstance(parsed, dict):
+            raise PolicyLoadError("Policy root must be a mapping object")
+        return _PreparedFilePolicy(
+            authority_token=self._authority_token,
+            source_path=candidate,
+            raw_policy=copy.deepcopy(parsed),
+        )
+
+    def _preflight(
+        self,
+        policy_ref: str | Path,
+        *,
+        relative_to: Path | None = None,
+    ) -> Path:
+        candidate = self._canonical_candidate(policy_ref, relative_to=relative_to)
+        self._validate_candidate(candidate)
+        return candidate
+
+    def _accept_prepared(self, prepared: _PreparedFilePolicy) -> None:
+        if prepared.authority_token is not self._authority_token:
+            raise PolicyLoadError("Prepared policy authority does not match loader")
 
     def load(self, policy_ref: str) -> dict[str, Any]:
-        """Load policy from a YAML file on disk."""
-        policy_path = _resolve_policy_path(policy_ref)
-        try:
-            with open(policy_path, "r", encoding="utf-8") as file_obj:
-                policy = yaml.safe_load(file_obj)
-        except yaml.YAMLError as err:
-            raise PolicyLoadError(
-                "Policy YAML parsing failed",
-                details={"policy_file": policy_ref, "error": str(err)},
-            ) from err
-
-        if not isinstance(policy, dict):
-            raise PolicyLoadError(
-                "Policy root must be a mapping object",
-                details={"policy_file": policy_ref},
-            )
-        return policy
-
-
-# Default loader singleton
-_default_loader = FilePolicyLoader()
+        """Load one raw policy mapping relative to this loader's root."""
+        return copy.deepcopy(self._prepare(policy_ref).raw_policy)
 
 
 # ── Path resolution ──────────────────────────────────────────────
@@ -169,6 +258,23 @@ def _resolve_policy_path(policy_file: str) -> Path:
             details={"policy_file": policy_file},
         )
     return candidate
+
+
+def _bind_policy_authority(
+    policy_file: str,
+    loader: PolicyLoaderBase | None,
+) -> tuple[str, PolicyLoaderBase]:
+    if loader is not None:
+        return policy_file, loader
+    try:
+        captured_cwd = Path.cwd()
+        lexical_entry = Path(policy_file)
+        if not lexical_entry.is_absolute():
+            lexical_entry = captured_cwd / lexical_entry
+        root = lexical_entry.parent.resolve(strict=False)
+    except (OSError, RuntimeError):
+        raise PolicyLoadError("Policy path could not be resolved") from None
+    return str(lexical_entry), FilePolicyLoader(root)
 
 
 def _path_to_pointer(path: list[Any]) -> str:
@@ -732,6 +838,8 @@ def _resolve_extends(
     policy: dict[str, Any],
     policy_path: Path,
     visited: set[Path] | None = None,
+    *,
+    loader: FilePolicyLoader,
 ) -> dict[str, Any]:
     """
     Resolve policy inheritance via extends field.
@@ -751,23 +859,17 @@ def _resolve_extends(
     if not extends:
         return policy
 
-    # Resolve base policy path (relative to current policy)
-    base_path = (policy_path.parent / extends).resolve()
-
-    # Check cycle
-    if base_path in visited:
-        raise PolicyLoadError(
-            f"Circular extends detected: {base_path}",
-            details={
-                "policy_path": str(policy_path),
-                "extends": extends,
-                "chain": sorted(str(p) for p in visited),
-            },
-        )
-
-    # Load base policy (recursively, to handle chained extends)
-    # Pass visited set to maintain cycle detection across the chain
-    base_policy_dict = load_policy(str(base_path), visited)
+    parent = loader._prepare(
+        extends,
+        relative_to=policy_path,
+        reject_paths=visited,
+    )
+    base_policy_dict = _resolve_extends(
+        copy.deepcopy(parent.raw_policy),
+        parent.source_path,
+        visited,
+        loader=loader,
+    )
 
     # Get composition strategy from overlay policy
     strategy = policy.get("composition_strategy")
@@ -811,16 +913,16 @@ def load_policy(
     :param clock: Optional clock function for date validation
     :return: Python dict representing the policy
     """
-    effective_loader = loader or _default_loader
+    bound_ref, effective_loader = _bind_policy_authority(policy_file, loader)
 
     if isinstance(effective_loader, FilePolicyLoader):
-        # File-based loader: resolve path first
-        policy_path = _resolve_policy_path(policy_file)
-        policy = effective_loader.load(str(policy_path))
+        prepared = effective_loader._prepare(bound_ref)
+        policy_path = prepared.source_path
+        policy = copy.deepcopy(prepared.raw_policy)
     else:
         # Custom loader: let the loader handle resolution
         try:
-            policy = effective_loader.load(policy_file)
+            policy = effective_loader.load(bound_ref)
         except PolicyLoadError:
             raise
         except Exception as exc:
@@ -837,7 +939,7 @@ def load_policy(
                 "Policy root must be a mapping object",
                 details={"policy_file": policy_file},
             )
-        policy_path = Path(policy_file).resolve()
+        policy_path = Path(policy_file)
 
     if "extends" in policy and not isinstance(effective_loader, FilePolicyLoader):
         raise PolicyLoadError(
@@ -851,7 +953,12 @@ def load_policy(
 
     # Resolve inheritance BEFORE schema validation (Phase 2.6)
     if "extends" in policy:
-        policy = _resolve_extends(policy, policy_path, visited)
+        policy = _resolve_extends(
+            policy,
+            policy_path,
+            visited,
+            loader=effective_loader,
+        )
 
     schema_path = _resolve_policy_schema_path()
     # Validate against JSON schema

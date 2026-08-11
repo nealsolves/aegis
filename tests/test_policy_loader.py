@@ -7,6 +7,7 @@ import pytest
 
 from aegis._internal.errors import PolicyLoadError, PolicyValidationError
 from aegis._internal.policy_loader import (
+    FilePolicyLoader,
     load_policy,
     load_policy_async,
     _path_to_pointer,
@@ -104,7 +105,11 @@ def test_resolve_extends_no_extends_returns_policy():
     """_resolve_extends returns policy unchanged when extends is falsy (line 141)."""
     policy = {"policy_version": "1.0", "roles": ["planner"], "extends": None}
     fake_path = Path("tests/golden_replays/golden_policy_v1.yaml").resolve()
-    result = _resolve_extends(policy, fake_path)
+    result = _resolve_extends(
+        policy,
+        fake_path,
+        loader=FilePolicyLoader(fake_path.parent),
+    )
     assert result is policy
 
 
