@@ -9,6 +9,7 @@ import pytest
 from aegis import AEGIS
 from aegis._internal import policy_loader as policy_loader_module
 from aegis._internal import workflow_doctor
+from aegis._internal.cli import build_parser, main
 from aegis._internal.errors import PolicyLoadError, PolicyValidationError
 from aegis._internal.policy_loader import (
     FilePolicyLoader,
@@ -377,3 +378,91 @@ def test_explicit_broader_root_permits_starter_sibling_graph(
         "policy_version: '1.0'\nroles: [reviewer]\n",
     )
     assert lint_starter_dir("first", policy_root=starters) == []
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["policy", "lint", "--policy-root", "policies", "entry.yaml"],
+        ["policy", "validate", "--policy-root", "policies", "entry.yaml"],
+        ["workflow", "lint", "--policy-root", "policies", "entry.yaml"],
+        ["workflow", "doctor", "--policy-root", "policies", "entry.yaml"],
+    ],
+)
+def test_policy_commands_accept_policy_root(argv: list[str]) -> None:
+    args = build_parser().parse_args(argv)
+    assert args.policy_root == "policies"
+
+
+def test_workflow_artifact_rejects_policy_root(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    status = main([
+        "workflow",
+        "lint",
+        "--kind",
+        "workflow_artifact",
+        "--policy-root",
+        "policies",
+        "artifact.json",
+    ])
+    assert status == 2
+    assert "--policy-root applies only" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        ["policy", "lint"],
+        ["policy", "validate"],
+        ["workflow", "lint", "--kind", "policy"],
+        ["workflow", "doctor", "--kind", "policy"],
+    ],
+)
+def test_cli_policy_surfaces_use_only_selected_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    prefix: list[str],
+) -> None:
+    root = tmp_path / "authorized"
+    cwd = tmp_path / "cwd"
+    cwd_entry = _write_policy(cwd / "entry.yaml")
+    _write_policy(
+        root / "entry.yaml",
+        "extends: ../outside.yaml\n"
+        "policy_version: '1.0'\nroles: [reviewer]\n",
+    )
+    protected = _write_policy(tmp_path / "outside.yaml")
+    monkeypatch.chdir(cwd)
+    original_read_text = Path.read_text
+
+    def guarded_read_text(path: Path, *args: object, **kwargs: object) -> str:
+        if path == cwd_entry:
+            pytest.fail("CLI pre-read the same-named CWD policy")
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", guarded_read_text)
+    status = main([
+        *prefix,
+        "--policy-root",
+        str(root),
+        "entry.yaml",
+    ])
+    captured = capsys.readouterr()
+    rendered = captured.out + captured.err
+    assert status == 1
+    assert "POLICY_PATH_OUTSIDE_ROOT" in rendered
+    assert str(root) not in rendered
+    assert str(protected) not in rendered
+
+
+def test_cli_multiple_implicit_targets_get_independent_roots(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    first = _write_policy(tmp_path / "first" / "entry.yaml")
+    second = _write_policy(tmp_path / "second" / "entry.yaml")
+    status = main(["policy", "lint", str(first), str(second)])
+    assert status == 0
+    assert capsys.readouterr().out.count("OK") == 2

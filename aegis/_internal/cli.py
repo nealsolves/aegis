@@ -21,10 +21,13 @@ import sys
 from pathlib import Path
 from typing import Any, Sequence
 
-import yaml
 from jsonschema import validate, ValidationError
 
-from aegis._internal.policy_loader import load_resolve_compile_policy
+from aegis._internal.policy_loader import (
+    FilePolicyLoader,
+    PolicyLoaderBase,
+    load_resolve_compile_policy,
+)
 from aegis._internal.errors import PolicyLoadError, PolicyValidationError
 from aegis._internal.lineage import AuditLineage
 from aegis._internal.legacy import (
@@ -48,6 +51,7 @@ def _load_audit_schema() -> dict:
 def _lint_policy(
     path: Path,
     *,
+    loader: PolicyLoaderBase | None = None,
     legacy_authorization: LegacyAuthorization | None = None,
 ) -> list[str]:
     """
@@ -55,39 +59,24 @@ def _lint_policy(
 
     Returns a list of error messages (empty = valid).
     """
-    errors: list[str] = []
-
-    # 1. YAML parse
-    try:
-        raw = path.read_text()
-    except OSError as e:
-        return [f"Cannot read file: {e}"]
-
-    try:
-        policy = yaml.safe_load(raw)
-    except yaml.YAMLError as e:
-        return [f"YAML parse error: {e}"]
-
-    if not isinstance(policy, dict):
-        return ["Policy must be a YAML mapping (dict)"]
-
     try:
         load_resolve_compile_policy(
             str(path),
+            loader=loader,
             allow_legacy=False,
             legacy_authorization=legacy_authorization,
         )
     except (PolicyLoadError, PolicyValidationError) as exc:
         details = exc.details if isinstance(exc.details, dict) else {}
         pointer = details.get("path", "$")
-        errors.append(f"[{exc.code}] {pointer}: {exc}")
-
-    return errors
+        return [f"[{exc.code}] {pointer}: {exc}"]
+    return []
 
 
 def _validate_policy(
     path: Path,
     *,
+    loader: PolicyLoaderBase | None = None,
     legacy_authorization: LegacyAuthorization | None = None,
 ) -> list[str]:
     """
@@ -100,6 +89,7 @@ def _validate_policy(
     try:
         load_resolve_compile_policy(
             str(path),
+            loader=loader,
             allow_legacy=False,
             legacy_authorization=legacy_authorization,
         )
@@ -120,14 +110,22 @@ def _cmd_lint(args: argparse.Namespace) -> int:
         if getattr(args, "allow_legacy_preconditions", False)
         else None
     )
+    try:
+        loader = (
+            FilePolicyLoader(args.policy_root)
+            if args.policy_root is not None
+            else None
+        )
+    except PolicyLoadError as exc:
+        print(f"ERROR: [{exc.code}] {exc}", file=sys.stderr)
+        return 1
     for filepath in args.files:
         path = Path(filepath)
-        if not path.exists():
-            print(f"FAIL  {filepath}: file not found", file=sys.stderr)
-            exit_code = 1
-            continue
-
-        errors = _lint_policy(path, legacy_authorization=legacy_authorization)
+        errors = _lint_policy(
+            path,
+            loader=loader,
+            legacy_authorization=legacy_authorization,
+        )
         if errors:
             print(f"FAIL  {filepath}")
             for err in errors:
@@ -147,16 +145,22 @@ def _cmd_validate(args: argparse.Namespace) -> int:
         if getattr(args, "allow_legacy_preconditions", False)
         else None
     )
+    try:
+        loader = (
+            FilePolicyLoader(args.policy_root)
+            if args.policy_root is not None
+            else None
+        )
+    except PolicyLoadError as exc:
+        print(f"ERROR: [{exc.code}] {exc}", file=sys.stderr)
+        return 1
     for filepath in args.files:
         path = Path(filepath)
-        if not path.exists():
-            print(f"FAIL  {filepath}: file not found", file=sys.stderr)
-            exit_code = 1
-            continue
-
         # Lint first (syntax + schema)
         lint_errors = _lint_policy(
-            path, legacy_authorization=legacy_authorization
+            path,
+            loader=loader,
+            legacy_authorization=legacy_authorization,
         )
         if lint_errors:
             print(f"FAIL  {filepath} (lint)")
@@ -167,7 +171,9 @@ def _cmd_validate(args: argparse.Namespace) -> int:
 
         # Then full semantic validation
         validate_errors = _validate_policy(
-            path, legacy_authorization=legacy_authorization
+            path,
+            loader=loader,
+            legacy_authorization=legacy_authorization,
         )
         if validate_errors:
             print(f"FAIL  {filepath} (validate)")
@@ -330,11 +336,41 @@ def _cmd_compliance_export(args: argparse.Namespace) -> int:
 
 def _cmd_workflow_lint(args: argparse.Namespace) -> int:
     """Run the workflow lint subcommand."""
+    if args.policy_root is not None and args.kind in {
+        "workflow_artifact",
+        "audit_artifact",
+    }:
+        print(
+            "ERROR: --policy-root applies only to policy and starter_dir targets",
+            file=sys.stderr,
+        )
+        return 2
     all_findings: list[dict] = []
     exit_code = 0
 
     for target in args.targets:
-        findings = lint_target(target, kind=args.kind)
+        target_kind = args.kind
+        if target_kind == "auto" and Path(target).suffix.lower() in {
+            ".yaml",
+            ".yml",
+        }:
+            target_kind = "policy"
+        if (
+            args.policy_root is not None
+            and target_kind == "auto"
+            and Path(target).suffix.lower() == ".json"
+        ):
+            print(
+                "ERROR: --policy-root applies only to policy and "
+                "starter_dir targets",
+                file=sys.stderr,
+            )
+            return 2
+        findings = lint_target(
+            target,
+            kind=target_kind,
+            policy_root=args.policy_root,
+        )
         if findings:
             exit_code = 1
         all_findings.append({"target": target, "findings": findings})
@@ -357,7 +393,34 @@ def _cmd_workflow_lint(args: argparse.Namespace) -> int:
 
 def _cmd_workflow_doctor(args: argparse.Namespace) -> int:
     """Run the workflow doctor subcommand."""
-    findings = diagnose_target(args.target, kind=args.kind)
+    if args.policy_root is not None and args.kind in {
+        "workflow_artifact",
+        "audit_artifact",
+    }:
+        print(
+            "ERROR: --policy-root applies only to policy and starter_dir targets",
+            file=sys.stderr,
+        )
+        return 2
+    target_kind = args.kind
+    suffix = Path(args.target).suffix.lower()
+    if target_kind == "auto" and suffix in {".yaml", ".yml"}:
+        target_kind = "policy"
+    if (
+        args.policy_root is not None
+        and target_kind == "auto"
+        and suffix == ".json"
+    ):
+        print(
+            "ERROR: --policy-root applies only to policy and starter_dir targets",
+            file=sys.stderr,
+        )
+        return 2
+    findings = diagnose_target(
+        args.target,
+        kind=target_kind,
+        policy_root=args.policy_root,
+    )
 
     has_error = any(f.get("severity") == "ERROR" for f in findings)
     exit_code = 1 if has_error else 0
@@ -537,6 +600,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Host-authorize legacy bare-string preconditions for this command",
     )
+    lint_parser.add_argument(
+        "--policy-root",
+        default=None,
+        help="Canonical authority root for policy files and starter policies",
+    )
     lint_parser.set_defaults(func=_cmd_lint)
 
     # aegis policy validate <files...>
@@ -556,6 +624,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--allow-legacy-preconditions",
         action="store_true",
         help="Host-authorize legacy bare-string preconditions for this command",
+    )
+    validate_parser.add_argument(
+        "--policy-root",
+        default=None,
+        help="Canonical authority root for policy files and starter policies",
     )
     validate_parser.set_defaults(func=_cmd_validate)
 
@@ -671,6 +744,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=False,
         help="Output findings as JSON array",
     )
+    workflow_lint_parser.add_argument(
+        "--policy-root",
+        default=None,
+        help="Canonical authority root for policy files and starter policies",
+    )
     workflow_lint_parser.set_defaults(func=_cmd_workflow_lint)
 
     # aegis workflow doctor <target> [--kind auto|...] [--json]
@@ -693,6 +771,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         default=False,
         help="Output findings as JSON array",
+    )
+    workflow_doctor_parser.add_argument(
+        "--policy-root",
+        default=None,
+        help="Canonical authority root for policy files and starter policies",
     )
     workflow_doctor_parser.set_defaults(func=_cmd_workflow_doctor)
 

@@ -22,12 +22,13 @@ class TestLintPolicy:
     def test_invalid_yaml_returns_parse_error(self):
         errors = _lint_policy(GOLDEN_DIR / "invalid_policy.yaml")
         assert len(errors) == 1
-        assert "YAML parse error" in errors[0]
+        assert "[POLICY_LOAD_ERROR]" in errors[0]
+        assert "Policy YAML parsing failed" in errors[0]
 
     def test_nonexistent_file_returns_error(self):
         errors = _lint_policy(Path("/nonexistent/policy.yaml"))
         assert len(errors) == 1
-        assert "Cannot read file" in errors[0]
+        assert "[POLICY_LOAD_ERROR]" in errors[0]
 
     def test_non_dict_yaml_returns_error(self):
         with tempfile.NamedTemporaryFile(
