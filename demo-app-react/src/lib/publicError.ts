@@ -9,7 +9,13 @@ export const INVALID_PUBLIC_DEMO_ERROR_MESSAGE =
 
 const CODE_PATTERN = /^[A-Z0-9_]{1,64}$/
 const REQUEST_ID_PATTERN = /^[0-9a-f]{32}$/
-const CONTROL_PATTERN = /[\u0000-\u001f\u007f]/
+
+function hasControlCharacters(value: string): boolean {
+  return [...value].some((character) => {
+    const codePoint = character.codePointAt(0) ?? 0
+    return codePoint < 32 || codePoint === 127
+  })
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
@@ -32,7 +38,7 @@ export function parsePublicDemoError(value: unknown): PublicDemoError | null {
     || typeof value.message !== 'string'
     || value.message.length < 1
     || value.message.length > 512
-    || CONTROL_PATTERN.test(value.message)
+    || hasControlCharacters(value.message)
     || typeof value.request_id !== 'string'
     || !REQUEST_ID_PATTERN.test(value.request_id)
   ) {

@@ -297,6 +297,46 @@ def test_safe_doctor_findings_allowlists_fields(tmp_path):
     }]
 
 
+@pytest.mark.parametrize(
+    "path_value",
+    [
+        "/opt/render/project/src/secret.yaml",
+        r"C:\Users\demo\secret.yaml",
+    ],
+)
+def test_safe_doctor_findings_reject_absolute_paths(tmp_path, path_value):
+    import workflow_routes
+
+    raw = [{
+        "code": "MISSING_SOURCE_IDS",
+        "severity": "ERROR",
+        "message": f"Inspect {path_value}",
+        "next_action": "Edit workflow_example.py",
+        "target_kind": "workflow",
+    }]
+
+    with pytest.raises(workflow_routes.DemoPublicError) as caught:
+        workflow_routes._safe_doctor_findings(raw, starter_dir=tmp_path)
+    assert caught.value.code == "DEMO_OPERATION_FAILED"
+
+
+def test_unknown_workflow_exception_does_not_return_stale_artifact(monkeypatch):
+    import workflow_routes
+
+    class BrokenModule:
+        LAST_WORKFLOW_ARTIFACT = {"policy_file": "/private/stale.yaml"}
+
+        @staticmethod
+        def run_regulated_workflow(_policy_file):
+            raise RuntimeError("/private/secret traceback")
+
+    monkeypatch.setattr(workflow_routes, "_load_workflow_module", lambda _root: BrokenModule)
+
+    with pytest.raises(workflow_routes.DemoPublicError) as caught:
+        workflow_routes._run_workflow_module("managed-root", "run_regulated_workflow")
+    assert caught.value.code == "DEMO_OPERATION_FAILED"
+
+
 def test_workflow_doctor_malformed_output_is_stable(monkeypatch):
     import subprocess
     import workflow_routes

@@ -50,7 +50,7 @@ ALLOWED_ORIGINS = (
     "http://localhost:3000",
 )
 
-api = FastAPI(title="AEGIS Demo API", version="0.9.0b1")
+api = FastAPI(title="AEGIS Demo API", version="0.9.0b1", redirect_slashes=False)
 
 
 def _route_template(request: Request) -> str | None:
@@ -225,7 +225,7 @@ def _build_pre_call_invocation(scenario: dict, policy_path: str) -> dict:
 @api.get("/api/scenarios/{scenario_key}")
 def get_scenario(scenario_key: str):
     if scenario_key not in SCENARIOS:
-        raise _public_request_failure("UNKNOWN_DEMO_ID")
+        raise _public_request_failure()
     s = SCENARIOS[scenario_key]
     return {
         "prompt": s["prompt"],
@@ -271,7 +271,7 @@ class EnforceRequest(BaseModel):
 @api.post("/api/enforce")
 def enforce(req: EnforceRequest):
     if req.scenario_key not in SCENARIOS:
-        raise _public_request_failure("UNKNOWN_DEMO_ID")
+        raise _public_request_failure()
     scenario = SCENARIOS[req.scenario_key]
     policy_ref = scenario["policy"]
 
@@ -304,7 +304,7 @@ class SignEnforceRequest(BaseModel):
 @api.post("/api/sign/enforce")
 def sign_enforce(req: SignEnforceRequest):
     if req.scenario_key not in SCENARIOS:
-        raise _public_request_failure("UNKNOWN_DEMO_ID")
+        raise _public_request_failure()
     scenario = SCENARIOS[req.scenario_key]
     policy_ref = scenario["policy"]
     try:
@@ -348,7 +348,7 @@ class ChainAppendRequest(BaseModel):
 @api.post("/api/chain/append")
 def chain_append(req: ChainAppendRequest):
     if req.scenario_key not in SCENARIOS:
-        raise _public_request_failure("UNKNOWN_DEMO_ID")
+        raise _public_request_failure()
     scenario = SCENARIOS[req.scenario_key]
     policy_ref = scenario["policy"]
     chain_id = req.chain_id or str(uuid.uuid4())
@@ -667,7 +667,7 @@ class Lab8KBRequest(BaseModel):
 @api.post("/api/lab8/query-kb")
 def lab8_query_kb(req: Lab8KBRequest):
     if req.scenario_key not in SCENARIOS:
-        raise _public_request_failure("UNKNOWN_DEMO_ID")
+        raise _public_request_failure()
     scenario = SCENARIOS[req.scenario_key]
     policy_ref = scenario["policy"]
 
@@ -698,7 +698,7 @@ class Lab9CompareRequest(BaseModel):
 @api.post("/api/lab9/compare")
 def lab9_compare(req: Lab9CompareRequest):
     if req.scenario_key not in SCENARIOS:
-        raise _public_request_failure("UNKNOWN_DEMO_ID")
+        raise _public_request_failure()
     scenario = SCENARIOS[req.scenario_key]
     policy_ref = scenario["policy"]
 
@@ -747,7 +747,7 @@ class Lab10SplitRequest(BaseModel):
 @api.post("/api/lab10/split-trace")
 def lab10_split_trace(req: Lab10SplitRequest):
     if req.scenario_key not in SCENARIOS:
-        raise _public_request_failure("UNKNOWN_DEMO_ID")
+        raise _public_request_failure()
     scenario = SCENARIOS[req.scenario_key]
     policy_ref = scenario["policy"]
 
@@ -776,11 +776,11 @@ def lab10_split_trace(req: Lab10SplitRequest):
             "error": _public_governance_error(exc),
         }
 
-    # Phase A passed — record its metadata from the PreCallResult token
-    phase_a_meta = pre_result.phase_a_metadata
+    # PreCallResult is intentionally opaque. Phase metadata becomes public only
+    # through the finalized artifact returned by post-call enforcement.
     phase_a = {
         "result": "PASS",
-        "gates_evaluated": phase_a_meta.get("gates_evaluated", []),
+        "gates_evaluated": [],
         "failures": [],
         "blocked": False,
     }
@@ -791,6 +791,7 @@ def lab10_split_trace(req: Lab10SplitRequest):
     except AIGCError as exc:
         artifact = getattr(exc, "audit_artifact", None)
         meta = (artifact or {}).get("metadata", {})
+        phase_a["gates_evaluated"] = meta.get("pre_call_gates_evaluated", [])
         return {
             "phase_a": phase_a,
             "phase_b": {
@@ -805,6 +806,7 @@ def lab10_split_trace(req: Lab10SplitRequest):
         }
 
     meta = artifact.get("metadata", {})
+    phase_a["gates_evaluated"] = meta.get("pre_call_gates_evaluated", [])
     phase_b = {
         "result": artifact["enforcement_result"],
         "gates_evaluated": meta.get("post_call_gates_evaluated", []),
@@ -845,7 +847,7 @@ def run_gate(req: GateRunRequest):
         }
 
     if req.scenario_key not in SCENARIOS:
-        raise _public_request_failure("UNKNOWN_DEMO_ID")
+        raise _public_request_failure()
 
     scenario = SCENARIOS[req.scenario_key]
     policy_ref = scenario["policy"]

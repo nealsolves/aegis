@@ -186,12 +186,14 @@ def _client_identity(scope: Scope) -> tuple[str, str]:
 
     if peer.is_private or peer.is_loopback:
         forwarded = ",".join(_header_values(scope, b"x-forwarded-for"))
-        for candidate in reversed(forwarded.split(",")):
+        candidates = [candidate.strip() for candidate in forwarded.split(",") if candidate.strip()]
+        if candidates:
             try:
-                address = ipaddress.ip_address(candidate.strip())
+                address = ipaddress.ip_address(candidates[-1])
             except ValueError:
-                continue
-            return str(address), "forwarded-rightmost"
+                pass
+            else:
+                return str(address), "forwarded-rightmost"
     return str(peer), "direct"
 
 
@@ -288,7 +290,9 @@ class DemoEdgeMiddleware:
 
         try:
             method = scope.get("method", "")
-            rate_exempt = method == "OPTIONS" or scope.get("path") == "/health"
+            rate_exempt = method == "OPTIONS" or (
+                method == "GET" and scope.get("path") == "/health"
+            )
             if not rate_exempt:
                 admitted, retry_after, used_overflow = self._limiter.admit_detailed(identity)
                 if used_overflow:

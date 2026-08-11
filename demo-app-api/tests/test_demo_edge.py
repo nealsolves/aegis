@@ -337,6 +337,19 @@ def test_health_and_options_bypass_rate_but_not_body_limit() -> None:
     assert _response(asyncio.run(_invoke(edge, _scope())))[0] == 429
 
 
+def test_wrong_method_on_health_consumes_rate_admission() -> None:
+    limiter = TokenBucketLimiter(
+        client_capacity=1,
+        client_refill=0.01,
+        global_capacity=10,
+        global_refill=10.0,
+    )
+    edge = DemoEdgeMiddleware(RecordingApp(), allowed_origins=(), limiter=limiter)
+
+    assert _response(asyncio.run(_invoke(edge, _scope(method="POST", path="/health"))))[0] == 200
+    assert _response(asyncio.run(_invoke(edge, _scope())))[0] == 429
+
+
 def test_direct_public_peer_cannot_change_identity_with_forwarded_header() -> None:
     limiter = TokenBucketLimiter(
         client_capacity=1,
@@ -370,6 +383,27 @@ def test_private_peer_uses_rightmost_valid_forwarded_address() -> None:
     assert _response(asyncio.run(_invoke(edge, forwarded(b"garbage, 1.1.1.1"))))[0] == 200
     assert _response(asyncio.run(_invoke(edge, forwarded(b"9.9.9.9, 1.1.1.1"))))[0] == 429
     assert _response(asyncio.run(_invoke(edge, forwarded(b"garbage, 2.2.2.2"))))[0] == 200
+
+
+def test_invalid_rightmost_forwarded_token_falls_back_to_immediate_peer() -> None:
+    limiter = TokenBucketLimiter(
+        client_capacity=1,
+        client_refill=0.01,
+        global_capacity=10,
+        global_refill=10.0,
+    )
+    edge = DemoEdgeMiddleware(RecordingApp(), allowed_origins=(), limiter=limiter)
+
+    def forwarded(value: bytes) -> dict[str, Any]:
+        return _scope(
+            headers=[(b"x-forwarded-for", value)],
+            client=("127.0.0.1", 50000),
+        )
+
+    first = forwarded(b"1.1.1.1, invalid-rightmost")
+    second = forwarded(b"2.2.2.2, invalid-rightmost")
+    assert _response(asyncio.run(_invoke(edge, first)))[0] == 200
+    assert _response(asyncio.run(_invoke(edge, second)))[0] == 429
 
 
 def test_edge_failures_apply_cors_only_for_an_allowlisted_origin() -> None:

@@ -9,6 +9,7 @@ from __future__ import annotations
 import atexit
 import importlib.util
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -22,7 +23,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 import aegis.presets as presets
-from aegis import JsonFileAuditSink
+from aegis import AIGCError, JsonFileAuditSink
 
 from bounded_yaml import ensure_bounded_json_response
 from demo_errors import (
@@ -41,6 +42,10 @@ from demo_runtime import (
 )
 
 router = APIRouter(prefix="/api/workflow/v090", tags=["workflow-v090"])
+
+_ABSOLUTE_PATH_RE = re.compile(
+    r'(?:^|[\s("\'=])(?:/|[A-Za-z]:[\\/]|\\\\)\S*'
+)
 
 # Per-run state keyed by run_id returned from the failure scenario.
 # Bounded to prevent unbounded temp-dir growth; evicted entries are cleaned up.
@@ -183,6 +188,7 @@ def _safe_doctor_findings(
                 or len(value) > 512
                 or any(ord(character) < 32 or ord(character) == 127 for character in value)
                 or any(marker in value for marker in forbidden)
+                or _ABSOLUTE_PATH_RE.search(value) is not None
             ):
                 raise _operation_error("DEMO_OPERATION_FAILED", status_code=500)
             finding[field] = value
@@ -245,7 +251,7 @@ def _run_workflow_module(
     try:
         artifact = getattr(mod, func_name)("policy.yaml")
         return artifact, None
-    except Exception as exc:  # noqa: BLE001
+    except AIGCError as exc:
         request_id = current_request_id()
         log_internal_failure(
             request_id=request_id,
@@ -257,6 +263,14 @@ def _run_workflow_module(
             getattr(mod, "LAST_WORKFLOW_ARTIFACT", None),
             public_demo_error("AEGIS_ENFORCEMENT_FAILED"),
         )
+    except Exception as exc:  # noqa: BLE001
+        log_internal_failure(
+            request_id=current_request_id(),
+            operation="workflow_module",
+            error=exc,
+            public_code="DEMO_OPERATION_FAILED",
+        )
+        raise _operation_error("DEMO_OPERATION_FAILED", status_code=500) from None
 
 
 def _break_regulated_starter(starter_dir: str) -> str:

@@ -86,6 +86,11 @@ def test_unknown_route_and_method_have_stable_codes() -> None:
     _assert_safe_error(client.delete("/health"), 405, "METHOD_NOT_ALLOWED")
 
 
+def test_trailing_slash_does_not_escape_the_error_contract() -> None:
+    response = client.get("/health/", follow_redirects=False)
+    _assert_safe_error(response, 404, "NOT_FOUND")
+
+
 def test_unexpected_route_failure_is_normalized_and_correlated_in_logs(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
