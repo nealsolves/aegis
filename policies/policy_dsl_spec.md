@@ -362,3 +362,17 @@ Top-level properties defined in the canonical schema:
 - `guards` — conditional policy activation rules
 - `workflow` — participants, sequence/transitions, budgets, handoffs,
   escalation approvals, and protocol constraints
+
+## Policy inheritance root
+
+`extends` must be a non-empty string. For file-backed policies, the entry and
+every transitive parent share one canonical root. Plain
+`load_policy("policies/entry.yaml")` selects the entry's lexical parent. An
+explicit `FilePolicyLoader("policies")` makes relative entries root-relative
+and permits a multi-directory graph only within that root. Canonical symlink
+targets must also remain contained; violations use
+`POLICY_PATH_OUTSIDE_ROOT` without path-bearing details. Custom loaders cannot
+use `extends`.
+
+The diagnostic CLI accepts `--policy-root ROOT`. Descriptor-relative
+resistance to a concurrent filesystem writer is a non-goal.

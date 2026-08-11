@@ -87,8 +87,8 @@ def test_circular_extends_raises_policy_load_error():
         load_policy("tests/fixtures/policy_cycle_a.yaml")
 
     # Must be typed governance error, not RecursionError
-    assert "Circular extends detected" in str(exc_info.value)
-    assert "chain" in exc_info.value.details
+    assert str(exc_info.value) == "Circular policy inheritance detected"
+    assert exc_info.value.details == {}
 
 
 def test_multi_level_extends_chain():

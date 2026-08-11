@@ -1,5 +1,6 @@
 from aegis._internal.policy_loader import (
     load_policy,
+    load_policy_async,
     PolicyLoaderBase,
     FilePolicyLoader,
     validate_policy_dates,
@@ -16,6 +17,7 @@ __all__ = [
     "FilePolicyLoader",
     "PolicyLoaderBase",
     "load_policy",
+    "load_policy_async",
     "merge_policies",
     "validate_policy_dates",
 ]

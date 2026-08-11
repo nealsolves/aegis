@@ -102,8 +102,14 @@ class InvocationValidationError(GovernanceViolationError):
 class PolicyLoadError(GovernanceViolationError):
     """Raised when policy loading/parsing fails."""
 
-    def __init__(self, message: str, *, details: dict | None = None):
-        super().__init__(message, code="POLICY_LOAD_ERROR", details=details)
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "POLICY_LOAD_ERROR",
+        details: dict | None = None,
+    ) -> None:
+        super().__init__(message, code=code, details=details)
 
 
 class PolicyValidationError(GovernanceViolationError):

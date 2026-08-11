@@ -203,7 +203,7 @@ class TestDiagnoseWorkflowPolicy:
         p = _write(tmp_path, "future.yaml", content)
         findings = diagnose_workflow_policy(p, now=date(2025, 6, 1))
         assert any(f["severity"] == "WARNING" for f in findings)
-        assert any("not yet effective" in f["message"].lower() for f in findings)
+        assert any("not yet active" in f["message"].lower() for f in findings)
 
     def test_unsupported_binding_warns(self, tmp_path):
         content = (

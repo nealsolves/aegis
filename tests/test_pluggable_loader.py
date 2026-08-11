@@ -1,4 +1,5 @@
 """Tests for pluggable PolicyLoader interface (M2 feature)."""
+from pathlib import Path
 import pytest
 from typing import Any
 
@@ -53,8 +54,8 @@ def test_abstract_loader_cannot_instantiate():
         PolicyLoaderBase()
 
 
-def test_file_loader_is_policy_loader():
-    assert isinstance(FilePolicyLoader(), PolicyLoaderBase)
+def test_file_loader_is_policy_loader(tmp_path):
+    assert isinstance(FilePolicyLoader(tmp_path), PolicyLoaderBase)
 
 
 # ── Custom loader with load_policy ───────────────────────────────
@@ -134,7 +135,7 @@ def test_default_loader_loads_file():
 
 
 def test_file_loader_direct():
-    loader = FilePolicyLoader()
+    loader = FilePolicyLoader(Path.cwd())
     policy = loader.load("policies/base_policy.yaml")
     assert isinstance(policy, dict)
     assert "policy_version" in policy

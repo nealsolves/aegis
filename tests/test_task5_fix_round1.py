@@ -240,10 +240,7 @@ def test_policy_lint_and_cli_render_compiler_schema_diagnostics(
     assert findings == [
         {
             "code": "POLICY_SCHEMA_VALIDATION_ERROR",
-            "message": (
-                "Policy schema validation failed at $.roles: "
-                "'planner' is not of type 'array'"
-            ),
+            "message": "Policy schema validation failed at $.roles",
             "target_kind": "policy",
             "path": str(policy_file),
             "details": {"path": "$.roles", "validator": "type"},
@@ -251,6 +248,5 @@ def test_policy_lint_and_cli_render_compiler_schema_diagnostics(
     ]
     assert cli_errors == [
         "[POLICY_SCHEMA_VALIDATION_ERROR] $.roles: "
-        "Policy schema validation failed at $.roles: "
-        "'planner' is not of type 'array'"
+        "Policy schema validation failed at $.roles"
     ]

@@ -1,5 +1,7 @@
 """Tests for retry policy enforcement."""
 
+from pathlib import Path
+
 import pytest
 from unittest.mock import MagicMock
 from aegis._internal.retry import with_retry, RetryExhaustedError
@@ -10,6 +12,14 @@ from aegis._internal.errors import (
     SchemaValidationError,
 )
 from aegis._internal.policy_compiler import compile_policy
+from aegis._internal.policy_loader import FilePolicyLoader
+
+
+RETRY_POLICY_ROOT = Path("tests/golden_replays").resolve()
+
+
+def _retry_loader():
+    return FilePolicyLoader(RETRY_POLICY_ROOT)
 
 
 def _base_invocation_with_retry():
@@ -17,7 +27,7 @@ def _base_invocation_with_retry():
         "model_provider": "anthropic",
         "model_identifier": "claude-sonnet-4",
         "role": "planner",
-        "policy_file": "tests/golden_replays/policy_with_retry.yaml",
+        "policy_file": "policy_with_retry.yaml",
         "input": {"task": "test"},
         "output": {"result": "done", "confidence": 0.9},
         "context": {"role_declared": True}
@@ -34,7 +44,11 @@ def test_retry_on_schema_error_succeeds_second_attempt():
         {"enforcement_result": "PASS", "audit_schema_version": "1.0"}
     ])
 
-    audit = with_retry(invocation, enforcement_fn=mock_enforce)
+    audit = with_retry(
+        invocation,
+        enforcement_fn=mock_enforce,
+        policy_loader=_retry_loader(),
+    )
 
     assert audit["enforcement_result"] == "PASS"
     assert mock_enforce.call_count == 2  # Initial + 1 retry
@@ -48,7 +62,11 @@ def test_retry_exhausts_all_attempts():
     mock_enforce = MagicMock(side_effect=SchemaValidationError("Persistent error", details={}))
 
     with pytest.raises(RetryExhaustedError) as exc_info:
-        with_retry(invocation, enforcement_fn=mock_enforce)
+        with_retry(
+            invocation,
+            enforcement_fn=mock_enforce,
+            policy_loader=_retry_loader(),
+        )
 
     assert exc_info.value.code == "RETRY_EXHAUSTED"
     assert exc_info.value.details["attempts"] == 3  # 1 initial + 2 retries (max_retries=2)
@@ -63,7 +81,11 @@ def test_retry_not_applied_to_precondition_error():
     mock_enforce = MagicMock(side_effect=PreconditionError("Missing precondition", details={}))
 
     with pytest.raises(PreconditionError):
-        with_retry(invocation, enforcement_fn=mock_enforce)
+        with_retry(
+            invocation,
+            enforcement_fn=mock_enforce,
+            policy_loader=_retry_loader(),
+        )
 
     assert mock_enforce.call_count == 1  # No retries
 
@@ -75,7 +97,11 @@ def test_retry_not_applied_to_governance_error():
     mock_enforce = MagicMock(side_effect=GovernanceViolationError("Role violation", details={}))
 
     with pytest.raises(GovernanceViolationError):
-        with_retry(invocation, enforcement_fn=mock_enforce)
+        with_retry(
+            invocation,
+            enforcement_fn=mock_enforce,
+            policy_loader=_retry_loader(),
+        )
 
     assert mock_enforce.call_count == 1  # No retries
 
@@ -86,7 +112,7 @@ def test_no_retry_policy_single_attempt():
         "model_provider": "anthropic",
         "model_identifier": "claude-sonnet-4",
         "role": "planner",
-        "policy_file": "tests/golden_replays/golden_policy_v1.yaml",  # No retry policy
+        "policy_file": "golden_policy_v1.yaml",  # No retry policy
         "input": {"task": "test"},
         "output": {"result": "done", "confidence": 0.9},
         "context": {"role_declared": True, "schema_exists": True}
@@ -94,7 +120,11 @@ def test_no_retry_policy_single_attempt():
 
     mock_enforce = MagicMock(return_value={"enforcement_result": "PASS"})
 
-    audit = with_retry(invocation, enforcement_fn=mock_enforce)
+    audit = with_retry(
+        invocation,
+        enforcement_fn=mock_enforce,
+        policy_loader=_retry_loader(),
+    )
 
     assert audit["enforcement_result"] == "PASS"
     assert mock_enforce.call_count == 1  # Single attempt, no retries
@@ -109,7 +139,11 @@ def test_max_retries_zero_single_attempt():
 
     mock_enforce = MagicMock(return_value={"enforcement_result": "PASS"})
 
-    audit = with_retry(invocation, enforcement_fn=mock_enforce)
+    audit = with_retry(
+        invocation,
+        enforcement_fn=mock_enforce,
+        policy_loader=_retry_loader(),
+    )
 
     assert audit["enforcement_result"] == "PASS"
 
@@ -162,17 +196,24 @@ def test_compiled_policy_carries_retry_bounds():
 def test_with_retry_rejects_uncompiled_retry_numbers(monkeypatch):
     """The compatibility wrapper must compile loaded retry authority first."""
     monkeypatch.setattr(
-        "aegis._internal.policy_loader.load_policy",
-        lambda _path: {
-            "policy_version": "1.0",
-            "roles": ["planner"],
-            "retry_policy": {"max_retries": True, "backoff_ms": 0},
-        },
+        "aegis._internal.retry.load_resolve_compile_policy",
+        lambda _path, **_kwargs: compile_policy(
+            {
+                "policy_version": "1.0",
+                "roles": ["planner"],
+                "retry_policy": {"max_retries": True, "backoff_ms": 0},
+            },
+            source="test",
+        ),
     )
     enforce = MagicMock(return_value={"enforcement_result": "PASS"})
 
     with pytest.raises(PolicyValidationError) as exc:
-        with_retry(_base_invocation_with_retry(), enforcement_fn=enforce)
+        with_retry(
+            _base_invocation_with_retry(),
+            enforcement_fn=enforce,
+            policy_loader=_retry_loader(),
+        )
 
     assert exc.value.code == "RISK_NUMBER_INVALID"
     enforce.assert_not_called()
@@ -191,7 +232,11 @@ def test_backoff_timing():
             raise SchemaValidationError("Fail", details={})
         return {"enforcement_result": "PASS"}
 
-    audit = with_retry(invocation, enforcement_fn=mock_enforce_with_timing)
+    audit = with_retry(
+        invocation,
+        enforcement_fn=mock_enforce_with_timing,
+        policy_loader=_retry_loader(),
+    )
 
     assert audit["enforcement_result"] == "PASS"
     assert len(call_times) == 3
@@ -223,7 +268,11 @@ def test_retry_each_attempt_produces_audit():
         audits[2]
     ])
 
-    audit = with_retry(invocation, enforcement_fn=mock_enforce)
+    audit = with_retry(
+        invocation,
+        enforcement_fn=mock_enforce,
+        policy_loader=_retry_loader(),
+    )
 
     assert audit["enforcement_result"] == "PASS"
     assert mock_enforce.call_count == 3  # Each attempt called enforcement

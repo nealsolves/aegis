@@ -38,6 +38,7 @@ EXPECTED_PRECONDITION_FIXTURES = (
     Path("tests/fixtures/policy_cycle_a.yaml"),
     Path("tests/fixtures/policy_cycle_b.yaml"),
     Path("tests/fixtures/typed_preconditions_policy.yaml"),
+    Path("tests/golden_replays/base_policy_composable.yaml"),
     Path("tests/golden_replays/golden_policy_postcondition_only.yaml"),
     Path("tests/golden_replays/golden_policy_v1.yaml"),
     Path("tests/golden_replays/policy_child_extends_base.yaml"),

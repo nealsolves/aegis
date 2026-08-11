@@ -1,7 +1,6 @@
 import asyncio
 import json
-from pathlib import Path
-from unittest.mock import patch, mock_open
+from unittest.mock import patch
 
 import pytest
 
@@ -11,7 +10,6 @@ from aegis._internal.policy_loader import (
     load_policy_async,
     _path_to_pointer,
     _merge_policies,
-    _resolve_extends,
     _resolve_policy_schema_path,
     POLICY_DSL_SCHEMA_PATH,
     LEGACY_POLICY_SCHEMA_PATH,
@@ -34,7 +32,8 @@ def test_load_policy_schema_mismatch():
     with pytest.raises(PolicyValidationError) as exc_info:
         load_policy("tests/golden_replays/policy_missing_roles.yaml")
     assert exc_info.value.code == "POLICY_SCHEMA_VALIDATION_ERROR"
-    assert "roles" in str(exc_info.value)
+    assert str(exc_info.value) == "Policy schema validation failed at $"
+    assert exc_info.value.details == {"path": "$", "validator": "required"}
 
 
 def test_load_policy_missing_file():
@@ -100,14 +99,6 @@ def test_merge_policies_key_only_in_overlay():
     assert merged["policy_version"] == "1.0"
 
 
-def test_resolve_extends_no_extends_returns_policy():
-    """_resolve_extends returns policy unchanged when extends is falsy (line 141)."""
-    policy = {"policy_version": "1.0", "roles": ["planner"], "extends": None}
-    fake_path = Path("tests/golden_replays/golden_policy_v1.yaml").resolve()
-    result = _resolve_extends(policy, fake_path)
-    assert result is policy
-
-
 def test_load_policy_async_returns_same_as_sync():
     """load_policy_async produces identical result to load_policy (line 255)."""
     sync_policy = load_policy("tests/golden_replays/golden_policy_v1.yaml")
@@ -150,12 +141,16 @@ def test_resolve_policy_schema_path_raises_when_neither_schema_exists(tmp_path):
     assert "No policy schema file found" in str(exc_info.value)
 
 
-def test_load_policy_schema_json_decode_error():
+def test_load_policy_schema_json_decode_error(tmp_path):
     """PolicyLoadError raised when schema JSON file is malformed (lines 203-204)."""
-    with patch("builtins.open", mock_open(read_data="not valid json")):
-        with patch("yaml.safe_load", return_value={"policy_version": "1.0", "roles": ["planner"]}):
-            with pytest.raises((PolicyLoadError, Exception)):
-                load_policy("tests/golden_replays/golden_policy_v1.yaml")
+    bad_schema_file = tmp_path / "bad.schema.json"
+    bad_schema_file.write_text("not valid json", encoding="utf-8")
+    with patch(
+        "aegis._internal.policy_loader.POLICY_DSL_SCHEMA_PATH",
+        bad_schema_file,
+    ):
+        with pytest.raises(PolicyLoadError):
+            load_policy("tests/golden_replays/golden_policy_v1.yaml")
 
 
 def test_load_policy_schema_wrong_draft(tmp_path):

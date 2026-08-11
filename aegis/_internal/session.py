@@ -769,7 +769,7 @@ class GovernanceSession:
             from aegis._internal.enforcement import _compile_cached_policy
 
             _policy = _compile_cached_policy(
-                policy_file,
+                {"policy_file": policy_file},
                 cache=self._aigc._policy_cache,
                 loader=self._aigc._policy_loader,
             )
@@ -846,7 +846,7 @@ class GovernanceSession:
 
         try:
             compiled = _compile_cached_policy(
-                policy_file,
+                {"policy_file": policy_file},
                 cache=self._aigc._policy_cache,
                 loader=self._aigc._policy_loader,
             )

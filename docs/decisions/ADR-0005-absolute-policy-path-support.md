@@ -1,101 +1,75 @@
-# ADR-0005: Allow Absolute Policy Paths in _resolve_policy_path
+# ADR-0005: Absolute policy entries under one canonical root
 
 Date: 2026-02-17
-Status: Accepted
-Owners: Neal
 
----
+Updated: 2026-08-11
+
+Status: Accepted
+
+Owners: Neal
 
 ## Context
 
-`_resolve_policy_path` in `src/policy_loader.py` resolves all policy file paths
-relative to `REPO_ROOT` (the AEGIS SDK directory) and rejects any path — including
-absolute paths — that does not reside within that directory.
-
-This was appropriate when AEGIS was used exclusively within its own repository.
-However, AEGIS is now installed as a library by consumer projects that
-maintain their own policy files in their own repository directories.  Passing an
-absolute path to a consumer-owned policy file raised `PolicyLoadError: Policy path
-escapes repository root`, making cross-repo integration impossible without copying
-policies into the SDK.
-
----
+Consumer projects need absolute entry paths, but an absolute entry must not
+silently grant its policy graph access to unrelated filesystem locations.
+Relative entries also need a deterministic authority independent of later
+working-directory changes.
 
 ## Decision
 
-When `policy_file` is an **absolute path**, skip the `REPO_ROOT` containment check.
-The caller is explicitly providing a fully-qualified path and is responsible for its
-correctness and trustworthiness.
+Absolute entry paths remain supported, but they do not authorize inherited targets outside the entry's canonical policy root. `FilePolicyLoader` now requires an explicit root; relative references passed to that loader are root-relative. Containment failures return `POLICY_PATH_OUTSIDE_ROOT` without filesystem paths. Custom retry enforcement callables must receive the same `policy_loader` authority used for enforcement.
 
-When `policy_file` is a **relative path**, the existing REPO_ROOT containment check
-is preserved: the path is resolved against `REPO_ROOT` and must remain within it.
-This prevents path-traversal attacks (`../../../etc/passwd`) for relative inputs.
+For an implicit call such as `load_policy("policies/entry.yaml")`, the lexical
+parent (`policies`) is captured as the root. That root governs the entry and
+every transitive `extends`. An explicit `FilePolicyLoader("policies")` permits a
+deliberate multi-directory tree only while canonical entries and symlink
+targets remain inside that root. Custom loaders cannot use `extends`.
 
-All other validations (file must exist, must be a file, must have `.yaml`/`.yml`
-extension) apply to both absolute and relative paths.
+Diagnostics select the same namespace with `--policy-root ROOT` on policy
+lint/validate and workflow lint/doctor. Error text and details do not disclose
+the root, entry, inherited target, schema path, or canonical filesystem path.
 
----
+## Migration
 
-## Options Considered
+Before, callers could construct an unbound loader and let a custom retry
+callable rediscover policy authority:
 
-### Option A: Allow absolute paths (chosen)
+```python
+loader = FilePolicyLoader()
+audit = with_retry(invocation, enforcement_fn=custom_enforce)
+```
 
-Pros:
-- Minimal change, backward compatible
-- Preserves relative-path security check
-- Enables legitimate consumer-project use without SDK changes to policies dir
+After, bind and reuse one explicit authority:
 
-Cons:
-- Shifts responsibility for absolute-path trustworthiness to the caller
+```python
+loader = FilePolicyLoader("policies")
+policy = load_policy("child.yaml", loader=loader)
+engine = AEGIS(sink=sink, policy_loader=loader)
+audit = with_retry(
+    invocation,
+    enforcement_fn=custom_enforce,
+    policy_loader=loader,
+)
+```
 
-### Option B: AEGIS_POLICY_ROOT environment variable
-
-Pros:
-- Security check remains in place for all paths
-- Configurable without code changes
-
-Cons:
-- More invasive (env var must be set before module import)
-- Couples consumer project startup sequence to AEGIS internals
-
-### Option C: Copy consumer policies into AEGIS SDK policies/ directory
-
-Pros:
-- No SDK changes required
-
-Cons:
-- Couples two separate repositories
-- Consumer policy files must be manually synced
-
----
+This is an immediate beta security correction. Relative references supplied to
+an explicit loader are now root-relative, and path-bearing load-error details
+have been removed.
 
 ## Consequences
 
-- Consumer projects can pass absolute paths to their own policy files.
-- The relative-path REPO_ROOT guard is unchanged.
-- Existing tests (`test_load_policy_path_escape_is_blocked`) remain valid because
-  they test a relative path (`../outside-policy.yaml`), which still triggers the
-  containment check.
-- The `test_load_policy_directory_path` test uses `patch("src.policy_loader.REPO_ROOT")`
-  and passes an absolute path; it continues to work because the absolute-path branch
-  still validates that the path references a file (not a directory).
-
----
-
-## Contract Impact
-
-- Enforcement pipeline impact: None (enforcement still calls `load_policy`)
-- Policy DSL impact: None
-- Schema impact: None
-- Audit artifact impact: None
-- Golden replays impact: None (golden replays use relative paths)
-- Structural impact: Minimal — one conditional in `_resolve_policy_path`
-- Backward compatibility: Fully backward compatible
-
----
+- Absolute consumer-owned entry paths remain supported.
+- Implicit loads use the entry's lexical parent as their immutable root.
+- Explicit loaders, AEGIS instances, module enforcement, caches, async calls,
+  diagnostics, sessions, and retry attempts retain one authority per operation.
+- Canonical traversal and symlink escapes fail before suffix, existence, type,
+  mtime, cache, content, or diagnostic inspection.
+- Hostile concurrent mutation of filesystem components remains outside the
+  guarantee. Descriptor-relative race resistance against a concurrent writer
+  is a non-goal.
 
 ## Validation
 
-- Existing AEGIS test suite (`python -m pytest`) must pass unchanged.
-- Host application integration tests pass with consumer-owned absolute
-  policy paths.
+Traversal, absolute escape, symlink escape, cache isolation, async identity,
+nested/concurrent enforcement, diagnostics, CLI, retry, schema parity, and
+path-free error tests enforce this decision.
