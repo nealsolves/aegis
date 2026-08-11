@@ -267,7 +267,9 @@ def test_policy_load():
 
 def test_policy_load_not_found():
     r = client.post("/api/policy/load", json={"policy_name": "nonexistent.yaml"})
-    assert r.json()["error"] is not None
+    assert r.status_code == 404
+    assert r.json()["detail"]["code"] == "POLICY_NOT_FOUND"
+    assert r.headers["x-request-id"] == r.json()["detail"]["request_id"]
 
 
 def test_validate_dates_in_range():
@@ -395,19 +397,16 @@ def test_load_inmemory_valid_yaml():
 
 def test_load_inmemory_invalid_yaml():
     r = client.post("/api/policy/load-inmemory", json={"yaml_text": ":\ninvalid: [unclosed"})
-    assert r.status_code == 200
-    data = r.json()
-    assert data["policy"] is None
-    assert data["error"] is not None
-    assert data["loader_class"] == "InMemoryPolicyLoader"
+    assert r.status_code == 422
+    assert r.json()["detail"]["code"] == "YAML_INVALID"
+    assert r.headers["x-request-id"] == r.json()["detail"]["request_id"]
 
 
 def test_load_inmemory_non_mapping_yaml():
     r = client.post("/api/policy/load-inmemory", json={"yaml_text": "- just\n- a\n- list\n"})
-    assert r.status_code == 200
-    data = r.json()
-    assert data["policy"] is None
-    assert data["error"] is not None
+    assert r.status_code == 422
+    assert r.json()["detail"]["code"] == "YAML_UNSUPPORTED_VALUE"
+    assert r.headers["x-request-id"] == r.json()["detail"]["request_id"]
 
 
 def test_get_scenario_known_key():

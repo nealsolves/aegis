@@ -3,12 +3,16 @@ from __future__ import annotations
 import json
 import logging
 import re
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 import main
+from bounded_yaml import load_bounded_yaml
+from demo_errors import DemoPublicError
 from demo_limits import REQUEST_BODY_MAX_BYTES
+from loaders import InMemoryPolicyLoader
 
 
 def _boom() -> None:
@@ -20,6 +24,19 @@ if not any(getattr(route, "path", None) == "/_security-test/boom" for route in _
     _inner_api.add_api_route("/_security-test/boom", _boom, methods=["GET"])
 
 client = TestClient(main.app, raise_server_exceptions=False)
+
+
+def _issue_59_reproduction() -> str:
+    width = 6
+    lines: list[str] = []
+    previous: str | None = None
+    for name in "abcdefg":
+        values = ["x"] * width if previous is None else [f"*{previous}"] * width
+        lines.append(f"{name}: &{name} [" + ", ".join(values) + "]")
+        previous = name
+    body = "\n".join(lines) + "\n"
+    assert len(body.encode("utf-8")) == 211
+    return body
 
 
 def _assert_safe_error(response, status: int, code: str) -> str:
@@ -119,3 +136,76 @@ def test_error_envelope_contains_no_legacy_free_form_detail() -> None:
 
     _assert_safe_error(response, 422, "INVALID_REQUEST")
     assert "not-hex" not in response.text
+
+
+def test_exact_issue_59_yaml_is_rejected_without_amplified_response() -> None:
+    response = client.post(
+        "/api/policy/load-inmemory",
+        json={"yaml_text": _issue_59_reproduction()},
+    )
+
+    _assert_safe_error(response, 422, "YAML_LIMIT_EXCEEDED")
+    assert len(response.content) < 1_000
+
+
+def test_compose_applies_the_same_bound_to_each_document() -> None:
+    response = client.post(
+        "/api/compose",
+        json={
+            "parent_yaml": "roles: [reviewer]\n",
+            "child_yaml": _issue_59_reproduction(),
+            "strategy": "intersect",
+        },
+    )
+
+    _assert_safe_error(response, 422, "YAML_LIMIT_EXCEEDED")
+    assert len(response.content) < 1_000
+
+
+def test_malformed_yaml_does_not_return_parser_coordinates_or_snippets() -> None:
+    marker = "/private/parser-marker"
+    response = client.post(
+        "/api/policy/load-inmemory",
+        json={"yaml_text": f"value: [{marker}"},
+    )
+
+    _assert_safe_error(response, 422, "YAML_INVALID")
+    assert marker not in response.text
+    assert "column" not in response.text.lower()
+
+
+def test_inmemory_loader_is_bounded_and_returns_detached_mappings() -> None:
+    with pytest.raises(DemoPublicError) as caught:
+        InMemoryPolicyLoader(_issue_59_reproduction())
+    assert caught.value.code == "YAML_LIMIT_EXCEEDED"
+
+    loader = InMemoryPolicyLoader("roles: [reviewer]\n")
+    first = loader.load("inline")
+    first["roles"].append("mutated")
+    assert loader.load("inline") == {"roles": ["reviewer"]}
+
+
+def test_disk_policy_display_uses_bounded_yaml(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    policy_root = tmp_path / "policies"
+    policy_root.mkdir()
+    (policy_root / "hostile.yaml").write_text(_issue_59_reproduction(), encoding="utf-8")
+    monkeypatch.setattr(main, "SAMPLE_POLICIES_DIR", policy_root)
+
+    response = client.post("/api/policy/load", json={"policy_name": "hostile.yaml"})
+
+    _assert_safe_error(response, 422, "YAML_LIMIT_EXCEEDED")
+    assert len(response.content) < 1_000
+
+
+def test_all_checked_in_demo_policies_fit_the_bounded_contract() -> None:
+    demo_root = main.SAMPLE_POLICIES_DIR.parent
+    paths = sorted((demo_root / "sample_policies").glob("*.yaml"))
+    paths += sorted((demo_root / "demo_policies").glob("*.yaml"))
+    assert paths
+
+    for path in paths:
+        loaded = load_bounded_yaml(path.read_text(encoding="utf-8"))
+        assert isinstance(loaded, dict), path.name

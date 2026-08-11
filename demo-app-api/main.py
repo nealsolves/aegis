@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import JSONResponse
 
+from bounded_yaml import ensure_bounded_json_response, load_bounded_yaml
 from scenarios import SCENARIOS
 from aegis import (
     AEGIS, AIGCError, HMACSigner, build_content_checksum_v2,
@@ -33,6 +34,7 @@ from demo_contract import API_CONTRACT_VERSION, demo_source, installed_sdk_versi
 from demo_edge import DemoEdgeMiddleware
 from demo_errors import (
     DemoPublicError,
+    current_request_id,
     log_internal_failure,
     public_error_response,
     request_id_from_scope,
@@ -387,7 +389,7 @@ class ChainTamperRequest(BaseModel):
 class ComposeRequest(BaseModel):
     parent_yaml: str
     child_yaml: str
-    strategy: str = "intersect"
+    strategy: Literal["intersect", "union", "replace"] = "intersect"
 
 
 _STRATEGY_MAP = {
@@ -399,25 +401,28 @@ _STRATEGY_MAP = {
 
 @api.post("/api/compose")
 def compose_policies(req: ComposeRequest):
-    try:
-        base  = yaml_lib.safe_load(req.parent_yaml)
-        child = yaml_lib.safe_load(req.child_yaml)
-    except yaml_lib.YAMLError as exc:
-        return {"merged_yaml": None, "escalations": [], "diff": {}, "error": str(exc)}
-
-    if not isinstance(base, dict):
-        return {"merged_yaml": None, "escalations": [], "diff": {}, "error": "parent_yaml must be a YAML mapping"}
-    if not isinstance(child, dict):
-        return {"merged_yaml": None, "escalations": [], "diff": {}, "error": "child_yaml must be a YAML mapping"}
-
-    strategy = _STRATEGY_MAP.get(req.strategy, COMPOSITION_INTERSECT)
+    base = load_bounded_yaml(req.parent_yaml)
+    child = load_bounded_yaml(req.child_yaml)
+    strategy = _STRATEGY_MAP[req.strategy]
 
     try:
         merged = merge_policies(base, child, composition_strategy=strategy)
         merged.pop("extends", None)
         merged.pop("composition_strategy", None)
     except Exception as exc:
-        return {"merged_yaml": None, "escalations": [], "diff": {}, "error": str(exc)}
+        log_internal_failure(
+            request_id=current_request_id(),
+            operation="compose_policies",
+            error=exc,
+            public_code="INVALID_REQUEST",
+            method="POST",
+            route_template="/api/compose",
+        )
+        raise DemoPublicError(
+            "INVALID_REQUEST",
+            safe_demo_message("INVALID_REQUEST"),
+            422,
+        ) from None
 
     # Escalation detection
     base_roles = set(base.get("roles", []))
@@ -444,12 +449,14 @@ def compose_policies(req: ComposeRequest):
         "added_roles": sorted(new_roles),
     }
 
-    return {
-        "merged_yaml": yaml_lib.dump(merged, default_flow_style=False),
+    response = {
+        "merged_yaml": yaml_lib.safe_dump(merged, default_flow_style=False),
         "escalations": escalations,
         "diff": diff,
         "error": None,
     }
+    ensure_bounded_json_response(response)
+    return response
 
 
 @api.post("/api/chain/tamper")
@@ -472,15 +479,37 @@ class LoadPolicyRequest(BaseModel):
 def load_policy_endpoint(req: LoadPolicyRequest):
     path = (SAMPLE_POLICIES_DIR / req.policy_name).resolve()
     if not path.is_relative_to(SAMPLE_POLICIES_DIR.resolve()):
-        return {"policy": None, "yaml_text": None, "error": "Access denied"}
+        raise DemoPublicError(
+            "ACCESS_DENIED",
+            safe_demo_message("ACCESS_DENIED"),
+            404,
+        )
     if not path.exists():
-        return {"policy": None, "yaml_text": None, "error": f"Not found: {req.policy_name}"}
+        raise DemoPublicError(
+            "POLICY_NOT_FOUND",
+            safe_demo_message("POLICY_NOT_FOUND"),
+            404,
+        )
     try:
-        text = path.read_text()
-        policy = yaml_lib.safe_load(text)
-        return {"policy": policy, "yaml_text": text, "error": None}
+        text = path.read_text(encoding="utf-8")
     except Exception as exc:
-        return {"policy": None, "yaml_text": None, "error": str(exc)}
+        log_internal_failure(
+            request_id=current_request_id(),
+            operation="read_demo_policy",
+            error=exc,
+            public_code="DEMO_OPERATION_FAILED",
+            method="POST",
+            route_template="/api/policy/load",
+        )
+        raise DemoPublicError(
+            "DEMO_OPERATION_FAILED",
+            safe_demo_message("DEMO_OPERATION_FAILED"),
+            500,
+        ) from None
+    policy = load_bounded_yaml(text)
+    response = {"policy": policy, "yaml_text": text, "error": None}
+    ensure_bounded_json_response(response)
+    return response
 
 
 class ValidateDatesRequest(BaseModel):
@@ -495,14 +524,16 @@ class LoadInMemoryRequest(BaseModel):
 
 @api.post("/api/policy/load-inmemory")
 def load_policy_inmemory(req: LoadInMemoryRequest):
-    try:
-        loader = InMemoryPolicyLoader(req.yaml_text)
-        policy = loader.load("inline")
-        if not isinstance(policy, dict):
-            return {"policy": None, "yaml_text": req.yaml_text, "loader_class": "InMemoryPolicyLoader", "error": "YAML must be a mapping"}
-        return {"policy": policy, "yaml_text": req.yaml_text, "loader_class": "InMemoryPolicyLoader", "error": None}
-    except Exception as exc:
-        return {"policy": None, "yaml_text": None, "loader_class": "InMemoryPolicyLoader", "error": str(exc)}
+    loader = InMemoryPolicyLoader(req.yaml_text)
+    policy = loader.load("inline")
+    response = {
+        "policy": policy,
+        "yaml_text": req.yaml_text,
+        "loader_class": "InMemoryPolicyLoader",
+        "error": None,
+    }
+    ensure_bounded_json_response(response)
+    return response
 
 
 @api.post("/api/policy/validate-dates")
@@ -793,8 +824,8 @@ def run_gate(req: GateRunRequest):
         artifact = getattr(exc, "audit_artifact", None)
 
     # Run gate with the same policy and context used during enforcement
-    with open(policy_path) as _f:
-        policy_dict = yaml_lib.safe_load(_f) or {}
+    with open(policy_path, encoding="utf-8") as _f:
+        policy_dict = load_bounded_yaml(_f.read())
     direct_result = gate.evaluate(invocation, policy_dict, scenario["context"])
 
     return {

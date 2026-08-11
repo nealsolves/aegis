@@ -5,8 +5,11 @@ current AEGIS SDK. Pass a loader instance to AEGIS(policy_loader=...) to control
 how policies are resolved — no filesystem path required.
 """
 
-import yaml as yaml_lib
+import copy
+
 from aegis import PolicyLoaderBase
+
+from bounded_yaml import load_bounded_yaml
 
 
 class InMemoryPolicyLoader(PolicyLoaderBase):
@@ -24,7 +27,7 @@ class InMemoryPolicyLoader(PolicyLoaderBase):
     """
 
     def __init__(self, yaml_text: str) -> None:
-        self._policy = yaml_lib.safe_load(yaml_text)
+        self._policy = load_bounded_yaml(yaml_text)
 
     def load(self, policy_ref: str) -> dict:  # noqa: ARG002
-        return self._policy
+        return copy.deepcopy(self._policy)
