@@ -70,6 +70,7 @@ const ATLAS_FIRST: ScenarioRunResponse = {
   error: {
     code: 'PROVENANCE_MISSING',
     message: 'A required policy source was missing.',
+    request_id: 'a'.repeat(32),
   },
   source: SOURCE,
 }
@@ -215,6 +216,7 @@ const MERIDIAN_FIRST: ScenarioRunResponse = {
   error: {
     code: 'WORKFLOW_SEQUENCE_VIOLATION',
     message: 'The required sequence was not followed.',
+    request_id: 'b'.repeat(32),
   },
   source: SOURCE,
 }

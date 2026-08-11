@@ -6,6 +6,7 @@ import StatusBadge from '@/components/shared/StatusBadge'
 import { useApi } from '@/hooks/useApi'
 import { IBM_COLORS } from '@/theme/tokens'
 import type { Artifact } from '@/types/artifact'
+import type { PublicDemoError } from '@/lib/publicError'
 
 type RiskMode = 'strict' | 'risk_scored' | 'warn_only'
 type EnforcementFlow = 'unified' | 'split'
@@ -39,7 +40,7 @@ interface ScenarioDetail {
   role: string
 }
 
-interface EnforceResponse { artifact: Artifact | null; error: string | null }
+interface EnforceResponse { artifact: Artifact | null; error: PublicDemoError | null }
 
 function readGateList(value: unknown): string[] {
   if (!Array.isArray(value)) return []

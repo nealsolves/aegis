@@ -5,10 +5,11 @@ import CodeBlock from '@/components/shared/CodeBlock'
 import { useApi } from '@/hooks/useApi'
 import { IBM_COLORS } from '@/theme/tokens'
 import type { Artifact } from '@/types/artifact'
+import { formatPublicDemoError, INVALID_PUBLIC_DEMO_ERROR_MESSAGE, type PublicDemoError } from '@/lib/publicError'
 
 interface ComparePanel {
   artifact: Artifact | null
-  error: string | null
+  error: PublicDemoError | null
 }
 
 interface Lab9Response {
@@ -95,7 +96,7 @@ export default function Lab9GovernedVsUngoverned() {
               </div>
               {result.governed.error && (
                 <p className="text-xs mb-2" style={{ color: IBM_COLORS.red40 }}>
-                  {result.governed.error}
+                  {formatPublicDemoError(result.governed.error) ?? INVALID_PUBLIC_DEMO_ERROR_MESSAGE}
                 </p>
               )}
               <CodeBlock

@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useAigc } from '@/context/AigcContext'
 import type { Artifact } from '@/types/artifact'
+import { parsePublicApiError } from '@/lib/publicError'
 
 export function useApi<T = unknown>() {
   const { apiUrl, addAudit } = useAigc()
@@ -38,7 +39,7 @@ export function useApi<T = unknown>() {
         body: isGet ? undefined : JSON.stringify(body),
         signal: controller.signal,
       })
-      if (!res.ok) throw new Error(`API error: ${res.status} ${res.statusText}`)
+      if (!res.ok) throw new Error(await parsePublicApiError(res))
       const data = await res.json() as T
 
       // Only discard if a newer request was made (race condition)

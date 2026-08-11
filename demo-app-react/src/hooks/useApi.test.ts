@@ -41,6 +41,39 @@ describe('useApi', () => {
     vi.unstubAllGlobals()
   })
 
+  it('uses only a complete safe API error envelope', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      detail: {
+        code: 'RATE_LIMIT_EXCEEDED',
+        message: 'Please try again shortly.',
+        request_id: 'a'.repeat(32),
+      },
+      traceback: '/private/secret',
+    }), { status: 429, statusText: '/private/secret' })))
+
+    const { result } = renderHook(() => useApi(), { wrapper: AigcProvider })
+    await act(async () => { await result.current.call('/health') })
+
+    expect(result.current.error).toBe(
+      `Please try again shortly. (request ${'a'.repeat(32)})`,
+    )
+    expect(result.current.error).not.toContain('/private/')
+    vi.unstubAllGlobals()
+  })
+
+  it('falls back without echoing an unknown response body', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
+      '{"detail":"/private/secret"}',
+      { status: 500, statusText: '/private/secret' },
+    )))
+
+    const { result } = renderHook(() => useApi(), { wrapper: AigcProvider })
+    await act(async () => { await result.current.call('/health') })
+
+    expect(result.current.error).toBe('Request failed (500).')
+    vi.unstubAllGlobals()
+  })
+
   it('uses POST with Content-Type when body is provided', async () => {
     const mockFetch = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({}) })
     vi.stubGlobal('fetch', mockFetch)

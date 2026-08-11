@@ -4,9 +4,10 @@ import CodeBlock from '@/components/shared/CodeBlock'
 import MetricCard from '@/components/shared/MetricCard'
 import { useApi } from '@/hooks/useApi'
 import type { Artifact } from '@/types/artifact'
+import type { PublicDemoError } from '@/lib/publicError'
 
 interface KeyResponse   { key: string }
-interface SignResponse   { artifact: Artifact | null; error: string | null }
+interface SignResponse   { artifact: Artifact | null; error: PublicDemoError | null }
 interface VerifyResponse { valid: boolean }
 
 export default function Lab2Signing() {

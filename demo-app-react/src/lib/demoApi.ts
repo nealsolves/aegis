@@ -4,6 +4,11 @@ import type {
   DemoSource,
   ScenarioId,
 } from '@/types/demo'
+import {
+  parsePublicApiError,
+  parsePublicDemoError,
+  type PublicDemoError,
+} from '@/lib/publicError'
 
 export const DEFAULT_DEMO_REQUEST_TIMEOUT_MS = 5_000
 
@@ -12,7 +17,7 @@ export class DemoApiError extends Error {
     message: string,
     readonly status: number,
     readonly code: string,
-    readonly detail: unknown,
+    readonly detail: PublicDemoError | null,
   ) {
     super(message)
     this.name = 'DemoApiError'
@@ -139,26 +144,23 @@ function requestUrl(apiUrl: string, path: string) {
 }
 
 async function parseError(response: Response): Promise<DemoApiError> {
-  let body: unknown
-
-  try {
-    body = await response.json()
-  } catch (error) {
-    if (isAbortError(error)) throw error
-    body = null
+  const clone = typeof response.clone === 'function' ? response.clone() : null
+  const message = await parsePublicApiError(response)
+  let detail: PublicDemoError | null = null
+  if (clone) {
+    try {
+      const body: unknown = await clone.json()
+      detail = isRecord(body) ? parsePublicDemoError(body.detail) : null
+    } catch (error) {
+      if (isAbortError(error)) throw error
+    }
   }
-
-  const detail = isRecord(body) && 'detail' in body ? body.detail : body
-  const code = isRecord(detail) && typeof detail.code === 'string'
-    ? detail.code
-    : `HTTP_${response.status}`
-  const message = isRecord(detail) && typeof detail.message === 'string'
-    ? detail.message
-    : typeof detail === 'string'
-      ? detail
-      : response.statusText || `Request failed with status ${response.status}`
-
-  return new DemoApiError(message, response.status, code, detail)
+  return new DemoApiError(
+    message,
+    response.status,
+    detail?.code ?? `HTTP_${response.status}`,
+    detail,
+  )
 }
 
 export async function demoRequest<T>(

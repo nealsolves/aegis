@@ -5,6 +5,7 @@ import type {
   ScenarioRunResponse,
 } from '@/types/demo'
 import type { ScenarioId } from './scenarioContent'
+import { parsePublicDemoError } from '@/lib/publicError'
 
 const OUTCOMES: readonly DemoOutcome[] = ['PASS', 'FAIL', 'PAUSED']
 const GATE_PHASES: readonly DemoGateResult['phase'][] = [
@@ -92,18 +93,7 @@ function parseNullableRecord(
 
 function parseError(value: unknown): ScenarioRunResponse['error'] {
   if (value === null) return null
-  if (
-    !isRecord(value)
-    || typeof value.code !== 'string'
-    || typeof value.message !== 'string'
-  ) {
-    return invalidResponse()
-  }
-
-  return {
-    code: value.code,
-    message: value.message,
-  }
+  return parsePublicDemoError(value) ?? invalidResponse()
 }
 
 function parseSource(value: unknown): DemoSource {

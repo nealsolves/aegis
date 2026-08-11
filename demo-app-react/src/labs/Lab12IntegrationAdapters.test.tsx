@@ -105,6 +105,7 @@ const NEGATIVE_RESPONSE: AdapterRunResponse = {
   error: {
     code: 'RETURNED_ALIAS_MISMATCH',
     message: 'The returned binding did not match.',
+    request_id: 'c'.repeat(32),
   },
   source: SOURCE,
 }

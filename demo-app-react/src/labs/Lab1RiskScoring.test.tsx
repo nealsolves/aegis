@@ -55,7 +55,11 @@ describe('Lab1RiskScoring', () => {
               pre_call_gates_evaluated: ['guard_evaluation', 'role_validation', 'precondition_validation'],
             },
           },
-          error: 'Missing required precondition: role_declared',
+          error: {
+            code: 'PRECONDITION_FAILED',
+            message: 'A required governance precondition was not met.',
+            request_id: 'd'.repeat(32),
+          },
         })
       }
 

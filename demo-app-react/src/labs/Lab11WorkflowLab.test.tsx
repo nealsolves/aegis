@@ -277,7 +277,12 @@ describe('Lab11WorkflowLab', () => {
             failure_summary: { exception_type: 'CustomGateViolationError', message: 'source_ids missing' },
             metadata: {},
           },
-          error: 'source_ids missing',
+          error: {
+            code: 'AEGIS_ENFORCEMENT_FAILED',
+            message: 'The governed operation was rejected.',
+            request_id: 'e'.repeat(32),
+            diagnostic: '/private/secret',
+          },
           run_id: 'run-123',
         }
       }
@@ -320,6 +325,8 @@ describe('Lab11WorkflowLab', () => {
     fireEvent.click(screen.getByRole('button', { name: /failure.*fix/i }))
     fireEvent.click(screen.getByRole('button', { name: /trigger failure/i }))
     expect(await screen.findByText(/failure result/i)).toBeInTheDocument()
+    expect(screen.getByText(/The governed operation was rejected.*request e{32}/i)).toBeInTheDocument()
+    expect(screen.queryByText(/\/private\/secret/i)).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /run doctor diagnosis/i }))
     expect(await screen.findByText(/WORKFLOW_SOURCE_REQUIRED/i)).toBeInTheDocument()

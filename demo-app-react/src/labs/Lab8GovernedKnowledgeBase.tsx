@@ -5,11 +5,12 @@ import CodeBlock from '@/components/shared/CodeBlock'
 import { useApi } from '@/hooks/useApi'
 import { IBM_COLORS } from '@/theme/tokens'
 import type { Artifact } from '@/types/artifact'
+import { formatPublicDemoError, INVALID_PUBLIC_DEMO_ERROR_MESSAGE, type PublicDemoError } from '@/lib/publicError'
 
 interface Lab8Response {
   artifact: Artifact | null
   source_ids: string[]
-  error: string | null
+  error: PublicDemoError | null
 }
 
 const KB_SCENARIOS = [
@@ -85,7 +86,7 @@ export default function Lab8GovernedKnowledgeBase() {
           )}
 
           {result.error && (
-            <p className="text-sm mb-3" style={{ color: IBM_COLORS.red40 }}>{result.error}</p>
+            <p className="text-sm mb-3" style={{ color: IBM_COLORS.red40 }}>{formatPublicDemoError(result.error) ?? INVALID_PUBLIC_DEMO_ERROR_MESSAGE}</p>
           )}
 
           <div className="flex items-center gap-2 mb-2">

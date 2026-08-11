@@ -101,6 +101,7 @@ function scenarioResponse(
       : {
           code: `${decision}_REASON`,
           message: `The returned run is ${decision.toLowerCase()}.`,
+          request_id: 'f'.repeat(32),
         },
     source: SOURCE,
   }

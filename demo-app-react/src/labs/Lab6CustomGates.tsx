@@ -4,6 +4,7 @@ import CodeBlock from '@/components/shared/CodeBlock'
 import { useApi } from '@/hooks/useApi'
 import { IBM_COLORS } from '@/theme/tokens'
 import type { Artifact } from '@/types/artifact'
+import type { PublicDemoError } from '@/lib/publicError'
 
 interface GateInfo {
   name: string
@@ -23,7 +24,7 @@ interface GateResult {
 interface GateRunResponse {
   artifact: Artifact | null
   gate_result: GateResult | null
-  error: string | null
+  error: PublicDemoError | null
 }
 
 type GateName =
