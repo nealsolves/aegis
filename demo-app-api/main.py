@@ -5,9 +5,13 @@ import uuid
 from datetime import date
 from pathlib import Path
 from typing import Literal
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.responses import JSONResponse
+
 from scenarios import SCENARIOS
 from aegis import (
     AEGIS, AIGCError, HMACSigner, build_content_checksum_v2,
@@ -26,23 +30,146 @@ from loaders import InMemoryPolicyLoader
 import yaml as yaml_lib
 from workflow_routes import router as workflow_router
 from demo_contract import API_CONTRACT_VERSION, demo_source, installed_sdk_version
+from demo_edge import DemoEdgeMiddleware
+from demo_errors import (
+    DemoPublicError,
+    log_internal_failure,
+    public_error_response,
+    request_id_from_scope,
+    safe_demo_message,
+)
 from demo_routes import router as demo_router
 
-app = FastAPI(title="AEGIS Demo API", version="0.9.0b1")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "https://nealsolves.github.io",
-        "http://localhost:5173",
-        "http://localhost:3000",
-    ],
-    allow_methods=["*"],
-    allow_headers=["*"],
+ALLOWED_ORIGINS = (
+    "https://nealsolves.github.io",
+    "http://localhost:5173",
+    "http://localhost:3000",
 )
 
-app.include_router(workflow_router)
-app.include_router(demo_router)
+api = FastAPI(title="AEGIS Demo API", version="0.9.0b1")
+
+
+def _route_template(request: Request) -> str | None:
+    route = request.scope.get("route")
+    path = getattr(route, "path", None)
+    return path if isinstance(path, str) else None
+
+
+def _log_normalized_error(
+    request: Request,
+    *,
+    code: str,
+    operation: str,
+    error: BaseException | None,
+    exception_class: str | None = None,
+    diagnostic: str | None = None,
+) -> str:
+    request_id = request_id_from_scope(request.scope)
+    log_internal_failure(
+        request_id=request_id,
+        operation=operation,
+        error=error,
+        public_code=code,
+        method=request.method,
+        route_template=_route_template(request),
+        identity_source=getattr(request.state, "limiter_identity_source", None),
+        exception_class=exception_class,
+        diagnostic=diagnostic,
+    )
+    return request_id
+
+
+@api.exception_handler(DemoPublicError)
+async def _demo_public_error_handler(
+    request: Request,
+    exc: DemoPublicError,
+) -> JSONResponse:
+    request_id = _log_normalized_error(
+        request,
+        code=exc.code,
+        operation="intentional_public_failure",
+        error=exc,
+    )
+    return public_error_response(
+        status_code=exc.status_code,
+        code=exc.code,
+        message=exc.message,
+        request_id=request_id,
+        headers=exc.headers,
+    )
+
+
+@api.exception_handler(RequestValidationError)
+async def _request_validation_error_handler(
+    request: Request,
+    exc: RequestValidationError,
+) -> JSONResponse:
+    code = "INVALID_REQUEST"
+    request_id = _log_normalized_error(
+        request,
+        code=code,
+        operation="request_validation",
+        error=None,
+        exception_class=type(exc).__name__,
+        diagnostic="request validation failed",
+    )
+    return public_error_response(
+        status_code=422,
+        code=code,
+        message=safe_demo_message(code),
+        request_id=request_id,
+    )
+
+
+@api.exception_handler(StarletteHTTPException)
+async def _http_error_handler(
+    request: Request,
+    exc: StarletteHTTPException,
+) -> JSONResponse:
+    if exc.status_code == 404:
+        code = "NOT_FOUND"
+    elif exc.status_code == 405:
+        code = "METHOD_NOT_ALLOWED"
+    elif 400 <= exc.status_code < 500:
+        code = "INVALID_REQUEST"
+    else:
+        code = "DEMO_OPERATION_FAILED"
+    request_id = _log_normalized_error(
+        request,
+        code=code,
+        operation="http_exception",
+        error=None,
+        exception_class=type(exc).__name__,
+        diagnostic=f"normalized HTTP status {exc.status_code}",
+    )
+    return public_error_response(
+        status_code=exc.status_code,
+        code=code,
+        message=safe_demo_message(code),
+        request_id=request_id,
+        headers=exc.headers,
+    )
+
+
+@api.exception_handler(Exception)
+async def _unexpected_error_handler(request: Request, exc: Exception) -> JSONResponse:
+    code = "INTERNAL_ERROR"
+    request_id = _log_normalized_error(
+        request,
+        code=code,
+        operation="unhandled_route_exception",
+        error=exc,
+    )
+    return public_error_response(
+        status_code=500,
+        code=code,
+        message=safe_demo_message(code),
+        request_id=request_id,
+    )
+
+
+api.include_router(workflow_router)
+api.include_router(demo_router)
 
 SAMPLE_POLICIES_DIR = Path(__file__).resolve().parent / "sample_policies"
 
@@ -78,7 +205,7 @@ def _build_pre_call_invocation(scenario: dict, policy_path: str) -> dict:
     }
 
 
-@app.get("/api/scenarios/{scenario_key}")
+@api.get("/api/scenarios/{scenario_key}")
 def get_scenario(scenario_key: str):
     if scenario_key not in SCENARIOS:
         raise HTTPException(status_code=422, detail=f"Unknown scenario_key: {scenario_key!r}")
@@ -93,7 +220,7 @@ def get_scenario(scenario_key: str):
     }
 
 
-@app.get("/health")
+@api.get("/health")
 def health():
     source = demo_source()
     return {
@@ -107,12 +234,12 @@ def health():
     }
 
 
-@app.get("/api/scenarios")
+@api.get("/api/scenarios")
 def list_scenarios():
     return {"scenarios": list(SCENARIOS.keys())}
 
 
-@app.get("/api/policies")
+@api.get("/api/policies")
 def list_policies():
     names = sorted(p.name for p in SAMPLE_POLICIES_DIR.glob("*.yaml"))
     return {"policies": names}
@@ -124,7 +251,7 @@ class EnforceRequest(BaseModel):
     flow: Literal["unified", "split"] = "unified"
 
 
-@app.post("/api/enforce")
+@api.post("/api/enforce")
 def enforce(req: EnforceRequest):
     if req.scenario_key not in SCENARIOS:
         raise HTTPException(status_code=422, detail=f"Unknown scenario_key: {req.scenario_key!r}")
@@ -146,7 +273,7 @@ def enforce(req: EnforceRequest):
         return {"artifact": artifact, "error": str(exc)}
 
 
-@app.post("/api/sign/generate-key")
+@api.post("/api/sign/generate-key")
 def generate_key():
     return {"key": secrets.token_hex(32)}
 
@@ -156,7 +283,7 @@ class SignEnforceRequest(BaseModel):
     key: str
 
 
-@app.post("/api/sign/enforce")
+@api.post("/api/sign/enforce")
 def sign_enforce(req: SignEnforceRequest):
     if req.scenario_key not in SCENARIOS:
         raise HTTPException(status_code=422, detail=f"Unknown scenario_key: {req.scenario_key!r}")
@@ -182,7 +309,7 @@ class VerifySignatureRequest(BaseModel):
     key: str
 
 
-@app.post("/api/sign/verify")
+@api.post("/api/sign/verify")
 def verify_signature(req: VerifySignatureRequest):
     try:
         key_bytes = bytes.fromhex(req.key)
@@ -200,7 +327,7 @@ class ChainAppendRequest(BaseModel):
     chain_index: int = 0
 
 
-@app.post("/api/chain/append")
+@api.post("/api/chain/append")
 def chain_append(req: ChainAppendRequest):
     if req.scenario_key not in SCENARIOS:
         raise HTTPException(status_code=422, detail=f"Unknown scenario_key: {req.scenario_key!r}")
@@ -235,7 +362,7 @@ class ChainVerifyRequest(BaseModel):
     artifacts: list[dict]
 
 
-@app.post("/api/chain/verify")
+@api.post("/api/chain/verify")
 def chain_verify(req: ChainVerifyRequest):
     report = verify_chain_detailed(req.artifacts)
     return {
@@ -270,7 +397,7 @@ _STRATEGY_MAP = {
 }
 
 
-@app.post("/api/compose")
+@api.post("/api/compose")
 def compose_policies(req: ComposeRequest):
     try:
         base  = yaml_lib.safe_load(req.parent_yaml)
@@ -325,7 +452,7 @@ def compose_policies(req: ComposeRequest):
     }
 
 
-@app.post("/api/chain/tamper")
+@api.post("/api/chain/tamper")
 def chain_tamper(req: ChainTamperRequest):
     artifacts = copy.deepcopy(req.artifacts)
     if not (0 <= req.index < len(artifacts)):
@@ -341,7 +468,7 @@ class LoadPolicyRequest(BaseModel):
     policy_name: str
 
 
-@app.post("/api/policy/load")
+@api.post("/api/policy/load")
 def load_policy_endpoint(req: LoadPolicyRequest):
     path = (SAMPLE_POLICIES_DIR / req.policy_name).resolve()
     if not path.is_relative_to(SAMPLE_POLICIES_DIR.resolve()):
@@ -366,7 +493,7 @@ class LoadInMemoryRequest(BaseModel):
     yaml_text: str
 
 
-@app.post("/api/policy/load-inmemory")
+@api.post("/api/policy/load-inmemory")
 def load_policy_inmemory(req: LoadInMemoryRequest):
     try:
         loader = InMemoryPolicyLoader(req.yaml_text)
@@ -378,7 +505,7 @@ def load_policy_inmemory(req: LoadInMemoryRequest):
         return {"policy": None, "yaml_text": None, "loader_class": "InMemoryPolicyLoader", "error": str(exc)}
 
 
-@app.post("/api/policy/validate-dates")
+@api.post("/api/policy/validate-dates")
 def validate_dates_endpoint(req: ValidateDatesRequest):
     policy: dict = {}
     if req.effective_date:
@@ -403,7 +530,7 @@ class PolicyTestRequest(BaseModel):
     policy_name: str
 
 
-@app.post("/api/policy/test")
+@api.post("/api/policy/test")
 def run_policy_tests(req: PolicyTestRequest):
     path = (SAMPLE_POLICIES_DIR / req.policy_name).resolve()
     if not path.is_relative_to(SAMPLE_POLICIES_DIR.resolve()):
@@ -484,7 +611,7 @@ class Lab8KBRequest(BaseModel):
     scenario_key: str = "kb_sourced_pass"
 
 
-@app.post("/api/lab8/query-kb")
+@api.post("/api/lab8/query-kb")
 def lab8_query_kb(req: Lab8KBRequest):
     if req.scenario_key not in SCENARIOS:
         raise HTTPException(status_code=422, detail=f"Unknown scenario_key: {req.scenario_key!r}")
@@ -508,7 +635,7 @@ class Lab9CompareRequest(BaseModel):
     scenario_key: str = "low_risk_faq"
 
 
-@app.post("/api/lab9/compare")
+@api.post("/api/lab9/compare")
 def lab9_compare(req: Lab9CompareRequest):
     if req.scenario_key not in SCENARIOS:
         raise HTTPException(status_code=422, detail=f"Unknown scenario_key: {req.scenario_key!r}")
@@ -556,7 +683,7 @@ class Lab10SplitRequest(BaseModel):
     mode: Literal["strict", "risk_scored", "warn_only"] = "risk_scored"
 
 
-@app.post("/api/lab10/split-trace")
+@api.post("/api/lab10/split-trace")
 def lab10_split_trace(req: Lab10SplitRequest):
     if req.scenario_key not in SCENARIOS:
         raise HTTPException(status_code=422, detail=f"Unknown scenario_key: {req.scenario_key!r}")
@@ -632,7 +759,7 @@ def lab10_split_trace(req: Lab10SplitRequest):
     }
 
 
-@app.get("/api/gate/{gate_name}")
+@api.get("/api/gate/{gate_name}")
 def get_gate(gate_name: str):
     gate = GATES.get(gate_name)
     if not gate:
@@ -645,7 +772,7 @@ class GateRunRequest(BaseModel):
     scenario_key: str
 
 
-@app.post("/api/gate/run")
+@api.post("/api/gate/run")
 def run_gate(req: GateRunRequest):
     gate = GATES.get(req.gate_name)
     if not gate:
@@ -681,3 +808,13 @@ def run_gate(req: GateRunRequest):
         },
         "error": None,
     }
+
+
+cors_app = CORSMiddleware(
+    api,
+    allow_origins=list(ALLOWED_ORIGINS),
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["X-Request-ID", "Retry-After"],
+)
+app = DemoEdgeMiddleware(cors_app, allowed_origins=ALLOWED_ORIGINS)

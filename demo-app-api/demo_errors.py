@@ -146,8 +146,13 @@ def _escape_controls(value: str) -> str:
     return "".join(pieces)
 
 
-def _bounded_diagnostic(error: BaseException | None) -> str:
-    if error is None:
+def _bounded_diagnostic(
+    error: BaseException | None,
+    diagnostic: str | None,
+) -> str:
+    if diagnostic is not None:
+        raw = diagnostic
+    elif error is None:
         raw = ""
     else:
         raw = f"{type(error).__name__}: {error}"
@@ -167,6 +172,8 @@ def log_internal_failure(
     method: str | None = None,
     route_template: str | None = None,
     identity_source: str | None = None,
+    exception_class: str | None = None,
+    diagnostic: str | None = None,
 ) -> None:
     """Log one bounded, control-safe diagnostic correlated to a request."""
 
@@ -176,10 +183,14 @@ def log_internal_failure(
             "request_id": request_id,
             "operation": operation,
             "public_code": public_code,
-            "exception_class": type(error).__name__ if error is not None else None,
+            "exception_class": (
+                exception_class
+                if exception_class is not None
+                else type(error).__name__ if error is not None else None
+            ),
             "method": method,
             "route_template": route_template,
             "identity_source": identity_source,
-            "internal_diagnostic": _bounded_diagnostic(error),
+            "internal_diagnostic": _bounded_diagnostic(error, diagnostic),
         },
     )

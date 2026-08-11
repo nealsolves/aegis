@@ -108,3 +108,21 @@ def test_internal_failure_log_is_correlated_control_safe_and_byte_bounded(
 def test_unknown_public_error_code_fails_closed() -> None:
     with pytest.raises(KeyError):
         safe_demo_message("CALLER_CONTROLLED")
+
+
+def test_internal_log_accepts_safe_diagnostic_without_serializing_validation_input(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level(logging.ERROR, logger="aegis.demo"):
+        log_internal_failure(
+            request_id="f" * 32,
+            operation="request_validation",
+            error=None,
+            public_code="INVALID_REQUEST",
+            exception_class="RequestValidationError",
+            diagnostic="request validation failed",
+        )
+
+    record = caplog.records[-1]
+    assert record.exception_class == "RequestValidationError"
+    assert record.internal_diagnostic == "request validation failed"
