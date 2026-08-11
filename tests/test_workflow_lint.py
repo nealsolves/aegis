@@ -229,7 +229,7 @@ class TestLintPolicy:
         assert finding["details"]["path"] == "$.type"
 
     def test_zero_max_calls_returns_schema_error(self, tmp_path):
-        # The shared compiler owns the first and authoritative diagnostic.
+        # The shared schema boundary owns the first authoritative diagnostic.
         content = (
             MINIMAL_VALID_POLICY
             + "tools:\n"
@@ -239,7 +239,8 @@ class TestLintPolicy:
         )
         p = _write(tmp_path, "zero_max.yaml", content)
         findings = lint_policy(p)
-        assert findings[0]["code"] == "RISK_NUMBER_INVALID"
+        assert findings[0]["code"] == "POLICY_SCHEMA_VALIDATION_ERROR"
+        assert findings[0]["details"]["path"] == "$.tools.allowed_tools.0.max_calls"
         assert findings[0]["details"]["path"] == (
             "$.tools.allowed_tools.0.max_calls"
         )

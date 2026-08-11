@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import builtins
+import inspect
+import os
+import traceback
 from pathlib import Path
 
 import pytest
+import yaml
 
-from aegis.errors import PolicyLoadError
-from aegis.policy_loader import FilePolicyLoader, load_policy
+from aegis._internal import policy_loader as policy_loader_module
+from aegis.errors import PolicyLoadError, PolicyValidationError
+from aegis.policy_loader import FilePolicyLoader, PolicyLoaderBase, load_policy
 
 
 MINIMAL_POLICY = "policy_version: '1.0'\nroles: [reviewer]\n"
@@ -169,3 +175,198 @@ def test_relative_and_absolute_entry_spellings_match(tmp_path: Path) -> None:
         str(entry),
         loader=loader,
     )
+
+
+class ExtendingOpaqueLoader(PolicyLoaderBase):
+    def __init__(self, extends: object) -> None:
+        self.extends = extends
+        self.calls: list[str] = []
+
+    def load(self, policy_ref: str) -> dict[str, object]:
+        self.calls.append(policy_ref)
+        return {
+            "policy_version": "1.0",
+            "roles": ["reviewer"],
+            "extends": self.extends,
+        }
+
+
+@pytest.mark.parametrize("extends", [None, False, 7, {}, [], ""])
+def test_custom_loader_rejects_any_extends_without_filesystem(
+    monkeypatch: pytest.MonkeyPatch,
+    extends: object,
+) -> None:
+    loader = ExtendingOpaqueLoader(extends)
+    monkeypatch.setattr(
+        Path,
+        "resolve",
+        lambda *args, **kwargs: pytest.fail("path resolution used"),
+    )
+    monkeypatch.setattr(
+        builtins,
+        "open",
+        lambda *args, **kwargs: pytest.fail("file open used"),
+    )
+    with pytest.raises(PolicyLoadError, match="not supported with custom loaders"):
+        load_policy("opaque-id", loader=loader)
+    assert loader.calls == ["opaque-id"]
+
+
+def test_transitive_child_cannot_widen_original_root(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    _write_policy(tmp_path / "outside.yaml")
+    _write_policy(
+        root / "base.yaml",
+        "extends: ../outside.yaml\npolicy_version: '1.0'\nroles: [reviewer]\n",
+    )
+    entry = _write_policy(
+        root / "nested" / "entry.yaml",
+        "extends: ../base.yaml\npolicy_version: '1.0'\nroles: [reviewer]\n",
+    )
+    with pytest.raises(PolicyLoadError) as caught:
+        load_policy(str(entry), loader=FilePolicyLoader(root))
+    assert caught.value.code == "POLICY_PATH_OUTSIDE_ROOT"
+
+
+def test_in_root_multilevel_composition_uses_one_root(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    _write_policy(root / "base.yaml")
+    _write_policy(
+        root / "middle" / "middle.yaml",
+        "extends: ../base.yaml\npolicy_version: '1.0'\nroles: [reviewer]\n",
+    )
+    _write_policy(
+        root / "entry" / "entry.yaml",
+        "extends: ../middle/middle.yaml\npolicy_version: '1.0'\nroles: [reviewer]\n",
+    )
+    assert load_policy(
+        "entry/entry.yaml",
+        loader=FilePolicyLoader(root),
+    )["roles"] == ["reviewer"]
+
+
+@pytest.mark.parametrize("extends", [None, True, 3, {}, [], ""])
+def test_file_loader_rejects_malformed_extends_before_path_work(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    extends: object,
+) -> None:
+    entry = _write_policy(
+        tmp_path / "entry.yaml",
+        yaml.safe_dump(
+            {
+                "policy_version": "1.0",
+                "roles": ["reviewer"],
+                "extends": extends,
+            }
+        ),
+    )
+    loader = FilePolicyLoader(tmp_path)
+    context_type = policy_loader_module._FileLoadContext
+    context = context_type.create(entry.name)
+    prepared = loader._prepare(entry.name, context=context)
+    monkeypatch.setattr(
+        loader,
+        "_canonical_candidate",
+        lambda *args, **kwargs: pytest.fail(
+            "malformed extends reached path work"
+        ),
+    )
+    with pytest.raises(PolicyValidationError) as caught:
+        policy_loader_module._resolve_file_graph(
+            prepared,
+            loader=loader,
+            visited=set(),
+            context=context,
+        )
+    assert caught.value.code == "POLICY_SCHEMA_VALIDATION_ERROR"
+    assert caught.value.details == {"path": "$.extends"}
+
+
+def test_prepared_source_is_bound_to_exact_loader_instance(tmp_path: Path) -> None:
+    entry = _write_policy(tmp_path / "entry.yaml")
+    first = FilePolicyLoader(tmp_path)
+    second = FilePolicyLoader(tmp_path)
+    context_type = policy_loader_module._FileLoadContext
+    prepared = first._prepare(
+        entry.name,
+        context=context_type.create(entry.name),
+    )
+    with pytest.raises(PolicyLoadError, match="authority does not match loader"):
+        policy_loader_module._resolve_file_graph(
+            prepared,
+            loader=second,
+            visited=set(),
+            context=context_type.create(),
+        )
+
+
+def test_compiler_boundary_has_no_parsed_policy_fast_path(tmp_path: Path) -> None:
+    entry = _write_policy(tmp_path / "entry.yaml")
+    signature = inspect.signature(
+        policy_loader_module.load_resolve_compile_policy
+    )
+    assert "parsed_policy" not in signature.parameters
+    with pytest.raises(TypeError):
+        policy_loader_module.load_resolve_compile_policy(
+            str(entry),
+            parsed_policy={"policy_version": "forged"},
+        )
+
+
+@pytest.mark.asyncio
+async def test_async_implicit_authority_binds_before_await(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original = tmp_path / "original"
+    other = tmp_path / "other"
+    _write_policy(original / "policies" / "entry.yaml")
+    _write_policy(
+        other / "policies" / "entry.yaml",
+        "policy_version: '2.0'\nroles: [reviewer]\n",
+    )
+    monkeypatch.chdir(original)
+    pending = policy_loader_module.load_policy_async("policies/entry.yaml")
+    monkeypatch.chdir(other)
+    loaded = await pending
+    assert loaded["policy_version"] == "1.0"
+
+
+def _assert_path_confidential(exc: BaseException, protected: list[str]) -> None:
+    chain_text = "".join(traceback.format_exception(exc))
+    values = [str(exc), repr(getattr(exc, "details", None)), chain_text]
+    cursor: BaseException | None = exc
+    while cursor is not None:
+        values.extend([str(cursor), repr(getattr(cursor, "details", None))])
+        cursor = cursor.__cause__ or cursor.__context__
+    rendered = "\n".join(values)
+    for secret in protected:
+        assert secret not in rendered
+
+
+def test_schema_failure_does_not_disclose_file_or_schema_paths(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "protected-root"
+    entry = _write_policy(root / "entry.yaml", "policy_version: '1.0'\n")
+    with pytest.raises(PolicyValidationError) as caught:
+        load_policy(entry.name, loader=FilePolicyLoader(root))
+    _assert_path_confidential(
+        caught.value,
+        [str(root), str(entry), str(policy_loader_module.POLICY_DSL_SCHEMA_PATH)],
+    )
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows drive semantics")
+def test_windows_different_drive_entry_is_rejected(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loader = FilePolicyLoader(tmp_path)
+    foreign_drive = "Z:" if tmp_path.drive.upper() != "Z:" else "Y:"
+    foreign = Path(foreign_drive + r"\outside\policy.yaml")
+    monkeypatch.setattr(loader, "_canonicalize", lambda lexical: foreign)
+    with pytest.raises(PolicyLoadError) as caught:
+        loader.load(str(foreign))
+    assert caught.value.code == "POLICY_PATH_OUTSIDE_ROOT"

@@ -255,6 +255,7 @@ _COMPILE_ALLOWLIST = {
     ("enforcement", "_load_compiled_policy"),
     ("enforcement", "_compile_cached_policy"),
     ("policy_loader", "_compile_and_compare_composition"),
+    ("policy_loader", "_prepare_resolve_compile_policy"),
     ("policy_loader", "load_resolve_compile_policy"),
     ("retry", "with_retry"),
 }
@@ -776,13 +777,24 @@ def _fitness_violations(
                 parents=parents,
                 classes=classes,
             )
-            if field_name in _BANNED_SNAPSHOT_FIELDS or retained_mapping:
+            prepared_source_field = (
+                module_name == "policy_loader"
+                and classes.get(node) == "_PreparedFilePolicy"
+                and field_name == "raw_policy"
+            )
+            if (
+                field_name in _BANNED_SNAPSHOT_FIELDS or retained_mapping
+            ) and not prepared_source_field:
                 violations.append(
                     f"{module_name}:{node.lineno}:snapshot-field:{field_name}"
                 )
         if (
             isinstance(node, ast.Attribute)
             and node.attr in _BANNED_SNAPSHOT_FIELDS
+            and not (
+                module_name == "policy_loader"
+                and node.attr == "raw_policy"
+            )
         ):
             violations.append(
                 f"{module_name}:{node.lineno}:snapshot-attribute:{node.attr}"

@@ -6,6 +6,7 @@
   "properties": {
     "extends": {
       "type": "string",
+      "minLength": 1,
       "description": "Path to base policy file (relative to current policy)"
     },
     "composition_strategy": {

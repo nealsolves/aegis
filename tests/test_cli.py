@@ -52,7 +52,7 @@ class TestLintPolicy:
             try:
                 errors = _lint_policy(Path(f.name))
                 assert len(errors) > 0
-                assert any("policy_version" in e for e in errors)
+                assert any("POLICY_SCHEMA_VALIDATION_ERROR" in e for e in errors)
             finally:
                 os.unlink(f.name)
 

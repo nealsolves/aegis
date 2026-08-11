@@ -74,7 +74,6 @@ def _lint_policy(
     try:
         load_resolve_compile_policy(
             str(path),
-            parsed_policy=policy,
             allow_legacy=False,
             legacy_authorization=legacy_authorization,
         )

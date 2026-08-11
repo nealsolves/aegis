@@ -561,7 +561,6 @@ def lint_policy(path: str, *, target_kind: str = "policy") -> list[dict]:
     try:
         compiled = load_resolve_compile_policy(
             str(p),
-            parsed_policy=policy,
             allow_legacy=False,
         )
     except (PolicyLoadError, PolicyValidationError) as exc:

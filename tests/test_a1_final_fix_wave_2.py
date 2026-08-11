@@ -31,6 +31,7 @@ from aegis._internal.errors import (
 from aegis._internal.guards import evaluate_compiled_guards
 from aegis._internal.policy_compiler import compile_policy
 from aegis._internal.policy_loader import (
+    FilePolicyLoader,
     compile_composed_policy,
     load_policy,
 )
@@ -263,7 +264,7 @@ def test_guard_cannot_shorten_inherited_required_sequence():
 
 def test_file_lint_matches_runtime_for_widening_extends(tmp_path: Path):
     parent = tmp_path / "parent.yaml"
-    child = tmp_path / "nested" / "child.yaml"
+    child = tmp_path / "child.yaml"
     _write_policy(
         parent,
         """
@@ -274,7 +275,7 @@ def test_file_lint_matches_runtime_for_widening_extends(tmp_path: Path):
     _write_policy(
         child,
         """
-        extends: "../parent.yaml"
+        extends: "parent.yaml"
         policy_version: "2.0"
         roles: [admin]
         """,
@@ -295,7 +296,7 @@ def test_file_lint_matches_runtime_for_widening_extends(tmp_path: Path):
 def test_file_lint_resolves_nested_source_relative_extends(tmp_path: Path):
     parent = tmp_path / "parent.yaml"
     middle = tmp_path / "nested" / "middle.yaml"
-    child = tmp_path / "nested" / "deeper" / "child.yaml"
+    child = tmp_path / "child.yaml"
     _write_policy(
         parent,
         """
@@ -314,7 +315,7 @@ def test_file_lint_resolves_nested_source_relative_extends(tmp_path: Path):
     _write_policy(
         child,
         """
-        extends: "../middle.yaml"
+        extends: "nested/middle.yaml"
         policy_version: "2.0"
         roles: [planner]
         """,
@@ -389,7 +390,11 @@ def test_source_aware_diagnostic_boundary_returns_typed_compiled_policy(
         None,
     )
     assert callable(helper)
-    compiled = helper(str(child), allow_legacy=False)
+    compiled = helper(
+        str(child),
+        loader=FilePolicyLoader(tmp_path),
+        allow_legacy=False,
+    )
 
     assert isinstance(compiled, CompiledPolicy)
     assert compiled.roles == ("reviewer",)

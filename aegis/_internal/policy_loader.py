@@ -22,9 +22,10 @@ import yaml
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path, PurePath
-from typing import Any, Callable
+from typing import Any, Awaitable, Callable
 
 from jsonschema import Draft7Validator
+from jsonschema.exceptions import SchemaError
 
 from aegis._internal.errors import PolicyLoadError, PolicyValidationError
 from aegis._internal.compiled_policy import CompiledPolicy
@@ -99,6 +100,159 @@ class _PreparedFilePolicy:
 
 _OUTSIDE_ROOT_MESSAGE = "Policy path is outside the configured policy root"
 
+_SAFE_DETAIL_KEYS = frozenset({
+    "path",
+    "validator",
+    "composition_strategy",
+    "effective_date",
+    "expiration_date",
+    "today",
+    "line",
+    "column",
+    "tool_names",
+})
+
+_STABLE_FILE_MESSAGES = frozenset({
+    "Configured policy root is unavailable",
+    "Policy path could not be resolved",
+    "Policy file must be YAML",
+    "Policy file does not exist",
+    "Policy path must reference a file",
+    "Policy YAML parsing failed",
+    "Policy root must be a mapping object",
+    "Policy schema root must be an object",
+    "Policy schema must declare JSON Schema Draft-07",
+    "Policy schema validation failed",
+    "Policy compilation failed",
+})
+
+
+@dataclass(slots=True)
+class _FileLoadContext:
+    protected: set[str]
+    date_failures: list[PolicyValidationError]
+
+    @classmethod
+    def create(cls, *values: object) -> _FileLoadContext:
+        context = cls(protected=set(), date_failures=[])
+        for value in values:
+            context.protect(value)
+        return context
+
+    def protect(self, value: object) -> None:
+        text = os.fspath(value) if isinstance(value, os.PathLike) else str(value)
+        if text:
+            self.protected.add(text)
+
+    def record_date_failure(self, failure: PolicyValidationError) -> None:
+        fingerprint = (failure.code, repr(failure.details))
+        if all(
+            (existing.code, repr(existing.details)) != fingerprint
+            for existing in self.date_failures
+        ):
+            self.date_failures.append(failure)
+
+    def normalize(
+        self,
+        exc: BaseException,
+        *,
+        fallback: str,
+    ) -> PolicyLoadError | PolicyValidationError:
+        code = getattr(exc, "code", "POLICY_LOAD_ERROR")
+        original = getattr(exc, "details", None)
+
+        def safe_value(value: object) -> object | None:
+            if isinstance(value, (str, int, float, bool, type(None))):
+                if isinstance(value, str) and any(
+                    secret in value for secret in self.protected
+                ):
+                    return None
+                return value
+            if isinstance(value, (list, tuple)):
+                cleaned = [safe_value(item) for item in value]
+                if any(item is None for item in cleaned):
+                    return None
+                return cleaned
+            return None
+
+        safe_details = (
+            {
+                key: cleaned
+                for key, value in original.items()
+                if key in _SAFE_DETAIL_KEYS
+                if (cleaned := safe_value(value)) is not None
+            }
+            if isinstance(original, dict)
+            else None
+        )
+        if code == "POLICY_PATH_OUTSIDE_ROOT":
+            return PolicyLoadError(_OUTSIDE_ROOT_MESSAGE, code=code)
+        if (
+            isinstance(exc, PolicyLoadError)
+            and str(exc) == "Circular policy inheritance detected"
+        ):
+            return PolicyLoadError(
+                "Circular policy inheritance detected",
+                code=code,
+            )
+        if isinstance(exc, PolicyLoadError) and str(exc) in _STABLE_FILE_MESSAGES:
+            return PolicyLoadError(str(exc), code=code, details=safe_details)
+        if "composition_strategy" in (safe_details or {}):
+            return PolicyValidationError(
+                self.safe_semantic_message(
+                    exc,
+                    fallback="Invalid policy composition strategy",
+                ),
+                code=code,
+                details=safe_details,
+            )
+        if code == "POLICY_WIDENING":
+            return PolicyValidationError(
+                self.safe_semantic_message(
+                    exc,
+                    fallback="Policy composition would widen authority",
+                ),
+                code=code,
+                details=safe_details,
+            )
+        if any(
+            key in (safe_details or {})
+            for key in ("effective_date", "expiration_date", "today")
+        ):
+            return PolicyValidationError(
+                self.safe_semantic_message(
+                    exc,
+                    fallback="Policy date validation failed",
+                ),
+                code=code,
+                details=safe_details,
+            )
+        if code == "POLICY_SCHEMA_VALIDATION_ERROR":
+            pointer = (safe_details or {}).get("path", "$")
+            return PolicyValidationError(
+                f"Policy schema validation failed at {pointer}",
+                code=code,
+                details=safe_details,
+            )
+        if isinstance(exc, PolicyValidationError):
+            return PolicyValidationError(
+                self.safe_semantic_message(exc, fallback=fallback),
+                code=code,
+                details=safe_details,
+            )
+        return PolicyLoadError(fallback, code=code, details=safe_details)
+
+    def safe_semantic_message(
+        self,
+        exc: BaseException,
+        *,
+        fallback: str,
+    ) -> str:
+        message = str(exc)
+        if any(secret in message for secret in self.protected):
+            return fallback
+        return message
+
 
 def _is_contained(candidate: PurePath, root: PurePath) -> bool:
     try:
@@ -135,14 +289,17 @@ class FilePolicyLoader(PolicyLoaderBase):
         policy_ref: str | Path,
         *,
         relative_to: Path | None = None,
+        context: _FileLoadContext,
     ) -> Path:
         ref = Path(policy_ref)
         base = self._policy_root if relative_to is None else relative_to.parent
         lexical = ref if ref.is_absolute() else base / ref
+        context.protect(lexical)
         try:
             candidate = self._canonicalize(lexical)
         except (OSError, RuntimeError):
             raise PolicyLoadError("Policy path could not be resolved") from None
+        context.protect(candidate)
         if not _is_contained(candidate, self._policy_root):
             raise PolicyLoadError(
                 _OUTSIDE_ROOT_MESSAGE,
@@ -153,9 +310,19 @@ class FilePolicyLoader(PolicyLoaderBase):
     def _validate_candidate(self, candidate: Path) -> None:
         if candidate.suffix.lower() not in {".yaml", ".yml"}:
             raise PolicyLoadError("Policy file must be YAML")
-        if not candidate.exists():
+        failure: PolicyLoadError | None = None
+        try:
+            exists = candidate.exists()
+            is_file = candidate.is_file() if exists else False
+        except (OSError, RuntimeError):
+            exists = False
+            is_file = False
+            failure = PolicyLoadError("Policy metadata is unavailable")
+        if failure is not None:
+            raise failure from None
+        if not exists:
             raise PolicyLoadError("Policy file does not exist")
-        if not candidate.is_file():
+        if not is_file:
             raise PolicyLoadError("Policy path must reference a file")
 
     def _prepare(
@@ -164,20 +331,36 @@ class FilePolicyLoader(PolicyLoaderBase):
         *,
         relative_to: Path | None = None,
         reject_paths: set[Path] | None = None,
+        context: _FileLoadContext,
     ) -> _PreparedFilePolicy:
-        candidate = self._canonical_candidate(policy_ref, relative_to=relative_to)
+        candidate = self._canonical_candidate(
+            policy_ref,
+            relative_to=relative_to,
+            context=context,
+        )
         if reject_paths is not None and candidate in reject_paths:
             raise PolicyLoadError("Circular policy inheritance detected")
         self._validate_candidate(candidate)
         parsed: object = None
-        parse_failed = False
+        failure: PolicyLoadError | None = None
         try:
             with candidate.open("r", encoding="utf-8") as file_obj:
                 parsed = yaml.safe_load(file_obj)
+        except yaml.MarkedYAMLError as exc:
+            mark = exc.problem_mark
+            details = (
+                {"line": mark.line + 1, "column": mark.column + 1}
+                if mark is not None
+                else None
+            )
+            failure = PolicyLoadError(
+                "Policy YAML parsing failed",
+                details=details,
+            )
         except (OSError, yaml.YAMLError):
-            parse_failed = True
-        if parse_failed:
-            raise PolicyLoadError("Policy YAML parsing failed") from None
+            failure = PolicyLoadError("Policy YAML parsing failed")
+        if failure is not None:
+            raise failure from None
         if not isinstance(parsed, dict):
             raise PolicyLoadError("Policy root must be a mapping object")
         return _PreparedFilePolicy(
@@ -191,8 +374,13 @@ class FilePolicyLoader(PolicyLoaderBase):
         policy_ref: str | Path,
         *,
         relative_to: Path | None = None,
+        context: _FileLoadContext,
     ) -> Path:
-        candidate = self._canonical_candidate(policy_ref, relative_to=relative_to)
+        candidate = self._canonical_candidate(
+            policy_ref,
+            relative_to=relative_to,
+            context=context,
+        )
         self._validate_candidate(candidate)
         return candidate
 
@@ -202,7 +390,10 @@ class FilePolicyLoader(PolicyLoaderBase):
 
     def load(self, policy_ref: str) -> dict[str, Any]:
         """Load one raw policy mapping relative to this loader's root."""
-        return copy.deepcopy(self._prepare(policy_ref).raw_policy)
+        context = _FileLoadContext.create(policy_ref, self.policy_root)
+        return copy.deepcopy(
+            self._prepare(policy_ref, context=context).raw_policy
+        )
 
 
 # ── Path resolution ──────────────────────────────────────────────
@@ -834,12 +1025,188 @@ def validate_policy_dates(
 # ── Extends resolution ───────────────────────────────────────────
 
 
+def _validated_extends(policy: dict[str, Any]) -> str | None:
+    if "extends" not in policy:
+        return None
+    extends = policy["extends"]
+    if not isinstance(extends, str) or not extends:
+        raise PolicyValidationError(
+            "Policy schema validation failed at $.extends",
+            details={"path": "$.extends"},
+        )
+    return extends
+
+
+def _validate_composition_strategy(value: object) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or value not in VALID_COMPOSITION_STRATEGIES:
+        raise PolicyValidationError(
+            f"Invalid composition_strategy: {value!r}; "
+            f"expected one of {VALID_COMPOSITION_STRATEGIES}",
+            details={"composition_strategy": value},
+        )
+    return value
+
+
+def _validate_policy_mapping(
+    policy: dict[str, Any],
+    *,
+    context: _FileLoadContext,
+    clock: Callable[[], date] | None,
+    capture_date_failures: bool = False,
+) -> dict[str, Any]:
+    failure: PolicyLoadError | PolicyValidationError | None = None
+    schema: dict[str, Any] | None = None
+    try:
+        schema_path = _resolve_policy_schema_path()
+        context.protect(schema_path)
+        with schema_path.open("r", encoding="utf-8") as schema_file:
+            loaded_schema = json.load(schema_file)
+        if not isinstance(loaded_schema, dict):
+            raise PolicyLoadError("Policy schema root must be an object")
+        if loaded_schema.get("$schema") != POLICY_SCHEMA_DRAFT_07:
+            raise PolicyLoadError(
+                "Policy schema must declare JSON Schema Draft-07"
+            )
+        Draft7Validator.check_schema(loaded_schema)
+        schema = loaded_schema
+    except (
+        OSError,
+        json.JSONDecodeError,
+        SchemaError,
+        PolicyLoadError,
+    ) as exc:
+        failure = context.normalize(
+            exc,
+            fallback="Policy schema validation failed",
+        )
+    if failure is not None:
+        raise failure from None
+    assert schema is not None
+
+    validator = Draft7Validator(schema)
+    errors = sorted(
+        validator.iter_errors(policy),
+        key=lambda error: _path_to_pointer(list(error.absolute_path)),
+    )
+    if errors:
+        first = errors[0]
+        pointer = _path_to_pointer(list(first.absolute_path))
+        raise PolicyValidationError(
+            f"Policy schema validation failed at {pointer}",
+            details={"path": pointer, "validator": first.validator},
+        ) from None
+
+    failure = None
+    try:
+        validate_policy_dates(policy, clock=clock)
+    except PolicyValidationError as exc:
+        failure = context.normalize(
+            exc,
+            fallback="Policy date validation failed",
+        )
+    if failure is not None:
+        if capture_date_failures and isinstance(
+            failure,
+            PolicyValidationError,
+        ):
+            context.record_date_failure(failure)
+        else:
+            raise failure from None
+    return copy.deepcopy(policy)
+
+
+def _resolve_file_graph(
+    prepared: _PreparedFilePolicy,
+    *,
+    loader: FilePolicyLoader,
+    visited: set[Path],
+    context: _FileLoadContext,
+    clock: Callable[[], date] | None = None,
+    capture_date_failures: bool = False,
+) -> dict[str, Any]:
+    loader._accept_prepared(prepared)
+    if prepared.source_path in visited:
+        raise PolicyLoadError("Circular policy inheritance detected")
+    next_visited = {*visited, prepared.source_path}
+    policy = copy.deepcopy(prepared.raw_policy)
+    extends = _validated_extends(policy)
+    if extends is None:
+        return _validate_policy_mapping(
+            policy,
+            context=context,
+            clock=clock,
+            capture_date_failures=capture_date_failures,
+        )
+
+    context.protect(extends)
+    parent = loader._prepare(
+        extends,
+        relative_to=prepared.source_path,
+        reject_paths=next_visited,
+        context=context,
+    )
+    base = _resolve_file_graph(
+        parent,
+        loader=loader,
+        visited=next_visited,
+        context=context,
+        clock=clock,
+        capture_date_failures=capture_date_failures,
+    )
+    strategy = _validate_composition_strategy(
+        policy.get("composition_strategy")
+    )
+    merged = _merge_policies(base, policy, strategy)
+    _compile_and_compare_composition(base, policy, merged)
+    merged.pop("extends", None)
+    merged.pop("composition_strategy", None)
+    return _validate_policy_mapping(
+        merged,
+        context=context,
+        clock=clock,
+        capture_date_failures=capture_date_failures,
+    )
+
+
+def _load_opaque_policy(
+    policy_ref: str,
+    loader: PolicyLoaderBase,
+    *,
+    clock: Callable[[], date] | None,
+) -> dict[str, Any]:
+    failure: PolicyLoadError | None = None
+    try:
+        loaded = loader.load(policy_ref)
+    except PolicyLoadError as exc:
+        loaded = None
+        failure = exc
+    except Exception:
+        loaded = None
+        failure = PolicyLoadError("Custom policy loader failed")
+    if failure is not None:
+        raise failure from None
+    if not isinstance(loaded, dict):
+        raise PolicyLoadError("Policy root must be a mapping object")
+    if "extends" in loaded:
+        raise PolicyLoadError(
+            "Policy 'extends' is not supported with custom loaders"
+        )
+    return _validate_policy_mapping(
+        copy.deepcopy(loaded),
+        context=_FileLoadContext.create(),
+        clock=clock,
+    )
+
+
 def _resolve_extends(
     policy: dict[str, Any],
     policy_path: Path,
     visited: set[Path] | None = None,
     *,
     loader: FilePolicyLoader,
+    context: _FileLoadContext | None = None,
 ) -> dict[str, Any]:
     """
     Resolve policy inheritance via extends field.
@@ -859,16 +1226,24 @@ def _resolve_extends(
     if not extends:
         return policy
 
+    effective_context = context or _FileLoadContext.create(
+        policy_path,
+        loader.policy_root,
+    )
+    effective_context.protect(extends)
+
     parent = loader._prepare(
         extends,
         relative_to=policy_path,
         reject_paths=visited,
+        context=effective_context,
     )
     base_policy_dict = _resolve_extends(
         copy.deepcopy(parent.raw_policy),
         parent.source_path,
         visited,
         loader=loader,
+        context=effective_context,
     )
 
     # Get composition strategy from overlay policy
@@ -914,97 +1289,35 @@ def load_policy(
     :return: Python dict representing the policy
     """
     bound_ref, effective_loader = _bind_policy_authority(policy_file, loader)
+    context = _FileLoadContext.create(policy_file, bound_ref)
 
     if isinstance(effective_loader, FilePolicyLoader):
-        prepared = effective_loader._prepare(bound_ref)
-        policy_path = prepared.source_path
-        policy = copy.deepcopy(prepared.raw_policy)
-    else:
-        # Custom loader: let the loader handle resolution
+        context.protect(effective_loader.policy_root)
+        prepared = effective_loader._prepare(bound_ref, context=context)
+        failure: PolicyLoadError | PolicyValidationError | None = None
         try:
-            policy = effective_loader.load(bound_ref)
-        except PolicyLoadError:
-            raise
-        except Exception as exc:
-            raise PolicyLoadError(
-                f"Custom policy loader failed: {exc}",
-                details={
-                    "policy_file": policy_file,
-                    "loader": type(effective_loader).__name__,
-                },
-            ) from exc
-
-        if not isinstance(policy, dict):
-            raise PolicyLoadError(
-                "Policy root must be a mapping object",
-                details={"policy_file": policy_file},
+            policy = _resolve_file_graph(
+                prepared,
+                loader=effective_loader,
+                visited=set(visited or ()),
+                context=context,
+                clock=clock,
             )
-        policy_path = Path(policy_file)
-
-    if "extends" in policy and not isinstance(effective_loader, FilePolicyLoader):
-        raise PolicyLoadError(
-            "Policy 'extends' is not supported with custom loaders",
-            details={
-                "policy_file": policy_file,
-                "extends": policy["extends"],
-                "loader": type(effective_loader).__name__,
-            },
+        except (PolicyLoadError, PolicyValidationError) as exc:
+            policy = None
+            failure = context.normalize(
+                exc,
+                fallback="Policy validation failed",
+            )
+        if failure is not None:
+            raise failure from None
+        assert policy is not None
+    else:
+        policy = _load_opaque_policy(
+            bound_ref,
+            effective_loader,
+            clock=clock,
         )
-
-    # Resolve inheritance BEFORE schema validation (Phase 2.6)
-    if "extends" in policy:
-        policy = _resolve_extends(
-            policy,
-            policy_path,
-            visited,
-            loader=effective_loader,
-        )
-
-    schema_path = _resolve_policy_schema_path()
-    # Validate against JSON schema
-    try:
-        with open(schema_path, "r", encoding="utf-8") as schema_file:
-            schema = json.load(schema_file)
-    except json.JSONDecodeError as err:
-        raise PolicyLoadError(
-            "Policy schema file is not valid JSON",
-            details={"schema_path": str(schema_path), "error": str(err)},
-        ) from err
-
-    if schema.get("$schema") != POLICY_SCHEMA_DRAFT_07:
-        raise PolicyLoadError(
-            "Policy schema must declare JSON Schema Draft-07",
-            details={
-                "schema_path": str(schema_path),
-                "found": schema.get("$schema"),
-            },
-        )
-
-    Draft7Validator.check_schema(schema)
-    validator = Draft7Validator(schema)
-    errors = sorted(
-        validator.iter_errors(policy),
-        key=lambda err: _path_to_pointer(list(err.absolute_path)),
-    )
-    if errors:
-        first = errors[0]
-        pointer = _path_to_pointer(list(first.absolute_path))
-        raise PolicyValidationError(
-            f"Policy schema validation failed at {pointer}: {first.message}",
-            details={
-                "policy_file": policy_file,
-                "schema_path": str(schema_path),
-                "path": pointer,
-                "validator": first.validator,
-            },
-        )
-
-    # Validate policy version dates if present
-    if (
-        policy.get("effective_date") is not None
-        or policy.get("expiration_date") is not None
-    ):
-        validate_policy_dates(policy, clock=clock)
 
     logger.debug(
         "Policy loaded and validated: %s (version=%s)",
@@ -1014,47 +1327,128 @@ def load_policy(
     return policy
 
 
+@dataclass(frozen=True, slots=True)
+class _PreparedCompilationResult:
+    prepared: _PreparedFilePolicy | None
+    compiled: CompiledPolicy
+    date_failures: tuple[PolicyValidationError, ...]
+
+
+def _prepare_resolve_compile_policy(
+    policy_file: str,
+    *,
+    loader: PolicyLoaderBase | None = None,
+    clock: Callable[[], date] | None = None,
+    allow_legacy: bool = False,
+    legacy_authorization: object | None = None,
+    capture_date_failures: bool = False,
+) -> _PreparedCompilationResult:
+    bound_ref, effective_loader = _bind_policy_authority(policy_file, loader)
+    context = _FileLoadContext.create(policy_file, bound_ref)
+    if isinstance(effective_loader, FilePolicyLoader):
+        context.protect(effective_loader.policy_root)
+        prepared = effective_loader._prepare(bound_ref, context=context)
+        graph_failure: PolicyLoadError | PolicyValidationError | None = None
+        try:
+            policy = _resolve_file_graph(
+                prepared,
+                loader=effective_loader,
+                visited=set(),
+                context=context,
+                clock=clock,
+                capture_date_failures=capture_date_failures,
+            )
+        except (PolicyLoadError, PolicyValidationError) as exc:
+            policy = None
+            graph_failure = context.normalize(
+                exc,
+                fallback="Policy validation failed",
+            )
+        if graph_failure is not None:
+            raise graph_failure from None
+        assert policy is not None
+    else:
+        prepared = None
+        policy = _load_opaque_policy(
+            bound_ref,
+            effective_loader,
+            clock=clock,
+        )
+
+    compile_failure: PolicyLoadError | PolicyValidationError | None = None
+    try:
+        compiled = compile_policy(
+            policy,
+            source="policy",
+            allow_legacy=allow_legacy,
+            legacy_authorization=legacy_authorization,
+        )
+    except (PolicyLoadError, PolicyValidationError) as exc:
+        compiled = None
+        compile_failure = context.normalize(
+            exc,
+            fallback="Policy compilation failed",
+        )
+    if compile_failure is not None:
+        raise compile_failure from None
+    assert compiled is not None
+    return _PreparedCompilationResult(
+        prepared=prepared,
+        compiled=compiled,
+        date_failures=tuple(context.date_failures),
+    )
+
+
 def load_resolve_compile_policy(
     policy_file: str,
     *,
-    parsed_policy: dict[str, Any] | None = None,
+    loader: PolicyLoaderBase | None = None,
+    clock: Callable[[], date] | None = None,
     allow_legacy: bool = False,
     legacy_authorization: object | None = None,
 ) -> CompiledPolicy:
-    """Return typed diagnostics authority without exposing a loaded mapping.
-
-    A caller that already parsed a standalone file may supply that mapping to
-    preserve compiler-first diagnostic normalization. Any declared
-    ``extends`` chain is resolved and composition-checked by ``load_policy``
-    before compilation. The resolved raw mapping never crosses this boundary.
-    """
-    policy = (
-        parsed_policy
-        if parsed_policy is not None and "extends" not in parsed_policy
-        else load_policy(policy_file)
-    )
-    return compile_policy(
-        policy,
-        source=policy_file,
+    """Load and compile a policy without exposing an untrusted mapping fast path."""
+    result = _prepare_resolve_compile_policy(
+        policy_file,
+        loader=loader,
+        clock=clock,
         allow_legacy=allow_legacy,
         legacy_authorization=legacy_authorization,
     )
+    return result.compiled
 
 
-async def load_policy_async(
-    policy_file: str, visited: set[Path] | None = None
+async def _load_policy_async_runner(
+    policy_file: str,
+    visited: set[Path] | None,
+    loader: PolicyLoaderBase,
 ) -> dict[str, Any]:
-    """
-    Async wrapper for load_policy.
+    return await asyncio.to_thread(
+        load_policy,
+        policy_file,
+        visited,
+        loader=loader,
+    )
+
+
+def load_policy_async(
+    policy_file: str,
+    visited: set[Path] | None = None,
+    *,
+    loader: PolicyLoaderBase | None = None,
+) -> Awaitable[dict[str, Any]]:
+    """Bind policy authority immediately and return an awaitable load.
 
     Runs load_policy in a thread pool to avoid blocking the event loop
     during file I/O and schema validation.
 
     :param policy_file: Path to YAML policy file
     :param visited: Set of visited policy paths (for cycle detection)
+    :param loader: Optional explicit policy loader
     :return: Python dict representing the policy
     """
-    return await asyncio.to_thread(load_policy, policy_file, visited)
+    bound_ref, effective_loader = _bind_policy_authority(policy_file, loader)
+    return _load_policy_async_runner(bound_ref, visited, effective_loader)
 
 
 class PolicyCache:

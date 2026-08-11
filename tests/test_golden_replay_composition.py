@@ -43,5 +43,5 @@ def test_golden_replay_composition_cycle_failure():
 
     # Must be typed PolicyLoadError, not RecursionError
     assert exc_info.value.code == "POLICY_LOAD_ERROR"
-    assert "Circular extends detected" in str(exc_info.value)
-    assert "chain" in exc_info.value.details
+    assert str(exc_info.value) == "Circular policy inheritance detected"
+    assert exc_info.value.details == {}
