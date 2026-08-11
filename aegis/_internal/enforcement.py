@@ -22,6 +22,8 @@ import logging
 import re
 import time as _time
 import uuid
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Mapping, NoReturn, Sequence
@@ -37,6 +39,7 @@ from aegis._internal.chain_linker import ChainLinker
 from aegis._internal.evidence_diagnostics import EvidenceDiagnostics
 
 from aegis._internal.policy_loader import (
+    _bind_policy_authority,
     load_policy,
     PolicyCache,
     PolicyLoaderBase,
@@ -110,6 +113,53 @@ _MODULE_EVIDENCE_DIAGNOSTICS = EvidenceDiagnostics()
 _MODULE_OPERATION_REGISTRY = OperationRegistry()
 
 
+@dataclass(frozen=True, slots=True)
+class _PolicyAuthority:
+    invocation: Mapping[str, Any]
+    requested_policy_ref: str
+    bound_policy_ref: str
+    loader: PolicyLoaderBase
+
+
+_POLICY_AUTHORITY_OVERRIDE: ContextVar[_PolicyAuthority | None] = ContextVar(
+    "aegis_policy_authority_override",
+    default=None,
+)
+
+
+@contextmanager
+def _policy_authority_scope(authority: _PolicyAuthority):
+    token = _POLICY_AUTHORITY_OVERRIDE.set(authority)
+    try:
+        yield authority
+    finally:
+        _POLICY_AUTHORITY_OVERRIDE.reset(token)
+
+
+def _effective_policy_authority(
+    policy_file: str,
+    configured_loader: PolicyLoaderBase | None,
+    *,
+    invocation: Mapping[str, Any],
+) -> _PolicyAuthority:
+    if configured_loader is not None:
+        return _PolicyAuthority(
+            invocation,
+            policy_file,
+            policy_file,
+            configured_loader,
+        )
+    override = _POLICY_AUTHORITY_OVERRIDE.get()
+    if (
+        override is not None
+        and invocation is override.invocation
+        and policy_file == override.requested_policy_ref
+    ):
+        return override
+    bound_ref, loader = _bind_policy_authority(policy_file, None)
+    return _PolicyAuthority(invocation, policy_file, bound_ref, loader)
+
+
 def _validate_chain_linker(
     chain_linker: ChainLinker | None,
 ) -> ChainLinker | None:
@@ -129,6 +179,7 @@ class _ModuleEnforcementRuntime:
         self._sink: AuditSink | None = None
         self._signer: ArtifactSigner | None = None
         self._chain_linker: ChainLinker | None = None
+        self._policy_loader: PolicyLoaderBase | None = None
         self._sealed = False
 
     def configure(
@@ -137,30 +188,48 @@ class _ModuleEnforcementRuntime:
         sink: AuditSink,
         signer: ArtifactSigner | None,
         chain_linker: ChainLinker | None,
+        policy_loader: PolicyLoaderBase | None,
     ) -> None:
         if not isinstance(sink, AuditSink):
             raise TypeError("sink must be an AuditSink")
+        if policy_loader is not None and not isinstance(
+            policy_loader,
+            PolicyLoaderBase,
+        ):
+            raise TypeError("policy_loader must be a PolicyLoaderBase")
         with self._lock:
             if self._sealed:
                 raise RuntimeError("module enforcement runtime is sealed")
             self._sink = sink
             self._signer = signer
             self._chain_linker = _validate_chain_linker(chain_linker)
+            self._policy_loader = policy_loader
 
     def begin(
         self,
-    ) -> tuple[AuditSink, ArtifactSigner | None, ChainLinker | None]:
+    ) -> tuple[
+        AuditSink,
+        ArtifactSigner | None,
+        ChainLinker | None,
+        PolicyLoaderBase | None,
+    ]:
         with self._lock:
             self._sealed = True
             if self._sink is None:
                 raise EvidenceConfigurationError()
-            return self._sink, self._signer, self._chain_linker
+            return (
+                self._sink,
+                self._signer,
+                self._chain_linker,
+                self._policy_loader,
+            )
 
     def reset_for_test(self) -> None:
         with self._lock:
             self._sink = None
             self._signer = None
             self._chain_linker = None
+            self._policy_loader = None
             self._sealed = False
 
 
@@ -172,12 +241,14 @@ def configure_module_enforcement(
     sink: AuditSink,
     signer: ArtifactSigner | None = None,
     chain_linker: ChainLinker | None = None,
+    policy_loader: PolicyLoaderBase | None = None,
 ) -> None:
     """Configure the private module runtime once, before governed traffic."""
     _MODULE_RUNTIME.configure(
         sink=sink,
         signer=signer,
         chain_linker=chain_linker,
+        policy_loader=policy_loader,
     )
 
 
@@ -219,10 +290,15 @@ def _evidence_attempt_boundary(
                 factory = getattr(owner, "_attempt_factory", None)
                 instance_scoped = isinstance(factory, AttemptFactory)
                 factory = factory or _MODULE_ATTEMPT_FACTORY
+                attempt_invocation = _attempt_invocation(
+                    function.__name__,
+                    args,
+                    instance_scoped,
+                )
                 attempt = factory.allocate(
                     entry_point,
                     mode,
-                    _attempt_invocation(function.__name__, args, instance_scoped),
+                    attempt_invocation,
                 )
                 if instance_scoped:
                     runtime_sink = owner._sink
@@ -230,11 +306,13 @@ def _evidence_attempt_boundary(
                     runtime_failure_mode = owner._on_sink_failure
                     runtime_diagnostics = owner._evidence_diagnostics
                     runtime_chain_linker = owner._chain_linker
+                    runtime_policy_loader = owner._policy_loader
                 else:
                     (
                         runtime_sink,
                         runtime_signer,
                         runtime_chain_linker,
+                        runtime_policy_loader,
                     ) = _MODULE_RUNTIME.begin()
                     runtime_failure_mode = "raise"
                     runtime_diagnostics = _MODULE_EVIDENCE_DIAGNOSTICS
@@ -248,6 +326,23 @@ def _evidence_attempt_boundary(
                         chain_linker=runtime_chain_linker,
                         inherit_outer_attempt=inherit_outer_attempt,
                     ):
+                        if (
+                            isinstance(attempt_invocation, Mapping)
+                            and isinstance(
+                                attempt_invocation.get("policy_file"),
+                                str,
+                            )
+                        ):
+                            try:
+                                authority = _effective_policy_authority(
+                                    attempt_invocation["policy_file"],
+                                    runtime_policy_loader,
+                                    invocation=attempt_invocation,
+                                )
+                            except PolicyLoadError:
+                                return await function(*args, **kwargs)
+                            with _policy_authority_scope(authority):
+                                return await function(*args, **kwargs)
                         return await function(*args, **kwargs)
                 except _EvidenceAbort as abort:
                     raise abort.error from abort
@@ -260,10 +355,15 @@ def _evidence_attempt_boundary(
             factory = getattr(owner, "_attempt_factory", None)
             instance_scoped = isinstance(factory, AttemptFactory)
             factory = factory or _MODULE_ATTEMPT_FACTORY
+            attempt_invocation = _attempt_invocation(
+                function.__name__,
+                args,
+                instance_scoped,
+            )
             attempt = factory.allocate(
                 entry_point,
                 mode,
-                _attempt_invocation(function.__name__, args, instance_scoped),
+                attempt_invocation,
             )
             if instance_scoped:
                 runtime_sink = owner._sink
@@ -271,11 +371,13 @@ def _evidence_attempt_boundary(
                 runtime_failure_mode = owner._on_sink_failure
                 runtime_diagnostics = owner._evidence_diagnostics
                 runtime_chain_linker = owner._chain_linker
+                runtime_policy_loader = owner._policy_loader
             else:
                 (
                     runtime_sink,
                     runtime_signer,
                     runtime_chain_linker,
+                    runtime_policy_loader,
                 ) = _MODULE_RUNTIME.begin()
                 runtime_failure_mode = "raise"
                 runtime_diagnostics = _MODULE_EVIDENCE_DIAGNOSTICS
@@ -289,6 +391,23 @@ def _evidence_attempt_boundary(
                     chain_linker=runtime_chain_linker,
                     inherit_outer_attempt=inherit_outer_attempt,
                 ):
+                    if (
+                        isinstance(attempt_invocation, Mapping)
+                        and isinstance(
+                            attempt_invocation.get("policy_file"),
+                            str,
+                        )
+                    ):
+                        try:
+                            authority = _effective_policy_authority(
+                                attempt_invocation["policy_file"],
+                                runtime_policy_loader,
+                                invocation=attempt_invocation,
+                            )
+                        except PolicyLoadError:
+                            return function(*args, **kwargs)
+                        with _policy_authority_scope(authority):
+                            return function(*args, **kwargs)
                     return function(*args, **kwargs)
             except _EvidenceAbort as abort:
                 raise abort.error from abort
@@ -312,24 +431,50 @@ OUTPUT_GATES = (GATE_SCHEMA, GATE_POSTCONDS)
 
 
 def _load_compiled_policy(
-    policy_file: str,
+    invocation: Mapping[str, Any],
     *,
     loader: PolicyLoaderBase | None,
 ) -> CompiledPolicy:
     """Load once and immediately close the authorization representation."""
-    raw = load_policy(policy_file, loader=loader)
-    return compile_policy(raw, source=policy_file, allow_legacy=False)
+    policy_file = invocation["policy_file"]
+    authority = _effective_policy_authority(
+        policy_file,
+        loader,
+        invocation=invocation,
+    )
+    raw = load_policy(
+        authority.bound_policy_ref,
+        loader=authority.loader,
+    )
+    return compile_policy(
+        raw,
+        source=authority.requested_policy_ref,
+        allow_legacy=False,
+    )
 
 
 def _compile_cached_policy(
-    policy_file: str,
+    invocation: Mapping[str, Any],
     *,
     cache: PolicyCache,
     loader: PolicyLoaderBase | None,
 ) -> CompiledPolicy:
     """Compile exactly once after the instance cache load boundary."""
-    raw = cache.get_or_load(policy_file, loader=loader)
-    return compile_policy(raw, source=policy_file, allow_legacy=False)
+    policy_file = invocation["policy_file"]
+    authority = _effective_policy_authority(
+        policy_file,
+        loader,
+        invocation=invocation,
+    )
+    raw = cache.get_or_load(
+        authority.bound_policy_ref,
+        loader=authority.loader,
+    )
+    return compile_policy(
+        raw,
+        source=authority.requested_policy_ref,
+        allow_legacy=False,
+    )
 
 
 def _plain_compiled_value(value: Any) -> Any:
@@ -1555,7 +1700,7 @@ def enforce_invocation(invocation: Mapping[str, Any]) -> dict[str, Any]:
     try:
         _validate_invocation(invocation)
         policy = _load_compiled_policy(
-            invocation["policy_file"],
+            invocation,
             loader=None,
         )
     except AIGCError as exc:
@@ -1617,7 +1762,7 @@ async def enforce_invocation_async(
         _validate_invocation(invocation)
         policy = await asyncio.to_thread(
             _load_compiled_policy,
-            invocation["policy_file"],
+            invocation,
             loader=None,
         )
     except AIGCError as exc:
@@ -1682,7 +1827,7 @@ def enforce_pre_call(
     try:
         _validate_pre_call_invocation(invocation)
         policy = _load_compiled_policy(
-            invocation["policy_file"],
+            invocation,
             loader=None,
         )
     except AIGCError as exc:
@@ -1857,7 +2002,7 @@ async def enforce_pre_call_async(
         _validate_pre_call_invocation(invocation)
         policy = await asyncio.to_thread(
             _load_compiled_policy,
-            invocation["policy_file"],
+            invocation,
             loader=None,
         )
     except AIGCError as exc:
@@ -2320,7 +2465,7 @@ class AEGIS:
         try:
             _validate_invocation(invocation)
             policy = _compile_cached_policy(
-                invocation["policy_file"],
+                invocation,
                 cache=self._policy_cache,
                 loader=self._policy_loader,
             )
@@ -2428,7 +2573,7 @@ class AEGIS:
             prepared_policy = policy
             if prepared_policy is None:
                 prepared_policy = _compile_cached_policy(
-                    invocation["policy_file"],
+                    invocation,
                     cache=self._policy_cache,
                     loader=self._policy_loader,
                 )
@@ -2655,7 +2800,7 @@ class AEGIS:
             _validate_pre_call_invocation(invocation)
             policy = await asyncio.to_thread(
                 _compile_cached_policy,
-                invocation["policy_file"],
+                invocation,
                 cache=self._policy_cache,
                 loader=self._policy_loader,
             )
@@ -2831,7 +2976,7 @@ class AEGIS:
             _validate_invocation(invocation)
             policy = await asyncio.to_thread(
                 _compile_cached_policy,
-                invocation["policy_file"],
+                invocation,
                 cache=self._policy_cache,
                 loader=self._policy_loader,
             )

@@ -1,12 +1,20 @@
 from __future__ import annotations
 
 import os
+import asyncio
 from datetime import date
 from pathlib import Path
 
 import pytest
 
 from aegis import AEGIS
+from aegis import (
+    configure_module_enforcement,
+    enforce_invocation,
+    enforce_invocation_async,
+    enforce_pre_call,
+)
+from aegis._internal import enforcement as enforcement_module
 from aegis._internal import policy_loader as policy_loader_module
 from aegis._internal import workflow_doctor
 from aegis._internal.cli import build_parser, main
@@ -466,3 +474,197 @@ def test_cli_multiple_implicit_targets_get_independent_roots(
     status = main(["policy", "lint", str(first), str(second)])
     assert status == 0
     assert capsys.readouterr().out.count("OK") == 2
+
+
+def test_module_runtime_seals_configured_policy_loader(tmp_path: Path) -> None:
+    root, invocation = _policy_tree_and_invocation(tmp_path)
+    loader = FilePolicyLoader(root)
+    configure_module_enforcement(
+        sink=CallbackAuditSink(lambda artifact: None),
+        policy_loader=loader,
+    )
+    enforce_invocation(invocation)
+    with pytest.raises(RuntimeError, match="sealed"):
+        configure_module_enforcement(
+            sink=CallbackAuditSink(lambda artifact: None),
+            policy_loader=FilePolicyLoader(root),
+        )
+
+
+@pytest.mark.parametrize("surface", ["module", "aegis"])
+def test_sync_operation_reuses_one_implicit_loader_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    surface: str,
+) -> None:
+    entry = _write_policy(tmp_path / "entry.yaml")
+    invocation = _valid_invocation(str(entry))
+    seen: list[int] = []
+    original = FilePolicyLoader._prepare
+
+    def recording_prepare(
+        self: FilePolicyLoader,
+        *args: object,
+        **kwargs: object,
+    ):
+        seen.append(id(self))
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(FilePolicyLoader, "_prepare", recording_prepare)
+    if surface == "module":
+        enforce_invocation(invocation)
+    else:
+        AEGIS(
+            sink=CallbackAuditSink(lambda artifact: None),
+        ).enforce(invocation)
+    assert seen
+    assert len(set(seen)) == 1
+    assert enforcement_module._POLICY_AUTHORITY_OVERRIDE.get() is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("surface", ["module", "aegis"])
+async def test_async_operation_reuses_one_implicit_loader_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    surface: str,
+) -> None:
+    entry = _write_policy(tmp_path / "entry.yaml")
+    invocation = _valid_invocation(str(entry))
+    seen: list[int] = []
+    original = FilePolicyLoader._prepare
+
+    def recording_prepare(
+        self: FilePolicyLoader,
+        *args: object,
+        **kwargs: object,
+    ):
+        seen.append(id(self))
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(FilePolicyLoader, "_prepare", recording_prepare)
+    if surface == "module":
+        await enforce_invocation_async(invocation)
+    else:
+        await AEGIS(
+            sink=CallbackAuditSink(lambda artifact: None),
+        ).enforce_async(invocation)
+    assert seen
+    assert len(set(seen)) == 1
+    assert enforcement_module._POLICY_AUTHORITY_OVERRIDE.get() is None
+
+
+@pytest.mark.asyncio
+async def test_parallel_module_operations_do_not_share_implicit_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = _valid_invocation(str(_write_policy(tmp_path / "a" / "entry.yaml")))
+    second = _valid_invocation(str(_write_policy(tmp_path / "b" / "entry.yaml")))
+    seen: dict[int, set[int]] = {id(first): set(), id(second): set()}
+    original = FilePolicyLoader._prepare
+
+    def recording_prepare(
+        self: FilePolicyLoader,
+        *args: object,
+        **kwargs: object,
+    ):
+        authority = enforcement_module._POLICY_AUTHORITY_OVERRIDE.get()
+        assert authority is not None
+        seen[id(authority.invocation)].add(id(self))
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(FilePolicyLoader, "_prepare", recording_prepare)
+    await asyncio.gather(
+        enforce_invocation_async(first),
+        enforce_invocation_async(second),
+    )
+    assert all(len(loader_ids) == 1 for loader_ids in seen.values())
+    assert seen[id(first)].isdisjoint(seen[id(second)])
+    assert enforcement_module._POLICY_AUTHORITY_OVERRIDE.get() is None
+
+
+def test_nested_module_invocation_shadows_and_restores_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    outer = _valid_invocation(str(_write_policy(tmp_path / "a" / "entry.yaml")))
+    inner = _valid_invocation(str(_write_policy(tmp_path / "b" / "entry.yaml")))
+    original_pipeline = enforcement_module._run_pipeline
+    observed: list[tuple[str, int]] = []
+
+    def nested_pipeline(policy: object, invocation: object, **kwargs: object):
+        authority = enforcement_module._POLICY_AUTHORITY_OVERRIDE.get()
+        assert authority is not None
+        if invocation is outer:
+            observed.append(("before", id(authority.loader)))
+            enforce_invocation(inner)
+            restored = enforcement_module._POLICY_AUTHORITY_OVERRIDE.get()
+            assert restored is not None
+            observed.append(("after", id(restored.loader)))
+        elif invocation is inner:
+            observed.append(("inner", id(authority.loader)))
+        return original_pipeline(policy, invocation, **kwargs)
+
+    monkeypatch.setattr(enforcement_module, "_run_pipeline", nested_pipeline)
+    enforce_invocation(outer)
+    values = dict(observed)
+    assert values["before"] == values["after"]
+    assert values["before"] != values["inner"]
+    assert enforcement_module._POLICY_AUTHORITY_OVERRIDE.get() is None
+
+
+def test_explicit_instance_loader_overrides_ambient_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    explicit_root = tmp_path / "explicit"
+    entry = _write_policy(explicit_root / "entry.yaml")
+    invocation = _valid_invocation(entry.name)
+    explicit_loader = FilePolicyLoader(explicit_root)
+    ambient_root = tmp_path / "ambient"
+    _write_policy(ambient_root / "entry.yaml")
+    ambient_loader = FilePolicyLoader(ambient_root)
+    ambient = enforcement_module._PolicyAuthority(
+        invocation,
+        "entry.yaml",
+        "entry.yaml",
+        ambient_loader,
+    )
+    seen: list[int] = []
+    original = FilePolicyLoader._prepare
+
+    def recording_prepare(
+        self: FilePolicyLoader,
+        *args: object,
+        **kwargs: object,
+    ):
+        seen.append(id(self))
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(FilePolicyLoader, "_prepare", recording_prepare)
+    engine = AEGIS(
+        sink=CallbackAuditSink(lambda artifact: None),
+        policy_loader=explicit_loader,
+    )
+    with enforcement_module._policy_authority_scope(ambient):
+        engine.enforce(invocation)
+    assert seen
+    assert set(seen) == {id(explicit_loader)}
+
+
+@pytest.mark.parametrize("surface", ["unified", "pre_call"])
+def test_module_split_and_unified_surfaces_use_configured_root(
+    tmp_path: Path,
+    surface: str,
+) -> None:
+    root, invocation = _policy_tree_and_invocation(tmp_path)
+    configure_module_enforcement(
+        sink=CallbackAuditSink(lambda artifact: None),
+        policy_loader=FilePolicyLoader(root),
+    )
+    if surface == "pre_call":
+        invocation.pop("output")
+        assert enforce_pre_call(invocation) is not None
+    else:
+        assert enforce_invocation(invocation) is not None

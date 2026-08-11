@@ -797,9 +797,14 @@ def _fitness_violations(
                 and classes.get(node) == "_PreparedFilePolicy"
                 and field_name == "raw_policy"
             )
+            authority_identity_field = (
+                module_name == "enforcement"
+                and classes.get(node) == "_PolicyAuthority"
+                and field_name == "invocation"
+            )
             if (
                 field_name in _BANNED_SNAPSHOT_FIELDS or retained_mapping
-            ) and not prepared_source_field:
+            ) and not (prepared_source_field or authority_identity_field):
                 violations.append(
                     f"{module_name}:{node.lineno}:snapshot-field:{field_name}"
                 )
