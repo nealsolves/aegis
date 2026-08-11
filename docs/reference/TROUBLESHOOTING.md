@@ -194,3 +194,24 @@ Expected output:
 Status:  COMPLETED
 Steps:   2
 ```
+
+## `POLICY_PATH_OUTSIDE_ROOT`
+
+This stable error means an entry, transitive `extends`, or canonical symlink
+target left the selected policy root. The error deliberately omits filesystem
+paths. Pass the intended namespace explicitly and keep every inherited policy
+inside it:
+
+```python
+from aegis.policy_loader import FilePolicyLoader, load_policy
+
+loader = FilePolicyLoader("policies")
+policy = load_policy("child.yaml", loader=loader)
+```
+
+For diagnostics use `--policy-root ROOT` on `policy lint`, `policy validate`,
+`workflow lint`, or `workflow doctor`. Without it, a policy file uses its
+lexical parent and a starter uses its canonical directory. Custom loaders do
+not support `extends`, and custom retry callables must receive their exact
+`policy_loader`. Concurrent filesystem mutation is outside this containment
+guarantee.

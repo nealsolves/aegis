@@ -85,7 +85,8 @@ if TYPE_CHECKING:
     )
     from aegis.policy_loader import (  # noqa: F401
         COMPOSITION_INTERSECT, COMPOSITION_REPLACE, COMPOSITION_UNION,
-        FilePolicyLoader, PolicyLoaderBase, load_policy, merge_policies,
+        FilePolicyLoader, PolicyLoaderBase, load_policy, load_policy_async,
+        merge_policies,
         validate_policy_dates,
     )
     from aegis.risk_scoring import (  # noqa: F401
@@ -212,7 +213,8 @@ _EXPORT_GROUPS = (
         "TRAJECTORY_STABLE",
     )),
     ("aegis.policy_loader", (
-        "PolicyLoaderBase", "FilePolicyLoader", "load_policy", "merge_policies",
+        "PolicyLoaderBase", "FilePolicyLoader", "load_policy",
+        "load_policy_async", "merge_policies",
         "validate_policy_dates", "COMPOSITION_INTERSECT", "COMPOSITION_UNION",
         "COMPOSITION_REPLACE",
     )),
@@ -381,6 +383,7 @@ __all__ = [
     "get_audit_sink",
     "governed",
     "load_policy",
+    "load_policy_async",
     "merge_policies",
     "set_audit_sink",
     "sign_artifact",

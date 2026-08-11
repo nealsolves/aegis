@@ -2385,6 +2385,50 @@ def check_demo_backend_import_boundary(_manifest: dict) -> list[str]:
     return errors
 
 
+def check_policy_root_contract() -> list[str]:
+    """Keep issue #57 authority language and packaged schema synchronized."""
+    errors: list[str] = []
+    policy_root_terms = {
+        "POLICY_PATH_OUTSIDE_ROOT",
+        'FilePolicyLoader("policies")',
+        "--policy-root",
+        "lexical parent",
+        "concurrent",
+    }
+    for relative_path in (
+        "CHANGELOG.md",
+        "docs/USAGE.md",
+        "docs/INTEGRATION_GUIDE.md",
+        "docs/PUBLIC_INTEGRATION_CONTRACT.md",
+    ):
+        text = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+        missing = sorted(
+            term for term in policy_root_terms if term not in text
+        )
+        if missing:
+            errors.append(
+                f"{relative_path}: missing policy-root terms {missing}"
+            )
+
+    source_schema = json.loads(
+        (REPO_ROOT / "schemas/policy_dsl.schema.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    package_schema = json.loads(
+        (REPO_ROOT / "aegis/schemas/policy_dsl.schema.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    source_extends = source_schema["properties"]["extends"]
+    package_extends = package_schema["properties"]["extends"]
+    if source_extends != package_extends:
+        errors.append("source and packaged extends schemas differ")
+    if source_extends.get("minLength") != 1:
+        errors.append("extends schema must reject empty references")
+    return errors
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -2417,6 +2461,7 @@ def main() -> int:
         ("M. v0.9.0 PR-07 first-adopter docs and beta proof", lambda: check_v090_pr07_contract(manifest)),
         ("N. Demo backend public-import boundary", lambda: check_demo_backend_import_boundary(manifest)),
         ("O. v0.9.0 PR-09 exports-and-ops release-packet truth", check_v090_pr09_contract),
+        ("P. Policy-root authority contract", check_policy_root_contract),
     ]
 
     for name, check_fn in checks:

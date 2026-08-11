@@ -46,6 +46,37 @@ These changes exist in the current source tree but are not in the published
   rewrite the released `0.9.0b1` evidence below. The manifest notation is
   `4826 tests`.
 
+### Changed
+
+- Issue #57 applies an immediate beta security correction to file-backed policy
+  authority. Absolute entry paths remain supported, but they do not authorize inherited targets outside the entry's canonical policy root. `FilePolicyLoader` now requires an explicit root; relative references passed to that loader are root-relative. Containment failures return `POLICY_PATH_OUTSIDE_ROOT` without filesystem paths. Custom retry enforcement callables must receive the same `policy_loader` authority used for enforcement.
+- Plain `load_policy("policies/entry.yaml")` uses the entry's lexical parent.
+  Policy lint/validate and workflow lint/doctor accept `--policy-root ROOT` for
+  the same namespace. Canonical symlink targets must remain inside the root;
+  custom loaders cannot use `extends`. Hostile concurrent mutation is outside
+  this guarantee, and descriptor-relative resistance to a concurrent writer is
+  a non-goal.
+
+Before:
+
+```python
+loader = FilePolicyLoader()
+audit = with_retry(invocation, enforcement_fn=custom_enforce)
+```
+
+After:
+
+```python
+loader = FilePolicyLoader("policies")
+policy = load_policy("child.yaml", loader=loader)
+engine = AEGIS(sink=sink, policy_loader=loader)
+audit = with_retry(
+    invocation,
+    enforcement_fn=custom_enforce,
+    policy_loader=loader,
+)
+```
+
 ## [0.9.0b1] — 2026-07-25
 
 This public beta is released as the `aegis-ai-governance` distribution from

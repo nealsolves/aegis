@@ -4,6 +4,7 @@ from __future__ import annotations
 from email.parser import BytesParser
 from email.policy import default
 import importlib.util
+from importlib import resources
 import json
 import re
 from pathlib import Path
@@ -45,6 +46,15 @@ EXPECTED_SDIST_KMS_GUIDES = {
 CANDIDATE_VALIDATOR = (
     REPO_ROOT / "scripts" / "validate_v090_distribution_candidate.py"
 )
+
+
+def test_packaged_schema_rejects_empty_extends() -> None:
+    schema = json.loads(
+        resources.files("aegis.schemas")
+        .joinpath("policy_dsl.schema.json")
+        .read_text(encoding="utf-8")
+    )
+    assert schema["properties"]["extends"]["minLength"] == 1
 
 
 def _load_candidate_validator():

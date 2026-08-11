@@ -173,6 +173,24 @@ def test_v090_cli_surface_has_workflow_and_policy_init_commands():
     assert "init" in workflow_help.stdout
 
 
+def test_v090_policy_diagnostics_publish_policy_root_option() -> None:
+    for command in (
+        ("policy", "lint"),
+        ("policy", "validate"),
+        ("workflow", "lint"),
+        ("workflow", "doctor"),
+    ):
+        result = subprocess.run(
+            [sys.executable, "-m", "aegis", *command, "--help"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+        assert "--policy-root" in result.stdout
+
+
 def test_v090_public_examples_and_demo_use_public_imports_only():
     public_files = [
         REPO_ROOT / "README.md",

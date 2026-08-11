@@ -56,6 +56,41 @@ def test_with_retry_exposes_attested_policy_loader() -> None:
     assert signature.parameters["policy_loader"].default is None
 
 
+def test_file_loader_public_constructor_requires_policy_root(
+    tmp_path,
+) -> None:
+    from aegis.policy_loader import FilePolicyLoader
+
+    signature = inspect.signature(FilePolicyLoader)
+    assert (
+        signature.parameters["policy_root"].default
+        is inspect.Parameter.empty
+    )
+    loader = FilePolicyLoader(tmp_path)
+    assert loader.policy_root == tmp_path.resolve()
+    assert FilePolicyLoader.policy_root.fset is None
+
+
+def test_policy_authority_public_signatures() -> None:
+    from aegis import configure_module_enforcement
+    from aegis.policy_loader import load_policy_async
+    from aegis.retry import with_retry
+
+    assert "policy_loader" in inspect.signature(
+        configure_module_enforcement
+    ).parameters
+    async_signature = inspect.signature(load_policy_async)
+    assert async_signature.parameters["loader"].default is None
+    assert "policy_loader" in inspect.signature(with_retry).parameters
+
+
+def test_policy_load_error_accepts_stable_code() -> None:
+    from aegis.errors import PolicyLoadError
+
+    error = PolicyLoadError("outside", code="POLICY_PATH_OUTSIDE_ROOT")
+    assert error.code == "POLICY_PATH_OUTSIDE_ROOT"
+
+
 def test_aegis_class_exported():
     assert AEGIS is not None
     assert callable(AEGIS)

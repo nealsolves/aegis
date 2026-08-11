@@ -1701,3 +1701,38 @@ Volatile fields (do not assert in tests without normalization):
 | `timestamp` | Unix epoch at enforcement time |
 | `input_checksum` | SHA-256 of canonical input JSON |
 | `output_checksum` | SHA-256 of canonical output JSON |
+
+## Policy root authority
+
+File-backed policy graphs have one canonical authority root. A plain
+`load_policy("policies/entry.yaml")` call uses the entry's lexical parent
+(`policies`) as that root. Use an explicit loader when a deliberate policy tree
+spans multiple directories:
+
+```python
+from aegis import AEGIS, load_policy, with_retry
+from aegis.policy_loader import FilePolicyLoader
+
+loader = FilePolicyLoader("policies")
+policy = load_policy("child.yaml", loader=loader)
+engine = AEGIS(sink=sink, policy_loader=loader)
+audit = with_retry(
+    invocation,
+    enforcement_fn=custom_enforce,
+    policy_loader=loader,
+)
+```
+
+Relative entries passed to `FilePolicyLoader("policies")` are root-relative.
+Every transitive `extends` and canonical symlink target must remain inside that
+root. Custom loaders cannot use `extends`. Arbitrary retry callables must be
+given the exact `policy_loader` they attest to using. A containment failure is
+`POLICY_PATH_OUTSIDE_ROOT`; its exception text and details contain no filesystem
+paths.
+
+The CLI uses the same namespace with `aegis policy lint/validate --policy-root
+ROOT` and `aegis workflow lint/doctor --policy-root ROOT`. Without an explicit
+root, each policy target gets its own lexical parent authority; an implicit
+starter target is rooted at its canonical starter directory. Hostile concurrent
+mutation of filesystem components is outside this guarantee: descriptor-relative
+race resistance against a concurrent writer remains a non-goal.
