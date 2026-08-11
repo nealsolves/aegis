@@ -1,0 +1,254 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/nealsolves/aegis/schemas/compliance_mapping.schema.json",
+  "title": "AEGIS compliance catalog and framework mapping contract",
+  "oneOf": [
+    {"$ref": "#/$defs/manifest"},
+    {"$ref": "#/$defs/module"}
+  ],
+  "$defs": {
+    "module": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "framework", "declared_scope", "controls"],
+      "properties": {
+        "schema_version": {"const": "1.0"},
+        "framework": {"$ref": "#/$defs/framework"},
+        "declared_scope": {"$ref": "#/$defs/declared_scope"},
+        "review": {"$ref": "#/$defs/review"},
+        "controls": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {"$ref": "#/$defs/control"}
+        }
+      }
+    },
+    "bounded_text": {"type": "string", "minLength": 1, "maxLength": 16384},
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/() -]*$"
+    },
+    "slug": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*(?:\\.[0-9]+)?$"
+    },
+    "date": {"type": "string", "format": "date"},
+    "https_url": {"type": "string", "format": "uri", "pattern": "^https://"},
+    "framework": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "version", "source_date", "authoritative_sources"],
+      "properties": {
+        "id": {"$ref": "#/$defs/slug"},
+        "name": {"$ref": "#/$defs/bounded_text"},
+        "version": {"$ref": "#/$defs/bounded_text"},
+        "source_date": {"$ref": "#/$defs/date"},
+        "authoritative_sources": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "items": {"$ref": "#/$defs/source"}
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_id", "role", "title", "version", "publication_date", "publication_id", "url", "accessed_on"],
+      "properties": {
+        "source_id": {"$ref": "#/$defs/identifier"},
+        "role": {"enum": ["control_source", "amending_act", "official_guidance", "metadata"]},
+        "title": {"$ref": "#/$defs/bounded_text"},
+        "version": {"$ref": "#/$defs/bounded_text"},
+        "publication_date": {"$ref": "#/$defs/date"},
+        "publication_id": {"$ref": "#/$defs/bounded_text"},
+        "url": {"$ref": "#/$defs/https_url"},
+        "accessed_on": {"$ref": "#/$defs/date"}
+      }
+    },
+    "declared_scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "mapping_unit", "expected_mapping_count", "exclusions"],
+      "properties": {
+        "summary": {"$ref": "#/$defs/bounded_text"},
+        "mapping_unit": {"$ref": "#/$defs/bounded_text"},
+        "expected_mapping_count": {"type": "integer", "minimum": 0, "maximum": 1000},
+        "exclusions": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {"$ref": "#/$defs/bounded_text"}
+        }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "reviewed_on": {"$ref": "#/$defs/date"},
+        "next_review_due": {"$ref": "#/$defs/date"},
+        "reviewer_roles": {
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 5,
+          "items": {"enum": ["framework_scope", "evidence_mapping", "claims", "iso_licensed_source", "eu_legal_scope"]}
+        },
+        "scope_reviewed_in": {"type": "string", "maxLength": 512},
+        "mapping_reviewed_in": {"type": "string", "maxLength": 512},
+        "claims_reviewed_in": {"type": "string", "maxLength": 512},
+        "source_access_method": {"enum": ["public_authoritative_source", "licensed_human_review_without_ai_processing"]}
+      }
+    },
+    "control": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["control_id", "source_reference"],
+      "properties": {
+        "control_id": {"$ref": "#/$defs/identifier"},
+        "label": {"$ref": "#/$defs/bounded_text"},
+        "source_reference": {"$ref": "#/$defs/source_reference"},
+        "mapping": {"$ref": "#/$defs/mapping"}
+      }
+    },
+    "source_reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_id", "locator"],
+      "properties": {
+        "source_id": {"$ref": "#/$defs/identifier"},
+        "locator": {"$ref": "#/$defs/bounded_text"}
+      }
+    },
+    "mapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["aegis_evidence_status", "interpretation", "evidence", "host_controls", "limitations", "retention_assumptions"],
+      "properties": {
+        "aegis_evidence_status": {"enum": ["supported_evidence", "partial_evidence", "external_control", "not_addressed"]},
+        "interpretation": {"$ref": "#/$defs/bounded_text"},
+        "evidence": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {"$ref": "#/$defs/evidence"}
+        },
+        "host_controls": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "items": {"$ref": "#/$defs/host_control"}
+        },
+        "limitations": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "items": {"$ref": "#/$defs/bounded_text"}
+        },
+        "retention_assumptions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "items": {"$ref": "#/$defs/bounded_text"}
+        },
+        "unsupported_portion": {"$ref": "#/$defs/bounded_text"},
+        "external_owner": {"$ref": "#/$defs/bounded_text"},
+        "external_control": {"$ref": "#/$defs/bounded_text"},
+        "gap": {"$ref": "#/$defs/bounded_text"},
+        "review_note": {"$ref": "#/$defs/bounded_text"}
+      }
+    },
+    "host_control": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["owner", "control"],
+      "properties": {
+        "owner": {"$ref": "#/$defs/bounded_text"},
+        "control": {"$ref": "#/$defs/bounded_text"}
+      }
+    },
+    "manifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "catalog_version", "catalog_status", "display_name", "disclaimer", "aegis_baseline", "framework_modules", "review_policy", "update_triggers"],
+      "properties": {
+        "schema_version": {"const": "1.0"},
+        "catalog_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "catalog_status": {"const": "current_source"},
+        "display_name": {"$ref": "#/$defs/bounded_text"},
+        "disclaimer": {"$ref": "#/$defs/bounded_text"},
+        "aegis_baseline": {"$ref": "#/$defs/baseline"},
+        "framework_modules": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/repository_path"}
+        },
+        "review_policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["default_interval_days", "eu_ai_act_interval_days"],
+          "properties": {
+            "default_interval_days": {"type": "integer", "minimum": 1, "maximum": 365},
+            "eu_ai_act_interval_days": {"type": "integer", "minimum": 1, "maximum": 365}
+          }
+        },
+        "update_triggers": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "uniqueItems": true,
+          "items": {"enum": ["framework_revision_or_erratum", "authoritative_amendment_or_guidance", "aegis_baseline_change", "referenced_evidence_change", "claims_policy_change"]}
+        }
+      }
+    },
+    "baseline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["git_commit", "distribution_name", "published_version", "mapped_channel", "release_matrix", "runtime_paths"],
+      "properties": {
+        "git_commit": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+        "distribution_name": {"const": "aegis-ai-governance"},
+        "published_version": {"type": "string", "minLength": 1, "maxLength": 64},
+        "mapped_channel": {"const": "current_source"},
+        "release_matrix": {"$ref": "#/$defs/repository_path"},
+        "runtime_paths": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/repository_path"}
+        }
+      }
+    },
+    "repository_path": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+$"
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "baseline", "path", "locator", "demonstrates"],
+      "properties": {
+        "kind": {"enum": ["policy_field", "artifact_field", "test", "command", "fixture", "documentation"]},
+        "baseline": {"enum": ["aegis_source", "catalog_asset"]},
+        "path": {"type": "string", "minLength": 1, "maxLength": 1024, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+$"},
+        "locator": {"$ref": "#/$defs/bounded_text"},
+        "demonstrates": {"$ref": "#/$defs/bounded_text"},
+        "invocation": {"$ref": "#/$defs/bounded_text"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"kind": {"const": "command"}}, "required": ["kind"]},
+          "then": {"required": ["invocation"]},
+          "else": {"not": {"required": ["invocation"]}}
+        }
+      ]
+    }
+  }
+}

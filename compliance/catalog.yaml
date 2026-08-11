@@ -1,0 +1,36 @@
+schema_version: "1.0"
+catalog_version: "1.0.0"
+catalog_status: current_source
+display_name: AEGIS evidence-oriented compliance mapping catalog
+disclaimer: >-
+  This non-authoritative catalog describes bounded AEGIS technical evidence
+  contributions. It does not determine applicability, control satisfaction,
+  operating effectiveness, audit outcomes, certification, or legal
+  sufficiency. Adopters require qualified professional review and their own
+  evidence from operating environments.
+aegis_baseline:
+  git_commit: a9d0e4967070a11474ab11b23b047a5cde4b0892
+  distribution_name: aegis-ai-governance
+  published_version: 0.9.0b1
+  mapped_channel: current_source
+  release_matrix: docs/reference/RELEASE_MATRIX.md
+  runtime_paths:
+    - "aegis/**"
+    - schemas/audit_artifact.schema.json
+    - schemas/workflow_artifact.schema.json
+    - "policies/**"
+    - pyproject.toml
+framework_modules:
+  - compliance/frameworks/nist-ai-rmf-1.0.yaml
+  - compliance/frameworks/iso-iec-42001-2023.yaml
+  - compliance/frameworks/soc2-tsc-2017-revised-2022.yaml
+  - compliance/frameworks/eu-ai-act-2024-1689-amended-2026.yaml
+review_policy:
+  default_interval_days: 180
+  eu_ai_act_interval_days: 90
+update_triggers:
+  - framework_revision_or_erratum
+  - authoritative_amendment_or_guidance
+  - aegis_baseline_change
+  - referenced_evidence_change
+  - claims_policy_change

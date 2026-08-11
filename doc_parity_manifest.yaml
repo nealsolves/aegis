@@ -122,6 +122,10 @@ documentation_inventory:
     # Issue #58 plan records implementation history; the sink implementation
     # and maintained evidence-operations guide are authoritative.
     - docs/superpowers/plans/2026-08-10-issue-58-jsonl-sink-hardening.md
+    # Issue #43's approved design records implementation history; the eventual
+    # canonical catalog and maintained generated pages are current authority.
+    - docs/superpowers/plans/2026-08-10-issue-43-compliance-mapping.md
+    - docs/superpowers/specs/2026-08-10-issue-43-compliance-mapping-design.md
     - .superpowers/sdd/2026-07-29-issue-45-aws-google-kms-adapters/task-9-report.md
     - .superpowers/sdd/2026-07-29-issue-45-aws-google-kms-adapters/final-fix-wave-report.md
     - .superpowers/sdd/2026-07-30-a1-compiled-policy-restriction-envelope/task-5-report.md
