@@ -209,3 +209,18 @@ def test_all_checked_in_demo_policies_fit_the_bounded_contract() -> None:
     for path in paths:
         loaded = load_bounded_yaml(path.read_text(encoding="utf-8"))
         assert isinstance(loaded, dict), path.name
+
+
+def test_enforcement_artifact_uses_logical_policy_reference_only() -> None:
+    response = client.post(
+        "/api/enforce",
+        json={"scenario_key": "low_risk_faq", "mode": "strict"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["error"] is None
+    assert body["artifact"]["policy_file"] == "medical_ai_low_risk.yaml"
+    serialized = json.dumps(body)
+    assert str(main.SAMPLE_POLICIES_DIR) not in serialized
+    assert "/private/" not in serialized

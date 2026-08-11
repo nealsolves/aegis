@@ -1,5 +1,5 @@
 """Public routes for the versioned deterministic demo API."""
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
 from demo_contract import (
     API_CONTRACT_VERSION,
@@ -20,6 +20,7 @@ from demo_registry import (
     is_known_variant,
     is_verified_adapter,
 )
+from demo_errors import DemoPublicError, safe_demo_message
 from demo_adapter_service import run_adapter
 from demo_scenario_service import run_scenario
 
@@ -27,15 +28,11 @@ from demo_scenario_service import run_scenario
 router = APIRouter(prefix="/api/demo", tags=["demo-v1"])
 
 
-def _unknown_id(kind: str, value: str) -> HTTPException:
-    return HTTPException(
-        status_code=422,
-        detail={
-            "code": "UNKNOWN_DEMO_ID",
-            "message": f"Unknown demo {kind}: {value!r}",
-            "id_type": kind,
-            "id": value,
-        },
+def _unknown_id(kind: str, value: str) -> DemoPublicError:  # noqa: ARG001
+    return DemoPublicError(
+        "UNKNOWN_DEMO_ID",
+        safe_demo_message("UNKNOWN_DEMO_ID"),
+        422,
     )
 
 

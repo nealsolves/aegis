@@ -5,7 +5,7 @@ import uuid
 from datetime import date
 from pathlib import Path
 from typing import Literal
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -15,9 +15,9 @@ from starlette.responses import JSONResponse
 from bounded_yaml import ensure_bounded_json_response, load_bounded_yaml
 from scenarios import SCENARIOS
 from aegis import (
-    AEGIS, AIGCError, HMACSigner, build_content_checksum_v2,
+    AIGCError, HMACSigner, build_content_checksum_v2,
     verify_artifact, verify_chain_detailed,
-    validate_policy_dates, PolicyTestCase, PolicyTestSuite,
+    validate_policy_dates,
     PolicyValidationError,
 )
 from aegis.policy_loader import (
@@ -36,10 +36,12 @@ from demo_errors import (
     DemoPublicError,
     current_request_id,
     log_internal_failure,
+    public_demo_error,
     public_error_response,
     request_id_from_scope,
     safe_demo_message,
 )
+from demo_runtime import demo_aegis
 from demo_routes import router as demo_router
 
 ALLOWED_ORIGINS = (
@@ -184,6 +186,19 @@ MEDICAL_FACTORS = [
 ]
 
 
+def _public_governance_error(exc: AIGCError) -> dict[str, str]:
+    code = getattr(exc, "code", "AEGIS_ENFORCEMENT_FAILED")
+    try:
+        safe_demo_message(code)
+    except KeyError:
+        code = "AEGIS_ENFORCEMENT_FAILED"
+    return public_demo_error(code)
+
+
+def _public_request_failure(code: str = "INVALID_REQUEST") -> DemoPublicError:
+    return DemoPublicError(code, safe_demo_message(code), 422)
+
+
 def _build_full_invocation(scenario: dict, policy_path: str) -> dict:
     return {
         "policy_file": policy_path,
@@ -210,7 +225,7 @@ def _build_pre_call_invocation(scenario: dict, policy_path: str) -> dict:
 @api.get("/api/scenarios/{scenario_key}")
 def get_scenario(scenario_key: str):
     if scenario_key not in SCENARIOS:
-        raise HTTPException(status_code=422, detail=f"Unknown scenario_key: {scenario_key!r}")
+        raise _public_request_failure("UNKNOWN_DEMO_ID")
     s = SCENARIOS[scenario_key]
     return {
         "prompt": s["prompt"],
@@ -256,23 +271,24 @@ class EnforceRequest(BaseModel):
 @api.post("/api/enforce")
 def enforce(req: EnforceRequest):
     if req.scenario_key not in SCENARIOS:
-        raise HTTPException(status_code=422, detail=f"Unknown scenario_key: {req.scenario_key!r}")
+        raise _public_request_failure("UNKNOWN_DEMO_ID")
     scenario = SCENARIOS[req.scenario_key]
-    policy_path = str(SAMPLE_POLICIES_DIR / scenario["policy"])
+    policy_ref = scenario["policy"]
 
-    aegis = AEGIS(
+    aegis = demo_aegis(
+        SAMPLE_POLICIES_DIR,
         risk_config={"mode": req.mode, "threshold": 0.7, "factors": MEDICAL_FACTORS}
     )
     try:
         if req.flow == "split":
-            pre_call_result = aegis.enforce_pre_call(_build_pre_call_invocation(scenario, policy_path))
+            pre_call_result = aegis.enforce_pre_call(_build_pre_call_invocation(scenario, policy_ref))
             artifact = aegis.enforce_post_call(pre_call_result, scenario["output"])
         else:
-            artifact = aegis.enforce(_build_full_invocation(scenario, policy_path))
+            artifact = aegis.enforce(_build_full_invocation(scenario, policy_ref))
         return {"artifact": artifact, "error": None}
     except AIGCError as exc:
         artifact = getattr(exc, "audit_artifact", None)
-        return {"artifact": artifact, "error": str(exc)}
+        return {"artifact": artifact, "error": _public_governance_error(exc)}
 
 
 @api.post("/api/sign/generate-key")
@@ -288,22 +304,22 @@ class SignEnforceRequest(BaseModel):
 @api.post("/api/sign/enforce")
 def sign_enforce(req: SignEnforceRequest):
     if req.scenario_key not in SCENARIOS:
-        raise HTTPException(status_code=422, detail=f"Unknown scenario_key: {req.scenario_key!r}")
+        raise _public_request_failure("UNKNOWN_DEMO_ID")
     scenario = SCENARIOS[req.scenario_key]
-    policy_path = str(SAMPLE_POLICIES_DIR / scenario["policy"])
+    policy_ref = scenario["policy"]
     try:
         key_bytes = bytes.fromhex(req.key)
     except ValueError:
-        raise HTTPException(status_code=422, detail="key must be a valid hex string (64 hex chars)")
+        raise _public_request_failure() from None
     signer = HMACSigner(key=key_bytes)
-    aegis = AEGIS(signer=signer)
+    aegis = demo_aegis(SAMPLE_POLICIES_DIR, signer=signer)
 
     try:
-        artifact = aegis.enforce(_build_full_invocation(scenario, policy_path))
+        artifact = aegis.enforce(_build_full_invocation(scenario, policy_ref))
         return {"artifact": artifact, "error": None}
     except AIGCError as exc:
         artifact = getattr(exc, "audit_artifact", None)
-        return {"artifact": artifact, "error": str(exc)}
+        return {"artifact": artifact, "error": _public_governance_error(exc)}
 
 
 class VerifySignatureRequest(BaseModel):
@@ -316,7 +332,7 @@ def verify_signature(req: VerifySignatureRequest):
     try:
         key_bytes = bytes.fromhex(req.key)
     except ValueError:
-        raise HTTPException(status_code=422, detail="key must be a valid hex string (64 hex chars)")
+        raise _public_request_failure() from None
     signer = HMACSigner(key=key_bytes)
     valid = verify_artifact(req.artifact, signer)
     return {"valid": valid}
@@ -332,18 +348,22 @@ class ChainAppendRequest(BaseModel):
 @api.post("/api/chain/append")
 def chain_append(req: ChainAppendRequest):
     if req.scenario_key not in SCENARIOS:
-        raise HTTPException(status_code=422, detail=f"Unknown scenario_key: {req.scenario_key!r}")
+        raise _public_request_failure("UNKNOWN_DEMO_ID")
     scenario = SCENARIOS[req.scenario_key]
-    policy_path = str(SAMPLE_POLICIES_DIR / scenario["policy"])
+    policy_ref = scenario["policy"]
     chain_id = req.chain_id or str(uuid.uuid4())
 
-    aegis = AEGIS()
+    aegis = demo_aegis(SAMPLE_POLICIES_DIR)
     try:
-        artifact = aegis.enforce(_build_full_invocation(scenario, policy_path))
+        artifact = aegis.enforce(_build_full_invocation(scenario, policy_ref))
     except AIGCError as exc:
         artifact = getattr(exc, "audit_artifact", None)
         if not artifact:
-            raise HTTPException(status_code=422, detail=str(exc))
+            raise DemoPublicError(
+                "AEGIS_ENFORCEMENT_FAILED",
+                safe_demo_message("AEGIS_ENFORCEMENT_FAILED"),
+                422,
+            ) from None
 
     # Inject chain fields — mirrors AuditChain.append()
     unsigned = {
@@ -463,7 +483,7 @@ def compose_policies(req: ComposeRequest):
 def chain_tamper(req: ChainTamperRequest):
     artifacts = copy.deepcopy(req.artifacts)
     if not (0 <= req.index < len(artifacts)):
-        raise HTTPException(status_code=422, detail=f"Index {req.index} out of range")
+        raise _public_request_failure()
     artifact = artifacts[req.index]
     current = artifact.get("enforcement_result", "PASS")
     artifact["enforcement_result"] = "FAIL" if current == "PASS" else "PASS"
@@ -554,7 +574,11 @@ def validate_dates_endpoint(req: ValidateDatesRequest):
             "error": None,
         }
     except PolicyValidationError as exc:
-        return {"in_range": False, "evidence": {}, "error": str(exc)}
+        return {
+            "in_range": False,
+            "evidence": {},
+            "error": public_demo_error("POLICY_DATE_INVALID"),
+        }
 
 
 class PolicyTestRequest(BaseModel):
@@ -565,75 +589,73 @@ class PolicyTestRequest(BaseModel):
 def run_policy_tests(req: PolicyTestRequest):
     path = (SAMPLE_POLICIES_DIR / req.policy_name).resolve()
     if not path.is_relative_to(SAMPLE_POLICIES_DIR.resolve()):
-        return {"results": [], "error": "Access denied"}
+        return {"results": [], "error": public_demo_error("ACCESS_DENIED")}
     if not path.exists():
-        return {"results": [], "error": f"Not found: {req.policy_name}"}
-    policy_path = str(path)
+        return {"results": [], "error": public_demo_error("POLICY_NOT_FOUND")}
+    policy_ref = path.relative_to(SAMPLE_POLICIES_DIR.resolve()).as_posix()
 
     cases = [
-        (PolicyTestCase(
-            name="valid role passes",
-            policy_file=policy_path,
-            role="doctor",
-            model_provider="mock",
-            model_identifier="mock-model",
-            input_data={"query": "What is the dosage?"},
-            output_data={"result": "500mg"},
-            context={
+        ({
+            "name": "valid role passes",
+            "role": "doctor",
+            "context": {
                 "domain": "medical",
                 "role_declared": True,
                 "schema_exists": True,
                 "human_review_required": True,
             },
-        ), "pass"),
-        (PolicyTestCase(
-            name="unauthorized role fails",
-            policy_file=policy_path,
-            role="unknown_role",
-            model_provider="mock",
-            model_identifier="mock-model",
-            input_data={"query": "What is the dosage?"},
-            output_data={"result": "500mg"},
-            context={
+        }, "PASS"),
+        ({
+            "name": "unauthorized role fails",
+            "role": "unknown_role",
+            "context": {
                 "domain": "medical",
                 "role_declared": True,
                 "schema_exists": True,
                 "human_review_required": True,
             },
-        ), "fail"),
-        (PolicyTestCase(
-            name="missing precondition fails",
-            policy_file=policy_path,
-            role="doctor",
-            model_provider="mock",
-            model_identifier="mock-model",
-            input_data={"query": "What is the dosage?"},
-            output_data={"result": "500mg"},
-            context={
+        }, "FAIL"),
+        ({
+            "name": "missing precondition fails",
+            "role": "doctor",
+            "context": {
                 "domain": "medical",
                 "schema_exists": True,
                 "human_review_required": True,
             },
-        ), "fail"),
+        }, "FAIL"),
     ]
 
-    suite = PolicyTestSuite(f"{req.policy_name} test suite")
+    results = []
+    all_met_expectations = True
     for case, expected in cases:
-        suite.add(case, expected)
-
-    raw_results = suite.run_all()
+        invocation = {
+            "policy_file": policy_ref,
+            "role": case["role"],
+            "model_provider": "mock",
+            "model_identifier": "mock-model",
+            "input": {"query": "What is the dosage?"},
+            "output": {"result": "500mg"},
+            "context": case["context"],
+        }
+        try:
+            demo_aegis(SAMPLE_POLICIES_DIR).enforce(invocation)
+            enforcement_result = "PASS"
+            failure_reason = None
+        except AIGCError:
+            enforcement_result = "FAIL"
+            failure_reason = safe_demo_message("AEGIS_ENFORCEMENT_FAILED")
+        all_met_expectations = all_met_expectations and enforcement_result == expected
+        results.append({
+            "name": case["name"],
+            "enforcement_result": enforcement_result,
+            "passed": enforcement_result == "PASS",
+            "failure_reason": failure_reason,
+        })
 
     return {
-        "results": [
-            {
-                "name": r.name,
-                "enforcement_result": r.enforcement_result,
-                "passed": r.passed,
-                "failure_reason": r.failure_reason,
-            }
-            for r in raw_results
-        ],
-        "all_met_expectations": suite.all_passed(raw_results),
+        "results": results,
+        "all_met_expectations": all_met_expectations,
         "error": None,
     }
 
@@ -645,13 +667,16 @@ class Lab8KBRequest(BaseModel):
 @api.post("/api/lab8/query-kb")
 def lab8_query_kb(req: Lab8KBRequest):
     if req.scenario_key not in SCENARIOS:
-        raise HTTPException(status_code=422, detail=f"Unknown scenario_key: {req.scenario_key!r}")
+        raise _public_request_failure("UNKNOWN_DEMO_ID")
     scenario = SCENARIOS[req.scenario_key]
-    policy_path = str(SAMPLE_POLICIES_DIR / scenario["policy"])
+    policy_ref = scenario["policy"]
 
     from aegis import ProvenanceGate
-    aegis_instance = AEGIS(custom_gates=[ProvenanceGate()])
-    invocation = _build_full_invocation(scenario, policy_path)
+    aegis_instance = demo_aegis(
+        SAMPLE_POLICIES_DIR,
+        custom_gates=[ProvenanceGate()],
+    )
+    invocation = _build_full_invocation(scenario, policy_ref)
     source_ids = scenario["context"].get("provenance", {}).get("source_ids", [])
 
     try:
@@ -659,7 +684,11 @@ def lab8_query_kb(req: Lab8KBRequest):
         return {"artifact": artifact, "source_ids": source_ids, "error": None}
     except AIGCError as exc:
         artifact = getattr(exc, "audit_artifact", None)
-        return {"artifact": artifact, "source_ids": source_ids, "error": str(exc)}
+        return {
+            "artifact": artifact,
+            "source_ids": source_ids,
+            "error": _public_governance_error(exc),
+        }
 
 
 class Lab9CompareRequest(BaseModel):
@@ -669,21 +698,22 @@ class Lab9CompareRequest(BaseModel):
 @api.post("/api/lab9/compare")
 def lab9_compare(req: Lab9CompareRequest):
     if req.scenario_key not in SCENARIOS:
-        raise HTTPException(status_code=422, detail=f"Unknown scenario_key: {req.scenario_key!r}")
+        raise _public_request_failure("UNKNOWN_DEMO_ID")
     scenario = SCENARIOS[req.scenario_key]
-    policy_path = str(SAMPLE_POLICIES_DIR / scenario["policy"])
+    policy_ref = scenario["policy"]
 
     # Governed path — strict mode exposes full policy impact (risk threshold enforced)
-    aegis_instance = AEGIS(
+    aegis_instance = demo_aegis(
+        SAMPLE_POLICIES_DIR,
         risk_config={"mode": "strict", "threshold": 0.7, "factors": MEDICAL_FACTORS}
     )
     governed_artifact = None
     governed_error = None
     try:
-        governed_artifact = aegis_instance.enforce(_build_full_invocation(scenario, policy_path))
+        governed_artifact = aegis_instance.enforce(_build_full_invocation(scenario, policy_ref))
     except AIGCError as exc:
         governed_artifact = getattr(exc, "audit_artifact", None)
-        governed_error = str(exc)
+        governed_error = _public_governance_error(exc)
 
     # Ungoverned path — synthetic record representing raw model output with no enforcement
     ungoverned_artifact = {
@@ -717,14 +747,15 @@ class Lab10SplitRequest(BaseModel):
 @api.post("/api/lab10/split-trace")
 def lab10_split_trace(req: Lab10SplitRequest):
     if req.scenario_key not in SCENARIOS:
-        raise HTTPException(status_code=422, detail=f"Unknown scenario_key: {req.scenario_key!r}")
+        raise _public_request_failure("UNKNOWN_DEMO_ID")
     scenario = SCENARIOS[req.scenario_key]
-    policy_path = str(SAMPLE_POLICIES_DIR / scenario["policy"])
+    policy_ref = scenario["policy"]
 
-    aegis_instance = AEGIS(
+    aegis_instance = demo_aegis(
+        SAMPLE_POLICIES_DIR,
         risk_config={"mode": req.mode, "threshold": 0.7, "factors": MEDICAL_FACTORS}
     )
-    pre_invocation = _build_pre_call_invocation(scenario, policy_path)
+    pre_invocation = _build_pre_call_invocation(scenario, policy_ref)
 
     try:
         pre_result = aegis_instance.enforce_pre_call(pre_invocation)
@@ -742,7 +773,7 @@ def lab10_split_trace(req: Lab10SplitRequest):
             "phase_b": None,
             "artifact": artifact,
             "combined_result": "FAIL",
-            "error": str(exc),
+            "error": _public_governance_error(exc),
         }
 
     # Phase A passed — record its metadata from the PreCallResult token
@@ -770,7 +801,7 @@ def lab10_split_trace(req: Lab10SplitRequest):
             },
             "artifact": artifact,
             "combined_result": "FAIL",
-            "error": str(exc),
+            "error": _public_governance_error(exc),
         }
 
     meta = artifact.get("metadata", {})
@@ -794,7 +825,7 @@ def lab10_split_trace(req: Lab10SplitRequest):
 def get_gate(gate_name: str):
     gate = GATES.get(gate_name)
     if not gate:
-        return {"error": f"Unknown gate: {gate_name}"}
+        return {"error": public_demo_error("UNKNOWN_DEMO_ID")}
     return get_gate_info(gate)
 
 
@@ -807,16 +838,21 @@ class GateRunRequest(BaseModel):
 def run_gate(req: GateRunRequest):
     gate = GATES.get(req.gate_name)
     if not gate:
-        return {"artifact": None, "gate_result": None, "error": f"Unknown gate: {req.gate_name}"}
+        return {
+            "artifact": None,
+            "gate_result": None,
+            "error": public_demo_error("UNKNOWN_DEMO_ID"),
+        }
 
     if req.scenario_key not in SCENARIOS:
-        raise HTTPException(status_code=422, detail=f"Unknown scenario_key: {req.scenario_key!r}")
+        raise _public_request_failure("UNKNOWN_DEMO_ID")
 
     scenario = SCENARIOS[req.scenario_key]
-    policy_path = str(SAMPLE_POLICIES_DIR / scenario["policy"])
-    aegis = AEGIS(custom_gates=[gate])
+    policy_ref = scenario["policy"]
+    policy_path = SAMPLE_POLICIES_DIR / policy_ref
+    aegis = demo_aegis(SAMPLE_POLICIES_DIR, custom_gates=[gate])
 
-    invocation = _build_full_invocation(scenario, policy_path)
+    invocation = _build_full_invocation(scenario, policy_ref)
 
     try:
         artifact = aegis.enforce(invocation)

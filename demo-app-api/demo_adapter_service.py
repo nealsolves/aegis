@@ -8,7 +8,7 @@ from typing import Any, Callable
 
 from agents import Agent
 
-from aegis import AEGIS, AIGCError
+from aegis import AIGCError
 from aegis.a2a_adapter import A2AAdapter, A2AParticipantBinding
 from aegis.bedrock_adapter import (
     BedrockParticipantBinding,
@@ -20,14 +20,13 @@ from aegis.openai_agents_adapter import (
 )
 
 from demo_contract import AdapterRunResponse, DemoError, demo_source
+from demo_errors import public_demo_error
 from demo_fixtures import AdapterFixture, get_adapter_fixture
+from demo_runtime import demo_aegis
 
 
-POLICY_PATH = str(
-    Path(__file__).resolve().parent
-    / "demo_policies"
-    / "integration_adapters.yaml"
-)
+POLICY_DIR = Path(__file__).resolve().parent / "demo_policies"
+POLICY_REF = "integration_adapters.yaml"
 BEDROCK_ALIAS = (
     "arn:aws:bedrock:us-east-1:123456789012:"
     "agent-alias/AGENTID12A/ALIASID12B"
@@ -36,7 +35,7 @@ BEDROCK_ALIAS = (
 
 def _invocation(adapter_id: str) -> dict[str, Any]:
     return {
-        "policy_file": POLICY_PATH,
+        "policy_file": POLICY_REF,
         "model_provider": adapter_id,
         "model_identifier": "deterministic-adapter-fixture-v1",
         "role": "planner",
@@ -179,11 +178,11 @@ def _negative_response(
         adapter_id=fixture.adapter_id,
         fixture_id=fixture.fixture_id,
         provider_input=deepcopy(fixture.provider_input),
-        normalized_evidence=exc.details,
+        normalized_evidence={"reason_code": reason_code},
         decision="FAIL",
         artifact=exc.audit_artifact,
         workflow_artifact=workflow_artifact,
-        error=DemoError(code=reason_code, message=str(exc)),
+        error=DemoError(**public_demo_error(reason_code)),
         source=demo_source(),
     )
 
@@ -191,7 +190,7 @@ def _negative_response(
 def run_adapter(adapter_id: str, fixture_id: str) -> AdapterRunResponse:
     fixture = get_adapter_fixture(adapter_id, fixture_id)
     runner = ADAPTER_RUNNERS[adapter_id]
-    session = AEGIS().open_session(policy_file=POLICY_PATH)
+    session = demo_aegis(POLICY_DIR).open_session(policy_file=POLICY_REF)
 
     if fixture.expected_reason_code is not None:
         try:

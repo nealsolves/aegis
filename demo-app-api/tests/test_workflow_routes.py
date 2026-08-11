@@ -1,4 +1,5 @@
 """Smoke tests for the v0.9.0 workflow governance demo routes."""
+import json
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,8 @@ def test_workflow_run_minimal():
     assert data["artifact"]["status"] == "COMPLETED"
     assert len(data["artifact"]["steps"]) == 2
     assert "workflow_schema_version" in data["artifact"]
+    assert data["artifact"]["policy_file"] == "minimal.yaml"
+    assert "/private/" not in json.dumps(data)
     assert data["error"] is None
 
 
@@ -37,6 +40,9 @@ def test_workflow_run_failure():
     assert data["artifact"]["status"] == "FAILED"
     assert data["artifact"]["failure_summary"] is not None
     assert data["error"] is not None
+    assert set(data["error"]) == {"code", "message", "request_id"}
+    assert data["error"]["request_id"] == r.headers["x-request-id"]
+    assert "/private/" not in json.dumps(data)
     assert "run_id" in data and data["run_id"], "failure response must include a non-empty run_id"
 
 
@@ -174,7 +180,8 @@ def test_workflow_trace_cli_failure_returns_500(monkeypatch):
     r = client.get("/api/workflow/v090/trace")
     after = {p.name for p in Path(workflow_routes._POLICY_TMPDIR.name).glob("*.jsonl")}
     assert r.status_code == 500
-    assert "trace engine exploded" in r.json()["detail"]
+    assert r.json()["detail"]["code"] == "DEMO_OPERATION_FAILED"
+    assert "trace engine exploded" not in r.text
     assert after == before
 
 
@@ -190,7 +197,8 @@ def test_workflow_trace_non_json_output_returns_500(monkeypatch):
     r = client.get("/api/workflow/v090/trace")
     after = {p.name for p in Path(workflow_routes._POLICY_TMPDIR.name).glob("*.jsonl")}
     assert r.status_code == 500
-    assert "non-JSON" in r.json()["detail"]
+    assert r.json()["detail"]["code"] == "DEMO_OPERATION_FAILED"
+    assert "not json at all" not in r.text
     assert after == before
 
 
@@ -206,7 +214,7 @@ def test_workflow_trace_empty_output_returns_500(monkeypatch):
     r = client.get("/api/workflow/v090/trace")
     after = {p.name for p in Path(workflow_routes._POLICY_TMPDIR.name).glob("*.jsonl")}
     assert r.status_code == 500
-    assert "empty output" in r.json()["detail"]
+    assert r.json()["detail"]["code"] == "DEMO_OPERATION_FAILED"
     assert after == before
 
 
@@ -230,4 +238,79 @@ def test_workflow_trace_cleanup_oserror_does_not_mask_cli_failure(monkeypatch):
     for leaked in after - before:
         os.unlink(Path(workflow_routes._POLICY_TMPDIR.name) / leaked)
     assert r.status_code == 500
-    assert "trace engine exploded" in r.json()["detail"]
+    assert r.json()["detail"]["code"] == "DEMO_OPERATION_FAILED"
+    assert "trace engine exploded" not in r.text
+
+
+def test_workflow_subprocess_timeout_is_bounded_and_safe(monkeypatch):
+    import subprocess
+    import workflow_routes
+
+    calls = 0
+
+    def _timeout(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        assert kwargs == {
+            "capture_output": True,
+            "text": True,
+            "timeout": workflow_routes.SUBPROCESS_TIMEOUT_SECONDS,
+        }
+        raise subprocess.TimeoutExpired(
+            args[0],
+            kwargs["timeout"],
+            output="/private/secret/stdout",
+            stderr="hostile\n/private/secret/stderr",
+        )
+
+    monkeypatch.setattr(workflow_routes.subprocess, "run", _timeout)
+    r = client.get("/api/workflow/v090/trace")
+
+    assert calls == 1
+    assert r.status_code == 503
+    detail = r.json()["detail"]
+    assert detail["code"] == "DEMO_OPERATION_TIMEOUT"
+    assert detail["request_id"] == r.headers["x-request-id"]
+    assert "/private/" not in r.text
+    assert "hostile" not in r.text
+
+
+def test_safe_doctor_findings_allowlists_fields(tmp_path):
+    import workflow_routes
+
+    raw = [{
+        "code": "MISSING_SOURCE_IDS",
+        "severity": "ERROR",
+        "message": "Add source IDs",
+        "next_action": "Edit workflow_example.py",
+        "target_kind": "workflow",
+        "path": "/private/secret/workflow_example.py",
+        "traceback": "secret",
+    }]
+
+    assert workflow_routes._safe_doctor_findings(raw, starter_dir=tmp_path) == [{
+        "code": "MISSING_SOURCE_IDS",
+        "severity": "ERROR",
+        "message": "Add source IDs",
+        "next_action": "Edit workflow_example.py",
+        "target_kind": "workflow",
+    }]
+
+
+def test_workflow_doctor_malformed_output_is_stable(monkeypatch):
+    import subprocess
+    import workflow_routes
+
+    fail_r = client.post("/api/workflow/v090/run", json={"scenario": "failure"})
+    run_id = fail_r.json()["run_id"]
+    fake_result = subprocess.CompletedProcess(
+        args=[], returncode=0, stdout='{"path":"/private/secret"}', stderr="hostile"
+    )
+    monkeypatch.setattr(workflow_routes.subprocess, "run", lambda *a, **kw: fake_result)
+
+    r = client.get(f"/api/workflow/v090/diagnose?run_id={run_id}")
+
+    assert r.status_code == 500
+    assert r.json()["detail"]["code"] == "DEMO_OPERATION_FAILED"
+    assert "/private/" not in r.text
+    assert "hostile" not in r.text

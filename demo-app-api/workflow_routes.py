@@ -14,14 +14,31 @@ import subprocess
 import sys
 import tempfile
 import uuid
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel
 
 import aegis.presets as presets
-from aegis import AEGIS, JsonFileAuditSink
+from aegis import JsonFileAuditSink
+
+from bounded_yaml import ensure_bounded_json_response
+from demo_errors import (
+    DemoPublicError,
+    current_request_id,
+    log_internal_failure,
+    public_demo_error,
+    safe_demo_message,
+)
+from demo_limits import SUBPROCESS_TIMEOUT_SECONDS
+from demo_runtime import (
+    DemoAegisModuleProxy,
+    demo_aegis,
+    demo_aegis_with_sink,
+    logical_policy_ref,
+)
 
 router = APIRouter(prefix="/api/workflow/v090", tags=["workflow-v090"])
 
@@ -80,12 +97,114 @@ def _sim(prompt: str) -> dict:
     return {"result": f"Response to: {prompt[:60]}"}
 
 
+def _operation_error(
+    code: str,
+    *,
+    status_code: int,
+) -> DemoPublicError:
+    return DemoPublicError(code, safe_demo_message(code), status_code)
+
+
+def _run_demo_subprocess(
+    args: Sequence[str],
+    *,
+    request_id: str,
+) -> subprocess.CompletedProcess[str]:
+    """Execute one demo CLI process with a fixed deadline and safe failures."""
+
+    try:
+        result = subprocess.run(
+            list(args),
+            capture_output=True,
+            text=True,
+            timeout=SUBPROCESS_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        log_internal_failure(
+            request_id=request_id,
+            operation="workflow_subprocess",
+            error=None,
+            exception_class=type(exc).__name__,
+            diagnostic=f"stdout={exc.stdout!s}\nstderr={exc.stderr!s}",
+            public_code="DEMO_OPERATION_TIMEOUT",
+        )
+        raise _operation_error(
+            "DEMO_OPERATION_TIMEOUT",
+            status_code=503,
+        ) from None
+    except OSError as exc:
+        log_internal_failure(
+            request_id=request_id,
+            operation="workflow_subprocess",
+            error=exc,
+            public_code="DEMO_OPERATION_FAILED",
+        )
+        raise _operation_error(
+            "DEMO_OPERATION_FAILED",
+            status_code=500,
+        ) from None
+
+    if result.returncode != 0:
+        log_internal_failure(
+            request_id=request_id,
+            operation="workflow_subprocess",
+            error=None,
+            exception_class="SubprocessNonzeroExit",
+            diagnostic=f"returncode={result.returncode}\nstdout={result.stdout}\nstderr={result.stderr}",
+            public_code="DEMO_OPERATION_FAILED",
+        )
+    return result
+
+
+def _safe_doctor_findings(
+    raw: object,
+    *,
+    starter_dir: Path,
+) -> list[dict[str, str]]:
+    """Project CLI findings onto the five-field public doctor contract."""
+
+    if not isinstance(raw, list):
+        raise _operation_error("DEMO_OPERATION_FAILED", status_code=500)
+    fields = ("code", "severity", "message", "next_action", "target_kind")
+    required_fields = frozenset(("code", "severity", "message"))
+    projected: list[dict[str, str]] = []
+    forbidden = (str(starter_dir), "/private/", "/tmp/", "\\private\\", "\\tmp\\")
+    for item in raw:
+        if not isinstance(item, Mapping):
+            raise _operation_error("DEMO_OPERATION_FAILED", status_code=500)
+        finding: dict[str, str] = {}
+        for field in fields:
+            value = item.get(field)
+            if value is None and field not in required_fields:
+                continue
+            if (
+                not isinstance(value, str)
+                or not value
+                or len(value) > 512
+                or any(ord(character) < 32 or ord(character) == 127 for character in value)
+                or any(marker in value for marker in forbidden)
+            ):
+                raise _operation_error("DEMO_OPERATION_FAILED", status_code=500)
+            finding[field] = value
+        projected.append(finding)
+    return projected
+
+
+def _safe_trace_payload(raw: object) -> list[dict]:
+    """Validate trace JSON without mutating or redacting finalized evidence."""
+
+    if not isinstance(raw, list) or not raw or not all(isinstance(item, dict) for item in raw):
+        raise _operation_error("DEMO_OPERATION_FAILED", status_code=500)
+    ensure_bounded_json_response(raw)
+    return raw
+
+
 def _generate_starter_dir(profile: str) -> str:
     starter_dir = tempfile.mkdtemp(
         prefix=f"aegis_demo_{profile}_",
         dir=_POLICY_TMPDIR.name,
     )
-    result = subprocess.run(
+    result = _run_demo_subprocess(
         [
             sys.executable,
             "-m",
@@ -97,13 +216,11 @@ def _generate_starter_dir(profile: str) -> str:
             "--output-dir",
             starter_dir,
         ],
-        capture_output=True,
-        text=True,
+        request_id=current_request_id(),
     )
     if result.returncode != 0:
-        raise RuntimeError(
-            f"starter generation failed for {profile}: {result.stderr or result.stdout}"
-        )
+        shutil.rmtree(starter_dir, ignore_errors=True)
+        raise _operation_error("DEMO_OPERATION_FAILED", status_code=500)
     return starter_dir
 
 
@@ -115,16 +232,31 @@ def _load_workflow_module(starter_dir: str):
         raise RuntimeError(f"could not load workflow module from {workflow_py}")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
+    if hasattr(mod, "aegis"):
+        mod.aegis = DemoAegisModuleProxy(mod.aegis, starter_dir)
     return mod
 
 
-def _run_workflow_module(starter_dir: str, func_name: str) -> tuple[dict | None, str | None]:
+def _run_workflow_module(
+    starter_dir: str,
+    func_name: str,
+) -> tuple[dict | None, dict[str, str] | None]:
     mod = _load_workflow_module(starter_dir)
     try:
-        artifact = getattr(mod, func_name)()
+        artifact = getattr(mod, func_name)("policy.yaml")
         return artifact, None
     except Exception as exc:  # noqa: BLE001
-        return getattr(mod, "LAST_WORKFLOW_ARTIFACT", None), str(exc)
+        request_id = current_request_id()
+        log_internal_failure(
+            request_id=request_id,
+            operation="workflow_module",
+            error=exc,
+            public_code="AEGIS_ENFORCEMENT_FAILED",
+        )
+        return (
+            getattr(mod, "LAST_WORKFLOW_ARTIFACT", None),
+            public_demo_error("AEGIS_ENFORCEMENT_FAILED"),
+        )
 
 
 def _break_regulated_starter(starter_dir: str) -> str:
@@ -151,14 +283,16 @@ class WorkflowRunRequest(BaseModel):
 @router.post("/run")
 def run_workflow(req: WorkflowRunRequest):
     if req.scenario == "minimal":
-        policy_file = _get_policy_path("minimal")
-        governance = AEGIS()
+        policy_file = logical_policy_ref(
+            _POLICY_TMPDIR.name,
+            _get_policy_path("minimal"),
+        )
+        governance = demo_aegis(_POLICY_TMPDIR.name)
         with governance.open_session(policy_file=policy_file) as session:
             for prompt in ["Analyze the document.", "Summarize the findings."]:
                 pre = session.enforce_step_pre_call({
                     "policy_file": policy_file,
                     "input": {"prompt": prompt},
-                    "output": {},
                     "context": {"caller_id": "demo"},
                     "model_provider": "anthropic",
                     "model_identifier": "claude-sonnet-4-6",
@@ -169,13 +303,15 @@ def run_workflow(req: WorkflowRunRequest):
         return {"artifact": session.workflow_artifact, "error": None}
 
     elif req.scenario == "standard":
-        policy_file = _get_policy_path("standard")
-        governance = AEGIS()
+        policy_file = logical_policy_ref(
+            _POLICY_TMPDIR.name,
+            _get_policy_path("standard"),
+        )
+        governance = demo_aegis(_POLICY_TMPDIR.name)
         with governance.open_session(policy_file=policy_file) as session:
             pre1 = session.enforce_step_pre_call({
                 "policy_file": policy_file,
                 "input": {"prompt": "Draft a proposal."},
-                "output": {},
                 "context": {"phase": "pre-approval", "caller_id": "demo"},
                 "model_provider": "anthropic",
                 "model_identifier": "claude-sonnet-4-6",
@@ -188,7 +324,6 @@ def run_workflow(req: WorkflowRunRequest):
                 pre = session.enforce_step_pre_call({
                     "policy_file": policy_file,
                     "input": {"prompt": prompt},
-                    "output": {},
                     "context": {"phase": "post-approval", "caller_id": "demo"},
                     "model_provider": "anthropic",
                     "model_identifier": "claude-sonnet-4-6",
@@ -228,15 +363,17 @@ def run_workflow(req: WorkflowRunRequest):
 @router.post("/compare")
 def compare_workflows():
     """Run the same prompt governed vs ungoverned and return both results."""
-    policy_file = _get_policy_path("minimal")
+    policy_file = logical_policy_ref(
+        _POLICY_TMPDIR.name,
+        _get_policy_path("minimal"),
+    )
     prompt = "Summarize the quarterly report."
 
-    governance = AEGIS()
+    governance = demo_aegis(_POLICY_TMPDIR.name)
     with governance.open_session(policy_file=policy_file) as session:
         pre = session.enforce_step_pre_call({
             "policy_file": policy_file,
             "input": {"prompt": prompt},
-            "output": {},
             "context": {"caller_id": "demo"},
             "model_provider": "anthropic",
             "model_identifier": "claude-sonnet-4-6",
@@ -276,17 +413,24 @@ def diagnose_last_failure(run_id: str | None = None):
         return {"findings": [], "source": "no_prior_failure"}
 
     starter_dir = run["starter_dir"]
-    result = subprocess.run(
+    result = _run_demo_subprocess(
         [sys.executable, "-m", "aegis", "workflow", "doctor",
          starter_dir, "--json"],
-        capture_output=True, text=True,
+        request_id=current_request_id(),
     )
     # Parse findings regardless of exit code: doctor exits 1 for ERROR-severity
     # findings, which are exactly the ones we want to surface to the user.
     try:
-        findings = json.loads(result.stdout) if result.stdout.strip() else []
-    except json.JSONDecodeError:
-        findings = []
+        raw_findings = json.loads(result.stdout) if result.stdout.strip() else []
+    except json.JSONDecodeError as exc:
+        log_internal_failure(
+            request_id=current_request_id(),
+            operation="workflow_doctor_projection",
+            error=exc,
+            public_code="DEMO_OPERATION_FAILED",
+        )
+        raise _operation_error("DEMO_OPERATION_FAILED", status_code=500) from None
+    findings = _safe_doctor_findings(raw_findings, starter_dir=Path(starter_dir))
     return {"findings": findings, "source": "failure_starter_dir"}
 
 
@@ -298,7 +442,10 @@ def trace_evidence():
     writes them to a temp JSONL file via JsonFileAuditSink, then reconstructs the
     timeline via 'aegis workflow trace'. No fake backend behavior.
     """
-    policy_file = _get_policy_path("minimal")
+    policy_file = logical_policy_ref(
+        _POLICY_TMPDIR.name,
+        _get_policy_path("minimal"),
+    )
     jsonl_file = tempfile.NamedTemporaryFile(
         mode="w", suffix=".jsonl", delete=False, dir=_POLICY_TMPDIR.name
     )
@@ -306,14 +453,13 @@ def trace_evidence():
     jsonl_file.close()
     try:
         sink = JsonFileAuditSink(jsonl_path)
-        governance = AEGIS(sink=sink)
+        governance = demo_aegis_with_sink(_POLICY_TMPDIR.name, sink)
         prompts = ["Analyze the document.", "Summarize the findings."]
         with governance.open_session(policy_file=policy_file) as session:
             for prompt in prompts:
                 pre = session.enforce_step_pre_call({
                     "policy_file": policy_file,
                     "input": {"prompt": prompt},
-                    "output": {},
                     "context": {"caller_id": "demo-evidence"},
                     "model_provider": "anthropic",
                     "model_identifier": "claude-sonnet-4-6",
@@ -322,35 +468,32 @@ def trace_evidence():
                 session.enforce_step_post_call(pre, {"result": f"Response to: {prompt[:60]}"})
             session.complete()
 
-        result = subprocess.run(
+        result = _run_demo_subprocess(
             [sys.executable, "-m", "aegis", "workflow", "trace", "--input", jsonl_path],
-            capture_output=True, text=True,
+            request_id=current_request_id(),
         )
         if result.returncode != 0:
-            raise HTTPException(
-                status_code=500,
-                detail=f"workflow trace failed: {result.stderr.strip() or '(no stderr)'}",
-            )
+            raise _operation_error("DEMO_OPERATION_FAILED", status_code=500)
         if not result.stdout.strip():
-            raise HTTPException(
-                status_code=500,
-                detail="workflow trace returned empty output",
-            )
+            raise _operation_error("DEMO_OPERATION_FAILED", status_code=500)
         try:
-            traces = json.loads(result.stdout)
-        except json.JSONDecodeError:
-            raise HTTPException(
-                status_code=500,
-                detail="workflow trace returned non-JSON output",
+            traces = _safe_trace_payload(json.loads(result.stdout))
+        except json.JSONDecodeError as exc:
+            log_internal_failure(
+                request_id=current_request_id(),
+                operation="workflow_trace_projection",
+                error=exc,
+                public_code="DEMO_OPERATION_FAILED",
             )
-        if not isinstance(traces, list) or not traces:
-            raise HTTPException(
-                status_code=500,
-                detail="workflow trace returned no traces",
-            )
+            raise _operation_error("DEMO_OPERATION_FAILED", status_code=500) from None
         return {"traces": traces, "artifact": session.workflow_artifact}
     finally:
         try:
             Path(jsonl_path).unlink()
-        except OSError:
-            pass
+        except OSError as exc:
+            log_internal_failure(
+                request_id=current_request_id(),
+                operation="workflow_trace_cleanup",
+                error=exc,
+                public_code="DEMO_OPERATION_FAILED",
+            )
