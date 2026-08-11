@@ -1,15 +1,20 @@
 import { useState, useEffect, useRef } from 'react'
 import CodeBlock from '@/components/shared/CodeBlock'
 import { useApi } from '@/hooks/useApi'
+import {
+  formatPublicDemoError,
+  INVALID_PUBLIC_DEMO_ERROR_MESSAGE,
+  type PublicDemoError,
+} from '@/lib/publicError'
 
 type Tab = 'loaders' | 'versioning' | 'testing'
 type LoaderMode = 'filesystem' | 'inmemory'
 
 interface PoliciesResponse { policies: string[] }
-interface LoadResponse { policy: Record<string, unknown> | null; yaml_text: string | null; loader_class?: string; error: string | null }
-interface ValidateDatesResponse { in_range: boolean; evidence: Record<string, unknown>; error: string | null }
+interface LoadResponse { policy: Record<string, unknown> | null; yaml_text: string | null; loader_class?: string; error: PublicDemoError | null }
+interface ValidateDatesResponse { in_range: boolean; evidence: Record<string, unknown>; error: PublicDemoError | null }
 interface TestResult { name: string; enforcement_result: string; passed: boolean; failure_reason: string | null }
-interface TestResponse { results: TestResult[]; all_met_expectations: boolean; error: string | null }
+interface TestResponse { results: TestResult[]; all_met_expectations: boolean; error: PublicDemoError | null }
 
 const SAMPLE_INMEMORY_YAML = `policy_version: "1.0"
 roles: [doctor, nurse]
@@ -214,7 +219,7 @@ export default function Lab5Loaders() {
 
           {/* Shared result */}
           {loadedPolicy?.error && (
-            <div className="font-mono text-xs" style={{ color: 'var(--ibm-magenta-40)' }}>// error: {loadedPolicy.error}</div>
+            <div className="font-mono text-xs" style={{ color: 'var(--ibm-magenta-40)' }}>// error: {formatPublicDemoError(loadedPolicy.error) ?? INVALID_PUBLIC_DEMO_ERROR_MESSAGE}</div>
           )}
           {loadedPolicy && !loadedPolicy.error && loadedPolicy.yaml_text && (
             <div className="space-y-2">
@@ -296,7 +301,7 @@ export default function Lab5Loaders() {
               <div className="font-mono text-xs mb-2" style={{ color: dateResult.in_range ? 'var(--ibm-teal-30)' : 'var(--ibm-magenta-40)' }}>
                 {dateResult.in_range ? '// policy is active — within date range' : '// policy is NOT active — outside date range'}
               </div>
-              {dateResult.error && <div className="font-mono text-xs" style={{ color: 'var(--ibm-magenta-40)' }}>{dateResult.error}</div>}
+              {dateResult.error && <div className="font-mono text-xs" style={{ color: 'var(--ibm-magenta-40)' }}>{formatPublicDemoError(dateResult.error) ?? INVALID_PUBLIC_DEMO_ERROR_MESSAGE}</div>}
             </div>
           )}
         </div>

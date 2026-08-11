@@ -1,3 +1,5 @@
+import type { PublicDemoError } from '@/lib/publicError'
+
 export type DemoOutcome = 'PASS' | 'FAIL' | 'PAUSED'
 export type ScenarioId = 'atlas' | 'northstar' | 'meridian'
 export type AdapterId = 'bedrock' | 'openai_agents' | 'a2a'
@@ -34,7 +36,7 @@ export interface ScenarioRunResponse {
   decision: DemoOutcome
   artifact: Record<string, unknown> | null
   workflow_artifact: Record<string, unknown> | null
-  error: { code: string; message: string } | null
+  error: PublicDemoError | null
   source: DemoSource
 }
 
@@ -46,6 +48,6 @@ export interface AdapterRunResponse {
   decision: DemoOutcome
   artifact: Record<string, unknown> | null
   workflow_artifact: Record<string, unknown> | null
-  error: { code: string; message: string } | null
+  error: PublicDemoError | null
   source: DemoSource
 }

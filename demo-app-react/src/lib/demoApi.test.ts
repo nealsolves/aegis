@@ -40,12 +40,12 @@ describe('demoRequest', () => {
     ).resolves.toEqual(MANIFEST)
   })
 
-  it('preserves structured FastAPI error details', async () => {
+  it('preserves only validated structured FastAPI error details', async () => {
     const detail = {
       code: 'UNKNOWN_DEMO_ID',
-      message: "Unknown demo scenario_id: 'bad'",
-      id_type: 'scenario_id',
-      id: 'bad',
+      message: 'The requested demo identifier is not available.',
+      request_id: 'a'.repeat(32),
+      diagnostic: '/private/secret',
     }
     vi.stubGlobal(
       'fetch',
@@ -57,10 +57,31 @@ describe('demoRequest', () => {
     await expect(request).rejects.toMatchObject({
       status: 422,
       code: 'UNKNOWN_DEMO_ID',
-      message: "Unknown demo scenario_id: 'bad'",
-      detail,
+      message: `The requested demo identifier is not available. (request ${'a'.repeat(32)})`,
+      detail: {
+        code: 'UNKNOWN_DEMO_ID',
+        message: 'The requested demo identifier is not available.',
+        request_id: 'a'.repeat(32),
+      },
     })
     await expect(request).rejects.toBeInstanceOf(DemoApiError)
+  })
+
+  it('does not expose malformed error bodies or status text', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(
+        '{"detail":"/private/secret"}',
+        { status: 500, statusText: '/private/secret' },
+      )),
+    )
+
+    await expect(demoRequest('/api', '/bad')).rejects.toMatchObject({
+      status: 500,
+      code: 'HTTP_500',
+      message: 'Request failed (500).',
+      detail: null,
+    })
   })
 
   it('propagates AbortError from fetch unchanged', async () => {

@@ -63,5 +63,8 @@ def test_demo_routes_reject_request_paths():
 
     for response in (scenario, adapter):
         assert response.status_code == 422
-        assert isinstance(response.json()["detail"], list)
-        assert response.json()["detail"][0]["type"] == "extra_forbidden"
+        detail = response.json()["detail"]
+        assert set(detail) == {"code", "message", "request_id"}
+        assert detail["code"] == "INVALID_REQUEST"
+        assert detail["request_id"] == response.headers["x-request-id"]
+        assert "/tmp/" not in response.text

@@ -88,7 +88,10 @@ def test_adapter_negative_release_cases(
     assert body["decision"] == "FAIL"
     assert body["artifact"] is None
     assert body["error"]["code"] == reason_code
+    assert set(body["error"]) == {"code", "message", "request_id"}
+    assert body["error"]["request_id"] == response.headers["x-request-id"]
     assert body["normalized_evidence"]["reason_code"] == reason_code
+    assert set(body["normalized_evidence"]) == {"reason_code"}
     assert body["workflow_artifact"]["status"] == "FAILED"
     assert body["workflow_artifact"]["steps"] == []
 
@@ -199,5 +202,8 @@ def test_adapter_routes_reject_unknown_fixture_ids():
     )
 
     assert response.status_code == 422
-    assert response.json()["detail"]["code"] == "UNKNOWN_DEMO_ID"
-    assert response.json()["detail"]["id_type"] == "fixture_id"
+    detail = response.json()["detail"]
+    assert set(detail) == {"code", "message", "request_id"}
+    assert detail["code"] == "UNKNOWN_DEMO_ID"
+    assert detail["request_id"] == response.headers["x-request-id"]
+    assert "not-a-server-fixture" not in response.text

@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any
 
 from aegis import (
-    AEGIS,
     AIGCError,
     HMACSigner,
     ProvenanceGate,
@@ -22,6 +21,7 @@ from demo_contract import (
     ScenarioRunResponse,
     demo_source,
 )
+from demo_errors import public_demo_error
 from demo_fixtures import (
     ATLAS_DEMO_ONLY_SIGNING_KEY,
     FIXTURE_VERSION,
@@ -34,6 +34,7 @@ from demo_gates import (
     DemoPrivacyGate,
 )
 from demo_registry import SCENARIO_VARIANTS
+from demo_runtime import demo_aegis
 
 
 POLICY_DIR = Path(__file__).resolve().parent / "demo_policies"
@@ -99,7 +100,14 @@ def _reason_code(exc: Exception) -> str:
 
 
 def _policy_path(name: str) -> str:
-    return str(POLICY_DIR / f"{name}.yaml")
+    return f"{name}.yaml"
+
+
+def _demo_error(reason_code: str) -> DemoError:
+    try:
+        return DemoError(**public_demo_error(reason_code))
+    except KeyError:
+        return DemoError(**public_demo_error("AEGIS_ENFORCEMENT_FAILED"))
 
 
 def _invocation(
@@ -199,7 +207,8 @@ def _response(
 
 def _run_atlas(fixture: ScenarioFixture) -> ScenarioRunResponse:
     signer = HMACSigner(ATLAS_DEMO_ONLY_SIGNING_KEY)
-    governance = AEGIS(
+    governance = demo_aegis(
+        POLICY_DIR,
         signer=signer,
         custom_gates=[ProvenanceGate()],
     )
@@ -245,7 +254,7 @@ def _run_atlas(fixture: ScenarioFixture) -> ScenarioRunResponse:
             ],
             decision="FAIL",
             artifact=artifact,
-            error=DemoError(code=reason, message=str(exc)),
+            error=_demo_error(reason),
         )
 
     return _response(
@@ -318,7 +327,8 @@ def _northstar_gates(
 
 
 def _run_northstar(fixture: ScenarioFixture) -> ScenarioRunResponse:
-    governance = AEGIS(
+    governance = demo_aegis(
+        POLICY_DIR,
         custom_gates=[
             DemoPrivacyGate(),
             DemoNorthstarRoleGate(),
@@ -349,7 +359,7 @@ def _run_northstar(fixture: ScenarioFixture) -> ScenarioRunResponse:
                 gates=_northstar_gates(artifact, failed_reason=reason),
                 decision="FAIL",
                 artifact=artifact,
-                error=DemoError(code=reason, message=str(exc)),
+                error=_demo_error(reason),
             )
         raise RuntimeError("Northstar unauthorized role unexpectedly passed")
 
@@ -388,7 +398,7 @@ def _run_northstar(fixture: ScenarioFixture) -> ScenarioRunResponse:
             decision="PAUSED",
             artifact=artifact,
             workflow_artifact=session.workflow_artifact,
-            error=DemoError(code=reason, message=str(caught)),
+            error=_demo_error(reason),
         )
 
     with governance.open_session(
@@ -468,7 +478,7 @@ def _complete_meridian_step(
 
 
 def _run_meridian(fixture: ScenarioFixture) -> ScenarioRunResponse:
-    governance = AEGIS()
+    governance = demo_aegis(POLICY_DIR)
     invocation_artifacts: list[dict[str, Any]] = []
 
     if fixture.variant == "first_attempt":
@@ -512,7 +522,7 @@ def _run_meridian(fixture: ScenarioFixture) -> ScenarioRunResponse:
             decision="PAUSED",
             artifact=invocation_artifacts[0],
             workflow_artifact=session.workflow_artifact,
-            error=DemoError(code=reason, message=str(caught)),
+            error=_demo_error(reason),
         )
 
     with governance.open_session(

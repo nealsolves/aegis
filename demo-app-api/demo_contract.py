@@ -79,6 +79,7 @@ class DemoGateResult(BaseModel):
 class DemoError(BaseModel):
     code: str
     message: str
+    request_id: str
 
 
 class _ForbidExtraRequestModel(BaseModel):

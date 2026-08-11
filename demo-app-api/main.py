@@ -5,14 +5,19 @@ import uuid
 from datetime import date
 from pathlib import Path
 from typing import Literal
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.responses import JSONResponse
+
+from bounded_yaml import ensure_bounded_json_response, load_bounded_yaml
 from scenarios import SCENARIOS
 from aegis import (
-    AEGIS, AIGCError, HMACSigner, build_content_checksum_v2,
+    AIGCError, HMACSigner, build_content_checksum_v2,
     verify_artifact, verify_chain_detailed,
-    validate_policy_dates, PolicyTestCase, PolicyTestSuite,
+    validate_policy_dates,
     PolicyValidationError,
 )
 from aegis.policy_loader import (
@@ -26,23 +31,149 @@ from loaders import InMemoryPolicyLoader
 import yaml as yaml_lib
 from workflow_routes import router as workflow_router
 from demo_contract import API_CONTRACT_VERSION, demo_source, installed_sdk_version
+from demo_edge import DemoEdgeMiddleware
+from demo_errors import (
+    DemoPublicError,
+    current_request_id,
+    log_internal_failure,
+    public_demo_error,
+    public_error_response,
+    request_id_from_scope,
+    safe_demo_message,
+)
+from demo_runtime import demo_aegis
 from demo_routes import router as demo_router
 
-app = FastAPI(title="AEGIS Demo API", version="0.9.0b1")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "https://nealsolves.github.io",
-        "http://localhost:5173",
-        "http://localhost:3000",
-    ],
-    allow_methods=["*"],
-    allow_headers=["*"],
+ALLOWED_ORIGINS = (
+    "https://nealsolves.github.io",
+    "http://localhost:5173",
+    "http://localhost:3000",
 )
 
-app.include_router(workflow_router)
-app.include_router(demo_router)
+api = FastAPI(title="AEGIS Demo API", version="0.9.0b1", redirect_slashes=False)
+
+
+def _route_template(request: Request) -> str | None:
+    route = request.scope.get("route")
+    path = getattr(route, "path", None)
+    return path if isinstance(path, str) else None
+
+
+def _log_normalized_error(
+    request: Request,
+    *,
+    code: str,
+    operation: str,
+    error: BaseException | None,
+    exception_class: str | None = None,
+    diagnostic: str | None = None,
+) -> str:
+    request_id = request_id_from_scope(request.scope)
+    log_internal_failure(
+        request_id=request_id,
+        operation=operation,
+        error=error,
+        public_code=code,
+        method=request.method,
+        route_template=_route_template(request),
+        identity_source=getattr(request.state, "limiter_identity_source", None),
+        exception_class=exception_class,
+        diagnostic=diagnostic,
+    )
+    return request_id
+
+
+@api.exception_handler(DemoPublicError)
+async def _demo_public_error_handler(
+    request: Request,
+    exc: DemoPublicError,
+) -> JSONResponse:
+    request_id = _log_normalized_error(
+        request,
+        code=exc.code,
+        operation="intentional_public_failure",
+        error=exc,
+    )
+    return public_error_response(
+        status_code=exc.status_code,
+        code=exc.code,
+        message=exc.message,
+        request_id=request_id,
+        headers=exc.headers,
+    )
+
+
+@api.exception_handler(RequestValidationError)
+async def _request_validation_error_handler(
+    request: Request,
+    exc: RequestValidationError,
+) -> JSONResponse:
+    code = "INVALID_REQUEST"
+    request_id = _log_normalized_error(
+        request,
+        code=code,
+        operation="request_validation",
+        error=None,
+        exception_class=type(exc).__name__,
+        diagnostic="request validation failed",
+    )
+    return public_error_response(
+        status_code=422,
+        code=code,
+        message=safe_demo_message(code),
+        request_id=request_id,
+    )
+
+
+@api.exception_handler(StarletteHTTPException)
+async def _http_error_handler(
+    request: Request,
+    exc: StarletteHTTPException,
+) -> JSONResponse:
+    if exc.status_code == 404:
+        code = "NOT_FOUND"
+    elif exc.status_code == 405:
+        code = "METHOD_NOT_ALLOWED"
+    elif 400 <= exc.status_code < 500:
+        code = "INVALID_REQUEST"
+    else:
+        code = "DEMO_OPERATION_FAILED"
+    request_id = _log_normalized_error(
+        request,
+        code=code,
+        operation="http_exception",
+        error=None,
+        exception_class=type(exc).__name__,
+        diagnostic=f"normalized HTTP status {exc.status_code}",
+    )
+    return public_error_response(
+        status_code=exc.status_code,
+        code=code,
+        message=safe_demo_message(code),
+        request_id=request_id,
+        headers=exc.headers,
+    )
+
+
+@api.exception_handler(Exception)
+async def _unexpected_error_handler(request: Request, exc: Exception) -> JSONResponse:
+    code = "INTERNAL_ERROR"
+    request_id = _log_normalized_error(
+        request,
+        code=code,
+        operation="unhandled_route_exception",
+        error=exc,
+    )
+    return public_error_response(
+        status_code=500,
+        code=code,
+        message=safe_demo_message(code),
+        request_id=request_id,
+    )
+
+
+api.include_router(workflow_router)
+api.include_router(demo_router)
 
 SAMPLE_POLICIES_DIR = Path(__file__).resolve().parent / "sample_policies"
 
@@ -53,6 +184,19 @@ MEDICAL_FACTORS = [
     {"name": "external_model",   "weight": 0.30, "condition": "external_model"},
     {"name": "no_preconditions", "weight": 0.20, "condition": "no_preconditions"},
 ]
+
+
+def _public_governance_error(exc: AIGCError) -> dict[str, str]:
+    code = getattr(exc, "code", "AEGIS_ENFORCEMENT_FAILED")
+    try:
+        safe_demo_message(code)
+    except KeyError:
+        code = "AEGIS_ENFORCEMENT_FAILED"
+    return public_demo_error(code)
+
+
+def _public_request_failure(code: str = "INVALID_REQUEST") -> DemoPublicError:
+    return DemoPublicError(code, safe_demo_message(code), 422)
 
 
 def _build_full_invocation(scenario: dict, policy_path: str) -> dict:
@@ -78,10 +222,10 @@ def _build_pre_call_invocation(scenario: dict, policy_path: str) -> dict:
     }
 
 
-@app.get("/api/scenarios/{scenario_key}")
+@api.get("/api/scenarios/{scenario_key}")
 def get_scenario(scenario_key: str):
     if scenario_key not in SCENARIOS:
-        raise HTTPException(status_code=422, detail=f"Unknown scenario_key: {scenario_key!r}")
+        raise _public_request_failure()
     s = SCENARIOS[scenario_key]
     return {
         "prompt": s["prompt"],
@@ -93,7 +237,7 @@ def get_scenario(scenario_key: str):
     }
 
 
-@app.get("/health")
+@api.get("/health")
 def health():
     source = demo_source()
     return {
@@ -107,12 +251,12 @@ def health():
     }
 
 
-@app.get("/api/scenarios")
+@api.get("/api/scenarios")
 def list_scenarios():
     return {"scenarios": list(SCENARIOS.keys())}
 
 
-@app.get("/api/policies")
+@api.get("/api/policies")
 def list_policies():
     names = sorted(p.name for p in SAMPLE_POLICIES_DIR.glob("*.yaml"))
     return {"policies": names}
@@ -124,29 +268,30 @@ class EnforceRequest(BaseModel):
     flow: Literal["unified", "split"] = "unified"
 
 
-@app.post("/api/enforce")
+@api.post("/api/enforce")
 def enforce(req: EnforceRequest):
     if req.scenario_key not in SCENARIOS:
-        raise HTTPException(status_code=422, detail=f"Unknown scenario_key: {req.scenario_key!r}")
+        raise _public_request_failure()
     scenario = SCENARIOS[req.scenario_key]
-    policy_path = str(SAMPLE_POLICIES_DIR / scenario["policy"])
+    policy_ref = scenario["policy"]
 
-    aegis = AEGIS(
+    aegis = demo_aegis(
+        SAMPLE_POLICIES_DIR,
         risk_config={"mode": req.mode, "threshold": 0.7, "factors": MEDICAL_FACTORS}
     )
     try:
         if req.flow == "split":
-            pre_call_result = aegis.enforce_pre_call(_build_pre_call_invocation(scenario, policy_path))
+            pre_call_result = aegis.enforce_pre_call(_build_pre_call_invocation(scenario, policy_ref))
             artifact = aegis.enforce_post_call(pre_call_result, scenario["output"])
         else:
-            artifact = aegis.enforce(_build_full_invocation(scenario, policy_path))
+            artifact = aegis.enforce(_build_full_invocation(scenario, policy_ref))
         return {"artifact": artifact, "error": None}
     except AIGCError as exc:
         artifact = getattr(exc, "audit_artifact", None)
-        return {"artifact": artifact, "error": str(exc)}
+        return {"artifact": artifact, "error": _public_governance_error(exc)}
 
 
-@app.post("/api/sign/generate-key")
+@api.post("/api/sign/generate-key")
 def generate_key():
     return {"key": secrets.token_hex(32)}
 
@@ -156,25 +301,25 @@ class SignEnforceRequest(BaseModel):
     key: str
 
 
-@app.post("/api/sign/enforce")
+@api.post("/api/sign/enforce")
 def sign_enforce(req: SignEnforceRequest):
     if req.scenario_key not in SCENARIOS:
-        raise HTTPException(status_code=422, detail=f"Unknown scenario_key: {req.scenario_key!r}")
+        raise _public_request_failure()
     scenario = SCENARIOS[req.scenario_key]
-    policy_path = str(SAMPLE_POLICIES_DIR / scenario["policy"])
+    policy_ref = scenario["policy"]
     try:
         key_bytes = bytes.fromhex(req.key)
     except ValueError:
-        raise HTTPException(status_code=422, detail="key must be a valid hex string (64 hex chars)")
+        raise _public_request_failure() from None
     signer = HMACSigner(key=key_bytes)
-    aegis = AEGIS(signer=signer)
+    aegis = demo_aegis(SAMPLE_POLICIES_DIR, signer=signer)
 
     try:
-        artifact = aegis.enforce(_build_full_invocation(scenario, policy_path))
+        artifact = aegis.enforce(_build_full_invocation(scenario, policy_ref))
         return {"artifact": artifact, "error": None}
     except AIGCError as exc:
         artifact = getattr(exc, "audit_artifact", None)
-        return {"artifact": artifact, "error": str(exc)}
+        return {"artifact": artifact, "error": _public_governance_error(exc)}
 
 
 class VerifySignatureRequest(BaseModel):
@@ -182,12 +327,12 @@ class VerifySignatureRequest(BaseModel):
     key: str
 
 
-@app.post("/api/sign/verify")
+@api.post("/api/sign/verify")
 def verify_signature(req: VerifySignatureRequest):
     try:
         key_bytes = bytes.fromhex(req.key)
     except ValueError:
-        raise HTTPException(status_code=422, detail="key must be a valid hex string (64 hex chars)")
+        raise _public_request_failure() from None
     signer = HMACSigner(key=key_bytes)
     valid = verify_artifact(req.artifact, signer)
     return {"valid": valid}
@@ -200,21 +345,25 @@ class ChainAppendRequest(BaseModel):
     chain_index: int = 0
 
 
-@app.post("/api/chain/append")
+@api.post("/api/chain/append")
 def chain_append(req: ChainAppendRequest):
     if req.scenario_key not in SCENARIOS:
-        raise HTTPException(status_code=422, detail=f"Unknown scenario_key: {req.scenario_key!r}")
+        raise _public_request_failure()
     scenario = SCENARIOS[req.scenario_key]
-    policy_path = str(SAMPLE_POLICIES_DIR / scenario["policy"])
+    policy_ref = scenario["policy"]
     chain_id = req.chain_id or str(uuid.uuid4())
 
-    aegis = AEGIS()
+    aegis = demo_aegis(SAMPLE_POLICIES_DIR)
     try:
-        artifact = aegis.enforce(_build_full_invocation(scenario, policy_path))
+        artifact = aegis.enforce(_build_full_invocation(scenario, policy_ref))
     except AIGCError as exc:
         artifact = getattr(exc, "audit_artifact", None)
         if not artifact:
-            raise HTTPException(status_code=422, detail=str(exc))
+            raise DemoPublicError(
+                "AEGIS_ENFORCEMENT_FAILED",
+                safe_demo_message("AEGIS_ENFORCEMENT_FAILED"),
+                422,
+            ) from None
 
     # Inject chain fields — mirrors AuditChain.append()
     unsigned = {
@@ -235,7 +384,7 @@ class ChainVerifyRequest(BaseModel):
     artifacts: list[dict]
 
 
-@app.post("/api/chain/verify")
+@api.post("/api/chain/verify")
 def chain_verify(req: ChainVerifyRequest):
     report = verify_chain_detailed(req.artifacts)
     return {
@@ -260,7 +409,7 @@ class ChainTamperRequest(BaseModel):
 class ComposeRequest(BaseModel):
     parent_yaml: str
     child_yaml: str
-    strategy: str = "intersect"
+    strategy: Literal["intersect", "union", "replace"] = "intersect"
 
 
 _STRATEGY_MAP = {
@@ -270,27 +419,30 @@ _STRATEGY_MAP = {
 }
 
 
-@app.post("/api/compose")
+@api.post("/api/compose")
 def compose_policies(req: ComposeRequest):
-    try:
-        base  = yaml_lib.safe_load(req.parent_yaml)
-        child = yaml_lib.safe_load(req.child_yaml)
-    except yaml_lib.YAMLError as exc:
-        return {"merged_yaml": None, "escalations": [], "diff": {}, "error": str(exc)}
-
-    if not isinstance(base, dict):
-        return {"merged_yaml": None, "escalations": [], "diff": {}, "error": "parent_yaml must be a YAML mapping"}
-    if not isinstance(child, dict):
-        return {"merged_yaml": None, "escalations": [], "diff": {}, "error": "child_yaml must be a YAML mapping"}
-
-    strategy = _STRATEGY_MAP.get(req.strategy, COMPOSITION_INTERSECT)
+    base = load_bounded_yaml(req.parent_yaml)
+    child = load_bounded_yaml(req.child_yaml)
+    strategy = _STRATEGY_MAP[req.strategy]
 
     try:
         merged = merge_policies(base, child, composition_strategy=strategy)
         merged.pop("extends", None)
         merged.pop("composition_strategy", None)
     except Exception as exc:
-        return {"merged_yaml": None, "escalations": [], "diff": {}, "error": str(exc)}
+        log_internal_failure(
+            request_id=current_request_id(),
+            operation="compose_policies",
+            error=exc,
+            public_code="INVALID_REQUEST",
+            method="POST",
+            route_template="/api/compose",
+        )
+        raise DemoPublicError(
+            "INVALID_REQUEST",
+            safe_demo_message("INVALID_REQUEST"),
+            422,
+        ) from None
 
     # Escalation detection
     base_roles = set(base.get("roles", []))
@@ -317,19 +469,21 @@ def compose_policies(req: ComposeRequest):
         "added_roles": sorted(new_roles),
     }
 
-    return {
-        "merged_yaml": yaml_lib.dump(merged, default_flow_style=False),
+    response = {
+        "merged_yaml": yaml_lib.safe_dump(merged, default_flow_style=False),
         "escalations": escalations,
         "diff": diff,
         "error": None,
     }
+    ensure_bounded_json_response(response)
+    return response
 
 
-@app.post("/api/chain/tamper")
+@api.post("/api/chain/tamper")
 def chain_tamper(req: ChainTamperRequest):
     artifacts = copy.deepcopy(req.artifacts)
     if not (0 <= req.index < len(artifacts)):
-        raise HTTPException(status_code=422, detail=f"Index {req.index} out of range")
+        raise _public_request_failure()
     artifact = artifacts[req.index]
     current = artifact.get("enforcement_result", "PASS")
     artifact["enforcement_result"] = "FAIL" if current == "PASS" else "PASS"
@@ -341,19 +495,41 @@ class LoadPolicyRequest(BaseModel):
     policy_name: str
 
 
-@app.post("/api/policy/load")
+@api.post("/api/policy/load")
 def load_policy_endpoint(req: LoadPolicyRequest):
     path = (SAMPLE_POLICIES_DIR / req.policy_name).resolve()
     if not path.is_relative_to(SAMPLE_POLICIES_DIR.resolve()):
-        return {"policy": None, "yaml_text": None, "error": "Access denied"}
+        raise DemoPublicError(
+            "ACCESS_DENIED",
+            safe_demo_message("ACCESS_DENIED"),
+            404,
+        )
     if not path.exists():
-        return {"policy": None, "yaml_text": None, "error": f"Not found: {req.policy_name}"}
+        raise DemoPublicError(
+            "POLICY_NOT_FOUND",
+            safe_demo_message("POLICY_NOT_FOUND"),
+            404,
+        )
     try:
-        text = path.read_text()
-        policy = yaml_lib.safe_load(text)
-        return {"policy": policy, "yaml_text": text, "error": None}
+        text = path.read_text(encoding="utf-8")
     except Exception as exc:
-        return {"policy": None, "yaml_text": None, "error": str(exc)}
+        log_internal_failure(
+            request_id=current_request_id(),
+            operation="read_demo_policy",
+            error=exc,
+            public_code="DEMO_OPERATION_FAILED",
+            method="POST",
+            route_template="/api/policy/load",
+        )
+        raise DemoPublicError(
+            "DEMO_OPERATION_FAILED",
+            safe_demo_message("DEMO_OPERATION_FAILED"),
+            500,
+        ) from None
+    policy = load_bounded_yaml(text)
+    response = {"policy": policy, "yaml_text": text, "error": None}
+    ensure_bounded_json_response(response)
+    return response
 
 
 class ValidateDatesRequest(BaseModel):
@@ -366,19 +542,21 @@ class LoadInMemoryRequest(BaseModel):
     yaml_text: str
 
 
-@app.post("/api/policy/load-inmemory")
+@api.post("/api/policy/load-inmemory")
 def load_policy_inmemory(req: LoadInMemoryRequest):
-    try:
-        loader = InMemoryPolicyLoader(req.yaml_text)
-        policy = loader.load("inline")
-        if not isinstance(policy, dict):
-            return {"policy": None, "yaml_text": req.yaml_text, "loader_class": "InMemoryPolicyLoader", "error": "YAML must be a mapping"}
-        return {"policy": policy, "yaml_text": req.yaml_text, "loader_class": "InMemoryPolicyLoader", "error": None}
-    except Exception as exc:
-        return {"policy": None, "yaml_text": None, "loader_class": "InMemoryPolicyLoader", "error": str(exc)}
+    loader = InMemoryPolicyLoader(req.yaml_text)
+    policy = loader.load("inline")
+    response = {
+        "policy": policy,
+        "yaml_text": req.yaml_text,
+        "loader_class": "InMemoryPolicyLoader",
+        "error": None,
+    }
+    ensure_bounded_json_response(response)
+    return response
 
 
-@app.post("/api/policy/validate-dates")
+@api.post("/api/policy/validate-dates")
 def validate_dates_endpoint(req: ValidateDatesRequest):
     policy: dict = {}
     if req.effective_date:
@@ -396,86 +574,88 @@ def validate_dates_endpoint(req: ValidateDatesRequest):
             "error": None,
         }
     except PolicyValidationError as exc:
-        return {"in_range": False, "evidence": {}, "error": str(exc)}
+        return {
+            "in_range": False,
+            "evidence": {},
+            "error": public_demo_error("POLICY_DATE_INVALID"),
+        }
 
 
 class PolicyTestRequest(BaseModel):
     policy_name: str
 
 
-@app.post("/api/policy/test")
+@api.post("/api/policy/test")
 def run_policy_tests(req: PolicyTestRequest):
     path = (SAMPLE_POLICIES_DIR / req.policy_name).resolve()
     if not path.is_relative_to(SAMPLE_POLICIES_DIR.resolve()):
-        return {"results": [], "error": "Access denied"}
+        return {"results": [], "error": public_demo_error("ACCESS_DENIED")}
     if not path.exists():
-        return {"results": [], "error": f"Not found: {req.policy_name}"}
-    policy_path = str(path)
+        return {"results": [], "error": public_demo_error("POLICY_NOT_FOUND")}
+    policy_ref = path.relative_to(SAMPLE_POLICIES_DIR.resolve()).as_posix()
 
     cases = [
-        (PolicyTestCase(
-            name="valid role passes",
-            policy_file=policy_path,
-            role="doctor",
-            model_provider="mock",
-            model_identifier="mock-model",
-            input_data={"query": "What is the dosage?"},
-            output_data={"result": "500mg"},
-            context={
+        ({
+            "name": "valid role passes",
+            "role": "doctor",
+            "context": {
                 "domain": "medical",
                 "role_declared": True,
                 "schema_exists": True,
                 "human_review_required": True,
             },
-        ), "pass"),
-        (PolicyTestCase(
-            name="unauthorized role fails",
-            policy_file=policy_path,
-            role="unknown_role",
-            model_provider="mock",
-            model_identifier="mock-model",
-            input_data={"query": "What is the dosage?"},
-            output_data={"result": "500mg"},
-            context={
+        }, "PASS"),
+        ({
+            "name": "unauthorized role fails",
+            "role": "unknown_role",
+            "context": {
                 "domain": "medical",
                 "role_declared": True,
                 "schema_exists": True,
                 "human_review_required": True,
             },
-        ), "fail"),
-        (PolicyTestCase(
-            name="missing precondition fails",
-            policy_file=policy_path,
-            role="doctor",
-            model_provider="mock",
-            model_identifier="mock-model",
-            input_data={"query": "What is the dosage?"},
-            output_data={"result": "500mg"},
-            context={
+        }, "FAIL"),
+        ({
+            "name": "missing precondition fails",
+            "role": "doctor",
+            "context": {
                 "domain": "medical",
                 "schema_exists": True,
                 "human_review_required": True,
             },
-        ), "fail"),
+        }, "FAIL"),
     ]
 
-    suite = PolicyTestSuite(f"{req.policy_name} test suite")
+    results = []
+    all_met_expectations = True
     for case, expected in cases:
-        suite.add(case, expected)
-
-    raw_results = suite.run_all()
+        invocation = {
+            "policy_file": policy_ref,
+            "role": case["role"],
+            "model_provider": "mock",
+            "model_identifier": "mock-model",
+            "input": {"query": "What is the dosage?"},
+            "output": {"result": "500mg"},
+            "context": case["context"],
+        }
+        try:
+            demo_aegis(SAMPLE_POLICIES_DIR).enforce(invocation)
+            enforcement_result = "PASS"
+            failure_reason = None
+        except AIGCError:
+            enforcement_result = "FAIL"
+            failure_reason = safe_demo_message("AEGIS_ENFORCEMENT_FAILED")
+        all_met_expectations = all_met_expectations and enforcement_result == expected
+        results.append({
+            "name": case["name"],
+            "enforcement_result": enforcement_result,
+            "passed": enforcement_result == "PASS",
+            "failure_reason": failure_reason,
+        })
 
     return {
-        "results": [
-            {
-                "name": r.name,
-                "enforcement_result": r.enforcement_result,
-                "passed": r.passed,
-                "failure_reason": r.failure_reason,
-            }
-            for r in raw_results
-        ],
-        "all_met_expectations": suite.all_passed(raw_results),
+        "results": results,
+        "all_met_expectations": all_met_expectations,
         "error": None,
     }
 
@@ -484,16 +664,19 @@ class Lab8KBRequest(BaseModel):
     scenario_key: str = "kb_sourced_pass"
 
 
-@app.post("/api/lab8/query-kb")
+@api.post("/api/lab8/query-kb")
 def lab8_query_kb(req: Lab8KBRequest):
     if req.scenario_key not in SCENARIOS:
-        raise HTTPException(status_code=422, detail=f"Unknown scenario_key: {req.scenario_key!r}")
+        raise _public_request_failure()
     scenario = SCENARIOS[req.scenario_key]
-    policy_path = str(SAMPLE_POLICIES_DIR / scenario["policy"])
+    policy_ref = scenario["policy"]
 
     from aegis import ProvenanceGate
-    aegis_instance = AEGIS(custom_gates=[ProvenanceGate()])
-    invocation = _build_full_invocation(scenario, policy_path)
+    aegis_instance = demo_aegis(
+        SAMPLE_POLICIES_DIR,
+        custom_gates=[ProvenanceGate()],
+    )
+    invocation = _build_full_invocation(scenario, policy_ref)
     source_ids = scenario["context"].get("provenance", {}).get("source_ids", [])
 
     try:
@@ -501,31 +684,36 @@ def lab8_query_kb(req: Lab8KBRequest):
         return {"artifact": artifact, "source_ids": source_ids, "error": None}
     except AIGCError as exc:
         artifact = getattr(exc, "audit_artifact", None)
-        return {"artifact": artifact, "source_ids": source_ids, "error": str(exc)}
+        return {
+            "artifact": artifact,
+            "source_ids": source_ids,
+            "error": _public_governance_error(exc),
+        }
 
 
 class Lab9CompareRequest(BaseModel):
     scenario_key: str = "low_risk_faq"
 
 
-@app.post("/api/lab9/compare")
+@api.post("/api/lab9/compare")
 def lab9_compare(req: Lab9CompareRequest):
     if req.scenario_key not in SCENARIOS:
-        raise HTTPException(status_code=422, detail=f"Unknown scenario_key: {req.scenario_key!r}")
+        raise _public_request_failure()
     scenario = SCENARIOS[req.scenario_key]
-    policy_path = str(SAMPLE_POLICIES_DIR / scenario["policy"])
+    policy_ref = scenario["policy"]
 
     # Governed path — strict mode exposes full policy impact (risk threshold enforced)
-    aegis_instance = AEGIS(
+    aegis_instance = demo_aegis(
+        SAMPLE_POLICIES_DIR,
         risk_config={"mode": "strict", "threshold": 0.7, "factors": MEDICAL_FACTORS}
     )
     governed_artifact = None
     governed_error = None
     try:
-        governed_artifact = aegis_instance.enforce(_build_full_invocation(scenario, policy_path))
+        governed_artifact = aegis_instance.enforce(_build_full_invocation(scenario, policy_ref))
     except AIGCError as exc:
         governed_artifact = getattr(exc, "audit_artifact", None)
-        governed_error = str(exc)
+        governed_error = _public_governance_error(exc)
 
     # Ungoverned path — synthetic record representing raw model output with no enforcement
     ungoverned_artifact = {
@@ -556,17 +744,18 @@ class Lab10SplitRequest(BaseModel):
     mode: Literal["strict", "risk_scored", "warn_only"] = "risk_scored"
 
 
-@app.post("/api/lab10/split-trace")
+@api.post("/api/lab10/split-trace")
 def lab10_split_trace(req: Lab10SplitRequest):
     if req.scenario_key not in SCENARIOS:
-        raise HTTPException(status_code=422, detail=f"Unknown scenario_key: {req.scenario_key!r}")
+        raise _public_request_failure()
     scenario = SCENARIOS[req.scenario_key]
-    policy_path = str(SAMPLE_POLICIES_DIR / scenario["policy"])
+    policy_ref = scenario["policy"]
 
-    aegis_instance = AEGIS(
+    aegis_instance = demo_aegis(
+        SAMPLE_POLICIES_DIR,
         risk_config={"mode": req.mode, "threshold": 0.7, "factors": MEDICAL_FACTORS}
     )
-    pre_invocation = _build_pre_call_invocation(scenario, policy_path)
+    pre_invocation = _build_pre_call_invocation(scenario, policy_ref)
 
     try:
         pre_result = aegis_instance.enforce_pre_call(pre_invocation)
@@ -584,14 +773,14 @@ def lab10_split_trace(req: Lab10SplitRequest):
             "phase_b": None,
             "artifact": artifact,
             "combined_result": "FAIL",
-            "error": str(exc),
+            "error": _public_governance_error(exc),
         }
 
-    # Phase A passed — record its metadata from the PreCallResult token
-    phase_a_meta = pre_result.phase_a_metadata
+    # PreCallResult is intentionally opaque. Phase metadata becomes public only
+    # through the finalized artifact returned by post-call enforcement.
     phase_a = {
         "result": "PASS",
-        "gates_evaluated": phase_a_meta.get("gates_evaluated", []),
+        "gates_evaluated": [],
         "failures": [],
         "blocked": False,
     }
@@ -602,6 +791,7 @@ def lab10_split_trace(req: Lab10SplitRequest):
     except AIGCError as exc:
         artifact = getattr(exc, "audit_artifact", None)
         meta = (artifact or {}).get("metadata", {})
+        phase_a["gates_evaluated"] = meta.get("pre_call_gates_evaluated", [])
         return {
             "phase_a": phase_a,
             "phase_b": {
@@ -612,10 +802,11 @@ def lab10_split_trace(req: Lab10SplitRequest):
             },
             "artifact": artifact,
             "combined_result": "FAIL",
-            "error": str(exc),
+            "error": _public_governance_error(exc),
         }
 
     meta = artifact.get("metadata", {})
+    phase_a["gates_evaluated"] = meta.get("pre_call_gates_evaluated", [])
     phase_b = {
         "result": artifact["enforcement_result"],
         "gates_evaluated": meta.get("post_call_gates_evaluated", []),
@@ -632,11 +823,11 @@ def lab10_split_trace(req: Lab10SplitRequest):
     }
 
 
-@app.get("/api/gate/{gate_name}")
+@api.get("/api/gate/{gate_name}")
 def get_gate(gate_name: str):
     gate = GATES.get(gate_name)
     if not gate:
-        return {"error": f"Unknown gate: {gate_name}"}
+        return {"error": public_demo_error("UNKNOWN_DEMO_ID")}
     return get_gate_info(gate)
 
 
@@ -645,20 +836,25 @@ class GateRunRequest(BaseModel):
     scenario_key: str
 
 
-@app.post("/api/gate/run")
+@api.post("/api/gate/run")
 def run_gate(req: GateRunRequest):
     gate = GATES.get(req.gate_name)
     if not gate:
-        return {"artifact": None, "gate_result": None, "error": f"Unknown gate: {req.gate_name}"}
+        return {
+            "artifact": None,
+            "gate_result": None,
+            "error": public_demo_error("UNKNOWN_DEMO_ID"),
+        }
 
     if req.scenario_key not in SCENARIOS:
-        raise HTTPException(status_code=422, detail=f"Unknown scenario_key: {req.scenario_key!r}")
+        raise _public_request_failure()
 
     scenario = SCENARIOS[req.scenario_key]
-    policy_path = str(SAMPLE_POLICIES_DIR / scenario["policy"])
-    aegis = AEGIS(custom_gates=[gate])
+    policy_ref = scenario["policy"]
+    policy_path = SAMPLE_POLICIES_DIR / policy_ref
+    aegis = demo_aegis(SAMPLE_POLICIES_DIR, custom_gates=[gate])
 
-    invocation = _build_full_invocation(scenario, policy_path)
+    invocation = _build_full_invocation(scenario, policy_ref)
 
     try:
         artifact = aegis.enforce(invocation)
@@ -666,8 +862,8 @@ def run_gate(req: GateRunRequest):
         artifact = getattr(exc, "audit_artifact", None)
 
     # Run gate with the same policy and context used during enforcement
-    with open(policy_path) as _f:
-        policy_dict = yaml_lib.safe_load(_f) or {}
+    with open(policy_path, encoding="utf-8") as _f:
+        policy_dict = load_bounded_yaml(_f.read())
     direct_result = gate.evaluate(invocation, policy_dict, scenario["context"])
 
     return {
@@ -681,3 +877,13 @@ def run_gate(req: GateRunRequest):
         },
         "error": None,
     }
+
+
+cors_app = CORSMiddleware(
+    api,
+    allow_origins=list(ALLOWED_ORIGINS),
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["X-Request-ID", "Retry-After"],
+)
+app = DemoEdgeMiddleware(cors_app, allowed_origins=ALLOWED_ORIGINS)

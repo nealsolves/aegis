@@ -13,6 +13,7 @@ import type {
   ScenarioRunResponse,
 } from '@/types/demo'
 import type { ScenarioId } from './scenarioContent'
+import { formatPublicDemoError } from '@/lib/publicError'
 
 interface ScenarioTimelineProps {
   response: ScenarioRunResponse | null
@@ -335,7 +336,7 @@ export default function ScenarioTimeline({
 
           {response.error && (
             <div className="scenario-returned-error">
-              <strong>{response.error.message}</strong>
+              <strong>{formatPublicDemoError(response.error)}</strong>
               <p className="scenario-reason">
                 <span>Reason code</span>
                 <code>{response.error.code}</code>

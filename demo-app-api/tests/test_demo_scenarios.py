@@ -105,6 +105,8 @@ def test_scenario_outcome_matrix(
         assert body["error"] is None
     else:
         assert body["error"]["code"] == reason_code
+        assert set(body["error"]) == {"code", "message", "request_id"}
+        assert body["error"]["request_id"] == response.headers["x-request-id"]
 
     artifacts = _invocation_artifacts(body)
     expected_outputs = _expected_outputs(scenario_id, variant)

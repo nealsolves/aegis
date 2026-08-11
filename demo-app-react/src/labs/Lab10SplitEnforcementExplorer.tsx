@@ -4,6 +4,7 @@ import StatusBadge from '@/components/shared/StatusBadge'
 import { useApi } from '@/hooks/useApi'
 import { IBM_COLORS } from '@/theme/tokens'
 import type { Artifact } from '@/types/artifact'
+import type { PublicDemoError } from '@/lib/publicError'
 
 interface PhaseInfo {
   result: 'PASS' | 'FAIL'
@@ -17,7 +18,7 @@ interface Lab10Response {
   phase_b: PhaseInfo | null
   artifact: Artifact | null
   combined_result: 'PASS' | 'FAIL'
-  error: string | null
+  error: PublicDemoError | null
 }
 
 const SPLIT_SCENARIOS = [

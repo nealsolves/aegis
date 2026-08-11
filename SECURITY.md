@@ -44,6 +44,13 @@ AEGIS is a governance enforcement library. Security concerns include:
 - Determinism violations that could mask governance failures
 - Exception handling that silently degrades enforcement
 
+The repository's public demo API adds a separate defense-in-depth edge for
+request size, YAML expansion, rate, subprocess, response, and diagnostic
+containment. Those controls protect the hosted demonstration surface; they do
+not redefine, weaken, or strengthen SDK policy-enforcement semantics. See the
+[public demo API operations guide](demo-app-api/README.md) for the exact limits,
+proxy assumptions, monitoring signals, and incident checklist.
+
 Storage-control or evidence-handling vulnerabilities may be reported through
 this process, but host storage configuration remains outside the AEGIS runtime
 boundary. For host-owned retention, object locking, checkpoint selection,

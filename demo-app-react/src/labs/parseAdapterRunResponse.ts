@@ -4,6 +4,7 @@ import type {
   DemoOutcome,
   DemoSource,
 } from '@/types/demo'
+import { parsePublicDemoError } from '@/lib/publicError'
 
 const OUTCOMES: readonly DemoOutcome[] = ['PASS', 'FAIL', 'PAUSED']
 
@@ -49,18 +50,7 @@ function validateNullableReason(record: Record<string, unknown>) {
 
 function parseError(value: unknown): AdapterRunResponse['error'] {
   if (value === null) return null
-  if (
-    !isRecord(value)
-    || typeof value.code !== 'string'
-    || typeof value.message !== 'string'
-  ) {
-    return invalidResponse()
-  }
-
-  return {
-    code: value.code,
-    message: value.message,
-  }
+  return parsePublicDemoError(value) ?? invalidResponse()
 }
 
 function parseSource(value: unknown): DemoSource {

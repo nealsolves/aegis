@@ -4,6 +4,7 @@ import StatusBadge from '@/components/shared/StatusBadge'
 import CodeBlock from '@/components/shared/CodeBlock'
 import { useApi } from '@/hooks/useApi'
 import { IBM_COLORS } from '@/theme/tokens'
+import { formatPublicDemoError, INVALID_PUBLIC_DEMO_ERROR_MESSAGE, type PublicDemoError } from '@/lib/publicError'
 
 // ── types ────────────────────────────────────────────────────────────────────
 
@@ -28,13 +29,13 @@ interface WorkflowArtifact {
 
 interface WorkflowRunResponse {
   artifact: WorkflowArtifact | null
-  error: string | null
+  error: PublicDemoError | null
   run_id?: string
 }
 
 interface CompareResponse {
-  governed: { artifact: WorkflowArtifact | null; error: string | null }
-  ungoverned: { artifact: Record<string, unknown> | null; error: string | null }
+  governed: { artifact: WorkflowArtifact | null; error: PublicDemoError | null }
+  ungoverned: { artifact: Record<string, unknown> | null; error: PublicDemoError | null }
 }
 
 interface WorkflowTraceStep {
@@ -273,7 +274,7 @@ export default function Lab11WorkflowLab() {
 
               {runResult.error && (
                 <p className="text-xs mb-2" style={{ color: IBM_COLORS.red40 }}>
-                  {runResult.error}
+                  {formatPublicDemoError(runResult.error) ?? INVALID_PUBLIC_DEMO_ERROR_MESSAGE}
                 </p>
               )}
 
@@ -349,7 +350,7 @@ export default function Lab11WorkflowLab() {
               </div>
               {failureResult.error && (
                 <p className="text-xs mb-1" style={{ color: IBM_COLORS.red40 }}>
-                  {failureResult.error}
+                  {formatPublicDemoError(failureResult.error) ?? INVALID_PUBLIC_DEMO_ERROR_MESSAGE}
                 </p>
               )}
             </div>
@@ -453,7 +454,7 @@ export default function Lab11WorkflowLab() {
                 </div>
                 {compareResult.governed.error && (
                   <p className="text-xs mb-2" style={{ color: IBM_COLORS.red40 }}>
-                    {compareResult.governed.error}
+                    {formatPublicDemoError(compareResult.governed.error) ?? INVALID_PUBLIC_DEMO_ERROR_MESSAGE}
                   </p>
                 )}
                 <CodeBlock
@@ -477,7 +478,7 @@ export default function Lab11WorkflowLab() {
                 </div>
                 {compareResult.ungoverned.error && (
                   <p className="text-xs mb-2" style={{ color: IBM_COLORS.red40 }}>
-                    {compareResult.ungoverned.error}
+                    {formatPublicDemoError(compareResult.ungoverned.error) ?? INVALID_PUBLIC_DEMO_ERROR_MESSAGE}
                   </p>
                 )}
                 <CodeBlock

@@ -10,6 +10,7 @@ import type { ResultHelpContext } from '@/components/HelpDrawer'
 import { useAigc } from '@/context/AigcContext'
 import { useDemoService } from '@/context/DemoServiceContext'
 import { demoRequest } from '@/lib/demoApi'
+import { formatPublicDemoError } from '@/lib/publicError'
 import type {
   AdapterId,
   AdapterRunResponse,
@@ -503,7 +504,7 @@ function AdapterResult({ response }: { response: AdapterRunResponse }) {
             {response.error && (
               <>
                 <code>{response.error.code}</code>
-                <p>{response.error.message}</p>
+                <p>{formatPublicDemoError(response.error)}</p>
               </>
             )}
           </div>

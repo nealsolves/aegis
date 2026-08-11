@@ -15,8 +15,8 @@ client = TestClient(app)
 
 
 def test_demo_api_imports_and_health_route():
-    assert app.title == "AEGIS Demo API"
-    assert app.version == "0.9.0b1"
+    assert main.api.title == "AEGIS Demo API"
+    assert main.api.version == "0.9.0b1"
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json() == {
@@ -108,6 +108,6 @@ def test_workflow_routes_are_real_backend_behavior_not_static_success():
     import workflow_routes
 
     source = inspect.getsource(workflow_routes.run_workflow)
-    assert "AEGIS()" in source
+    assert "demo_aegis(" in source
     assert ".open_session(" in source
     assert "status\": \"COMPLETED\"" not in source

@@ -2,15 +2,20 @@ import { useState, useEffect } from 'react'
 import PolicyEditor from '@/components/shared/PolicyEditor'
 import CodeBlock from '@/components/shared/CodeBlock'
 import { useApi } from '@/hooks/useApi'
+import {
+  formatPublicDemoError,
+  INVALID_PUBLIC_DEMO_ERROR_MESSAGE,
+  type PublicDemoError,
+} from '@/lib/publicError'
 
 type Strategy = 'intersect' | 'union' | 'replace'
 
-interface LoadResponse { yaml_text: string | null; error: string | null }
+interface LoadResponse { yaml_text: string | null; error: PublicDemoError | null }
 interface ComposeResponse {
   merged_yaml: string | null
   escalations: string[]
   diff: { kept_roles: string[]; removed_roles: string[]; added_roles: string[] }
-  error: string | null
+  error: PublicDemoError | null
 }
 
 export default function Lab4Composition() {
@@ -39,7 +44,11 @@ export default function Lab4Composition() {
         setPoliciesReady(true)
       } else {
         setLoadError(
-          parent?.error ?? child?.error ?? 'Failed to load sample policies — check API connection'
+          formatPublicDemoError(parent?.error)
+          ?? formatPublicDemoError(child?.error)
+          ?? (parent?.error || child?.error
+            ? INVALID_PUBLIC_DEMO_ERROR_MESSAGE
+            : 'Failed to load sample policies — check API connection')
         )
       }
     })
@@ -108,7 +117,7 @@ export default function Lab4Composition() {
 
       {(apiError || result?.error) && (
         <div className="font-mono text-xs px-3 py-2 rounded mb-3" style={{ background: 'rgba(255,126,182,0.08)', border: '1px solid rgba(255,126,182,0.2)', color: 'var(--ibm-magenta-40)' }}>
-          // error: {apiError ?? result?.error}
+          // error: {apiError ?? formatPublicDemoError(result?.error) ?? INVALID_PUBLIC_DEMO_ERROR_MESSAGE}
         </div>
       )}
 
