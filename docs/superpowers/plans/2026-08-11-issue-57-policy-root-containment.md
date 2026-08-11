@@ -48,8 +48,6 @@
 - Create: `tests/test_policy_root_containment.py`
 - Modify: `aegis/_internal/errors.py:102-106`
 - Modify: `aegis/_internal/policy_loader.py:61-164`
-- Modify: `schemas/policy_dsl.schema.json:7-10`
-- Modify: `aegis/schemas/policy_dsl.schema.json:7-10`
 - Modify: `tests/test_pluggable_loader.py:56-60,132-142`
 - Modify: `tests/test_policy_loader.py:1-110`
 
@@ -64,14 +62,10 @@ Create helpers and tests that prove constructor-time root binding, root-relative
 ```python
 from __future__ import annotations
 
-import traceback
-from pathlib import Path, PureWindowsPath
+from pathlib import Path
 
 import pytest
-import yaml
-
-from aegis._internal.policy_loader import _is_contained
-from aegis.errors import PolicyLoadError, PolicyValidationError
+from aegis.errors import PolicyLoadError
 from aegis.policy_loader import FilePolicyLoader, load_policy
 
 
@@ -194,7 +188,9 @@ class FilePolicyLoader(PolicyLoaderBase):
         return self._policy_root
 ```
 
-Do not retain `_default_loader`: a singleton cannot have a safe per-invocation root.
+Do not land the constructor change while `_default_loader = FilePolicyLoader()` or any
+`load_policy()` reference to that singleton remains. Step 4 replaces the singleton and
+its callers in the same edit, so this task stays importable and testable at every commit.
 
 - [ ] **Step 4: Implement canonical candidate resolution and prepared loading**
 
@@ -210,6 +206,10 @@ def _is_contained(candidate: PurePath, root: PurePath) -> bool:
 
 
 class FilePolicyLoader(PolicyLoaderBase):
+    def _canonicalize(self, lexical: Path) -> Path:
+        """Small test seam for platform canonicalization; performs no validation."""
+        return lexical.resolve(strict=False)
+
     def _canonical_candidate(
         self,
         policy_ref: str | Path,
@@ -221,7 +221,7 @@ class FilePolicyLoader(PolicyLoaderBase):
         lexical = ref if ref.is_absolute() else base / ref
         resolution_failed = False
         try:
-            candidate = lexical.resolve(strict=False)
+            candidate = self._canonicalize(lexical)
         except (OSError, RuntimeError):
             resolution_failed = True
             candidate = self._policy_root
@@ -297,13 +297,32 @@ def _bind_policy_authority(
 ) -> tuple[str, PolicyLoaderBase]:
     if loader is not None:
         return policy_file, loader
-    captured_cwd = Path.cwd()
-    lexical_entry = Path(policy_file)
-    if not lexical_entry.is_absolute():
-        lexical_entry = captured_cwd / lexical_entry
-    root = lexical_entry.parent.resolve(strict=False)
+    failure: PolicyLoadError | None = None
+    try:
+        captured_cwd = Path.cwd()
+        lexical_entry = Path(policy_file)
+        if not lexical_entry.is_absolute():
+            lexical_entry = captured_cwd / lexical_entry
+        root = lexical_entry.parent.resolve(strict=False)
+    except (OSError, RuntimeError):
+        lexical_entry = Path("policy.yaml")
+        root = Path(".")
+        failure = PolicyLoadError("Policy path could not be resolved")
+    if failure is not None:
+        raise failure from None
     return str(lexical_entry), FilePolicyLoader(root)
 ```
+
+In this same edit, delete `_default_loader` and make `load_policy()` call
+`_bind_policy_authority()` before any filesystem operation. Thread the returned
+`effective_loader` through the existing `_resolve_extends()` recursion as a required
+keyword-only argument; resolve every parent with
+`effective_loader._prepare(extends, relative_to=policy_path, reject_paths=visited)`.
+Recurse on `copy.deepcopy(parent.raw_policy)` and `parent.source_path` with the same
+loader and the updated visited set, then retain the existing merge/restriction code.
+Do not call public `load_policy()` recursively. This is the minimum coordinated rewrite
+that makes the constructor change safe; Task 2 moves the recursion into the final
+single-prepare graph orchestrator and adds early schema/confidentiality handling.
 
 - [ ] **Step 5: Add symlink and canonical-inside tests**
 
@@ -336,39 +355,15 @@ def test_in_root_symlink_target_is_allowed(tmp_path: Path) -> None:
     assert load_policy("link.yaml", loader=FilePolicyLoader(root))["roles"] == ["reviewer"]
 
 
-def test_windows_different_drive_is_never_contained() -> None:
-    assert not _is_contained(
-        PureWindowsPath("D:/outside/policy.yaml"),
-        PureWindowsPath("C:/policies"),
-    )
 ```
 
-Add explicit tests that relative and absolute spellings of the same entry receive the same canonical root and that an absolute entry outside an explicit root fails before open. The `PureWindowsPath` case runs on every platform, so different-drive behavior is never skipped.
+Add explicit tests that relative and absolute spellings of the same entry receive the
+same canonical root and that an absolute entry outside an explicit root fails before
+open. Do not import or test `_is_contained` directly here; all assertions cross the
+public loader boundary. Task 2 owns malformed-`extends` and Windows different-drive
+coverage because those behaviors depend on the final graph resolver.
 
-- [ ] **Step 6: Enforce early non-empty `extends` schema parity**
-
-Add `"minLength": 1` beside `"type": "string"` in both schema copies. Add a parametrized runtime test for `None`, `True`, `3`, `{}`, `[]`, and `""`; each must raise `PolicyValidationError` with `code == "POLICY_SCHEMA_VALIDATION_ERROR"` and `details == {"path": "$.extends"}` rather than reaching path arithmetic.
-
-```python
-@pytest.mark.parametrize("extends", [None, True, 3, {}, [], ""])
-def test_file_loader_rejects_malformed_extends_before_path_work(
-    tmp_path: Path, extends: object
-) -> None:
-    entry = _write_policy(
-        tmp_path / "entry.yaml",
-        yaml.safe_dump({
-            "policy_version": "1.0",
-            "roles": ["reviewer"],
-            "extends": extends,
-        }),
-    )
-    with pytest.raises(PolicyValidationError) as caught:
-        load_policy(str(entry))
-    assert caught.value.code == "POLICY_SCHEMA_VALIDATION_ERROR"
-    assert caught.value.details == {"path": "$.extends"}
-```
-
-- [ ] **Step 7: Run the complete loader boundary tests to verify GREEN**
+- [ ] **Step 6: Run the complete entry-boundary tests to verify GREEN**
 
 Run:
 
@@ -376,12 +371,15 @@ Run:
 /Users/neal/Documents/_Shenanigans/_myProjects/aegis/.venv/bin/python -m pytest -q tests/test_policy_root_containment.py tests/test_policy_loader.py tests/test_pluggable_loader.py
 ```
 
-Expected: all selected tests pass; existing no-argument `FilePolicyLoader()` assertions have been migrated to an explicit temp root.
+Expected: all selected entry-boundary tests pass; the module imports without a
+no-argument singleton, and existing no-argument `FilePolicyLoader()` uses have been
+migrated to explicit temp roots. Task 2 graph tests are not added until after this
+commit, so Task 1 does not knowingly commit a failing test.
 
-- [ ] **Step 8: Commit the root-bound loader**
+- [ ] **Step 7: Commit the root-bound loader**
 
 ```bash
-git add aegis/_internal/errors.py aegis/_internal/policy_loader.py schemas/policy_dsl.schema.json aegis/schemas/policy_dsl.schema.json tests/test_policy_root_containment.py tests/test_policy_loader.py tests/test_pluggable_loader.py
+git add aegis/_internal/errors.py aegis/_internal/policy_loader.py tests/test_policy_root_containment.py tests/test_policy_loader.py tests/test_pluggable_loader.py
 git commit -m "fix: bind file policy loads to canonical roots"
 ```
 
@@ -389,6 +387,8 @@ git commit -m "fix: bind file policy loads to canonical roots"
 
 **Files:**
 - Modify: `aegis/_internal/policy_loader.py:731-951`
+- Modify: `schemas/policy_dsl.schema.json:7-10`
+- Modify: `aegis/schemas/policy_dsl.schema.json:7-10`
 - Modify: `tests/test_policy_root_containment.py`
 - Modify: `tests/test_golden_replay_composition.py`
 - Modify: `tests/test_policy_composition.py`
@@ -397,7 +397,7 @@ git commit -m "fix: bind file policy loads to canonical roots"
 
 **Interfaces:**
 - Consumes: `FilePolicyLoader._prepare()`, `FilePolicyLoader._accept_prepared()`, `_bind_policy_authority()`, `compile_policy()`, and the existing validation `clock`.
-- Produces: `_resolve_file_graph(prepared: _PreparedFilePolicy, *, loader: FilePolicyLoader, visited: set[Path], clock: Callable[[], date] | None) -> dict[str, Any]`, `_prepare_resolve_compile_policy(policy_file: str, *, loader: PolicyLoaderBase | None = None, clock: Callable[[], date] | None = None, allow_legacy: bool = False, legacy_authorization: object | None = None) -> tuple[_PreparedFilePolicy | None, CompiledPolicy]`, the same public arguments on `load_resolve_compile_policy() -> CompiledPolicy`, and synchronous `load_policy_async(policy_file: str, visited: set[Path] | None = None, *, loader: PolicyLoaderBase | None = None) -> Awaitable[dict[str, Any]]`.
+- Produces: `_resolve_file_graph(prepared: _PreparedFilePolicy, *, loader: FilePolicyLoader, visited: set[Path], context: _FileLoadContext, clock: Callable[[], date] | None, capture_date_failures: bool = False) -> dict[str, Any]`, `_PreparedCompilationResult`, `_prepare_resolve_compile_policy(...) -> _PreparedCompilationResult`, the same public arguments on `load_resolve_compile_policy() -> CompiledPolicy`, and synchronous `load_policy_async(policy_file: str, visited: set[Path] | None = None, *, loader: PolicyLoaderBase | None = None) -> Awaitable[dict[str, Any]]`.
 
 - [ ] **Step 1: Add failing graph and precedence tests**
 
@@ -433,21 +433,77 @@ def test_transitive_child_cannot_widen_original_root(tmp_path: Path) -> None:
     with pytest.raises(PolicyLoadError) as caught:
         load_policy(str(entry), loader=FilePolicyLoader(root))
     assert caught.value.code == "POLICY_PATH_OUTSIDE_ROOT"
+
+
+@pytest.mark.parametrize("extends", [None, True, 3, {}, [], ""])
+def test_file_loader_rejects_malformed_extends_before_path_work(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, extends: object
+) -> None:
+    entry = _write_policy(
+        tmp_path / "entry.yaml",
+        yaml.safe_dump({
+            "policy_version": "1.0",
+            "roles": ["reviewer"],
+            "extends": extends,
+        }),
+    )
+    loader = FilePolicyLoader(tmp_path)
+    prepared = loader._prepare(entry.name, context=_FileLoadContext.create(entry.name))
+    monkeypatch.setattr(
+        loader,
+        "_canonical_candidate",
+        lambda *args, **kwargs: pytest.fail("malformed extends reached path work"),
+    )
+    with pytest.raises(PolicyValidationError) as caught:
+        _resolve_file_graph(prepared, loader=loader, visited=set(), context=_FileLoadContext.create())
+    assert caught.value.code == "POLICY_SCHEMA_VALIDATION_ERROR"
+    assert caught.value.details == {"path": "$.extends"}
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows drive semantics")
+def test_windows_different_drive_entry_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    loader = FilePolicyLoader(tmp_path)
+    foreign_drive = "Z:" if tmp_path.drive.upper() != "Z:" else "Y:"
+    foreign = Path(foreign_drive + r"\outside\policy.yaml")
+    monkeypatch.setattr(loader, "_canonicalize", lambda lexical: foreign)
+    with pytest.raises(PolicyLoadError) as caught:
+        loader.load(str(foreign))
+    assert caught.value.code == "POLICY_PATH_OUTSIDE_ROOT"
 ```
+
+Import `os`, `yaml`, `PolicyValidationError`, `_FileLoadContext`, and
+`_resolve_file_graph` for these tests. Add `"minLength": 1` beside
+`"type": "string"` in both schema copies. The `_canonicalize()` seam performs only
+canonicalization; `_canonical_candidate()` owns the subsequent containment check.
 
 - [ ] **Step 2: Run graph tests to verify RED**
 
 Run:
 
 ```bash
-/Users/neal/Documents/_Shenanigans/_myProjects/aegis/.venv/bin/python -m pytest -q tests/test_policy_root_containment.py -k 'transitive or cycle or custom_loader or absolute_extends'
+/Users/neal/Documents/_Shenanigans/_myProjects/aegis/.venv/bin/python -m pytest -q tests/test_policy_root_containment.py -k 'transitive or cycle or custom_loader or absolute_extends or malformed_extends or different_drive'
 ```
 
-Expected: recursive loads derive new authority or touch the filesystem, and cycle text leaks canonical paths.
+Expected: recursive loads derive new authority or touch the filesystem, malformed
+`extends` reaches path construction, and cycle text leaks canonical paths. The Windows
+case participates on Windows and is platform-skipped elsewhere; it is not skipped for
+missing secondary drives because it uses the canonicalization seam.
 
 - [ ] **Step 3: Resolve inheritance only through loader-minted prepared sources**
 
 Validate the `extends` key before candidate construction, check the loader token at every consumer, preserve one visited set, and use `prepared.source_path` only internally:
+
+Extend `_canonical_candidate()`, `_preflight()`, and `_prepare()` with a required
+keyword-only `context: _FileLoadContext`. `_canonical_candidate()` records the lexical
+reference and canonical candidate with `context.protect()`; `_prepare()` records valid
+`extends` spellings before resolving them. Update every Task 1 call site to create one
+context at the public entry and pass that exact object through recursion. No loader
+method constructs a second context mid-graph. `FilePolicyLoader.load()` creates
+`_FileLoadContext.create(policy_ref, self.policy_root)` and passes it to `_prepare()`;
+`load_policy()` and the compiler orchestrator create their context before calling any
+loader method.
 
 ```python
 def _validated_extends(policy: dict[str, Any]) -> str | None:
@@ -467,7 +523,9 @@ def _resolve_file_graph(
     *,
     loader: FilePolicyLoader,
     visited: set[Path],
-    clock: Callable[[], date] | None,
+    context: _FileLoadContext,
+    clock: Callable[[], date] | None = None,
+    capture_date_failures: bool = False,
 ) -> dict[str, Any]:
     loader._accept_prepared(prepared)
     if prepared.source_path in visited:
@@ -476,27 +534,137 @@ def _resolve_file_graph(
     policy = copy.deepcopy(prepared.raw_policy)
     extends = _validated_extends(policy)
     if extends is None:
-        return _validate_policy_mapping(policy, clock=clock)
+        return _validate_policy_mapping(
+            policy,
+            context=context,
+            clock=clock,
+            capture_date_failures=capture_date_failures,
+        )
     parent = loader._prepare(
         extends,
         relative_to=prepared.source_path,
         reject_paths=next_visited,
+        context=context,
     )
     base = _resolve_file_graph(
         parent,
         loader=loader,
         visited=next_visited,
+        context=context,
         clock=clock,
+        capture_date_failures=capture_date_failures,
     )
     strategy = _validate_composition_strategy(policy.get("composition_strategy"))
     merged = _merge_policies(base, policy, strategy)
     _compile_and_compare_composition(base, policy, merged)
     merged.pop("extends", None)
     merged.pop("composition_strategy", None)
-    return _validate_policy_mapping(merged, clock=clock)
+    return _validate_policy_mapping(
+        merged,
+        context=context,
+        clock=clock,
+        capture_date_failures=capture_date_failures,
+    )
 ```
 
-Extract the existing schema and date checks into `_validate_policy_mapping()` without changing composition or restriction semantics. Schema-loading errors must not include schema paths, and custom-loader normalization must construct `PolicyLoadError("Custom policy loader failed")` after leaving its exception handler and then raise that normalized exception with `from None`.
+Define every helper introduced by the graph in this task; do not leave pseudocode calls
+for later tasks:
+
+```python
+def _validate_composition_strategy(value: object) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or value not in VALID_COMPOSITION_STRATEGIES:
+        raise PolicyValidationError(
+            "Invalid policy composition strategy",
+            details={"composition_strategy": value},
+        )
+    return value
+
+
+def _validate_policy_mapping(
+    policy: dict[str, Any],
+    *,
+    context: _FileLoadContext,
+    clock: Callable[[], date] | None,
+    capture_date_failures: bool = False,
+) -> dict[str, Any]:
+    """Run the existing Draft-07 schema and date checks on a detached mapping."""
+    failure: PolicyLoadError | PolicyValidationError | None = None
+    schema: dict[str, Any] | None = None
+    try:
+        schema_path = _resolve_policy_schema_path()
+        context.protect(schema_path)
+        with schema_path.open("r", encoding="utf-8") as schema_file:
+            loaded_schema = json.load(schema_file)
+        if not isinstance(loaded_schema, dict):
+            raise PolicyLoadError("Policy schema root must be an object")
+        if loaded_schema.get("$schema") != POLICY_SCHEMA_DRAFT_07:
+            raise PolicyLoadError("Policy schema must declare JSON Schema Draft-07")
+        Draft7Validator.check_schema(loaded_schema)
+        schema = loaded_schema
+    except (OSError, json.JSONDecodeError, SchemaError, PolicyLoadError) as exc:
+        failure = context.normalize(exc, fallback="Policy schema validation failed")
+    if failure is not None:
+        raise failure from None
+    assert schema is not None
+
+    validator = Draft7Validator(schema)
+    errors = sorted(
+        validator.iter_errors(policy),
+        key=lambda error: _path_to_pointer(list(error.absolute_path)),
+    )
+    if errors:
+        first = errors[0]
+        pointer = _path_to_pointer(list(first.absolute_path))
+        raise PolicyValidationError(
+            f"Policy schema validation failed at {pointer}",
+            code="POLICY_SCHEMA_VALIDATION_ERROR",
+            details={"path": pointer, "validator": first.validator},
+        ) from None
+
+    try:
+        validate_policy_dates(policy, clock=clock)
+    except PolicyValidationError as exc:
+        failure = context.normalize(exc, fallback="Policy date validation failed")
+    if failure is not None:
+        if capture_date_failures and isinstance(failure, PolicyValidationError):
+            context.record_date_failure(failure)
+        else:
+            raise failure from None
+    return copy.deepcopy(policy)
+
+
+def _load_opaque_policy(
+    policy_ref: str,
+    loader: PolicyLoaderBase,
+    *,
+    clock: Callable[[], date] | None,
+) -> dict[str, Any]:
+    """Call a custom loader once, reject key presence of extends, then validate."""
+    failure: PolicyLoadError | None = None
+    try:
+        loaded = loader.load(policy_ref)
+    except Exception:
+        loaded = None
+        failure = PolicyLoadError("Custom policy loader failed")
+    if failure is not None:
+        raise failure from None
+    if not isinstance(loaded, dict):
+        raise PolicyLoadError("Policy root must be a mapping object")
+    if "extends" in loaded:
+        raise PolicyLoadError("Policy 'extends' is not supported with custom loaders")
+    return _validate_policy_mapping(
+        copy.deepcopy(loaded),
+        context=_FileLoadContext.create(),
+        clock=clock,
+    )
+```
+
+Import `SchemaError` from `jsonschema.exceptions`. Delete the old inline validation
+block after moving it. Schema-loading errors must not include schema paths.
+Custom-loader normalization must construct the replacement after leaving the handler
+and raise it with `from None`.
 
 - [ ] **Step 4: Add failing prepared-source and compiler-boundary tests**
 
@@ -507,9 +675,15 @@ def test_prepared_source_is_bound_to_exact_loader_instance(tmp_path: Path) -> No
     entry = _write_policy(tmp_path / "entry.yaml")
     first = FilePolicyLoader(tmp_path)
     second = FilePolicyLoader(tmp_path)
-    prepared = first._prepare(entry.name)
+    prepared = first._prepare(entry.name, context=_FileLoadContext.create(entry.name))
     with pytest.raises(PolicyLoadError, match="authority does not match loader"):
-        _resolve_file_graph(prepared, loader=second, visited=set(), clock=None)
+        _resolve_file_graph(
+            prepared,
+            loader=second,
+            visited=set(),
+            context=_FileLoadContext.create(),
+            clock=None,
+        )
 
 
 def test_compiler_boundary_has_no_parsed_policy_fast_path(tmp_path: Path) -> None:
@@ -523,9 +697,18 @@ def test_compiler_boundary_has_no_parsed_policy_fast_path(tmp_path: Path) -> Non
 
 - [ ] **Step 5: Implement the single prepare/resolve/compile orchestrator**
 
-Keep `_PreparedFilePolicy` private and return it only to internal diagnostics:
+Keep `_PreparedFilePolicy` private and return it only to internal diagnostics. The
+private `capture_date_failures` mode exists solely so doctor can report date findings
+and continue safe linting; public runtime callers retain fail-fast behavior:
 
 ```python
+@dataclass(frozen=True, slots=True)
+class _PreparedCompilationResult:
+    prepared: _PreparedFilePolicy | None
+    compiled: CompiledPolicy
+    date_failures: tuple[PolicyValidationError, ...]
+
+
 def _prepare_resolve_compile_policy(
     policy_file: str,
     *,
@@ -533,26 +716,51 @@ def _prepare_resolve_compile_policy(
     clock: Callable[[], date] | None = None,
     allow_legacy: bool = False,
     legacy_authorization: object | None = None,
-) -> tuple[_PreparedFilePolicy | None, CompiledPolicy]:
+    capture_date_failures: bool = False,
+) -> _PreparedCompilationResult:
     bound_ref, effective_loader = _bind_policy_authority(policy_file, loader)
+    context = _FileLoadContext.create(policy_file, bound_ref)
     if isinstance(effective_loader, FilePolicyLoader):
-        prepared = effective_loader._prepare(bound_ref)
-        policy = _resolve_file_graph(
-            prepared,
-            loader=effective_loader,
-            visited=set(),
-            clock=clock,
-        )
+        context.protect(effective_loader.policy_root)
+        prepared = effective_loader._prepare(bound_ref, context=context)
+        graph_failure: PolicyLoadError | PolicyValidationError | None = None
+        try:
+            policy = _resolve_file_graph(
+                prepared,
+                loader=effective_loader,
+                visited=set(),
+                context=context,
+                clock=clock,
+                capture_date_failures=capture_date_failures,
+            )
+        except (PolicyLoadError, PolicyValidationError) as exc:
+            policy = None
+            graph_failure = context.normalize(exc, fallback="Policy validation failed")
+        if graph_failure is not None:
+            raise graph_failure from None
+        assert policy is not None
     else:
         prepared = None
         policy = _load_opaque_policy(bound_ref, effective_loader, clock=clock)
-    compiled = compile_policy(
-        policy,
-        source=policy_file,
-        allow_legacy=allow_legacy,
-        legacy_authorization=legacy_authorization,
+    failure: PolicyLoadError | PolicyValidationError | None = None
+    try:
+        compiled = compile_policy(
+            policy,
+            source="policy",
+            allow_legacy=allow_legacy,
+            legacy_authorization=legacy_authorization,
+        )
+    except (PolicyLoadError, PolicyValidationError) as exc:
+        compiled = None
+        failure = context.normalize(exc, fallback="Policy compilation failed")
+    if failure is not None:
+        raise failure from None
+    assert compiled is not None
+    return _PreparedCompilationResult(
+        prepared=prepared,
+        compiled=compiled,
+        date_failures=tuple(context.date_failures),
     )
-    return prepared, compiled
 
 
 def load_resolve_compile_policy(
@@ -563,14 +771,14 @@ def load_resolve_compile_policy(
     allow_legacy: bool = False,
     legacy_authorization: object | None = None,
 ) -> CompiledPolicy:
-    _, compiled = _prepare_resolve_compile_policy(
+    result = _prepare_resolve_compile_policy(
         policy_file,
         loader=loader,
         clock=clock,
         allow_legacy=allow_legacy,
         legacy_authorization=legacy_authorization,
     )
-    return compiled
+    return result.compiled
 ```
 
 Make `load_policy()` use the same binding and graph functions and retain its existing return type.
@@ -641,74 +849,145 @@ Update old cycle assertions to require `Circular policy inheritance detected` an
 
 - [ ] **Step 9: Normalize every file-backed error outside active handlers**
 
-Track protected strings in the file-graph call (`policy_file`, lexical entry, root, every canonical candidate, every valid `extends`, visited paths, and both schema locations). Rebuild exceptions without path-bearing detail keys or values:
+Use an explicit per-load context. It records protected values for testing, accumulates
+diagnostic-only date failures, and reconstructs public errors from an allowlist. It
+never copies arbitrary exception text, dictionary keys, or values, so a one-character
+path cannot trigger fragile substring redaction:
 
 ```python
-_PATH_DETAIL_KEYS = frozenset({
-    "policy_file",
-    "policy_path",
-    "schema_path",
-    "searched",
-    "extends",
-    "chain",
+_SAFE_DETAIL_KEYS = frozenset({
+    "path", "validator", "composition_strategy",
+    "effective_date", "expiration_date", "today", "line", "column",
+})
+
+_STABLE_FILE_MESSAGES = frozenset({
+    "Configured policy root is unavailable",
+    "Policy path could not be resolved",
+    "Policy file must be YAML",
+    "Policy file does not exist",
+    "Policy path must reference a file",
+    "Policy YAML parsing failed",
+    "Policy root must be a mapping object",
+    "Policy schema validation failed",
+    "Policy compilation failed",
 })
 
 
-def _path_free_details(
-    value: object,
-    protected: frozenset[str],
-) -> object | None:
-    if isinstance(value, dict):
-        cleaned = {
-            key: item_cleaned
-            for key, item in value.items()
-            if key not in _PATH_DETAIL_KEYS
-            if (item_cleaned := _path_free_details(item, protected)) is not None
-        }
-        return cleaned
-    if isinstance(value, (list, tuple)):
-        return [
-            item_cleaned
-            for item in value
-            if (item_cleaned := _path_free_details(item, protected)) is not None
-        ]
-    if isinstance(value, str) and any(secret in value for secret in protected):
-        return None
-    return value
+@dataclass(slots=True)
+class _FileLoadContext:
+    protected: set[str]
+    date_failures: list[PolicyValidationError]
 
+    @classmethod
+    def create(cls, *values: object) -> "_FileLoadContext":
+        context = cls(protected=set(), date_failures=[])
+        for value in values:
+            context.protect(value)
+        return context
 
-def _normalized_file_error(
-    exc: PolicyLoadError | PolicyValidationError,
-    *,
-    protected: frozenset[str],
-    fallback_message: str,
-) -> PolicyLoadError | PolicyValidationError:
-    message = str(exc)
-    if any(secret in message for secret in protected):
-        message = fallback_message
-    details = _path_free_details(exc.details, protected)
-    safe_details = details if isinstance(details, dict) else None
-    if isinstance(exc, PolicyValidationError):
-        return PolicyValidationError(message, code=exc.code, details=safe_details)
-    return PolicyLoadError(message, code=exc.code, details=safe_details)
+    def protect(self, value: object) -> None:
+        text = os.fspath(value) if isinstance(value, os.PathLike) else str(value)
+        if text:
+            self.protected.add(text)
+
+    def record_date_failure(self, failure: PolicyValidationError) -> None:
+        fingerprint = (failure.code, repr(failure.details))
+        if all(
+            (existing.code, repr(existing.details)) != fingerprint
+            for existing in self.date_failures
+        ):
+            self.date_failures.append(failure)
+
+    def normalize(
+        self,
+        exc: BaseException,
+        *,
+        fallback: str,
+    ) -> PolicyLoadError | PolicyValidationError:
+        code = getattr(exc, "code", "POLICY_LOAD_ERROR")
+        original = getattr(exc, "details", None)
+        safe_details = (
+            {
+                key: value
+                for key, value in original.items()
+                if key in _SAFE_DETAIL_KEYS
+                and isinstance(value, (str, int, float, bool, type(None)))
+                and str(value) not in self.protected
+            }
+            if isinstance(original, dict)
+            else None
+        )
+        if code == "POLICY_PATH_OUTSIDE_ROOT":
+            return PolicyLoadError(_OUTSIDE_ROOT_MESSAGE, code=code)
+        if isinstance(exc, PolicyLoadError) and str(exc) == "Circular policy inheritance detected":
+            return PolicyLoadError("Circular policy inheritance detected", code=code)
+        if isinstance(exc, PolicyLoadError) and str(exc) in _STABLE_FILE_MESSAGES:
+            return PolicyLoadError(str(exc), code=code, details=safe_details)
+        if "composition_strategy" in (safe_details or {}):
+            return PolicyValidationError(
+                "Invalid policy composition strategy",
+                code=code,
+                details=safe_details,
+            )
+        if code == "POLICY_WIDENING":
+            return PolicyValidationError(
+                "Policy composition would widen authority",
+                code=code,
+                details=safe_details,
+            )
+        if any(
+            key in (safe_details or {})
+            for key in ("effective_date", "expiration_date", "today")
+        ):
+            return PolicyValidationError(
+                "Policy date validation failed",
+                code=code,
+                details=safe_details,
+            )
+        if code == "POLICY_SCHEMA_VALIDATION_ERROR":
+            pointer = (safe_details or {}).get("path", "$")
+            return PolicyValidationError(
+                f"Policy schema validation failed at {pointer}",
+                code=code,
+                details=safe_details,
+            )
+        if isinstance(exc, PolicyValidationError):
+            return PolicyValidationError(fallback, code=code, details=safe_details)
+        return PolicyLoadError(fallback, code=code, details=safe_details)
 ```
 
-Do not include empty strings in `protected`. Preserve the exact containment and cycle messages by constructing those errors directly. For caught resolver, opener, YAML, schema, custom-loader, composition, compiler, or date failures, use this detached pattern so neither `__cause__` nor `__context__` retains the original exception:
+Call `context.protect()` for the caller spelling, bound spelling, root, every canonical
+candidate, every valid `extends`, visited paths, and both schema locations. Preserve
+the exact containment and cycle messages by constructing them directly. Wrap every
+filesystem operation—including `resolve`, `exists`, `is_file`, `stat`, and `open`—and
+every YAML/schema/composition/compiler/date boundary. Catch the documented expected
+exceptions plus `OSError`/`RuntimeError`, normalize after leaving the handler, and raise
+the detached replacement with `from None`:
 
 ```python
 failure: PolicyLoadError | PolicyValidationError | None = None
 try:
     result = operation()
-except (PolicyLoadError, PolicyValidationError) as exc:
-    failure = _normalized_file_error(
-        exc,
-        protected=protected,
-        fallback_message="Policy validation failed",
-    )
+except (OSError, RuntimeError, PolicyLoadError, PolicyValidationError) as exc:
+    failure = context.normalize(exc, fallback="Policy validation failed")
 if failure is not None:
     raise failure from None
 return result
 ```
+
+The concrete loader methods use narrower expected exception tuples where available
+(`yaml.YAMLError`, `json.JSONDecodeError`, `SchemaError`) but must always include raw
+filesystem failures. When catching `yaml.MarkedYAMLError`, copy only one-based
+`problem_mark.line`/`column` integers into the normalized details so safe parser
+location evidence remains available. The confidentiality tests include protected
+values as dictionary keys and nested values to prove the allowlist does not miss either
+location.
+
+In particular, rewrite `_validate_candidate()` so `exists()` and `is_file()` execute in
+one `try`, store either their booleans or a normalized `PolicyLoadError`, leave the
+handler, and only then raise `from None`. Apply the same detached pattern to root
+`is_dir()`, cache `stat()`, candidate `open()`, and schema `open()`. No `OSError` from a
+file-backed public surface may bypass `_FileLoadContext.normalize()`.
 
 - [ ] **Step 10: Run composition, compiler, async, and architecture tests**
 
@@ -723,7 +1002,7 @@ Expected: all tests pass; no caller-supplied parsed mapping remains; custom load
 - [ ] **Step 11: Commit prepared composition and async binding**
 
 ```bash
-git add aegis/_internal/policy_loader.py tests/test_policy_root_containment.py tests/test_policy_loader.py tests/test_golden_replay_composition.py tests/test_policy_composition.py tests/test_a1_final_fix_wave_2.py tests/test_architecture_security_boundaries.py
+git add aegis/_internal/policy_loader.py schemas/policy_dsl.schema.json aegis/schemas/policy_dsl.schema.json tests/test_policy_root_containment.py tests/test_policy_loader.py tests/test_golden_replay_composition.py tests/test_policy_composition.py tests/test_a1_final_fix_wave_2.py tests/test_architecture_security_boundaries.py
 git commit -m "fix: retain policy authority through composition"
 ```
 
@@ -743,7 +1022,39 @@ git commit -m "fix: retain policy authority through composition"
 
 - [ ] **Step 1: Add failing cache isolation and preflight-order tests**
 
-Use the same canonical entry under a broad and narrow root. First cache a successful broad-root graph, then request it with the narrow loader and assert containment rather than a cache hit. Instrument `os.path.getmtime` and cache dictionary access to prove neither happens before containment:
+Start `tests/test_policy_root_entry_points.py` with concrete shared helpers so later
+tasks do not rely on undefined fixtures:
+
+```python
+def _write_policy(path: Path, body: str = MINIMAL_POLICY) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(body, encoding="utf-8")
+    return path
+
+
+def _valid_invocation(policy_file: str) -> dict[str, object]:
+    return {
+        "policy_file": policy_file,
+        "model_provider": "test",
+        "model_identifier": "test-model",
+        "role": "reviewer",
+        "input": {"task": "review"},
+        "output": {},
+        "context": {},
+    }
+
+
+def _policy_tree_and_invocation(tmp_path: Path) -> tuple[Path, dict[str, object]]:
+    root = tmp_path / "root"
+    _write_policy(root / "base.yaml")
+    _write_policy(
+        root / "nested" / "entry.yaml",
+        "extends: ../base.yaml\npolicy_version: '1.0'\nroles: [reviewer]\n",
+    )
+    return root, _valid_invocation("nested/entry.yaml")
+```
+
+Use the same canonical entry under a broad and narrow root. First cache a successful broad-root graph, then request it with the narrow loader and assert containment rather than a cache hit. Instrument `_preflight`, `Path.stat`, and the cache mapping itself to prove neither metadata nor cache lookup happens before containment:
 
 ```python
 def test_cache_key_isolated_by_authority_root(tmp_path: Path) -> None:
@@ -763,9 +1074,28 @@ def test_cache_does_not_read_mtime_before_containment(
 ) -> None:
     root = tmp_path / "root"
     root.mkdir()
-    monkeypatch.setattr(os.path, "getmtime", lambda path: pytest.fail("mtime read"))
+    cache = PolicyCache()
+    loader = FilePolicyLoader(root)
+
+    class NoCacheAccess(dict):
+        def __contains__(self, key: object) -> bool:
+            pytest.fail("cache consulted before containment")
+
+        def get(self, key: object, default: object = None) -> object:
+            pytest.fail("cache consulted before containment")
+
+    cache._cache = NoCacheAccess()
+    monkeypatch.setattr(Path, "stat", lambda *args, **kwargs: pytest.fail("mtime read"))
+    monkeypatch.setattr(
+        loader,
+        "_preflight",
+        lambda ref, **kwargs: (_ for _ in ()).throw(PolicyLoadError(
+            "Policy path is outside the configured policy root",
+            code="POLICY_PATH_OUTSIDE_ROOT",
+        )),
+    )
     with pytest.raises(PolicyLoadError) as caught:
-        PolicyCache().get_or_load("../outside.yaml", loader=FilePolicyLoader(root))
+        cache.get_or_load("../outside.yaml", loader=loader)
     assert caught.value.code == "POLICY_PATH_OUTSIDE_ROOT"
 ```
 
@@ -786,18 +1116,31 @@ Bind the implicit loader once, resolve and contain through that loader, validate
 ```python
 bound_ref, effective_loader = _bind_policy_authority(policy_file, loader)
 if isinstance(effective_loader, FilePolicyLoader):
-    canonical = effective_loader._preflight(bound_ref)
-    mtime = canonical.stat().st_mtime
+    context = _FileLoadContext.create(policy_file, bound_ref, effective_loader.policy_root)
+    canonical = effective_loader._preflight(bound_ref, context=context)
+    metadata_failure: PolicyLoadError | None = None
+    try:
+        mtime = canonical.stat().st_mtime
+    except (OSError, RuntimeError) as exc:
+        mtime = 0.0
+        normalized = context.normalize(exc, fallback="Policy metadata is unavailable")
+        metadata_failure = (
+            normalized
+            if isinstance(normalized, PolicyLoadError)
+            else PolicyLoadError("Policy metadata is unavailable")
+        )
+    if metadata_failure is not None:
+        raise metadata_failure from None
     key = (
         str(effective_loader.policy_root),
         str(canonical),
-        str(mtime),
+        mtime,
     )
 else:
-    key = (policy_file, "0.0")
+    key = (policy_file, 0.0)
 ```
 
-Use a cache-key alias that preserves numeric mtime instead of coercing it in the actual implementation:
+Use cache-key aliases that preserve numeric mtime:
 
 ```python
 _FileCacheKey = tuple[str, str, float]
@@ -884,7 +1227,7 @@ def test_doctor_prepares_authorized_policy_once_with_injected_date(
         now=date(2029, 1, 1),
     )
     assert calls == 1
-    assert any("future" in finding["message"].lower() for finding in findings)
+    assert any("not yet active" in finding["message"].lower() for finding in findings)
 ```
 
 - [ ] **Step 2: Add failing starter-root tests**
@@ -892,6 +1235,13 @@ def test_doctor_prepares_authorized_policy_once_with_injected_date(
 Test these four cases with real directories: explicit-root starter succeeds; explicit-root starter-directory symlink outside is rejected before fixture detection; implicit starter roots nested policy at that starter and rejects `../sibling/policy.yaml`; explicit broader root permits the sibling graph.
 
 ```python
+def _write_starter(directory: Path) -> Path:
+    _write_policy(directory / "policy.yaml")
+    (directory / "workflow_example.py").write_text("def run():\n    return None\n", encoding="utf-8")
+    (directory / "README.md").write_text("# Starter\n", encoding="utf-8")
+    return directory
+
+
 def test_implicit_starter_cannot_inherit_from_sibling(tmp_path: Path) -> None:
     first = _write_starter(tmp_path / "starters" / "first")
     _write_starter(tmp_path / "starters" / "second")
@@ -927,13 +1277,46 @@ def _lint_prepared_policy(
 ) -> list[dict]:
     policy = copy.deepcopy(prepared.raw_policy)
     findings: list[dict] = []
-    findings.extend(_lint_policy_dates(policy, target_kind, target_label))
-    findings.extend(_lint_duplicate_tools(policy, target_kind, target_label))
-    findings.extend(_lint_output_schema(policy, target_kind, target_label))
+    effective = policy.get("effective_date")
+    expiration = policy.get("expiration_date")
+    if (
+        "extends" not in policy
+        and isinstance(effective, str)
+        and isinstance(expiration, str)
+        and effective > expiration
+    ):
+        findings.append(_finding(
+            "POLICY_LOAD_ERROR",
+            "effective_date is after expiration_date; policy can never be valid.",
+            target_kind,
+            target_label,
+        ))
     workflow = _plain_compiled_value(compiled.workflow)
     if isinstance(workflow, dict):
-        findings.extend(_lint_workflow_graph(workflow, target_kind=target_kind, path=Path(target_label)))
+        # Move the existing compiled-workflow advisory block from lint_policy()
+        # here unchanged (step budget, transition/participant references,
+        # unsupported protocols, then _lint_workflow_graph()).
+        findings.extend(_lint_workflow_graph(
+            workflow,
+            target_kind=target_kind,
+            path=Path(target_label),
+        ))
     return findings
+
+
+def _policy_exception_finding(
+    exc: PolicyLoadError | PolicyValidationError,
+    target_kind: str,
+    target_label: str,
+) -> dict:
+    details = dict(exc.details) if isinstance(exc.details, dict) else {}
+    return _finding(
+        exc.code,
+        str(exc),
+        target_kind,
+        target_label,
+        details=details,
+    )
 
 
 def lint_policy(
@@ -944,20 +1327,23 @@ def lint_policy(
 ) -> list[dict]:
     loader = FilePolicyLoader(policy_root) if policy_root is not None else None
     try:
-        prepared, compiled = _prepare_resolve_compile_policy(path, loader=loader)
+        result = _prepare_resolve_compile_policy(path, loader=loader)
     except (PolicyLoadError, PolicyValidationError) as exc:
         return [_policy_exception_finding(exc, target_kind, path)]
-    if prepared is None:
+    if result.prepared is None:
         raise AssertionError("file diagnostics require a prepared source")
     return _lint_prepared_policy(
-        prepared,
-        compiled,
+        result.prepared,
+        result.compiled,
         target_kind=target_kind,
         target_label=path,
     )
 ```
 
-The host-provided target spelling may remain in finding `path`; exception text/details must remain sanitized.
+The comment in `_lint_prepared_policy()` is a relocation instruction for the concrete
+existing block at `workflow_lint.py:580-693`; it does not introduce a helper. Remove
+the original block after moving it. The host-provided target spelling may remain in
+finding `path`; exception text/details must remain sanitized.
 
 - [ ] **Step 5: Bind starter directories before fixture inspection**
 
@@ -976,19 +1362,34 @@ def _prepare_starter_target(
     *,
     policy_root: str | Path | None,
 ) -> _PreparedStarterTarget:
+    failure: PolicyLoadError | None = None
     if policy_root is None:
         lexical = Path(path)
         if not lexical.is_absolute():
             lexical = Path.cwd() / lexical
-        directory = lexical.resolve(strict=False)
-        if not directory.is_dir():
-            raise PolicyLoadError("Workflow starter directory is unavailable")
+        try:
+            directory = lexical.resolve(strict=False)
+            available = directory.is_dir()
+        except (OSError, RuntimeError):
+            directory = lexical
+            available = False
+        if not available:
+            failure = PolicyLoadError("Workflow starter directory is unavailable")
+        if failure is not None:
+            raise failure from None
         loader = FilePolicyLoader(directory)
         return _PreparedStarterTarget(directory, str(directory / "policy.yaml"), loader)
     loader = FilePolicyLoader(policy_root)
-    directory = loader._canonical_candidate(path)
-    if not directory.is_dir():
-        raise PolicyLoadError("Workflow starter directory is unavailable")
+    context = _FileLoadContext.create(path, loader.policy_root)
+    directory = loader._canonical_candidate(path, context=context)
+    try:
+        available = directory.is_dir()
+    except OSError:
+        available = False
+    if not available:
+        failure = PolicyLoadError("Workflow starter directory is unavailable")
+    if failure is not None:
+        raise failure from None
     return _PreparedStarterTarget(directory, str(directory / "policy.yaml"), loader)
 ```
 
@@ -996,31 +1397,64 @@ def _prepare_starter_target(
 
 - [ ] **Step 6: Make doctor reuse one prepared/compiled pair**
 
-Call `_prepare_resolve_compile_policy(path, loader=loader, clock=lambda: today)` once, pass that pair to `_lint_prepared_policy()`, and run advisory rules against `prepared.raw_policy`. Do not call public `lint_policy()` from doctor and do not read policy YAML again:
+Call `_prepare_resolve_compile_policy(..., capture_date_failures=True)` once, pass its
+prepared/compiled values to `_lint_prepared_policy()`, and run advisory rules against
+`prepared.raw_policy`. Date failures are classified from their safe structured details,
+not by matching exception prose. Do not call public `lint_policy()` from doctor and do
+not read policy YAML again:
 
 ```python
+def _date_failure_finding(exc: PolicyValidationError) -> dict:
+    details = dict(exc.details) if isinstance(exc.details, dict) else {}
+    effective = details.get("effective_date")
+    expiration = details.get("expiration_date")
+    today = details.get("today")
+    if isinstance(effective, str) and isinstance(today, str) and today < effective:
+        return _finding(
+            exc.code,
+            "WARNING",
+            f"Policy not yet active: effective_date is {effective}, today is {today}",
+        )
+    if isinstance(expiration, str) and isinstance(today, str) and today > expiration:
+        return _finding(
+            exc.code,
+            "ERROR",
+            f"Policy expired: expiration_date is {expiration}, today is {today}",
+        )
+    return _finding(exc.code, "ERROR", "Policy date validation failed")
+
+
 today = now or date.today()
 failure: PolicyLoadError | PolicyValidationError | None = None
 try:
-    prepared, compiled = _prepare_resolve_compile_policy(
+    result = _prepare_resolve_compile_policy(
         path,
         loader=loader,
         clock=lambda: today,
+        capture_date_failures=True,
     )
 except (PolicyLoadError, PolicyValidationError) as exc:
     failure = exc
 if failure is not None:
     return [_finding(failure.code, "ERROR", str(failure))]
-if prepared is None:
+if result.prepared is None:
     raise AssertionError("file diagnostics require a prepared source")
+findings = [_date_failure_finding(exc) for exc in result.date_failures]
 lint_findings = _lint_prepared_policy(
-    prepared,
-    compiled,
+    result.prepared,
+    result.compiled,
     target_kind="policy",
     target_label=path,
 )
-raw = copy.deepcopy(prepared.raw_policy)
+findings.extend(_lint_to_doctor(lint_findings))
+raw = copy.deepcopy(result.prepared.raw_policy)
+# Append the existing doctor advisory checks to findings, then return findings.
 ```
+
+Add a regression policy containing both a future `effective_date` and an independent
+workflow advisory. Assert one `WARNING` whose message begins `Policy not yet active:`
+and the independent advisory are both returned. Also assert the normal public loader
+still raises for the same date.
 
 Add `POLICY_PATH_OUTSIDE_ROOT` to `_NEXT_ACTIONS` with guidance to select a contained target or supply the intended broader root through `workflow doctor --policy-root ROOT`.
 
@@ -1212,7 +1646,7 @@ git commit -m "feat: add policy root to diagnostic commands"
 
 **Interfaces:**
 - Consumes: `_bind_policy_authority()` and `PolicyLoaderBase`.
-- Produces: `configure_module_enforcement(*, sink: AuditSink, signer: ArtifactSigner | None = None, chain_linker: ChainLinker | None = None, policy_loader: PolicyLoaderBase | None = None) -> None`, `_PolicyAuthority(policy_ref: str, loader: PolicyLoaderBase)`, `_policy_authority_scope(authority: _PolicyAuthority)`, and `_effective_policy_authority(policy_file: str, configured_loader: PolicyLoaderBase | None) -> _PolicyAuthority` used by module and AEGIS load paths.
+- Produces: `configure_module_enforcement(*, sink: AuditSink, signer: ArtifactSigner | None = None, chain_linker: ChainLinker | None = None, policy_loader: PolicyLoaderBase | None = None) -> None`, invocation-bound `_PolicyAuthority`, `_policy_authority_scope(authority)`, and `_effective_policy_authority(policy_file, configured_loader, *, invocation)` used by module and AEGIS boundaries.
 
 - [ ] **Step 1: Add failing sealed-runtime and exact-identity tests**
 
@@ -1233,6 +1667,19 @@ def test_module_runtime_seals_configured_policy_loader(tmp_path: Path) -> None:
             policy_loader=FilePolicyLoader(root),
         )
 ```
+
+Add a parameterized identity test that calls these exact public surfaces:
+`enforce_invocation(invocation)`, `await enforce_invocation_async(invocation)`,
+`AEGIS.enforce(invocation)`, and `await AEGIS.enforce_async(invocation)`. Monkeypatch
+`FilePolicyLoader._prepare` with a recording wrapper and assert all prepares associated
+with one invocation use one `id(self)`. Add a parallel async test using
+`asyncio.gather(enforce_invocation_async(invocation_a),
+enforce_invocation_async(invocation_b))`; tag recordings by the exact invocation
+mapping identity obtained from `_POLICY_AUTHORITY_OVERRIDE.get().invocation` inside the
+recording wrapper, and assert the two loader-id sets are disjoint. Add a nested test whose
+enforcement of A calls the real public evidence boundary for B, asserting B shadows A
+with a different loader and the outer scope returns to A afterward. These tests exercise
+actual decorated enforcement, not a mocked attempt loop.
 
 - [ ] **Step 2: Run module authority tests to verify RED**
 
@@ -1270,7 +1717,9 @@ Use a `ContextVar` so async tasks and nested retry calls do not share mutable gl
 ```python
 @dataclass(frozen=True, slots=True)
 class _PolicyAuthority:
-    policy_ref: str
+    invocation: Mapping[str, Any]
+    requested_policy_ref: str
+    bound_policy_ref: str
     loader: PolicyLoaderBase
 
 
@@ -1292,17 +1741,31 @@ def _policy_authority_scope(authority: _PolicyAuthority):
 def _effective_policy_authority(
     policy_file: str,
     configured_loader: PolicyLoaderBase | None,
+    *,
+    invocation: Mapping[str, Any],
 ) -> _PolicyAuthority:
     if configured_loader is not None:
-        return _PolicyAuthority(policy_file, configured_loader)
+        return _PolicyAuthority(invocation, policy_file, policy_file, configured_loader)
     override = _POLICY_AUTHORITY_OVERRIDE.get()
-    if override is not None:
+    if (
+        override is not None
+        and invocation is override.invocation
+        and policy_file == override.requested_policy_ref
+    ):
         return override
     bound_ref, loader = _bind_policy_authority(policy_file, None)
-    return _PolicyAuthority(bound_ref, loader)
+    return _PolicyAuthority(invocation, policy_file, bound_ref, loader)
 ```
 
-Every public module/AEGIS operation computes this once, then passes `authority.policy_ref` and the exact `authority.loader` through cache/compiler/session helpers. Update `_load_compiled_policy()` and `_compile_cached_policy()` to call `_effective_policy_authority()` before they invoke the loader/compiler/cache. An explicit configured loader is checked before the context override and can never be widened.
+Every public module/AEGIS operation computes this once, then passes
+`authority.bound_policy_ref` and the exact `authority.loader` through
+cache/compiler/session helpers. Nested evidence for a different invocation object—even
+with the same policy spelling—must bind and shadow its own authority. Update
+`_load_compiled_policy()` and `_compile_cached_policy()` to accept the invocation
+mapping (not only its policy string), call `_effective_policy_authority(...,
+invocation=invocation)`, and then use the returned bound ref/loader. Thus their ambient
+lookup is attested to the exact invocation. An explicit configured loader is checked
+before the context override and can never be widened.
 
 - [ ] **Step 5: Propagate the runtime snapshot through sync/async evidence boundaries**
 
@@ -1316,6 +1779,7 @@ if (
     authority = _effective_policy_authority(
         attempt_invocation["policy_file"],
         runtime_policy_loader,
+        invocation=attempt_invocation,
     )
     with _policy_authority_scope(authority):
         return function(*args, **kwargs)
@@ -1388,45 +1852,79 @@ def test_retry_rejects_loader_conflict_before_policy_access(
 
 - [ ] **Step 2: Add failing implicit-context cleanup tests**
 
-Run one success and one raised attempt-loop path for default module and bound AEGIS callables with no configured loader. Existing retry-behavior tests retain the real `RetryExhaustedError` assertion. Record loader identity during policy discovery and attempts, then assert `_POLICY_AUTHORITY_OVERRIDE.get() is None` afterward.
+Run one success and one exhausted attempt-loop path for both the default module callable
+and a bound `AEGIS.enforce` callable with no configured loader. Use a real temporary
+policy containing `retry_policy: {max_retries: 2, backoff_ms: 0}` and an output schema;
+valid output drives success and invalid output drives all three actual enforcement
+attempts. Record loader identity in the real loader boundary—do not replace the retry
+loop or enforcement callable—then assert the context is cleared:
 
 ```python
-@pytest.mark.parametrize("fail", [False, True])
+RETRY_POLICY_WITH_OUTPUT_SCHEMA = """\
+policy_version: '1.0'
+roles: [reviewer]
+output_schema:
+  type: object
+  required: [result]
+  properties:
+    result: {type: string}
+retry_policy:
+  max_retries: 2
+  backoff_ms: 0
+"""
+
+
+def _valid_retry_invocation(
+    policy_file: str,
+    *,
+    valid_output: bool,
+) -> dict[str, object]:
+    return {
+        "model_provider": "test",
+        "model_identifier": "test-model",
+        "role": "reviewer",
+        "policy_file": policy_file,
+        "input": {"task": "review"},
+        "output": {"result": "done"} if valid_output else {},
+        "context": {},
+    }
+
+
+@pytest.mark.parametrize("surface", ["module", "aegis"])
+@pytest.mark.parametrize("exhaust", [False, True])
 def test_retry_implicit_authority_is_cleared(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    fail: bool,
+    surface: str,
+    exhaust: bool,
 ) -> None:
-    entry = _write_policy(tmp_path / "entry.yaml")
-    invocation = _valid_invocation(policy_file=str(entry))
-    seen: list[PolicyLoaderBase] = []
-    original_prepare = retry_module.load_resolve_compile_policy
+    entry = _write_policy(tmp_path / "entry.yaml", RETRY_POLICY_WITH_OUTPUT_SCHEMA)
+    invocation = _valid_retry_invocation(str(entry), valid_output=not exhaust)
+    seen: list[int] = []
+    original_prepare = FilePolicyLoader._prepare
 
-    def prepare(policy_ref: str, **kwargs: object) -> CompiledPolicy:
-        loader = kwargs.get("loader")
-        assert isinstance(loader, PolicyLoaderBase)
-        seen.append(loader)
-        return original_prepare(policy_ref, **kwargs)
+    def recording_prepare(self: FilePolicyLoader, *args: object, **kwargs: object):
+        seen.append(id(self))
+        return original_prepare(self, *args, **kwargs)
 
-    def execute_loop(*args: object, **kwargs: object) -> dict[str, Any]:
-        authority = enforcement._POLICY_AUTHORITY_OVERRIDE.get()
-        assert authority is not None
-        seen.append(authority.loader)
-        if fail:
-            raise RuntimeError("attempt failed")
-        return {"enforcement_result": "PASS"}
-
-    monkeypatch.setattr(retry_module, "load_resolve_compile_policy", prepare)
-    monkeypatch.setattr(retry_module, "_execute_retry_loop", execute_loop)
-    if fail:
-        with pytest.raises(RuntimeError, match="attempt failed"):
-            with_retry(invocation)
+    monkeypatch.setattr(FilePolicyLoader, "_prepare", recording_prepare)
+    enforcement_fn = enforce_invocation
+    if surface == "aegis":
+        engine = AEGIS(sink=CallbackAuditSink(lambda artifact: None))
+        enforcement_fn = engine.enforce
+    if exhaust:
+        with pytest.raises(RetryExhaustedError) as caught:
+            with_retry(invocation, enforcement_fn=enforcement_fn)
+        assert caught.value.details["attempts"] == 3
     else:
-        assert with_retry(invocation)["enforcement_result"] == "PASS"
-    assert len(seen) == 2
-    assert len({id(loader) for loader in seen}) == 1
+        assert with_retry(invocation, enforcement_fn=enforcement_fn)["enforcement_result"] == "PASS"
+    assert seen
+    assert len(set(seen)) == 1
     assert enforcement._POLICY_AUTHORITY_OVERRIDE.get() is None
 ```
+
+The assertion observes both discovery and real enforcement prepares, so it cannot pass
+while attempts ignore the override.
 
 - [ ] **Step 3: Run retry authority tests to verify RED**
 
@@ -1458,26 +1956,27 @@ def _infer_enforcement_loader(
 
 
 def _retry_policy_authority(
-    policy_ref: str,
+    invocation: Mapping[str, Any],
     *,
     enforcement_fn: Callable[[Mapping[str, Any]], dict[str, Any]],
     policy_loader: PolicyLoaderBase | None,
 ) -> _PolicyAuthority:
+    policy_ref = str(invocation["policy_file"])
     inferred = _infer_enforcement_loader(enforcement_fn)
     if inferred is _UNINFERABLE:
         if policy_loader is None:
             raise ValueError(
                 "policy_loader is required when enforcement authority cannot be inferred"
             )
-        return _PolicyAuthority(policy_ref, policy_loader)
+        return _PolicyAuthority(invocation, policy_ref, policy_ref, policy_loader)
     if isinstance(inferred, PolicyLoaderBase):
         if policy_loader is not None and policy_loader is not inferred:
             raise ValueError("policy_loader does not match enforcement authority")
-        return _PolicyAuthority(policy_ref, inferred)
+        return _PolicyAuthority(invocation, policy_ref, policy_ref, inferred)
     if policy_loader is not None:
-        return _PolicyAuthority(policy_ref, policy_loader)
+        return _PolicyAuthority(invocation, policy_ref, policy_ref, policy_loader)
     bound_ref, implicit_loader = _bind_policy_authority(policy_ref, None)
-    return _PolicyAuthority(bound_ref, implicit_loader)
+    return _PolicyAuthority(invocation, policy_ref, bound_ref, implicit_loader)
 ```
 
 Implement the module helper by calling the idempotent sealed runtime snapshot:
@@ -1501,15 +2000,14 @@ def with_retry(
     enforcement_fn: Callable = enforce_invocation,
     policy_loader: PolicyLoaderBase | None = None,
 ) -> dict[str, Any]:
-    policy_ref = str(invocation["policy_file"])
     authority = _retry_policy_authority(
-        policy_ref,
+        invocation,
         enforcement_fn=enforcement_fn,
         policy_loader=policy_loader,
     )
     with _policy_authority_scope(authority):
         compiled_policy = load_resolve_compile_policy(
-            authority.policy_ref,
+            authority.bound_policy_ref,
             loader=authority.loader,
         )
         return _execute_retry_loop(
@@ -1519,7 +2017,47 @@ def with_retry(
         )
 ```
 
-Keep retry count, backoff, retryable exception, evidence, and exhaustion semantics unchanged. The context scope must cover the no-retry fast path and every raised exception.
+Define `_execute_retry_loop()` by extracting the existing loop verbatim, including the
+no-retry fast path and exhaustion fallback; only its inputs change:
+
+```python
+def _execute_retry_loop(
+    invocation: Mapping[str, Any],
+    *,
+    enforcement_fn: Callable[[Mapping[str, Any]], dict[str, Any]],
+    retry_policy: CompiledRetryPolicy | None,
+) -> dict[str, Any]:
+    if retry_policy is None:
+        return enforcement_fn(invocation)
+    last_error: Exception | None = None
+    for attempt in range(retry_policy.max_retries + 1):
+        try:
+            return enforcement_fn(invocation)
+        except SchemaValidationError as exc:
+            last_error = exc
+            if attempt < retry_policy.max_retries:
+                sleep_ms = retry_policy.backoff_ms * (attempt + 1)
+                time.sleep(sleep_ms / 1000.0)
+                continue
+            raise RetryExhaustedError(
+                f"Retry exhausted after {attempt + 1} attempts",
+                attempts=attempt + 1,
+                last_error=exc,
+            ) from exc
+        except AIGCError:
+            raise
+    assert last_error is not None  # unreachable defensive guard
+    raise RetryExhaustedError(
+        f"Retry exhausted after {retry_policy.max_retries + 1} attempts",
+        attempts=retry_policy.max_retries + 1,
+        last_error=last_error,
+    ) from last_error
+```
+
+Import `CompiledRetryPolicy` from `aegis._internal.compiled_policy`. Do not
+change retryable exceptions, backoff math, attempt evidence, or exhaustion semantics.
+
+The context scope must cover the no-retry fast path and every raised exception.
 
 - [ ] **Step 6: Migrate existing custom-callable retry tests**
 
@@ -1714,7 +2252,10 @@ git commit -m "docs: publish policy root security contract"
 
 - [ ] **Step 1: Run Windows and platform-sensitive collection checks**
 
-Inspect the new tests and confirm Windows different-drive cases use `Path.drive`/`os.path.splitdrive`, run only on Windows, and symlink skips are scoped to symlink privilege. Run collection on the current platform:
+Inspect the new tests and confirm the Windows integration case from Task 2 constructs a
+foreign-drive `WindowsPath` through the `_canonicalize()` seam, runs only on Windows,
+and requires no physical second drive. Confirm symlink skips are scoped only to symlink
+privilege. Run collection on the current platform:
 
 ```bash
 /Users/neal/Documents/_Shenanigans/_myProjects/aegis/.venv/bin/python -m pytest --collect-only -q tests/test_policy_root_containment.py tests/test_policy_root_entry_points.py
