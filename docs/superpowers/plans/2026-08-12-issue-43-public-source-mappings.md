@@ -103,3 +103,29 @@
 - [ ] After an identified maintainer approves that exact snapshot, replace `unreviewed` records with truthful `maintainer_verified` records and regenerate pages.
 - [ ] Run the publication checker, focused compliance suite, full pytest suite, flake8, claims checks, and documentation parity checks from a clean worktree.
 - [ ] Re-read every Issue #43 acceptance criterion and report any remaining external dependency rather than weakening the gate.
+
+### Task 6: Adversarial Review Remediation and Second Review
+
+**Files:**
+- Modify: `schemas/compliance_mapping.schema.json`
+- Modify: `scripts/compliance_catalog.py`
+- Modify: `scripts/check_compliance_catalog.py`
+- Modify: `tests/test_compliance_catalog.py`
+- Modify: `compliance/frameworks/nist-ai-rmf-1.0.yaml`
+- Modify: `docs/reference/COMPLIANCE_CLAIMS_AND_TERMINOLOGY.md`
+- Modify: `docs/reference/OPERATIONS_RUNBOOK.md`
+- Generate: `docs/reference/compliance/nist-ai-rmf-1.0.md`
+- Generate: `docs/reference/compliance/eu-ai-act-2024-1689-amended-2026.md`
+
+**Interfaces:**
+- Produces: `reviewable_module_content(module) -> dict[str, Any]`, which removes only the top-level `review` record before exact content comparison.
+- Produces: publication findings for mismatched reviewed content, future source/review dates, review-before-source chronology, and incomplete qualified-review evidence/scope.
+- Consumes: the existing `reviewed_commit_sha`, module repository path, `--as-of`, and source access dates.
+
+- [ ] Add behavior tests proving that an unrelated existing commit cannot satisfy exact-content review binding and run them red.
+- [ ] Implement pinned-module loading plus review-excluded structural comparison and run those tests green.
+- [ ] Add tests for future source access, future review dates, review-before-source chronology, and qualified scope/evidence/verifier requirements; run them red.
+- [ ] Add the minimum schema fields and semantic chronology/tier validation; run those tests green.
+- [ ] Downgrade NIST `GOVERN-4.2`, update maintained review language, reorder the runbook, regenerate pages, and run focused gates.
+- [ ] Run mutation probes for every original finding, the complete Python and frontend suites, lint/build/docs/claims checks, and a clean-worktree publication check.
+- [ ] Perform a second line-by-line adversarial review and record any remaining human-review dependency without inventing provenance.

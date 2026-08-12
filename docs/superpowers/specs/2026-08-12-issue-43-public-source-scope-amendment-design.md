@@ -84,3 +84,30 @@ EU rationale/date/non-applicability fields, evidence status semantics, concrete
 locators, fixture linkage, generated output parity, maintained entrypoints, and
 CI invocation. Full completion requires a clean full-suite run plus the
 publication checker against a non-expired reviewed record.
+
+## Adversarial-review remediation amendment
+
+The reviewed commit must contain the same reviewable module content that is
+currently being published. Review metadata may differ because it is added only
+after review; every other module field must match the recorded commit exactly.
+A commit that merely exists, predates the module, or contains different mapping
+content is not valid review provenance.
+
+Completed reviews and authoritative-source access dates cannot be later than
+the checker's `--as-of` date. A completed review cannot predate the latest
+source access date recorded by its module. Qualified review additionally
+records a bounded review scope, a qualification-evidence URL, and the identity
+that verified that evidence when the verification status is
+`independently_verified`. These fields document provenance without claiming
+that local CI authenticates credentials.
+
+The maintained claims guide must describe qualified EU review as optional.
+NIST `GOVERN-4.2` is partial evidence unless AEGIS gains concrete evidence that
+organizational teams document and communicate AI risks and impacts. The
+operations runbook runs the compliance checker before Python tests so ordinary
+bytecode generation cannot create a false baseline-drift result.
+
+Second-review pressure tests must prove that publication rejects an unrelated
+historical commit, future review/access dates, and incomplete qualified-review
+support. The exact supported/partial mapping classifications and maintained
+documentation are re-read against Issue #43 after automated gates pass.
