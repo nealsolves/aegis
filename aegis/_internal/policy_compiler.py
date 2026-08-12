@@ -24,6 +24,8 @@ from aegis._internal.compiled_policy import (
     CompiledRiskFactor,
     CompiledRiskOverlay,
     CompiledRiskPolicy,
+    CompiledSlidingWindowConstraintV1,
+    CompiledStatefulPolicyV1,
     CompiledToolLimit,
     CompiledToolPolicy,
     freeze,
@@ -47,6 +49,10 @@ CRITICAL_RISK_CEILING = 0.90
 DEFAULT_COMPILED_RISK_THRESHOLD = CRITICAL_RISK_CEILING
 MAX_RETRIES = 10
 MAX_BACKOFF_MS = 60_000
+MAX_STATEFUL_LIMIT = 1_000_000
+MAX_STATEFUL_WINDOW_MS = 2_678_400_000
+MAX_STATEFUL_PROVIDER_TIMEOUT_MS = 60_000
+MAX_STATEFUL_RETRY_HORIZON_MS = 300_000
 VALID_RISK_MODES = ("strict", "risk_scored", "warn_only")
 BUILTIN_RISK_CONDITIONS = frozenset(
     {
@@ -344,6 +350,35 @@ def _validate_security_numbers(policy: Mapping[str, Any]) -> None:
                     minimum=1,
                 )
 
+    raw_stateful = policy.get("stateful")
+    if isinstance(raw_stateful, Mapping):
+        if "contract_version" in raw_stateful:
+            _require_bounded_integer(
+                raw_stateful["contract_version"],
+                path="$.stateful.contract_version",
+                minimum=1,
+                maximum=1,
+            )
+        constraints = raw_stateful.get("constraints")
+        if isinstance(constraints, list):
+            bounds = {
+                "limit": (1, MAX_STATEFUL_LIMIT),
+                "window_ms": (1, MAX_STATEFUL_WINDOW_MS),
+                "provider_timeout_ms": (1, MAX_STATEFUL_PROVIDER_TIMEOUT_MS),
+                "retry_horizon_ms": (1, MAX_STATEFUL_RETRY_HORIZON_MS),
+            }
+            for index, constraint in enumerate(constraints):
+                if not isinstance(constraint, Mapping):
+                    continue
+                for field_name, (minimum, maximum) in bounds.items():
+                    if field_name in constraint:
+                        _require_bounded_integer(
+                            constraint[field_name],
+                            path=f"$.stateful.constraints.{index}.{field_name}",
+                            minimum=minimum,
+                            maximum=maximum,
+                        )
+
     raw_preconditions = policy.get("pre_conditions")
     required = (
         raw_preconditions.get("required")
@@ -627,6 +662,64 @@ def _compile_validated_policy(
         ),
     )
 
+    raw_stateful = policy.get("stateful")
+    stateful: CompiledStatefulPolicyV1 | None = None
+    if isinstance(raw_stateful, Mapping):
+        raw_constraints = raw_stateful["constraints"]
+        constraint_ids = [item["id"] for item in raw_constraints]
+        duplicate_constraint_ids = sorted(
+            name for name, count in Counter(constraint_ids).items() if count > 1
+        )
+        if duplicate_constraint_ids:
+            raise PolicyValidationError(
+                "Stateful constraints contain duplicate IDs",
+                code="STATEFUL_CONSTRAINT_AMBIGUOUS",
+                details={"constraint_ids": duplicate_constraint_ids},
+            )
+        constrained_tools = [item["tool"] for item in raw_constraints]
+        duplicate_constrained_tools = sorted(
+            name for name, count in Counter(constrained_tools).items() if count > 1
+        )
+        if duplicate_constrained_tools:
+            raise PolicyValidationError(
+                "Stateful constraints contain duplicate tool declarations",
+                code="STATEFUL_TOOL_AMBIGUOUS",
+                details={"tool_names": duplicate_constrained_tools},
+            )
+        allowed_tool_names = {item.name for item in tools.allowed_tools}
+        if tools.configured:
+            unauthorized = sorted(set(constrained_tools) - allowed_tool_names)
+            if unauthorized:
+                raise PolicyValidationError(
+                    "Stateful constraint is outside compiled tool authority",
+                    code="STATEFUL_TOOL_AUTHORITY_INVALID",
+                    details={"tool_names": unauthorized},
+                )
+        compiled_constraints: list[CompiledSlidingWindowConstraintV1] = []
+        for index, item in enumerate(raw_constraints):
+            if item["retry_horizon_ms"] < item["provider_timeout_ms"]:
+                raise PolicyValidationError(
+                    "Stateful retry horizon must cover one provider dispatch",
+                    code="STATEFUL_RETRY_HORIZON_INVALID",
+                    details={"constraint_index": index},
+                )
+            compiled_constraints.append(CompiledSlidingWindowConstraintV1(
+                id=item["id"],
+                kind=item["kind"],
+                tool=item["tool"],
+                scope=item["scope"],
+                limit=item["limit"],
+                window_ms=item["window_ms"],
+                provider_timeout_ms=item["provider_timeout_ms"],
+                retry_horizon_ms=item["retry_horizon_ms"],
+                on_provider_failure=item["on_provider_failure"],
+            ))
+        stateful = CompiledStatefulPolicyV1(
+            contract_version=raw_stateful["contract_version"],
+            policy_state_id=raw_stateful["policy_state_id"],
+            constraints=tuple(compiled_constraints),
+        )
+
     declared_risk = policy.get("risk")
     raw_risk = declared_risk or {}
     risk = compile_risk_policy(
@@ -679,6 +772,7 @@ def _compile_validated_policy(
         ),
         guards=guards,
         workflow=freeze(workflow),
+        stateful=stateful,
     )
     return CompiledPolicy(
         policy_digest=_policy_digest(policy),
@@ -697,6 +791,7 @@ def _compile_validated_policy(
         postconditions=postconditions,
         output_validator=output_validator,
         workflow=freeze(workflow),
+        stateful=stateful,
         authority=authority,
     )
 
@@ -719,6 +814,12 @@ def _compile_guard_overlay(
         path=f"{path}.when.condition",
     )
     raw_effect = raw_guard["then"]
+    if "stateful" in raw_effect:
+        raise PolicyValidationError(
+            "Stateful policy declarations are not supported in guard effects",
+            code="STATEFUL_GUARD_UNSUPPORTED",
+            details={"path": f"{path}.then.stateful"},
+        )
     candidate_raw = copy.deepcopy(dict(base_raw))
     candidate_raw.pop("guards", None)
     merge_policy_effect(candidate_raw, raw_effect)

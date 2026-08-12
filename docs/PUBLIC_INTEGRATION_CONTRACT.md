@@ -1736,3 +1736,14 @@ root, each policy target gets its own lexical parent authority; an implicit
 starter target is rooted at its canonical starter directory. Hostile concurrent
 mutation of filesystem components is outside this guarantee: descriptor-relative
 race resistance against a concurrent writer remains a non-goal.
+
+## Stateful provider integration (current source)
+
+Stateful policies are additive. Bind a version-1 provider and deployment
+namespace when constructing `AEGIS`, then pass a detached `StateScopeV1` to
+`enforce_pre_call`, `enforce_pre_call_async`, or `open_session`. Policies
+without `stateful` require none of these values. Module-level, unified, and
+decorator entry points reject stateful policies with
+`STATEFUL_PRECALL_REQUIRED`. `aegis.stateful` is the authoritative public
+provider/model facade. See ADR-0016 and
+`docs/reference/STATEFUL_POLICY_PROVIDERS.md`.

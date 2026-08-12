@@ -1224,6 +1224,7 @@ def _apply_compiled_overlay(
         ),
         guards=guards,
         workflow=workflow,
+        stateful=policy.stateful,
     )
     return replace(
         policy,

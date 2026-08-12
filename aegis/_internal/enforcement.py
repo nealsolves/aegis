@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import functools
+import itertools
 import json
 import logging
 import re
@@ -26,7 +27,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Mapping, NoReturn, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Mapping, NoReturn, Sequence
 
 if TYPE_CHECKING:
     from aegis._internal.session import GovernanceSession
@@ -102,6 +103,13 @@ from aegis._internal.operation_registry import (
     OperationRecord,
     OperationRegistry,
 )
+from aegis._internal.stateful_enforcement import (
+    admit_stateful_async,
+    admit_stateful_sync,
+    reject_unified_stateful_policy,
+    snapshot_provider_descriptor,
+)
+from aegis._internal.stateful_models import StateScopeV1
 
 logger = logging.getLogger("aegis.enforcement")
 
@@ -261,6 +269,25 @@ def _module_policy_loader_for_retry() -> PolicyLoaderBase | None:
     """Return the loader from the sealed module enforcement snapshot."""
     _, _, _, policy_loader = _MODULE_RUNTIME.begin()
     return policy_loader
+
+
+def preflight_deprecated_unified_decorator(
+    invocation: Mapping[str, Any],
+) -> None:
+    """Reject a stateful decorator policy before user code can execute."""
+    sink, _, _, loader = _MODULE_RUNTIME.begin()
+    try:
+        _validate_pre_call_invocation(invocation)
+        policy = _load_compiled_policy(invocation, loader=loader)
+        reject_unified_stateful_policy(policy)
+    except AIGCError as exc:
+        safe_invocation = dict(invocation)
+        safe_invocation["output"] = {}
+        artifact = _generate_pre_pipeline_fail_artifact(safe_invocation, exc)
+        artifact.setdefault("metadata", {})["enforcement_mode"] = "unified"
+        exc.audit_artifact = artifact
+        emit_to_sink(artifact, sink=sink, failure_mode="raise")
+        raise
 
 
 def _attempt_invocation(
@@ -806,6 +833,7 @@ REQUIRED_CORE_KEYS = (
 )
 
 REQUIRED_INVOCATION_KEYS = REQUIRED_CORE_KEYS + ("output",)
+_MAX_PRE_CALL_TOOL_CALLS = 1_000
 
 
 def _validate_invocation_core(invocation: Mapping[str, Any]) -> None:
@@ -845,6 +873,66 @@ def _validate_invocation_core(invocation: Mapping[str, Any]) -> None:
                 f"Invocation field '{key}' is not JSON-serializable: {e}",
                 details={"field": key},
             ) from e
+
+
+def _snapshot_pre_call_invocation(
+    invocation: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Detach the caller-owned Phase-A payload before any gate consumes it."""
+    _validate_pre_call_invocation(invocation)
+    snapshot = dict(invocation)
+    raw_tool_calls = invocation.get("tool_calls")
+    if raw_tool_calls is None:
+        return snapshot
+    if isinstance(raw_tool_calls, (str, bytes, bytearray, Mapping)):
+        raise InvocationValidationError(
+            "Invocation field 'tool_calls' must be an iterable of objects",
+            details={"field": "tool_calls"},
+        )
+    try:
+        iterator = iter(raw_tool_calls)
+        materialized = list(
+            itertools.islice(iterator, _MAX_PRE_CALL_TOOL_CALLS + 1)
+        )
+    except Exception as exc:
+        raise InvocationValidationError(
+            "Invocation field 'tool_calls' must be an iterable of objects",
+            details={"field": "tool_calls"},
+        ) from exc
+    if len(materialized) > _MAX_PRE_CALL_TOOL_CALLS:
+        raise InvocationValidationError(
+            "Invocation field 'tool_calls' exceeds the bounded call count",
+            details={"field": "tool_calls"},
+        )
+
+    detached: list[dict[str, Any]] = []
+    for call in materialized:
+        if not isinstance(call, Mapping):
+            raise InvocationValidationError(
+                "Each tool call must be an object",
+                details={"field": "tool_calls"},
+            )
+        try:
+            normalized = json.loads(
+                json.dumps(dict(call), allow_nan=False, sort_keys=True)
+            )
+        except (TypeError, ValueError) as exc:
+            raise InvocationValidationError(
+                "Each tool call must be a JSON-serializable object",
+                details={"field": "tool_calls"},
+            ) from exc
+        if (
+            type(normalized) is not dict
+            or type(normalized.get("name")) is not str
+            or not normalized["name"]
+        ):
+            raise InvocationValidationError(
+                "Each tool call must contain a non-empty string name",
+                details={"field": "tool_calls"},
+            )
+        detached.append(normalized)
+    snapshot["tool_calls"] = detached
+    return snapshot
 
 
 def _validate_invocation(invocation: Mapping[str, Any]) -> None:
@@ -912,6 +1000,8 @@ def _map_exception_to_failure_gate(exc: Exception) -> str:
     if isinstance(exc, RiskThresholdError):
         return "risk_scoring"
     if isinstance(exc, ToolConstraintViolationError):
+        return "tool_validation"
+    if getattr(exc, "code", "").startswith("STATE"):
         return "tool_validation"
     if isinstance(exc, PreconditionError):
         return "precondition_validation"
@@ -1013,6 +1103,11 @@ def _build_phase_a_mid_pipeline_fail_artifact(
         "pre_call_gates_evaluated": list(phase_a_gates),
         "redacted_fields": redacted_fields,
     }
+    stateful_decisions = getattr(exc, "stateful_decisions", None)
+    if stateful_decisions:
+        fail_metadata["stateful_decisions"] = copy.deepcopy(
+            list(stateful_decisions)
+        )
 
     _ctx_prov = (safe_inv.get("context") or {}).get("provenance")
     _provenance = _ctx_prov if isinstance(_ctx_prov, Mapping) else None
@@ -1310,6 +1405,12 @@ def _run_phase_b(
         if merged_custom_metadata:
             metadata["custom_gate_metadata"] = dict(
                 sorted(merged_custom_metadata.items()),
+            )
+
+        stateful_decisions = phase_a_metadata.get("stateful_decisions")
+        if stateful_decisions:
+            metadata["stateful_decisions"] = copy.deepcopy(
+                list(stateful_decisions)
             )
 
         if risk_result is not None:
@@ -1697,6 +1798,7 @@ def enforce_invocation(invocation: Mapping[str, Any]) -> dict[str, Any]:
             invocation,
             loader=None,
         )
+        reject_unified_stateful_policy(policy)
     except AIGCError as exc:
         artifact = _generate_pre_pipeline_fail_artifact(invocation, exc)
         # Unified entry point: stamp enforcement_mode so consumers can
@@ -1759,6 +1861,7 @@ async def enforce_invocation_async(
             invocation,
             loader=None,
         )
+        reject_unified_stateful_policy(policy)
     except AIGCError as exc:
         artifact = _generate_pre_pipeline_fail_artifact(invocation, exc)
         artifact.setdefault("metadata", {})["enforcement_mode"] = "unified"
@@ -1824,6 +1927,7 @@ def enforce_pre_call(
             invocation,
             loader=None,
         )
+        reject_unified_stateful_policy(policy)
     except AIGCError as exc:
         # Generate pre-pipeline fail artifact for split mode.
         # output is {} (no output in pre-call).
@@ -1999,6 +2103,7 @@ async def enforce_pre_call_async(
             invocation,
             loader=None,
         )
+        reject_unified_stateful_policy(policy)
     except AIGCError as exc:
         safe_inv = dict(invocation)
         safe_inv.setdefault("output", {})
@@ -2324,6 +2429,8 @@ class AEGIS:
         custom_gates: list[EnforcementGate] | None = None,
         policy_loader: PolicyLoaderBase | None = None,
         risk_config: dict[str, Any] | None = None,
+        state_provider: object | None = None,
+        state_namespace: str | None = None,
     ) -> None:
         """
         :param sink: AuditSink instance for artifact persistence
@@ -2335,6 +2442,8 @@ class AEGIS:
         :param custom_gates: Custom enforcement gates
         :param policy_loader: Custom policy loader implementation
         :param risk_config: Risk scoring configuration override
+        :param state_provider: Version-1 provider for compiled stateful policy
+        :param state_namespace: Deployment-owned state-key namespace
         """
         if on_sink_failure != "raise":
             raise ValueError(
@@ -2357,6 +2466,9 @@ class AEGIS:
         self._custom_gates = list(custom_gates or [])
         self._policy_loader = policy_loader
         self._risk_config = risk_config
+        self._state_provider = state_provider
+        self._state_descriptor = snapshot_provider_descriptor(state_provider)
+        self._state_namespace = state_namespace
         self._policy_cache = PolicyCache()
         self._operation_registry = OperationRegistry()
         self._attempt_factory = AttemptFactory()
@@ -2370,6 +2482,23 @@ class AEGIS:
     def _set_validator_hooks(self, hooks: Sequence[Any] | None) -> None:
         """Internal-only wiring point for session validator hooks."""
         self._validator_hooks = list(hooks or [])
+
+    def _admit_stateful_tool_call(
+        self,
+        policy: CompiledPolicy,
+        tool_name: str,
+        *,
+        state_scope: StateScopeV1 | None,
+    ) -> list[dict[str, Any]]:
+        """Internal adapter seam for one actual, filtered tool dispatch."""
+        return admit_stateful_sync(
+            policy=policy,
+            invocation={"tool_calls": [{"name": tool_name}]},
+            provider=self._state_provider,
+            descriptor=self._state_descriptor,
+            namespace=self._state_namespace,
+            scope=state_scope,
+        )
 
     @property
     def sink(self) -> Any | None:
@@ -2402,6 +2531,7 @@ class AEGIS:
         session_id: str | None = None,
         policy_file: str | None = None,
         metadata: dict | None = None,
+        state_scope: StateScopeV1 | None = None,
     ) -> "GovernanceSession":
         """Open a governed workflow session (instance-scoped).
 
@@ -2409,12 +2539,21 @@ class AEGIS:
         :param policy_file: Session-level policy override; if set, all steps use
             this policy regardless of per-invocation policy_file
         :param metadata: Host metadata attached to the workflow artifact
+        :param state_scope: Detached trusted scope for stateful step admission
         :return: GovernanceSession context manager
         """
         import uuid as _uuid
         from aegis._internal.session import GovernanceSession
+        if state_scope is not None and type(state_scope) is not StateScopeV1:
+            raise TypeError("state_scope must be a StateScopeV1")
         sid = str(_uuid.uuid4()) if session_id is None else session_id
-        return GovernanceSession(self, sid, policy_file, metadata)
+        return GovernanceSession(
+            self,
+            sid,
+            policy_file,
+            metadata,
+            state_scope=copy.deepcopy(state_scope),
+        )
 
     @_evidence_attempt_boundary("AEGIS.enforce", "unified")
     def enforce(self, invocation: Mapping[str, Any]) -> dict[str, Any]:
@@ -2464,6 +2603,7 @@ class AEGIS:
                 loader=self._policy_loader,
             )
             _validate_policy_strict(policy, self._strict_mode)
+            reject_unified_stateful_policy(policy)
         except AIGCError as exc:
             artifact = _generate_pre_pipeline_fail_artifact(
                 invocation, exc,
@@ -2499,7 +2639,10 @@ class AEGIS:
 
     @_evidence_attempt_boundary("AEGIS.enforce_pre_call", "split_pre_call")
     def enforce_pre_call(
-        self, invocation: Mapping[str, Any],
+        self,
+        invocation: Mapping[str, Any],
+        *,
+        state_scope: StateScopeV1 | None = None,
     ) -> PreCallResult:
         """Enforce pre-call governance checks (Phase A), instance-scoped.
 
@@ -2511,8 +2654,14 @@ class AEGIS:
         :return: PreCallResult token
         :raises: AIGCError subclasses on governance violation
         """
+        try:
+            invocation = _snapshot_pre_call_invocation(invocation)
+        except AIGCError as exc:
+            self._raise_pre_call_boundary_failure(invocation, exc)
         policy = self._prepare_pre_call_policy(invocation, policy=None)
-        return self._run_pre_call_compiled(invocation, policy)
+        return self._run_pre_call_compiled(
+            invocation, policy, state_scope=state_scope,
+        )
 
     def _raise_pre_call_boundary_failure(
         self,
@@ -2523,6 +2672,7 @@ class AEGIS:
         if isinstance(invocation, Mapping):
             safe_inv = dict(invocation)
             safe_inv.setdefault("output", {})
+            safe_inv.pop("tool_calls", None)
         else:
             safe_inv = {
                 "policy_file": "unknown",
@@ -2580,18 +2730,33 @@ class AEGIS:
         self,
         invocation: Mapping[str, Any],
         policy: CompiledPolicy,
+        *,
+        state_scope: StateScopeV1 | None = None,
+        before_stateful: Callable[[], None] | None = None,
     ) -> PreCallResult:
         """Run Phase A from an already-authorized compiled policy object."""
+        try:
+            invocation = _snapshot_pre_call_invocation(invocation)
+        except AIGCError as exc:
+            self._raise_pre_call_boundary_failure(invocation, exc)
         prepared_policy = self._prepare_pre_call_policy(
             invocation,
             policy=policy,
         )
-        return self._run_pre_call_compiled(invocation, prepared_policy)
+        return self._run_pre_call_compiled(
+            invocation,
+            prepared_policy,
+            state_scope=state_scope,
+            before_stateful=before_stateful,
+        )
 
     def _run_pre_call_compiled(
         self,
         invocation: Mapping[str, Any],
         policy: CompiledPolicy,
+        *,
+        state_scope: StateScopeV1 | None = None,
+        before_stateful: Callable[[], None] | None = None,
     ) -> PreCallResult:
         """Run Phase A after the shared split-boundary validation."""
         grouped_gates = sort_gates(self._custom_gates)
@@ -2619,6 +2784,18 @@ class AEGIS:
                     span=span,
                     gates_evaluated=phase_a_gates,
                 )
+                if before_stateful is not None:
+                    before_stateful()
+                stateful_decisions = admit_stateful_sync(
+                    policy=effective_policy,
+                    invocation=invocation,
+                    provider=self._state_provider,
+                    descriptor=self._state_descriptor,
+                    namespace=self._state_namespace,
+                    scope=state_scope,
+                )
+                if stateful_decisions:
+                    phase_a_extra["stateful_decisions"] = stateful_decisions
             except AIGCError as exc:
                 safe_inv = dict(invocation)
                 safe_inv["output"] = {}
@@ -2752,7 +2929,10 @@ class AEGIS:
 
     @_evidence_attempt_boundary("AEGIS.enforce_pre_call_async", "split_pre_call")
     async def enforce_pre_call_async(
-        self, invocation: Mapping[str, Any],
+        self,
+        invocation: Mapping[str, Any],
+        *,
+        state_scope: StateScopeV1 | None = None,
     ) -> PreCallResult:
         """Async equivalent of enforce_pre_call(), instance-scoped.
 
@@ -2791,7 +2971,7 @@ class AEGIS:
             raise _exc
 
         try:
-            _validate_pre_call_invocation(invocation)
+            invocation = _snapshot_pre_call_invocation(invocation)
             policy = await asyncio.to_thread(
                 _compile_cached_policy,
                 invocation,
@@ -2848,6 +3028,16 @@ class AEGIS:
                     span=span,
                     gates_evaluated=phase_a_gates,
                 )
+                stateful_decisions = await admit_stateful_async(
+                    policy=effective_policy,
+                    invocation=invocation,
+                    provider=self._state_provider,
+                    descriptor=self._state_descriptor,
+                    namespace=self._state_namespace,
+                    scope=state_scope,
+                )
+                if stateful_decisions:
+                    phase_a_extra["stateful_decisions"] = stateful_decisions
             except AIGCError as exc:
                 safe_inv = dict(invocation)
                 safe_inv["output"] = {}
@@ -2975,6 +3165,7 @@ class AEGIS:
                 loader=self._policy_loader,
             )
             _validate_policy_strict(policy, self._strict_mode)
+            reject_unified_stateful_policy(policy)
         except AIGCError as exc:
             artifact = _generate_pre_pipeline_fail_artifact(
                 invocation, exc,

@@ -103,6 +103,30 @@ class CompiledToolPolicy:
 
 
 @dataclass(frozen=True, slots=True)
+class CompiledSlidingWindowConstraintV1:
+    """One tenant-scoped cross-session tool-call admission constraint."""
+
+    id: str
+    kind: str
+    tool: str
+    scope: str
+    limit: int
+    window_ms: int
+    provider_timeout_ms: int
+    retry_horizon_ms: int
+    on_provider_failure: str
+
+
+@dataclass(frozen=True, slots=True)
+class CompiledStatefulPolicyV1:
+    """Versioned state identities and their bounded compiled constraints."""
+
+    contract_version: int
+    policy_state_id: str
+    constraints: tuple[CompiledSlidingWindowConstraintV1, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class CompiledRiskFactor:
     """One validated risk contribution with a declared condition."""
 
@@ -353,6 +377,7 @@ class AuthorityEnvelope:
     output_schema: Mapping[str, JsonValue] | None
     guards: tuple[CompiledGuard, ...]
     workflow: Mapping[str, JsonValue]
+    stateful: CompiledStatefulPolicyV1 | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -375,4 +400,5 @@ class CompiledPolicy:
     postconditions: tuple[str, ...]
     output_validator: CompiledOutputValidator | None
     workflow: Mapping[str, JsonValue]
+    stateful: CompiledStatefulPolicyV1 | None
     authority: AuthorityEnvelope

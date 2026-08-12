@@ -12,6 +12,17 @@ These changes exist in the current source tree but are not in the published
 
 ### Added
 
+- Add the source-only version-1 stateful policy provider contract (issue #42),
+  a bounded instance-local in-memory provider, reusable semantic conformance
+  runner, closed tenant-scoped sliding-window tool-call DSL, non-widening
+  composition checks, instance sync/async and session Phase-A enforcement, and
+  checksum-covered `metadata.stateful_decisions`. Provider selection,
+  namespace, pseudonymous tenant scope, credentials, topology, and production
+  operations remain host-owned. The bundled provider is not distributed or
+  durable. Unified/module/decorator surfaces reject stateful policies; CEL is
+  deliberately deferred. See ADR-0016, ADR-0017, and the
+  [Stateful Policy Providers guide](docs/reference/STATEFUL_POLICY_PROVIDERS.md).
+
 - Add provider-neutral `ExternalArtifactSigner` and
   `ExternalArtifactVerifier` protocols, strict signed metadata,
   `sign_artifact_with_metadata()`, and two-axis

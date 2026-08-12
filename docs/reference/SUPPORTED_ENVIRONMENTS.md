@@ -91,3 +91,13 @@ running any starter:
 
 `opentelemetry` is an optional integration. When it is not installed, all OTel
 instrumentation is a no-op and governance is unaffected.
+
+## Stateful provider support (current source)
+
+The bundled in-memory state provider requires no extra package, service, or
+credential. It is instance-local and non-durable. No Redis, database, or cloud
+backend is bundled or supported by this source change. Third-party providers
+must implement the version-1 contract and run the conformance kit; operators
+remain responsible for deployment topology, access control, clocks,
+availability, retention, backup, and recovery. See
+`STATEFUL_POLICY_PROVIDERS.md` and ADR-0016.

@@ -126,6 +126,16 @@ activity, certification, or compliance. See
 [ADR-0015](docs/decisions/ADR-0015-trusted-checkpoints.md) and
 [USAGE.md](docs/USAGE.md) Recipe 13.
 
+Current source also implements issue #42's dependency-free stateful policy
+provider contract: exact versioned operations/results, a bounded instance-local
+in-memory reference provider and conformance runner, and tenant-scoped sliding
+window tool-call admission on supported instance split/session paths. The host
+owns provider selection, namespace, trusted pseudonymous tenant scope, and
+production operations. The bundled provider is neither distributed nor
+durable, and CEL remains deferred. See
+[ADR-0016](docs/decisions/ADR-0016-stateful-policy-provider-contract.md) and the
+[Stateful Policy Providers guide](docs/reference/STATEFUL_POLICY_PROVIDERS.md).
+
 For current-source checkpoint operations and host-owned retention, object
 locking, checkpoint selection, historical verification, backup, and recovery,
 see the

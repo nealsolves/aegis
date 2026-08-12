@@ -57,6 +57,7 @@ documentation_inventory:
     - docs/architecture/diagrams/aegis_architecture_diagram_*
     - docs/architecture/diagrams/aegis_v090_beta_component_*
     - demo-app-react/README.md
+    - demo-app-api/README.md
     - demo-app-react/index.html
     - demo-app-react/public/**
     - demo-app-react/src/assets/**
@@ -69,6 +70,10 @@ documentation_inventory:
     - docs/spec-driven-dev/changes/v0.9.0-docs-diagrams-beta-deployment/**
     - docs/superpowers/plans/2026-07-25-aegis-main-pypi-release.md
     - docs/spec-driven-dev/changes/v0.9.0-main-pypi-release/**
+    - docs/superpowers/plans/2026-08-11-issue-42-stateful-policy-providers.md
+    - docs/superpowers/plans/2026-08-11-issue-42-adversarial-review-remediation.md
+    - docs/superpowers/specs/2026-08-11-issue-42-stateful-policy-providers-design.md
+    - docs/spec-driven-dev/changes/issue-42-stateful-policy-providers/**
   target:
     - docs/architecture/AEGIS_Architecture_Redesign_and_Roadmap.md
     - docs/architecture/AEGIS_HIGH_LEVEL_DESIGN.md
@@ -76,6 +81,9 @@ documentation_inventory:
     - docs/superpowers/plans/2026-07-30-*
     - docs/superpowers/specs/2026-07-30-*
     - docs/spec-driven-dev/changes/b2-evidence-finalizer-workflow-signing/**
+    - docs/superpowers/plans/2026-08-11-issue-59-demo-api-hardening.md
+    - docs/superpowers/specs/2026-08-11-issue-59-demo-api-hardening-design.md
+    - docs/superpowers/reports/2026-08-11-issue-59-demo-api-hardening-verification.md
   historical:
     - docs/architecture/AEGIS_0.3.0_ARCHITECTURE_DIAGRAM.md
     - docs/articles/**

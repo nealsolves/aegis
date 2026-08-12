@@ -498,6 +498,10 @@ def _merge_policies(
 
         if key not in merged:
             merged[key] = copy.deepcopy(value)
+        elif key == "stateful" and isinstance(value, dict):
+            # Stateful declarations are complete migration identities. They
+            # cannot be recursively merged or have constraint arrays appended.
+            merged[key] = copy.deepcopy(value)
         elif (
             key in {
                 "allowed_tools",

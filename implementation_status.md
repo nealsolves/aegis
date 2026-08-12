@@ -4,7 +4,7 @@
 **Package Release:** `aegis-ai-governance==0.9.0b1`
 **Previous PyPI Line:** `aegis==0.3.3`
 **Active Branch:** `feat/v0.9-15-main-release`
-**Last Updated:** 2026-07-25
+**Last Updated:** 2026-08-11
 
 Only after the owner has formally declared GO may the `origin/develop` ->
 `origin/main` release cutover merge. That freeze gate is satisfied for
@@ -60,6 +60,7 @@ must be updated only after their specific evidence exists.
 | Distribution release | released from `main` | `aegis-ai-governance==0.9.0b1` uses GitHub release `v0.9.0b1` and PyPI Trusted Publishing |
 | Truth audit and demo refresh | complete locally | Maintained docs, diagrams, contextual help, adapters, Python coverage, React, build, API, and assembled browser workflows are validated; independent review passed and the policy lifecycle reached `COMPLETE`; the final Python suite is 1919 passed and 2 skipped |
 | Docs, diagrams, and beta deployment | live on `main` | Requested docs were audited with no deletions, SVG overflow was repaired and visually inspected, Pages and Render deploy only from `main`, 3138 current-source Python tests and 105 React tests pass, and live Lab 1/Lab 11 flows pass with a clean in-app-browser console |
+| Stateful policy providers (issue #42) | implemented locally in current source | Versioned contracts, bounded in-memory provider/conformance, closed sliding-window DSL, non-widening composition, supported split/session enforcement, and typed evidence are present; no durable backend, CEL runtime, merge, publication, or deployment is claimed |
 
 ---
 

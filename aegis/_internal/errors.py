@@ -207,6 +207,127 @@ class ToolConstraintViolationError(GovernanceViolationError):
         )
 
 
+class StatefulPolicyError(GovernanceViolationError):
+    """Base class for fail-closed stateful policy failures."""
+
+    def __init__(
+        self,
+        message: str = "Stateful policy enforcement failed",
+        *,
+        code: str = "STATEFUL_POLICY_ERROR",
+        details: dict | None = None,
+    ) -> None:
+        super().__init__(message, code=code, details=details)
+
+
+class StateProviderRequiredError(StatefulPolicyError):
+    def __init__(self, details: dict | None = None) -> None:
+        super().__init__(
+            "A stateful policy provider is required",
+            code="STATE_PROVIDER_REQUIRED",
+            details=details,
+        )
+
+
+class StateScopeRequiredError(StatefulPolicyError):
+    def __init__(self, details: dict | None = None) -> None:
+        super().__init__(
+            "A trusted state scope is required",
+            code="STATE_SCOPE_REQUIRED",
+            details=details,
+        )
+
+
+class StateProviderModeError(StatefulPolicyError):
+    def __init__(self, details: dict | None = None) -> None:
+        super().__init__(
+            "The state provider does not support this execution mode",
+            code="STATE_PROVIDER_MODE_UNSUPPORTED",
+            details=details,
+        )
+
+
+class StateProviderContractError(StatefulPolicyError):
+    def __init__(self, details: dict | None = None) -> None:
+        super().__init__(
+            "The state provider contract is incompatible",
+            code="STATE_PROVIDER_CONTRACT_INVALID",
+            details=details,
+        )
+
+
+class StatefulLimitDeniedError(StatefulPolicyError):
+    def __init__(self, details: dict | None = None) -> None:
+        super().__init__(
+            "The stateful policy limit denied this operation",
+            code="STATEFUL_LIMIT_DENIED",
+            details=details,
+        )
+
+
+class StateProviderUnavailableError(StatefulPolicyError):
+    def __init__(self, details: dict | None = None) -> None:
+        super().__init__(
+            "The state provider is unavailable with no known state effect",
+            code="STATE_PROVIDER_UNAVAILABLE",
+            details=details,
+        )
+
+
+class StateProviderIndeterminateError(StatefulPolicyError):
+    def __init__(self, details: dict | None = None) -> None:
+        super().__init__(
+            "The state provider may have committed the operation",
+            code="STATE_PROVIDER_INDETERMINATE",
+            details=details,
+        )
+
+
+class StateResultInvalidError(StatefulPolicyError):
+    def __init__(self, details: dict | None = None) -> None:
+        super().__init__(
+            "The state provider returned an invalid result",
+            code="STATE_PROVIDER_RESULT_INVALID",
+            details=details,
+        )
+
+
+class StateClockUncertainError(StatefulPolicyError):
+    def __init__(self, details: dict | None = None) -> None:
+        super().__init__(
+            "The state provider clock is uncertain",
+            code="STATE_PROVIDER_CLOCK_UNCERTAIN",
+            details=details,
+        )
+
+
+class StateProviderCapacityError(StatefulPolicyError):
+    def __init__(self, details: dict | None = None) -> None:
+        super().__init__(
+            "The state provider capacity is exhausted",
+            code="STATE_PROVIDER_CAPACITY_EXHAUSTED",
+            details=details,
+        )
+
+
+class StatefulCompositionError(StatefulPolicyError):
+    def __init__(self, details: dict | None = None) -> None:
+        super().__init__(
+            "Stateful policy composition widens authority",
+            code="STATEFUL_COMPOSITION_WIDENING",
+            details=details,
+        )
+
+
+class StatefulPreCallRequiredError(StatefulPolicyError):
+    def __init__(self, details: dict | None = None) -> None:
+        super().__init__(
+            "Stateful policies require instance-scoped pre-call enforcement",
+            code="STATEFUL_PRECALL_REQUIRED",
+            details=details,
+        )
+
+
 class AuditSinkError(AIGCError):
     """Raised when audit sink emission fails (in 'raise' failure mode)."""
 

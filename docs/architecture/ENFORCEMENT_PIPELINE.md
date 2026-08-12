@@ -376,3 +376,15 @@ explicitly unsigned), schema validate, then synchronously emit for
 acknowledgement. The exact normalized finalized value is emitted and returned.
 Invocation and workflow signatures use separate domains; workflow artifacts
 are never added to an invocation audit chain.
+
+### Stateful Phase-A admission (current source)
+
+For a compiled policy with `stateful` constraints, the instance/session split
+pipeline performs provider admission after every stateless Phase-A deny-capable
+gate and before minting the process-affine operation handle. Repeated calls to
+one constrained tool aggregate atomically. Different constraints execute by
+constraint ID, and earlier admits are not rolled back if a later operation or
+Phase B fails. Adapter-managed steps defer this check until each actual tool
+dispatch. Unified, module-level, and decorator surfaces reject stateful policy
+because they cannot provide the required trusted pre-action binding. See
+ADR-0016.
