@@ -82,25 +82,39 @@
           "type": "array",
           "maxItems": 100,
           "items": {"$ref": "#/$defs/bounded_text"}
-        }
+        },
+        "applicability_statement": {"$ref": "#/$defs/bounded_text"},
+        "effective_date_basis": {"$ref": "#/$defs/bounded_text"}
       }
     },
     "review": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "reviewed_on": {"$ref": "#/$defs/date"},
-        "next_review_due": {"$ref": "#/$defs/date"},
-        "reviewer_roles": {
+        "tier": {"enum": ["maintainer_verified", "community_reviewed", "qualified_reviewed", "unreviewed"]},
+        "decision": {"enum": ["pending", "approved", "rejected"]},
+        "contributor_github_ids": {
           "type": "array",
           "uniqueItems": true,
-          "maxItems": 5,
-          "items": {"enum": ["framework_scope", "evidence_mapping", "claims", "iso_licensed_source", "eu_legal_scope"]}
+          "maxItems": 20,
+          "items": {"type": "string", "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$"}
         },
-        "scope_reviewed_in": {"type": "string", "maxLength": 512},
-        "mapping_reviewed_in": {"type": "string", "maxLength": 512},
-        "claims_reviewed_in": {"type": "string", "maxLength": 512},
-        "source_access_method": {"enum": ["public_authoritative_source", "licensed_human_review_without_ai_processing"]}
+        "reviewer_github_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 20,
+          "items": {"type": "string", "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$"}
+        },
+        "pr_url": {"type": "string", "maxLength": 512},
+        "reviewed_commit_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+        "reviewed_on": {"$ref": "#/$defs/date"},
+        "next_review_due": {"$ref": "#/$defs/date"},
+        "source_access_method": {"enum": ["public_authoritative_source", "licensed_human_review_without_ai_processing"]},
+        "qualification_basis": {"$ref": "#/$defs/bounded_text"},
+        "qualification_evidence_url": {"$ref": "#/$defs/https_url"},
+        "qualification_verification": {"enum": ["self_declared", "independently_verified"]},
+        "qualification_verified_by_github_id": {"type": "string", "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$"},
+        "review_scope": {"$ref": "#/$defs/bounded_text"}
       }
     },
     "control": {
@@ -111,6 +125,8 @@
         "control_id": {"$ref": "#/$defs/identifier"},
         "label": {"$ref": "#/$defs/bounded_text"},
         "source_reference": {"$ref": "#/$defs/source_reference"},
+        "inclusion_rationale": {"$ref": "#/$defs/bounded_text"},
+        "applicable_source_date": {"$ref": "#/$defs/date"},
         "mapping": {"$ref": "#/$defs/mapping"}
       }
     },
@@ -182,8 +198,8 @@
         "aegis_baseline": {"$ref": "#/$defs/baseline"},
         "framework_modules": {
           "type": "array",
-          "minItems": 4,
-          "maxItems": 4,
+          "minItems": 1,
+          "maxItems": 20,
           "uniqueItems": true,
           "items": {"$ref": "#/$defs/repository_path"}
         },

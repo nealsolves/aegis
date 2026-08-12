@@ -4,8 +4,9 @@ The AEGIS compliance catalog is a non-authoritative map of bounded technical
 evidence contributions. It does not decide whether a requirement applies,
 whether a control is suitably designed or operating effectively, whether the
 available evidence is sufficient, or whether an organization passes an audit
-or obtains a legal or certification outcome. Those decisions require qualified
-professional review and evidence from the adopter's operating environment.
+or obtains a legal or certification outcome. Those decisions remain with the
+adopter and its chosen reviewers and require evidence from the operating
+environment; professional review is not a catalog-publication prerequisite.
 
 The catalog maps the current AEGIS source commit named on each page. It is not
 a mapping of the published `aegis-ai-governance==0.9.0b1` wheel. The
@@ -90,10 +91,11 @@ against the exact pinned sources. Evidence mapping reviewers evaluate the
 relevance and boundaries of repository references. Claims reviewers evaluate
 public language and assurance separation.
 
-ISO/IEC 42001 source-derived content is accepted only from a qualified
-maintainer using licensed human review without AI processing. The licensed
-standard, excerpts, screenshots, and local file paths are not committed or
-supplied to automated processing. EU AI Act scope identifiers require a
-qualified legal or compliance reviewer. Local catalog fields do not
-authenticate reviewer identity; repository permissions, branch protection,
-and pull-request review provide the approval record.
+ISO/IEC 42001 remains unpublished pending the lawful human-authored contribution
+tracked in Issue #76; licensed standard text, excerpts, screenshots, and local
+file paths are not committed or supplied to automated processing. Maintainer
+verification is sufficient for the citation-only EU module. Qualified EU legal
+or compliance review is an optional enhancement tracked in Issue #78. Local
+catalog fields do not authenticate reviewer identity or credentials;
+repository permissions, branch protection, and pull-request review provide the
+repository approval record.

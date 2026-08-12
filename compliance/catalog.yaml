@@ -6,10 +6,10 @@ disclaimer: >-
   This non-authoritative catalog describes bounded AEGIS technical evidence
   contributions. It does not determine applicability, control satisfaction,
   operating effectiveness, audit outcomes, certification, or legal
-  sufficiency. Adopters require qualified professional review and their own
-  evidence from operating environments.
+  sufficiency. Adopters remain responsible for their own legal, organizational,
+  host, and operating-environment evidence decisions.
 aegis_baseline:
-  git_commit: a9d0e4967070a11474ab11b23b047a5cde4b0892
+  git_commit: c4f6add076f2c534ada089f90e5c52c38341783c
   distribution_name: aegis-ai-governance
   published_version: 0.9.0b1
   mapped_channel: current_source
@@ -22,8 +22,6 @@ aegis_baseline:
     - pyproject.toml
 framework_modules:
   - compliance/frameworks/nist-ai-rmf-1.0.yaml
-  - compliance/frameworks/iso-iec-42001-2023.yaml
-  - compliance/frameworks/soc2-tsc-2017-revised-2022.yaml
   - compliance/frameworks/eu-ai-act-2024-1689-amended-2026.yaml
 review_policy:
   default_interval_days: 180

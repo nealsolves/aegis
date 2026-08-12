@@ -51,3 +51,5 @@ jobs:
         run: npm ci
       - name: Reject evidence assurance overclaims
         run: python scripts/check_evidence_claims.py
+      - name: Validate public-source compliance catalog
+        run: python scripts/check_compliance_catalog.py --as-of "$(date -u +%F)"

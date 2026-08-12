@@ -1,0 +1,996 @@
+schema_version: "1.0"
+framework:
+  id: eu-ai-act-2024-1689-amended-2026
+  name: EU AI Act citation and AEGIS evidence-contribution index
+  version: Regulation EU 2024/1689 as amended through Regulation EU 2026/1744
+  source_date: "2026-07-24"
+  authoritative_sources:
+    - source_id: eu-ai-act-2024
+      role: control_source
+      title: Regulation EU 2024/1689 Artificial Intelligence Act
+      version: Official Journal text
+      publication_date: "2024-07-12"
+      publication_id: CELEX:32024R1689
+      url: https://eur-lex.europa.eu/eli/reg/2024/1689/oj/eng
+      accessed_on: "2026-08-12"
+    - source_id: eu-ai-digital-omnibus-2026
+      role: amending_act
+      title: Regulation EU 2026/1744 Digital Omnibus on AI
+      version: Official Journal text
+      publication_date: "2026-07-24"
+      publication_id: CELEX:32026R1744
+      url: https://eur-lex.europa.eu/eli/reg/2026/1744/oj/eng
+      accessed_on: "2026-08-12"
+declared_scope:
+  summary: >-
+    Bounded citation index for selected article-and-paragraph locations that
+    intersect with technical governance evidence AEGIS can record or with
+    explicit host and organizational gaps. This is not legal advice.
+  mapping_unit: selected EU AI Act article-and-paragraph citation
+  expected_mapping_count: 32
+  exclusions:
+    - Territorial scope, actor classification, prohibited-practice screening, and Article 6 or Annex I or Annex III high-risk classification are excluded.
+    - GPAI duties, conformity assessment, registration, enforcement, penalties, and sector-specific interactions are excluded.
+    - Recitals, annex contents, national law, implementing acts, delegated acts, and unofficial guidance are excluded.
+    - No row decides whether a cited duty applies to an adopter, actor, system, or use case.
+  applicability_statement: >-
+    This citation index does not determine whether any adopter, actor, system,
+    or use case is within the scope of Regulation (EU) 2024/1689.
+  effective_date_basis: >-
+    The source set is current through Regulation (EU) 2026/1744, published
+    24 July 2026 and effective 27 July 2026. Article 113, third paragraph,
+    point (c), as replaced, schedules Chapter III Sections 1 to 3 for
+    2 December 2027 for systems classified under Article 6(2) and Annex III
+    and 2 August 2028 for systems classified under Article 6(1) and Annex I.
+    Other provisions have their own dates. Adopters must consult the official
+    sources; this index does not decide which date applies to any adopter.
+review:
+  tier: unreviewed
+  decision: pending
+  contributor_github_ids: []
+  reviewer_github_ids: []
+  source_access_method: public_authoritative_source
+controls:
+  - control_id: ART-4(1)
+    source_reference:
+      source_id: eu-ai-digital-omnibus-2026
+      locator: "Article 4, paragraph 1"
+    inclusion_rationale: "Included to make an adjacent organizational or legal responsibility explicit where this catalog identifies no complete AEGIS evidence contribution."
+    applicable_source_date: "2026-07-24"
+    mapping:
+      aegis_evidence_status: external_control
+      interpretation: "ART-4(1) is retained in this bounded index to show an adjacent legal or organizational responsibility for which no complete AEGIS evidence contribution is identified."
+      evidence: []
+      external_owner: adopter
+      external_control: "The adopter obtains legal guidance as needed, determines whether ART-4(1) applies, implements the required process, and retains operating evidence."
+      host_controls:
+        - owner: adopter
+          control: "Determine applicability and effective dates for ART-4(1), assign accountable actors, and assess legal and evidentiary sufficiency."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, protected retention, and deletion controls.
+      limitations:
+        - This non-authoritative citation index is not legal advice or an applicability determination.
+        - AEGIS records technical evidence contributions; it does not establish legal sufficiency or production operating effectiveness.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+      retention_assumptions:
+        - The adopter reconciles Article-specific retention requirements with data-protection, employment, sector, and national law.
+        - The host preserves artifacts and external trust-anchor receipts under the adopter's approved schedule and access policy.
+  - control_id: ART-9(1)
+    source_reference:
+      source_id: eu-ai-act-2024
+      locator: "Article 9, paragraph 1"
+    inclusion_rationale: "Included because AEGIS can record a bounded technical artifact or enforcement result that may contribute evidence concerning this citation."
+    applicable_source_date: "2026-07-24"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact relevant to part of ART-9(1); legal interpretation, organizational process, and operating effectiveness remain external."
+      evidence:
+        - kind: policy_field
+          baseline: aegis_source
+          path: schemas/invocation_policy.schema.json
+          locator: "/properties/pre_conditions"
+          demonstrates: "The invocation policy contract records bounded preconditions."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_conditions.py
+          locator: "test_resolve_condition_from_context"
+          demonstrates: "The condition test exercises policy-bound contextual decisions."
+      unsupported_portion: "AEGIS does not determine whether ART-9(1) applies, satisfy the full cited duty, or operate the required organizational process."
+      host_controls:
+        - owner: adopter
+          control: "Determine applicability and effective dates for ART-9(1), assign accountable actors, and assess legal and evidentiary sufficiency."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, protected retention, and deletion controls.
+      limitations:
+        - This non-authoritative citation index is not legal advice or an applicability determination.
+        - AEGIS records technical evidence contributions; it does not establish legal sufficiency or production operating effectiveness.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+      retention_assumptions:
+        - The adopter reconciles Article-specific retention requirements with data-protection, employment, sector, and national law.
+        - The host preserves artifacts and external trust-anchor receipts under the adopter's approved schedule and access policy.
+  - control_id: ART-9(2)
+    source_reference:
+      source_id: eu-ai-act-2024
+      locator: "Article 9, paragraph 2"
+    inclusion_rationale: "Included because AEGIS can record a bounded technical artifact or enforcement result that may contribute evidence concerning this citation."
+    applicable_source_date: "2026-07-24"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact relevant to part of ART-9(2); legal interpretation, organizational process, and operating effectiveness remain external."
+      evidence:
+        - kind: policy_field
+          baseline: aegis_source
+          path: schemas/invocation_policy.schema.json
+          locator: "/properties/pre_conditions"
+          demonstrates: "The invocation policy contract records bounded preconditions."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_conditions.py
+          locator: "test_resolve_condition_from_context"
+          demonstrates: "The condition test exercises policy-bound contextual decisions."
+      unsupported_portion: "AEGIS does not determine whether ART-9(2) applies, satisfy the full cited duty, or operate the required organizational process."
+      host_controls:
+        - owner: adopter
+          control: "Determine applicability and effective dates for ART-9(2), assign accountable actors, and assess legal and evidentiary sufficiency."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, protected retention, and deletion controls.
+      limitations:
+        - This non-authoritative citation index is not legal advice or an applicability determination.
+        - AEGIS records technical evidence contributions; it does not establish legal sufficiency or production operating effectiveness.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+      retention_assumptions:
+        - The adopter reconciles Article-specific retention requirements with data-protection, employment, sector, and national law.
+        - The host preserves artifacts and external trust-anchor receipts under the adopter's approved schedule and access policy.
+  - control_id: ART-9(6)
+    source_reference:
+      source_id: eu-ai-act-2024
+      locator: "Article 9, paragraph 6"
+    inclusion_rationale: "Included because AEGIS can record a bounded technical artifact or enforcement result that may contribute evidence concerning this citation."
+    applicable_source_date: "2026-07-24"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact relevant to part of ART-9(6); legal interpretation, organizational process, and operating effectiveness remain external."
+      evidence:
+        - kind: policy_field
+          baseline: aegis_source
+          path: schemas/invocation_policy.schema.json
+          locator: "/properties/pre_conditions"
+          demonstrates: "The invocation policy contract records bounded preconditions."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_conditions.py
+          locator: "test_resolve_condition_from_context"
+          demonstrates: "The condition test exercises policy-bound contextual decisions."
+      unsupported_portion: "AEGIS does not determine whether ART-9(6) applies, satisfy the full cited duty, or operate the required organizational process."
+      host_controls:
+        - owner: adopter
+          control: "Determine applicability and effective dates for ART-9(6), assign accountable actors, and assess legal and evidentiary sufficiency."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, protected retention, and deletion controls.
+      limitations:
+        - This non-authoritative citation index is not legal advice or an applicability determination.
+        - AEGIS records technical evidence contributions; it does not establish legal sufficiency or production operating effectiveness.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+      retention_assumptions:
+        - The adopter reconciles Article-specific retention requirements with data-protection, employment, sector, and national law.
+        - The host preserves artifacts and external trust-anchor receipts under the adopter's approved schedule and access policy.
+  - control_id: ART-9(8)
+    source_reference:
+      source_id: eu-ai-act-2024
+      locator: "Article 9, paragraph 8"
+    inclusion_rationale: "Included because AEGIS can record a bounded technical artifact or enforcement result that may contribute evidence concerning this citation."
+    applicable_source_date: "2026-07-24"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact relevant to part of ART-9(8); legal interpretation, organizational process, and operating effectiveness remain external."
+      evidence:
+        - kind: policy_field
+          baseline: aegis_source
+          path: schemas/invocation_policy.schema.json
+          locator: "/properties/pre_conditions"
+          demonstrates: "The invocation policy contract records bounded preconditions."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_conditions.py
+          locator: "test_resolve_condition_from_context"
+          demonstrates: "The condition test exercises policy-bound contextual decisions."
+      unsupported_portion: "AEGIS does not determine whether ART-9(8) applies, satisfy the full cited duty, or operate the required organizational process."
+      host_controls:
+        - owner: adopter
+          control: "Determine applicability and effective dates for ART-9(8), assign accountable actors, and assess legal and evidentiary sufficiency."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, protected retention, and deletion controls.
+      limitations:
+        - This non-authoritative citation index is not legal advice or an applicability determination.
+        - AEGIS records technical evidence contributions; it does not establish legal sufficiency or production operating effectiveness.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+      retention_assumptions:
+        - The adopter reconciles Article-specific retention requirements with data-protection, employment, sector, and national law.
+        - The host preserves artifacts and external trust-anchor receipts under the adopter's approved schedule and access policy.
+  - control_id: ART-10(2)
+    source_reference:
+      source_id: eu-ai-digital-omnibus-2026
+      locator: "Article 10, paragraph 2"
+    inclusion_rationale: "Included to make an adjacent organizational or legal responsibility explicit where this catalog identifies no complete AEGIS evidence contribution."
+    applicable_source_date: "2026-07-24"
+    mapping:
+      aegis_evidence_status: external_control
+      interpretation: "ART-10(2) is retained in this bounded index to show an adjacent legal or organizational responsibility for which no complete AEGIS evidence contribution is identified."
+      evidence: []
+      external_owner: adopter
+      external_control: "The adopter obtains legal guidance as needed, determines whether ART-10(2) applies, implements the required process, and retains operating evidence."
+      host_controls:
+        - owner: adopter
+          control: "Determine applicability and effective dates for ART-10(2), assign accountable actors, and assess legal and evidentiary sufficiency."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, protected retention, and deletion controls.
+      limitations:
+        - This non-authoritative citation index is not legal advice or an applicability determination.
+        - AEGIS records technical evidence contributions; it does not establish legal sufficiency or production operating effectiveness.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+      retention_assumptions:
+        - The adopter reconciles Article-specific retention requirements with data-protection, employment, sector, and national law.
+        - The host preserves artifacts and external trust-anchor receipts under the adopter's approved schedule and access policy.
+  - control_id: ART-11(1)
+    source_reference:
+      source_id: eu-ai-digital-omnibus-2026
+      locator: "Article 11, paragraph 1"
+    inclusion_rationale: "Included because AEGIS can record a bounded technical artifact or enforcement result that may contribute evidence concerning this citation."
+    applicable_source_date: "2026-07-24"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact relevant to part of ART-11(1); legal interpretation, organizational process, and operating effectiveness remain external."
+      evidence:
+        - kind: artifact_field
+          baseline: aegis_source
+          path: schemas/audit_artifact.schema.json
+          locator: "/properties/provenance"
+          demonstrates: "The audit contract records bounded provenance for technical evidence."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_audit_artifact_contract.py
+          locator: "test_audit_contract"
+          demonstrates: "The audit contract test exercises schema-valid evidence emission."
+      unsupported_portion: "AEGIS does not determine whether ART-11(1) applies, satisfy the full cited duty, or operate the required organizational process."
+      host_controls:
+        - owner: adopter
+          control: "Determine applicability and effective dates for ART-11(1), assign accountable actors, and assess legal and evidentiary sufficiency."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, protected retention, and deletion controls.
+      limitations:
+        - This non-authoritative citation index is not legal advice or an applicability determination.
+        - AEGIS records technical evidence contributions; it does not establish legal sufficiency or production operating effectiveness.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+      retention_assumptions:
+        - The adopter reconciles Article-specific retention requirements with data-protection, employment, sector, and national law.
+        - The host preserves artifacts and external trust-anchor receipts under the adopter's approved schedule and access policy.
+  - control_id: ART-12(1)
+    source_reference:
+      source_id: eu-ai-act-2024
+      locator: "Article 12, paragraph 1"
+    inclusion_rationale: "Included because AEGIS can record a bounded technical artifact or enforcement result that may contribute evidence concerning this citation."
+    applicable_source_date: "2026-07-24"
+    mapping:
+      aegis_evidence_status: supported_evidence
+      interpretation: "AEGIS directly records technical event evidence relevant to ART-12(1); this does not establish legal satisfaction or applicability."
+      evidence:
+        - kind: artifact_field
+          baseline: aegis_source
+          path: schemas/audit_artifact.schema.json
+          locator: "/properties/checksum"
+          demonstrates: "The audit contract records a checksum before host persistence."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_audit_sinks.py
+          locator: "test_json_file_sink_appends_multiple"
+          demonstrates: "The sink test exercises host-file append behavior."
+        - kind: fixture
+          baseline: catalog_asset
+          path: examples/compliance/regulated_workflow.py
+          locator: "def run("
+          demonstrates: "The deterministic regulated workflow demonstrates schema-valid audit and workflow evidence without representing production operation."
+      host_controls:
+        - owner: adopter
+          control: "Determine applicability and effective dates for ART-12(1), assign accountable actors, and assess legal and evidentiary sufficiency."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, protected retention, and deletion controls.
+      limitations:
+        - This non-authoritative citation index is not legal advice or an applicability determination.
+        - AEGIS records technical evidence contributions; it does not establish legal sufficiency or production operating effectiveness.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+      retention_assumptions:
+        - The adopter reconciles Article-specific retention requirements with data-protection, employment, sector, and national law.
+        - The host preserves artifacts and external trust-anchor receipts under the adopter's approved schedule and access policy.
+  - control_id: ART-13(1)
+    source_reference:
+      source_id: eu-ai-act-2024
+      locator: "Article 13, paragraph 1"
+    inclusion_rationale: "Included because AEGIS can record a bounded technical artifact or enforcement result that may contribute evidence concerning this citation."
+    applicable_source_date: "2026-07-24"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact relevant to part of ART-13(1); legal interpretation, organizational process, and operating effectiveness remain external."
+      evidence:
+        - kind: policy_field
+          baseline: aegis_source
+          path: schemas/invocation_policy.schema.json
+          locator: "/properties/pre_conditions"
+          demonstrates: "The invocation policy contract records bounded preconditions."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_conditions.py
+          locator: "test_resolve_condition_from_context"
+          demonstrates: "The condition test exercises policy-bound contextual decisions."
+      unsupported_portion: "AEGIS does not determine whether ART-13(1) applies, satisfy the full cited duty, or operate the required organizational process."
+      host_controls:
+        - owner: adopter
+          control: "Determine applicability and effective dates for ART-13(1), assign accountable actors, and assess legal and evidentiary sufficiency."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, protected retention, and deletion controls.
+      limitations:
+        - This non-authoritative citation index is not legal advice or an applicability determination.
+        - AEGIS records technical evidence contributions; it does not establish legal sufficiency or production operating effectiveness.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+      retention_assumptions:
+        - The adopter reconciles Article-specific retention requirements with data-protection, employment, sector, and national law.
+        - The host preserves artifacts and external trust-anchor receipts under the adopter's approved schedule and access policy.
+  - control_id: ART-14(1)
+    source_reference:
+      source_id: eu-ai-act-2024
+      locator: "Article 14, paragraph 1"
+    inclusion_rationale: "Included because AEGIS can record a bounded technical artifact or enforcement result that may contribute evidence concerning this citation."
+    applicable_source_date: "2026-07-24"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact relevant to part of ART-14(1); legal interpretation, organizational process, and operating effectiveness remain external."
+      evidence:
+        - kind: artifact_field
+          baseline: aegis_source
+          path: schemas/workflow_artifact.schema.json
+          locator: "/properties/approval_checkpoints"
+          demonstrates: "The workflow artifact records approval-checkpoint evidence."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_approval_checkpoints.py
+          locator: "test_pause_with_metadata_records_checkpoint"
+          demonstrates: "The checkpoint test exercises recorded human-approval metadata."
+      unsupported_portion: "AEGIS does not determine whether ART-14(1) applies, satisfy the full cited duty, or operate the required organizational process."
+      host_controls:
+        - owner: adopter
+          control: "Determine applicability and effective dates for ART-14(1), assign accountable actors, and assess legal and evidentiary sufficiency."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, protected retention, and deletion controls.
+      limitations:
+        - This non-authoritative citation index is not legal advice or an applicability determination.
+        - AEGIS records technical evidence contributions; it does not establish legal sufficiency or production operating effectiveness.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+      retention_assumptions:
+        - The adopter reconciles Article-specific retention requirements with data-protection, employment, sector, and national law.
+        - The host preserves artifacts and external trust-anchor receipts under the adopter's approved schedule and access policy.
+  - control_id: ART-14(4)
+    source_reference:
+      source_id: eu-ai-act-2024
+      locator: "Article 14, paragraph 4"
+    inclusion_rationale: "Included because AEGIS can record a bounded technical artifact or enforcement result that may contribute evidence concerning this citation."
+    applicable_source_date: "2026-07-24"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact relevant to part of ART-14(4); legal interpretation, organizational process, and operating effectiveness remain external."
+      evidence:
+        - kind: artifact_field
+          baseline: aegis_source
+          path: schemas/workflow_artifact.schema.json
+          locator: "/properties/approval_checkpoints"
+          demonstrates: "The workflow artifact records approval-checkpoint evidence."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_approval_checkpoints.py
+          locator: "test_pause_with_metadata_records_checkpoint"
+          demonstrates: "The checkpoint test exercises recorded human-approval metadata."
+      unsupported_portion: "AEGIS does not determine whether ART-14(4) applies, satisfy the full cited duty, or operate the required organizational process."
+      host_controls:
+        - owner: adopter
+          control: "Determine applicability and effective dates for ART-14(4), assign accountable actors, and assess legal and evidentiary sufficiency."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, protected retention, and deletion controls.
+      limitations:
+        - This non-authoritative citation index is not legal advice or an applicability determination.
+        - AEGIS records technical evidence contributions; it does not establish legal sufficiency or production operating effectiveness.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+      retention_assumptions:
+        - The adopter reconciles Article-specific retention requirements with data-protection, employment, sector, and national law.
+        - The host preserves artifacts and external trust-anchor receipts under the adopter's approved schedule and access policy.
+  - control_id: ART-15(1)
+    source_reference:
+      source_id: eu-ai-act-2024
+      locator: "Article 15, paragraph 1"
+    inclusion_rationale: "Included because AEGIS can record a bounded technical artifact or enforcement result that may contribute evidence concerning this citation."
+    applicable_source_date: "2026-07-24"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact relevant to part of ART-15(1); legal interpretation, organizational process, and operating effectiveness remain external."
+      evidence:
+        - kind: artifact_field
+          baseline: aegis_source
+          path: schemas/audit_artifact.schema.json
+          locator: "/properties/signature_metadata"
+          demonstrates: "The audit contract records signature metadata when signing is configured."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_evidence_checksum_v2.py
+          locator: "test_content_checksum_covers_chain_and_workflow_metadata"
+          demonstrates: "The checksum test exercises tamper-evident coverage of governance metadata."
+      unsupported_portion: "AEGIS does not determine whether ART-15(1) applies, satisfy the full cited duty, or operate the required organizational process."
+      host_controls:
+        - owner: adopter
+          control: "Determine applicability and effective dates for ART-15(1), assign accountable actors, and assess legal and evidentiary sufficiency."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, protected retention, and deletion controls.
+      limitations:
+        - This non-authoritative citation index is not legal advice or an applicability determination.
+        - AEGIS records technical evidence contributions; it does not establish legal sufficiency or production operating effectiveness.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+      retention_assumptions:
+        - The adopter reconciles Article-specific retention requirements with data-protection, employment, sector, and national law.
+        - The host preserves artifacts and external trust-anchor receipts under the adopter's approved schedule and access policy.
+  - control_id: ART-15(4)
+    source_reference:
+      source_id: eu-ai-act-2024
+      locator: "Article 15, paragraph 4"
+    inclusion_rationale: "Included because AEGIS can record a bounded technical artifact or enforcement result that may contribute evidence concerning this citation."
+    applicable_source_date: "2026-07-24"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact relevant to part of ART-15(4); legal interpretation, organizational process, and operating effectiveness remain external."
+      evidence:
+        - kind: artifact_field
+          baseline: aegis_source
+          path: schemas/audit_artifact.schema.json
+          locator: "/properties/signature_metadata"
+          demonstrates: "The audit contract records signature metadata when signing is configured."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_evidence_checksum_v2.py
+          locator: "test_content_checksum_covers_chain_and_workflow_metadata"
+          demonstrates: "The checksum test exercises tamper-evident coverage of governance metadata."
+      unsupported_portion: "AEGIS does not determine whether ART-15(4) applies, satisfy the full cited duty, or operate the required organizational process."
+      host_controls:
+        - owner: adopter
+          control: "Determine applicability and effective dates for ART-15(4), assign accountable actors, and assess legal and evidentiary sufficiency."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, protected retention, and deletion controls.
+      limitations:
+        - This non-authoritative citation index is not legal advice or an applicability determination.
+        - AEGIS records technical evidence contributions; it does not establish legal sufficiency or production operating effectiveness.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+      retention_assumptions:
+        - The adopter reconciles Article-specific retention requirements with data-protection, employment, sector, and national law.
+        - The host preserves artifacts and external trust-anchor receipts under the adopter's approved schedule and access policy.
+  - control_id: ART-15(5)
+    source_reference:
+      source_id: eu-ai-act-2024
+      locator: "Article 15, paragraph 5"
+    inclusion_rationale: "Included because AEGIS can record a bounded technical artifact or enforcement result that may contribute evidence concerning this citation."
+    applicable_source_date: "2026-07-24"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact relevant to part of ART-15(5); legal interpretation, organizational process, and operating effectiveness remain external."
+      evidence:
+        - kind: artifact_field
+          baseline: aegis_source
+          path: schemas/audit_artifact.schema.json
+          locator: "/properties/signature_metadata"
+          demonstrates: "The audit contract records signature metadata when signing is configured."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_evidence_checksum_v2.py
+          locator: "test_content_checksum_covers_chain_and_workflow_metadata"
+          demonstrates: "The checksum test exercises tamper-evident coverage of governance metadata."
+      unsupported_portion: "AEGIS does not determine whether ART-15(5) applies, satisfy the full cited duty, or operate the required organizational process."
+      host_controls:
+        - owner: adopter
+          control: "Determine applicability and effective dates for ART-15(5), assign accountable actors, and assess legal and evidentiary sufficiency."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, protected retention, and deletion controls.
+      limitations:
+        - This non-authoritative citation index is not legal advice or an applicability determination.
+        - AEGIS records technical evidence contributions; it does not establish legal sufficiency or production operating effectiveness.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+      retention_assumptions:
+        - The adopter reconciles Article-specific retention requirements with data-protection, employment, sector, and national law.
+        - The host preserves artifacts and external trust-anchor receipts under the adopter's approved schedule and access policy.
+  - control_id: ART-17(1)
+    source_reference:
+      source_id: eu-ai-act-2024
+      locator: "Article 17, paragraph 1"
+    inclusion_rationale: "Included because AEGIS can record a bounded technical artifact or enforcement result that may contribute evidence concerning this citation."
+    applicable_source_date: "2026-07-24"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact relevant to part of ART-17(1); legal interpretation, organizational process, and operating effectiveness remain external."
+      evidence:
+        - kind: policy_field
+          baseline: aegis_source
+          path: schemas/invocation_policy.schema.json
+          locator: "/properties/pre_conditions"
+          demonstrates: "The invocation policy contract records bounded preconditions."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_conditions.py
+          locator: "test_resolve_condition_from_context"
+          demonstrates: "The condition test exercises policy-bound contextual decisions."
+      unsupported_portion: "AEGIS does not determine whether ART-17(1) applies, satisfy the full cited duty, or operate the required organizational process."
+      host_controls:
+        - owner: adopter
+          control: "Determine applicability and effective dates for ART-17(1), assign accountable actors, and assess legal and evidentiary sufficiency."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, protected retention, and deletion controls.
+      limitations:
+        - This non-authoritative citation index is not legal advice or an applicability determination.
+        - AEGIS records technical evidence contributions; it does not establish legal sufficiency or production operating effectiveness.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+      retention_assumptions:
+        - The adopter reconciles Article-specific retention requirements with data-protection, employment, sector, and national law.
+        - The host preserves artifacts and external trust-anchor receipts under the adopter's approved schedule and access policy.
+  - control_id: ART-18(1)
+    source_reference:
+      source_id: eu-ai-act-2024
+      locator: "Article 18, paragraph 1"
+    inclusion_rationale: "Included to make an adjacent organizational or legal responsibility explicit where this catalog identifies no complete AEGIS evidence contribution."
+    applicable_source_date: "2026-07-24"
+    mapping:
+      aegis_evidence_status: external_control
+      interpretation: "ART-18(1) is retained in this bounded index to show an adjacent legal or organizational responsibility for which no complete AEGIS evidence contribution is identified."
+      evidence: []
+      external_owner: adopter
+      external_control: "The adopter obtains legal guidance as needed, determines whether ART-18(1) applies, implements the required process, and retains operating evidence."
+      host_controls:
+        - owner: adopter
+          control: "Determine applicability and effective dates for ART-18(1), assign accountable actors, and assess legal and evidentiary sufficiency."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, protected retention, and deletion controls.
+      limitations:
+        - This non-authoritative citation index is not legal advice or an applicability determination.
+        - AEGIS records technical evidence contributions; it does not establish legal sufficiency or production operating effectiveness.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+      retention_assumptions:
+        - The adopter reconciles Article-specific retention requirements with data-protection, employment, sector, and national law.
+        - The host preserves artifacts and external trust-anchor receipts under the adopter's approved schedule and access policy.
+  - control_id: ART-19(1)
+    source_reference:
+      source_id: eu-ai-act-2024
+      locator: "Article 19, paragraph 1"
+    inclusion_rationale: "Included because AEGIS can record a bounded technical artifact or enforcement result that may contribute evidence concerning this citation."
+    applicable_source_date: "2026-07-24"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact relevant to part of ART-19(1); legal interpretation, organizational process, and operating effectiveness remain external."
+      evidence:
+        - kind: artifact_field
+          baseline: aegis_source
+          path: schemas/audit_artifact.schema.json
+          locator: "/properties/checksum"
+          demonstrates: "The audit contract records a checksum before host persistence."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_audit_sinks.py
+          locator: "test_json_file_sink_appends_multiple"
+          demonstrates: "The sink test exercises host-file append behavior."
+      unsupported_portion: "AEGIS does not determine whether ART-19(1) applies, satisfy the full cited duty, or operate the required organizational process."
+      host_controls:
+        - owner: adopter
+          control: "Determine applicability and effective dates for ART-19(1), assign accountable actors, and assess legal and evidentiary sufficiency."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, protected retention, and deletion controls.
+      limitations:
+        - This non-authoritative citation index is not legal advice or an applicability determination.
+        - AEGIS records technical evidence contributions; it does not establish legal sufficiency or production operating effectiveness.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+      retention_assumptions:
+        - The adopter reconciles Article-specific retention requirements with data-protection, employment, sector, and national law.
+        - The host preserves artifacts and external trust-anchor receipts under the adopter's approved schedule and access policy.
+  - control_id: ART-21(1)
+    source_reference:
+      source_id: eu-ai-act-2024
+      locator: "Article 21, paragraph 1"
+    inclusion_rationale: "Included to make an adjacent organizational or legal responsibility explicit where this catalog identifies no complete AEGIS evidence contribution."
+    applicable_source_date: "2026-07-24"
+    mapping:
+      aegis_evidence_status: external_control
+      interpretation: "ART-21(1) is retained in this bounded index to show an adjacent legal or organizational responsibility for which no complete AEGIS evidence contribution is identified."
+      evidence: []
+      external_owner: adopter
+      external_control: "The adopter obtains legal guidance as needed, determines whether ART-21(1) applies, implements the required process, and retains operating evidence."
+      host_controls:
+        - owner: adopter
+          control: "Determine applicability and effective dates for ART-21(1), assign accountable actors, and assess legal and evidentiary sufficiency."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, protected retention, and deletion controls.
+      limitations:
+        - This non-authoritative citation index is not legal advice or an applicability determination.
+        - AEGIS records technical evidence contributions; it does not establish legal sufficiency or production operating effectiveness.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+      retention_assumptions:
+        - The adopter reconciles Article-specific retention requirements with data-protection, employment, sector, and national law.
+        - The host preserves artifacts and external trust-anchor receipts under the adopter's approved schedule and access policy.
+  - control_id: ART-26(1)
+    source_reference:
+      source_id: eu-ai-act-2024
+      locator: "Article 26, paragraph 1"
+    inclusion_rationale: "Included because AEGIS can record a bounded technical artifact or enforcement result that may contribute evidence concerning this citation."
+    applicable_source_date: "2026-07-24"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact relevant to part of ART-26(1); legal interpretation, organizational process, and operating effectiveness remain external."
+      evidence:
+        - kind: policy_field
+          baseline: aegis_source
+          path: schemas/invocation_policy.schema.json
+          locator: "/properties/pre_conditions"
+          demonstrates: "The invocation policy contract records bounded preconditions."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_conditions.py
+          locator: "test_resolve_condition_from_context"
+          demonstrates: "The condition test exercises policy-bound contextual decisions."
+      unsupported_portion: "AEGIS does not determine whether ART-26(1) applies, satisfy the full cited duty, or operate the required organizational process."
+      host_controls:
+        - owner: adopter
+          control: "Determine applicability and effective dates for ART-26(1), assign accountable actors, and assess legal and evidentiary sufficiency."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, protected retention, and deletion controls.
+      limitations:
+        - This non-authoritative citation index is not legal advice or an applicability determination.
+        - AEGIS records technical evidence contributions; it does not establish legal sufficiency or production operating effectiveness.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+      retention_assumptions:
+        - The adopter reconciles Article-specific retention requirements with data-protection, employment, sector, and national law.
+        - The host preserves artifacts and external trust-anchor receipts under the adopter's approved schedule and access policy.
+  - control_id: ART-26(2)
+    source_reference:
+      source_id: eu-ai-act-2024
+      locator: "Article 26, paragraph 2"
+    inclusion_rationale: "Included to make an adjacent organizational or legal responsibility explicit where this catalog identifies no complete AEGIS evidence contribution."
+    applicable_source_date: "2026-07-24"
+    mapping:
+      aegis_evidence_status: external_control
+      interpretation: "ART-26(2) is retained in this bounded index to show an adjacent legal or organizational responsibility for which no complete AEGIS evidence contribution is identified."
+      evidence: []
+      external_owner: adopter
+      external_control: "The adopter obtains legal guidance as needed, determines whether ART-26(2) applies, implements the required process, and retains operating evidence."
+      host_controls:
+        - owner: adopter
+          control: "Determine applicability and effective dates for ART-26(2), assign accountable actors, and assess legal and evidentiary sufficiency."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, protected retention, and deletion controls.
+      limitations:
+        - This non-authoritative citation index is not legal advice or an applicability determination.
+        - AEGIS records technical evidence contributions; it does not establish legal sufficiency or production operating effectiveness.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+      retention_assumptions:
+        - The adopter reconciles Article-specific retention requirements with data-protection, employment, sector, and national law.
+        - The host preserves artifacts and external trust-anchor receipts under the adopter's approved schedule and access policy.
+  - control_id: ART-26(4)
+    source_reference:
+      source_id: eu-ai-act-2024
+      locator: "Article 26, paragraph 4"
+    inclusion_rationale: "Included because AEGIS can record a bounded technical artifact or enforcement result that may contribute evidence concerning this citation."
+    applicable_source_date: "2026-07-24"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact relevant to part of ART-26(4); legal interpretation, organizational process, and operating effectiveness remain external."
+      evidence:
+        - kind: artifact_field
+          baseline: aegis_source
+          path: schemas/audit_artifact.schema.json
+          locator: "/properties/signature_metadata"
+          demonstrates: "The audit contract records signature metadata when signing is configured."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_evidence_checksum_v2.py
+          locator: "test_content_checksum_covers_chain_and_workflow_metadata"
+          demonstrates: "The checksum test exercises tamper-evident coverage of governance metadata."
+      unsupported_portion: "AEGIS does not determine whether ART-26(4) applies, satisfy the full cited duty, or operate the required organizational process."
+      host_controls:
+        - owner: adopter
+          control: "Determine applicability and effective dates for ART-26(4), assign accountable actors, and assess legal and evidentiary sufficiency."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, protected retention, and deletion controls.
+      limitations:
+        - This non-authoritative citation index is not legal advice or an applicability determination.
+        - AEGIS records technical evidence contributions; it does not establish legal sufficiency or production operating effectiveness.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+      retention_assumptions:
+        - The adopter reconciles Article-specific retention requirements with data-protection, employment, sector, and national law.
+        - The host preserves artifacts and external trust-anchor receipts under the adopter's approved schedule and access policy.
+  - control_id: ART-26(5)
+    source_reference:
+      source_id: eu-ai-act-2024
+      locator: "Article 26, paragraph 5"
+    inclusion_rationale: "Included to make an adjacent organizational or legal responsibility explicit where this catalog identifies no complete AEGIS evidence contribution."
+    applicable_source_date: "2026-07-24"
+    mapping:
+      aegis_evidence_status: external_control
+      interpretation: "ART-26(5) is retained in this bounded index to show an adjacent legal or organizational responsibility for which no complete AEGIS evidence contribution is identified."
+      evidence: []
+      external_owner: adopter
+      external_control: "The adopter obtains legal guidance as needed, determines whether ART-26(5) applies, implements the required process, and retains operating evidence."
+      host_controls:
+        - owner: adopter
+          control: "Determine applicability and effective dates for ART-26(5), assign accountable actors, and assess legal and evidentiary sufficiency."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, protected retention, and deletion controls.
+      limitations:
+        - This non-authoritative citation index is not legal advice or an applicability determination.
+        - AEGIS records technical evidence contributions; it does not establish legal sufficiency or production operating effectiveness.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+      retention_assumptions:
+        - The adopter reconciles Article-specific retention requirements with data-protection, employment, sector, and national law.
+        - The host preserves artifacts and external trust-anchor receipts under the adopter's approved schedule and access policy.
+  - control_id: ART-26(6)
+    source_reference:
+      source_id: eu-ai-act-2024
+      locator: "Article 26, paragraph 6"
+    inclusion_rationale: "Included because AEGIS can record a bounded technical artifact or enforcement result that may contribute evidence concerning this citation."
+    applicable_source_date: "2026-07-24"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact relevant to part of ART-26(6); legal interpretation, organizational process, and operating effectiveness remain external."
+      evidence:
+        - kind: artifact_field
+          baseline: aegis_source
+          path: schemas/audit_artifact.schema.json
+          locator: "/properties/checksum"
+          demonstrates: "The audit contract records a checksum before host persistence."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_audit_sinks.py
+          locator: "test_json_file_sink_appends_multiple"
+          demonstrates: "The sink test exercises host-file append behavior."
+      unsupported_portion: "AEGIS does not determine whether ART-26(6) applies, satisfy the full cited duty, or operate the required organizational process."
+      host_controls:
+        - owner: adopter
+          control: "Determine applicability and effective dates for ART-26(6), assign accountable actors, and assess legal and evidentiary sufficiency."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, protected retention, and deletion controls.
+      limitations:
+        - This non-authoritative citation index is not legal advice or an applicability determination.
+        - AEGIS records technical evidence contributions; it does not establish legal sufficiency or production operating effectiveness.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+      retention_assumptions:
+        - The adopter reconciles Article-specific retention requirements with data-protection, employment, sector, and national law.
+        - The host preserves artifacts and external trust-anchor receipts under the adopter's approved schedule and access policy.
+  - control_id: ART-26(9)
+    source_reference:
+      source_id: eu-ai-act-2024
+      locator: "Article 26, paragraph 9"
+    inclusion_rationale: "Included to make an adjacent organizational or legal responsibility explicit where this catalog identifies no complete AEGIS evidence contribution."
+    applicable_source_date: "2026-07-24"
+    mapping:
+      aegis_evidence_status: external_control
+      interpretation: "ART-26(9) is retained in this bounded index to show an adjacent legal or organizational responsibility for which no complete AEGIS evidence contribution is identified."
+      evidence: []
+      external_owner: adopter
+      external_control: "The adopter obtains legal guidance as needed, determines whether ART-26(9) applies, implements the required process, and retains operating evidence."
+      host_controls:
+        - owner: adopter
+          control: "Determine applicability and effective dates for ART-26(9), assign accountable actors, and assess legal and evidentiary sufficiency."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, protected retention, and deletion controls.
+      limitations:
+        - This non-authoritative citation index is not legal advice or an applicability determination.
+        - AEGIS records technical evidence contributions; it does not establish legal sufficiency or production operating effectiveness.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+      retention_assumptions:
+        - The adopter reconciles Article-specific retention requirements with data-protection, employment, sector, and national law.
+        - The host preserves artifacts and external trust-anchor receipts under the adopter's approved schedule and access policy.
+  - control_id: ART-27(1)
+    source_reference:
+      source_id: eu-ai-act-2024
+      locator: "Article 27, paragraph 1"
+    inclusion_rationale: "Included to make an adjacent organizational or legal responsibility explicit where this catalog identifies no complete AEGIS evidence contribution."
+    applicable_source_date: "2026-07-24"
+    mapping:
+      aegis_evidence_status: external_control
+      interpretation: "ART-27(1) is retained in this bounded index to show an adjacent legal or organizational responsibility for which no complete AEGIS evidence contribution is identified."
+      evidence: []
+      external_owner: adopter
+      external_control: "The adopter obtains legal guidance as needed, determines whether ART-27(1) applies, implements the required process, and retains operating evidence."
+      host_controls:
+        - owner: adopter
+          control: "Determine applicability and effective dates for ART-27(1), assign accountable actors, and assess legal and evidentiary sufficiency."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, protected retention, and deletion controls.
+      limitations:
+        - This non-authoritative citation index is not legal advice or an applicability determination.
+        - AEGIS records technical evidence contributions; it does not establish legal sufficiency or production operating effectiveness.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+      retention_assumptions:
+        - The adopter reconciles Article-specific retention requirements with data-protection, employment, sector, and national law.
+        - The host preserves artifacts and external trust-anchor receipts under the adopter's approved schedule and access policy.
+  - control_id: ART-50(1)
+    source_reference:
+      source_id: eu-ai-act-2024
+      locator: "Article 50, paragraph 1"
+    inclusion_rationale: "Included to make an adjacent organizational or legal responsibility explicit where this catalog identifies no complete AEGIS evidence contribution."
+    applicable_source_date: "2026-07-24"
+    mapping:
+      aegis_evidence_status: external_control
+      interpretation: "ART-50(1) is retained in this bounded index to show an adjacent legal or organizational responsibility for which no complete AEGIS evidence contribution is identified."
+      evidence: []
+      external_owner: adopter
+      external_control: "The adopter obtains legal guidance as needed, determines whether ART-50(1) applies, implements the required process, and retains operating evidence."
+      host_controls:
+        - owner: adopter
+          control: "Determine applicability and effective dates for ART-50(1), assign accountable actors, and assess legal and evidentiary sufficiency."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, protected retention, and deletion controls.
+      limitations:
+        - This non-authoritative citation index is not legal advice or an applicability determination.
+        - AEGIS records technical evidence contributions; it does not establish legal sufficiency or production operating effectiveness.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+      retention_assumptions:
+        - The adopter reconciles Article-specific retention requirements with data-protection, employment, sector, and national law.
+        - The host preserves artifacts and external trust-anchor receipts under the adopter's approved schedule and access policy.
+  - control_id: ART-50(2)
+    source_reference:
+      source_id: eu-ai-act-2024
+      locator: "Article 50, paragraph 2"
+    inclusion_rationale: "Included to make an adjacent organizational or legal responsibility explicit where this catalog identifies no complete AEGIS evidence contribution."
+    applicable_source_date: "2026-07-24"
+    mapping:
+      aegis_evidence_status: external_control
+      interpretation: "ART-50(2) is retained in this bounded index to show an adjacent legal or organizational responsibility for which no complete AEGIS evidence contribution is identified."
+      evidence: []
+      external_owner: adopter
+      external_control: "The adopter obtains legal guidance as needed, determines whether ART-50(2) applies, implements the required process, and retains operating evidence."
+      host_controls:
+        - owner: adopter
+          control: "Determine applicability and effective dates for ART-50(2), assign accountable actors, and assess legal and evidentiary sufficiency."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, protected retention, and deletion controls.
+      limitations:
+        - This non-authoritative citation index is not legal advice or an applicability determination.
+        - AEGIS records technical evidence contributions; it does not establish legal sufficiency or production operating effectiveness.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+      retention_assumptions:
+        - The adopter reconciles Article-specific retention requirements with data-protection, employment, sector, and national law.
+        - The host preserves artifacts and external trust-anchor receipts under the adopter's approved schedule and access policy.
+  - control_id: ART-50(4)
+    source_reference:
+      source_id: eu-ai-act-2024
+      locator: "Article 50, paragraph 4"
+    inclusion_rationale: "Included to make an adjacent organizational or legal responsibility explicit where this catalog identifies no complete AEGIS evidence contribution."
+    applicable_source_date: "2026-07-24"
+    mapping:
+      aegis_evidence_status: external_control
+      interpretation: "ART-50(4) is retained in this bounded index to show an adjacent legal or organizational responsibility for which no complete AEGIS evidence contribution is identified."
+      evidence: []
+      external_owner: adopter
+      external_control: "The adopter obtains legal guidance as needed, determines whether ART-50(4) applies, implements the required process, and retains operating evidence."
+      host_controls:
+        - owner: adopter
+          control: "Determine applicability and effective dates for ART-50(4), assign accountable actors, and assess legal and evidentiary sufficiency."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, protected retention, and deletion controls.
+      limitations:
+        - This non-authoritative citation index is not legal advice or an applicability determination.
+        - AEGIS records technical evidence contributions; it does not establish legal sufficiency or production operating effectiveness.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+      retention_assumptions:
+        - The adopter reconciles Article-specific retention requirements with data-protection, employment, sector, and national law.
+        - The host preserves artifacts and external trust-anchor receipts under the adopter's approved schedule and access policy.
+  - control_id: ART-72(1)
+    source_reference:
+      source_id: eu-ai-act-2024
+      locator: "Article 72, paragraph 1"
+    inclusion_rationale: "Included because AEGIS can record a bounded technical artifact or enforcement result that may contribute evidence concerning this citation."
+    applicable_source_date: "2026-07-24"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact relevant to part of ART-72(1); legal interpretation, organizational process, and operating effectiveness remain external."
+      evidence:
+        - kind: artifact_field
+          baseline: aegis_source
+          path: schemas/audit_artifact.schema.json
+          locator: "/properties/checksum"
+          demonstrates: "The audit contract records a checksum before host persistence."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_audit_sinks.py
+          locator: "test_json_file_sink_appends_multiple"
+          demonstrates: "The sink test exercises host-file append behavior."
+      unsupported_portion: "AEGIS does not determine whether ART-72(1) applies, satisfy the full cited duty, or operate the required organizational process."
+      host_controls:
+        - owner: adopter
+          control: "Determine applicability and effective dates for ART-72(1), assign accountable actors, and assess legal and evidentiary sufficiency."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, protected retention, and deletion controls.
+      limitations:
+        - This non-authoritative citation index is not legal advice or an applicability determination.
+        - AEGIS records technical evidence contributions; it does not establish legal sufficiency or production operating effectiveness.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+      retention_assumptions:
+        - The adopter reconciles Article-specific retention requirements with data-protection, employment, sector, and national law.
+        - The host preserves artifacts and external trust-anchor receipts under the adopter's approved schedule and access policy.
+  - control_id: ART-72(2)
+    source_reference:
+      source_id: eu-ai-act-2024
+      locator: "Article 72, paragraph 2"
+    inclusion_rationale: "Included because AEGIS can record a bounded technical artifact or enforcement result that may contribute evidence concerning this citation."
+    applicable_source_date: "2026-07-24"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact relevant to part of ART-72(2); legal interpretation, organizational process, and operating effectiveness remain external."
+      evidence:
+        - kind: artifact_field
+          baseline: aegis_source
+          path: schemas/audit_artifact.schema.json
+          locator: "/properties/checksum"
+          demonstrates: "The audit contract records a checksum before host persistence."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_audit_sinks.py
+          locator: "test_json_file_sink_appends_multiple"
+          demonstrates: "The sink test exercises host-file append behavior."
+      unsupported_portion: "AEGIS does not determine whether ART-72(2) applies, satisfy the full cited duty, or operate the required organizational process."
+      host_controls:
+        - owner: adopter
+          control: "Determine applicability and effective dates for ART-72(2), assign accountable actors, and assess legal and evidentiary sufficiency."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, protected retention, and deletion controls.
+      limitations:
+        - This non-authoritative citation index is not legal advice or an applicability determination.
+        - AEGIS records technical evidence contributions; it does not establish legal sufficiency or production operating effectiveness.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+      retention_assumptions:
+        - The adopter reconciles Article-specific retention requirements with data-protection, employment, sector, and national law.
+        - The host preserves artifacts and external trust-anchor receipts under the adopter's approved schedule and access policy.
+  - control_id: ART-73(1)
+    source_reference:
+      source_id: eu-ai-act-2024
+      locator: "Article 73, paragraph 1"
+    inclusion_rationale: "Included to make an adjacent organizational or legal responsibility explicit where this catalog identifies no complete AEGIS evidence contribution."
+    applicable_source_date: "2026-07-24"
+    mapping:
+      aegis_evidence_status: external_control
+      interpretation: "ART-73(1) is retained in this bounded index to show an adjacent legal or organizational responsibility for which no complete AEGIS evidence contribution is identified."
+      evidence: []
+      external_owner: adopter
+      external_control: "The adopter obtains legal guidance as needed, determines whether ART-73(1) applies, implements the required process, and retains operating evidence."
+      host_controls:
+        - owner: adopter
+          control: "Determine applicability and effective dates for ART-73(1), assign accountable actors, and assess legal and evidentiary sufficiency."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, protected retention, and deletion controls.
+      limitations:
+        - This non-authoritative citation index is not legal advice or an applicability determination.
+        - AEGIS records technical evidence contributions; it does not establish legal sufficiency or production operating effectiveness.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+      retention_assumptions:
+        - The adopter reconciles Article-specific retention requirements with data-protection, employment, sector, and national law.
+        - The host preserves artifacts and external trust-anchor receipts under the adopter's approved schedule and access policy.
+  - control_id: ART-113-third(c)
+    source_reference:
+      source_id: eu-ai-digital-omnibus-2026
+      locator: "Article 113, third paragraph, point (c), as replaced by Article 1(40)(b)"
+    inclusion_rationale: "Included solely to state the authoritative effective-date basis for the bounded citation set; it does not determine applicability."
+    applicable_source_date: "2026-07-24"
+    mapping:
+      aegis_evidence_status: external_control
+      interpretation: "ART-113-third(c) is retained in this bounded index to show an adjacent legal or organizational responsibility for which no complete AEGIS evidence contribution is identified."
+      evidence: []
+      external_owner: adopter
+      external_control: "The adopter obtains legal guidance as needed, determines whether ART-113-third(c) applies, implements the required process, and retains operating evidence."
+      host_controls:
+        - owner: adopter
+          control: "Determine applicability and effective dates for ART-113-third(c), assign accountable actors, and assess legal and evidentiary sufficiency."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, protected retention, and deletion controls.
+      limitations:
+        - This non-authoritative citation index is not legal advice or an applicability determination.
+        - AEGIS records technical evidence contributions; it does not establish legal sufficiency or production operating effectiveness.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+      retention_assumptions:
+        - The adopter reconciles Article-specific retention requirements with data-protection, employment, sector, and national law.
+        - The host preserves artifacts and external trust-anchor receipts under the adopter's approved schedule and access policy.

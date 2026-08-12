@@ -6,6 +6,7 @@ import argparse
 from datetime import date
 import importlib.util
 from pathlib import Path
+import subprocess
 import sys
 from typing import Iterable
 
@@ -15,8 +16,10 @@ if __package__:
         CatalogInputError,
         Finding,
         baseline_drift,
+        git_blob,
         load_catalog,
         load_yaml,
+        load_yaml_text,
         validate_claims,
         validate_evidence_references,
         validate_framework_module,
@@ -29,8 +32,10 @@ else:
         CatalogInputError,
         Finding,
         baseline_drift,
+        git_blob,
         load_catalog,
         load_yaml,
+        load_yaml_text,
         validate_claims,
         validate_evidence_references,
         validate_framework_module,
@@ -41,20 +46,69 @@ else:
 
 APPROVED_MODULES = (
     "compliance/frameworks/nist-ai-rmf-1.0.yaml",
-    "compliance/frameworks/iso-iec-42001-2023.yaml",
-    "compliance/frameworks/soc2-tsc-2017-revised-2022.yaml",
     "compliance/frameworks/eu-ai-act-2024-1689-amended-2026.yaml",
 )
 EXPECTED_FRAMEWORK_IDS = {
     "compliance/frameworks/nist-ai-rmf-1.0.yaml": "nist-ai-rmf-1.0",
-    "compliance/frameworks/iso-iec-42001-2023.yaml": "iso-iec-42001-2023",
-    "compliance/frameworks/soc2-tsc-2017-revised-2022.yaml": (
-        "soc2-tsc-2017-revised-2022"
-    ),
     "compliance/frameworks/eu-ai-act-2024-1689-amended-2026.yaml": (
         "eu-ai-act-2024-1689-amended-2026"
     ),
 }
+
+
+def reviewable_module_content(module: dict) -> dict:
+    """Return the module content whose exact snapshot receives review."""
+    return {key: value for key, value in module.items() if key != "review"}
+
+
+def reviewed_module_findings(
+    root: Path,
+    module_path: str,
+    module: dict,
+) -> tuple[Finding, ...]:
+    """Bind a completed review to the exact non-review module content."""
+    review = module.get("review")
+    if not isinstance(review, dict) or review.get("tier") == "unreviewed":
+        return ()
+    reviewed_commit = review.get("reviewed_commit_sha")
+    if not isinstance(reviewed_commit, str):
+        return ()
+    location = f"{module_path}.review.reviewed_commit_sha"
+    ancestry = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", reviewed_commit, "HEAD"],
+        cwd=root,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if ancestry.returncode:
+        return (
+            Finding(
+                "REVIEW_COMMIT_NOT_ANCESTOR",
+                location,
+                "reviewed commit must be an ancestor of the published snapshot",
+            ),
+        )
+    try:
+        reviewed_module = load_yaml_text(git_blob(root, reviewed_commit, module_path))
+    except CatalogInputError:
+        return (
+            Finding(
+                "REVIEWED_MODULE_CONTENT_MISMATCH",
+                location,
+                "reviewed commit does not contain the published module content",
+            ),
+        )
+    if reviewable_module_content(reviewed_module) != reviewable_module_content(module):
+        return (
+            Finding(
+                "REVIEWED_MODULE_CONTENT_MISMATCH",
+                location,
+                "reviewed commit does not contain the published module content",
+            ),
+        )
+    return ()
 
 
 def _parse_as_of(value: str) -> date:
@@ -104,7 +158,7 @@ def _manifest_findings(data: CatalogData) -> list[Finding]:
             Finding(
                 "MODULE_INVENTORY_MISMATCH",
                 "framework_modules",
-                "publication requires the four approved modules in fixed order",
+                "publication requires the two active public-source modules in fixed order",
             )
         )
     expected_files = {Path(item).name for item in APPROVED_MODULES}
@@ -133,7 +187,7 @@ def _manifest_findings(data: CatalogData) -> list[Finding]:
             )
         )
     else:
-        if baseline.get("git_commit") != "a9d0e4967070a11474ab11b23b047a5cde4b0892":
+        if baseline.get("git_commit") != "c4f6add076f2c534ada089f90e5c52c38341783c":
             findings.append(
                 Finding(
                     "MANIFEST_INVALID",
@@ -158,9 +212,9 @@ def _manifest_findings(data: CatalogData) -> list[Finding]:
                 "framework ids must be unique",
             )
         )
-    for path, module in zip(APPROVED_MODULES, data.modules):
+    for path, module in zip(tuple(manifest.get("framework_modules", ())), data.modules):
         actual_id = module.get("framework", {}).get("id")
-        expected_id = EXPECTED_FRAMEWORK_IDS[path]
+        expected_id = EXPECTED_FRAMEWORK_IDS.get(path)
         if actual_id != expected_id:
             findings.append(
                 Finding(
@@ -169,6 +223,30 @@ def _manifest_findings(data: CatalogData) -> list[Finding]:
                     f"expected framework id {expected_id}, found {actual_id}",
                 )
             )
+        review = module.get("review")
+        if not isinstance(review, dict) or review.get("tier") == "unreviewed":
+            continue
+        reviewed_commit = review.get("reviewed_commit_sha")
+        if not isinstance(reviewed_commit, str):
+            continue
+        completed = subprocess.run(
+            ["git", "cat-file", "-e", f"{reviewed_commit}^{{commit}}"],
+            cwd=data.root,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if completed.returncode:
+            findings.append(
+                Finding(
+                    "REVIEW_COMMIT_NOT_FOUND",
+                    f"{path}.review.reviewed_commit_sha",
+                    "reviewed commit does not exist in the local Git object database",
+                )
+            )
+            continue
+        findings.extend(reviewed_module_findings(data.root, path, module))
     return findings
 
 

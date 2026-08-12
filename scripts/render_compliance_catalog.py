@@ -73,20 +73,46 @@ def render_framework(manifest: Mapping[str, Any], module: Mapping[str, Any]) -> 
             f"`{_escape(baseline['published_version'])}` wheel; see "
             f"[{_escape(baseline['release_matrix'])}](../RELEASE_MATRIX.md)."
         ),
+        f"- Review tier: `{_escape(review.get('tier', 'unreviewed'))}`",
+        f"- Review decision: `{_escape(review.get('decision', 'pending'))}`",
         (
-            f"- Reviewed: `{_escape(review['reviewed_on'])}`; next review due: "
-            f"`{_escape(review['next_review_due'])}`"
+            f"- Reviewed: `{_escape(review.get('reviewed_on', 'not completed'))}`; "
+            "next review due: "
+            f"`{_escape(review.get('next_review_due', 'not scheduled'))}`"
         ),
         "",
         "## Declared scope",
         "",
         _escape(scope["summary"]),
         "",
+        f"Mapping unit: {_escape(scope['mapping_unit'])}.",
+        "",
         f"Expected mapping count: `{_escape(scope['expected_mapping_count'])}`.",
         "",
-        "## Authoritative sources",
+        "Exclusions:",
+        "",
+        *[f"- {_escape(item)}" for item in scope["exclusions"]],
         "",
     ]
+    if scope.get("applicability_statement"):
+        lines.extend(
+            [
+                "Applicability boundary:",
+                "",
+                _escape(scope["applicability_statement"]),
+                "",
+            ]
+        )
+    if scope.get("effective_date_basis"):
+        lines.extend(
+            [
+                "Effective-date basis:",
+                "",
+                _escape(scope["effective_date_basis"]),
+                "",
+            ]
+        )
+    lines.extend(["## Authoritative sources", ""])
     for source in sorted(
         framework["authoritative_sources"], key=lambda item: item["source_id"]
     ):
@@ -96,7 +122,50 @@ def render_framework(manifest: Mapping[str, Any], module: Mapping[str, Any]) -> 
             f"published {_escape(source['publication_date'])}, accessed "
             f"{_escape(source['accessed_on'])}."
         )
-    lines.extend(["", "## Evidence mappings", ""])
+    lines.extend(["", "## Review record", ""])
+    contributors = review.get("contributor_github_ids", [])
+    reviewers = review.get("reviewer_github_ids", [])
+    qualification_evidence_url = review.get("qualification_evidence_url")
+    qualification_evidence = (
+        f"[qualification evidence]({_safe_url(qualification_evidence_url)})"
+        if isinstance(qualification_evidence_url, str)
+        else "not recorded"
+    )
+    lines.extend(
+        [
+            "- Contributor GitHub identities: "
+            + (", ".join(f"`{_escape(item)}`" for item in contributors) or "none recorded"),
+            "- Reviewer GitHub identities: "
+            + (", ".join(f"`{_escape(item)}`" for item in reviewers) or "none recorded"),
+            f"- Review scope: {_escape(review.get('review_scope', 'not recorded'))}",
+            f"- Pull request: {_escape(review.get('pr_url', 'not recorded'))}",
+            (
+                "- Reviewed commit: `"
+                f"{_escape(review.get('reviewed_commit_sha', 'not recorded'))}`"
+            ),
+            (
+                "- Qualification basis: "
+                f"{_escape(review.get('qualification_basis', 'not claimed'))}"
+            ),
+            f"- Qualification evidence: {qualification_evidence}",
+            (
+                "- Qualification verification: `"
+                f"{_escape(review.get('qualification_verification', 'not applicable'))}`"
+            ),
+            (
+                "- Qualification verified by GitHub identity: `"
+                f"{_escape(review.get('qualification_verified_by_github_id', 'not applicable'))}`"
+            ),
+            "",
+            (
+                "Local CI checks record consistency only; it does not authenticate "
+                "identity, credentials, legal correctness, or professional competence."
+            ),
+            "",
+            "## Evidence mappings",
+            "",
+        ]
+    )
     for control in sorted(module["controls"], key=lambda item: item["control_id"]):
         mapping = control["mapping"]
         status = STATUS_LABELS[mapping["aegis_evidence_status"]]
@@ -106,6 +175,22 @@ def render_framework(manifest: Mapping[str, Any], module: Mapping[str, Any]) -> 
                 "",
                 f"Source locator: `{_escape(control['source_reference']['locator'])}`",
                 "",
+                *(
+                    [
+                        f"Inclusion rationale: {_escape(control['inclusion_rationale'])}",
+                        "",
+                    ]
+                    if control.get("inclusion_rationale")
+                    else []
+                ),
+                *(
+                    [
+                        f"Applicable source date: `{_escape(control['applicable_source_date'])}`",
+                        "",
+                    ]
+                    if control.get("applicable_source_date")
+                    else []
+                ),
                 f"AEGIS evidence contribution: {status}",
                 "",
                 _escape(mapping["interpretation"]),

@@ -13,6 +13,7 @@ protection, and organizational assurance decisions.
 ## Core Validation Commands
 
 ```bash
+python scripts/check_compliance_catalog.py --as-of "$(date -u +%F)"
 python -m pytest
 flake8 aegis
 python scripts/check_doc_parity.py
@@ -21,6 +22,17 @@ pytest demo-app-api/tests -q
 npm --prefix demo-app-react test
 npm --prefix demo-app-react run build
 ```
+
+The compliance-catalog command validates only the active NIST AI RMF 1.0 and
+citation-only EU AI Act modules. It verifies source pins, declared counts,
+review-record consistency, concrete evidence locators, review expiry,
+generated-page parity, claims wording, baseline drift, and the deterministic
+regulated fixture. Local CI does not authenticate reviewer identity,
+qualifications, legal correctness, or professional competence. ISO/IEC 42001
+and SOC 2 remain unpublished pending the separately sourced contributions in
+Issues #76 and #77; qualified EU review in Issue #78 is optional.
+Run it before Python tests because the fail-closed baseline check also rejects
+ignored runtime bytecode generated beneath the mapped `aegis/**` paths.
 
 PR-10d focused local check:
 
