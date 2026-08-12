@@ -12,10 +12,11 @@ from aegis._internal.compiled_policy import (
     AuthorityEnvelope,
     CompiledPolicy,
     CompiledPrecondition,
+    CompiledStatefulPolicyV1,
     CompiledToolLimit,
     CompiledToolPolicy,
 )
-from aegis._internal.errors import PolicyValidationError
+from aegis._internal.errors import PolicyValidationError, StatefulCompositionError
 
 
 _MISSING = object()
@@ -150,6 +151,8 @@ def _authority_value(authority: AuthorityEnvelope, path: str) -> Any:
         return authority.guards
     if path == "workflow":
         return authority.workflow
+    if path == "stateful":
+        return authority.stateful
     raise PolicyValidationError(
         f"No typed authority accessor is registered for {path}",
         code="RESTRICTION_SEMANTICS_MISSING",
@@ -165,16 +168,19 @@ def _raise_widening(
     candidate: Any,
     reason: str,
 ) -> None:
+    details = {
+        "path": path,
+        "phase": phase,
+        "parent": None if parent is _MISSING else _plain(parent),
+        "candidate": None if candidate is _MISSING else _plain(candidate),
+        "reason": reason,
+    }
+    if path == "stateful":
+        raise StatefulCompositionError(details=details)
     raise PolicyValidationError(
         f"Policy restriction widens authority at {path}: {reason}",
         code="POLICY_WIDENING",
-        details={
-            "path": path,
-            "phase": phase,
-            "parent": None if parent is _MISSING else _plain(parent),
-            "candidate": None if candidate is _MISSING else _plain(candidate),
-            "reason": reason,
-        },
+        details=details,
     )
 
 
@@ -727,6 +733,92 @@ class WorkflowRestrictionRule:
             )
 
 
+@dataclass(frozen=True, slots=True)
+class StatefulRestrictionRule:
+    """State identities stay exact while limits and budgets may only narrow."""
+
+    @staticmethod
+    def _normalize(value: Any) -> dict[str, Any] | None:
+        if value in (_MISSING, None):
+            return None
+        if isinstance(value, CompiledStatefulPolicyV1):
+            return {
+                "contract_version": value.contract_version,
+                "policy_state_id": value.policy_state_id,
+                "constraints": {
+                    item.id: {
+                        "id": item.id,
+                        "kind": item.kind,
+                        "tool": item.tool,
+                        "scope": item.scope,
+                        "limit": item.limit,
+                        "window_ms": item.window_ms,
+                        "provider_timeout_ms": item.provider_timeout_ms,
+                        "retry_horizon_ms": item.retry_horizon_ms,
+                        "on_provider_failure": item.on_provider_failure,
+                    }
+                    for item in value.constraints
+                },
+            }
+        constraints = value.get("constraints", ())
+        return {
+            "contract_version": value.get("contract_version"),
+            "policy_state_id": value.get("policy_state_id"),
+            "constraints": {item["id"]: dict(item) for item in constraints},
+        }
+
+    def compare(
+        self,
+        parent: Any,
+        candidate: Any,
+        *,
+        path: str,
+        phase: str,
+    ) -> None:
+        if candidate is _MISSING and phase.endswith("overlay"):
+            return
+        parent_value = self._normalize(parent)
+        candidate_value = self._normalize(candidate)
+        if parent_value is None:
+            return
+        if candidate_value is None:
+            _raise_widening(
+                path=path, phase=phase, parent=parent, candidate=candidate,
+                reason="candidate removes inherited stateful policy",
+            )
+        for identity_field in ("contract_version", "policy_state_id"):
+            if candidate_value[identity_field] != parent_value[identity_field]:
+                _raise_widening(
+                    path=path, phase=phase, parent=parent, candidate=candidate,
+                    reason=f"candidate changes {identity_field}",
+                )
+        candidate_constraints = candidate_value["constraints"]
+        for constraint_id, inherited in parent_value["constraints"].items():
+            selected = candidate_constraints.get(constraint_id)
+            if selected is None:
+                _raise_widening(
+                    path=path, phase=phase, parent=parent, candidate=candidate,
+                    reason="candidate removes or renames an inherited constraint",
+                )
+            for exact_field in (
+                "id", "kind", "tool", "scope", "window_ms",
+                "on_provider_failure",
+            ):
+                if selected[exact_field] != inherited[exact_field]:
+                    _raise_widening(
+                        path=path, phase=phase, parent=parent, candidate=candidate,
+                        reason=f"candidate changes {exact_field}",
+                    )
+            for maximum_field in (
+                "limit", "provider_timeout_ms", "retry_horizon_ms",
+            ):
+                if selected[maximum_field] > inherited[maximum_field]:
+                    _raise_widening(
+                        path=path, phase=phase, parent=parent, candidate=candidate,
+                        reason=f"candidate raises {maximum_field}",
+                    )
+
+
 class RestrictionRegistry:
     """Closed mapping from marked schema paths to restriction semantics."""
 
@@ -775,6 +867,7 @@ REGISTRY = RestrictionRegistry(
         "output_schema": SchemaRestrictionRule(),
         "guards": GuardSupersetRule(),
         "workflow": WorkflowRestrictionRule(),
+        "stateful": StatefulRestrictionRule(),
     },
 )
 

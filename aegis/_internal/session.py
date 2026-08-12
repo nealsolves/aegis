@@ -697,6 +697,8 @@ class GovernanceSession:
         session_id: str,
         policy_file: str | None,
         metadata: dict | None,
+        *,
+        state_scope: Any | None = None,
     ) -> None:
         normalized_session_id, session_id_valid = _safe_workflow_identity(
             session_id
@@ -710,6 +712,7 @@ class GovernanceSession:
         self._session_id = normalized_session_id
         self._policy_file = policy_file
         self._metadata = dict(metadata or {})
+        self._state_scope = state_scope
         self._lifecycle_lock = threading.RLock()
         self._attempt_lock = threading.Lock()
         self._next_step_index = 0
@@ -1203,6 +1206,16 @@ class GovernanceSession:
             if isinstance(exc, AIGCError)
             else TerminalClass.EXECUTION_FAILURE
         )
+        from aegis._internal.enforcement import _map_exception_to_failure_gate
+
+        failure_metadata: dict[str, Any] = {
+            "enforcement_mode": "split_pre_call_only"
+        }
+        stateful_decisions = getattr(exc, "stateful_decisions", None)
+        if stateful_decisions:
+            failure_metadata["stateful_decisions"] = _plain_json(
+                list(stateful_decisions)
+            )
         artifact = {
             "policy_file": attempt.policy_file,
             "model_provider": attempt.model_provider,
@@ -1214,12 +1227,12 @@ class GovernanceSession:
                 {"code": code, "message": message, "field": None}
             ],
             "failure_gate": (
-                "invocation_validation"
+                _map_exception_to_failure_gate(exc)
                 if isinstance(exc, AIGCError)
                 else "wrapped_function_error"
             ),
             "failure_reason": message,
-            "metadata": {"enforcement_mode": "split_pre_call_only"},
+            "metadata": failure_metadata,
         }
         finalized = finalize_legacy_invocation_artifact(
             artifact,
@@ -1242,6 +1255,12 @@ class GovernanceSession:
         if session_result.operation_id not in self._pending_results:
             raise InvocationValidationError(
                 "Token not registered in this session",
+                details={"operation_id": session_result.operation_id},
+            )
+        pending = self._pending_results[session_result.operation_id]
+        if pending.get("tool_calls_count", 0):
+            raise InvocationValidationError(
+                "Static and dynamic tool-call charging are mutually exclusive",
                 details={"operation_id": session_result.operation_id},
             )
         self._adapter_step_states[session_result.operation_id] = state
@@ -1653,6 +1672,13 @@ class GovernanceSession:
         """Finalize terminal canceled evidence after its handle is burned."""
         attempt = entry["attempt"]
         step_index = entry["step_index"]
+        stateful_decisions = [
+            *(entry.get("static_stateful_decisions") or ()),
+            *(entry.get("stateful_decisions") or ()),
+        ]
+        metadata: dict[str, Any] = {"enforcement_mode": "split"}
+        if stateful_decisions:
+            metadata["stateful_decisions"] = _plain_json(stateful_decisions)
         cancellation = {
             "policy_file": attempt.policy_file,
             "model_provider": attempt.model_provider,
@@ -1669,7 +1695,7 @@ class GovernanceSession:
             ],
             "failure_gate": "wrapped_function_error",
             "failure_reason": "Session closed before Phase B completion",
-            "metadata": {"enforcement_mode": "split"},
+            "metadata": metadata,
         }
         with self._attempt_finalization_scope(step_index, attempt):
             try:
@@ -1691,6 +1717,13 @@ class GovernanceSession:
         """Terminalize an unexpected Phase B failure after handle consumption."""
         attempt = entry["attempt"]
         code, message = _safe_attempt_failure(exc)
+        stateful_decisions = [
+            *(entry.get("static_stateful_decisions") or ()),
+            *(entry.get("stateful_decisions") or ()),
+        ]
+        metadata: dict[str, Any] = {"enforcement_mode": "split"}
+        if stateful_decisions:
+            metadata["stateful_decisions"] = _plain_json(stateful_decisions)
         artifact = {
             "policy_file": attempt.policy_file,
             "model_provider": attempt.model_provider,
@@ -1707,7 +1740,7 @@ class GovernanceSession:
             ],
             "failure_gate": "wrapped_function_error",
             "failure_reason": message,
-            "metadata": {"enforcement_mode": "split"},
+            "metadata": metadata,
         }
         try:
             finalize_legacy_invocation_artifact(
@@ -1719,6 +1752,46 @@ class GovernanceSession:
             error = abort.error
             error.__cause__ = None
             raise error
+
+    def _finalize_dynamic_stateful_failure(
+        self,
+        entry: dict[str, Any],
+        exc: AIGCError,
+    ) -> None:
+        """Terminalize a dispatched dynamic tool denial with state evidence."""
+        from aegis._internal.enforcement import _map_exception_to_failure_gate
+
+        attempt = entry["attempt"]
+        code, message = _safe_attempt_failure(exc)
+        artifact = {
+            "policy_file": attempt.policy_file,
+            "model_provider": attempt.model_provider,
+            "model_identifier": attempt.model_identifier,
+            "role": attempt.role,
+            "context": _plain_json(entry["context"]),
+            "enforcement_result": "FAIL",
+            "failures": [{"code": code, "message": message, "field": None}],
+            "failure_gate": _map_exception_to_failure_gate(exc),
+            "failure_reason": message,
+            "metadata": {
+                "enforcement_mode": "split",
+                "stateful_decisions": _plain_json(
+                    entry.get("stateful_decisions") or []
+                ),
+            },
+        }
+        with self._attempt_finalization_scope(entry["step_index"], attempt):
+            try:
+                finalized = finalize_legacy_invocation_artifact(
+                    artifact,
+                    attempt=attempt,
+                    terminal=TerminalClass.DENY,
+                )
+            except _EvidenceAbort as abort:
+                error = abort.error
+                error.__cause__ = None
+                raise error
+        exc.audit_artifact = finalized
 
     # ------------------------------------------------------------------
     # Step enforcement
@@ -1836,6 +1909,11 @@ class GovernanceSession:
         from aegis._internal.enforcement import _operation_handle
 
         def _authorize_active_record(record: Any) -> None:
+            from aegis._internal.errors import StateProviderContractError
+            from aegis._internal.stateful_enforcement import (
+                MAX_STATEFUL_DECISIONS,
+            )
+
             observed_tool_calls = list(
                 adapter_state.get("dynamic_tool_calls") or []
             )
@@ -1866,19 +1944,51 @@ class GovernanceSession:
                     },
                 )
 
+            pending = self._pending_results[session_result.operation_id]
+            if len(pending.get("stateful_decisions") or ()) >= MAX_STATEFUL_DECISIONS:
+                raise StateProviderContractError({"reason": "evidence_capacity"})
+
+            stateful_decisions = self._aigc._admit_stateful_tool_call(
+                record.compiled_policy,
+                tool_name,
+                state_scope=self._state_scope,
+            )
+            if stateful_decisions:
+                pending.setdefault("stateful_decisions", []).extend(
+                    stateful_decisions
+                )
+
             self._total_tool_calls_consumed += 1
-            adapter_state["dynamic_tool_calls_count"] += 1
-            adapter_state["dynamic_tool_calls"].append({
+            adapter_state["dynamic_tool_calls_count"] = (
+                adapter_state.get("dynamic_tool_calls_count", 0) + 1
+            )
+            adapter_state.setdefault("dynamic_tool_calls", []).append({
                 "name": tool_name,
                 "tool_name": tool_name,
                 "tool_call_id": tool_call_id,
                 "authorized_at": int(time.time()),
             })
 
-        self._aigc._operation_registry.apply(
-            _operation_handle(_inner_result(session_result)),
-            _authorize_active_record,
-        )
+        try:
+            self._aigc._operation_registry.apply(
+                _operation_handle(_inner_result(session_result)),
+                _authorize_active_record,
+            )
+        except AIGCError as exc:
+            attached = getattr(exc, "stateful_decisions", None)
+            if not attached:
+                raise
+            entry = self._pending_results[session_result.operation_id]
+            entry.setdefault("stateful_decisions", []).extend(
+                _plain_json(list(attached))
+            )
+            self._aigc._operation_registry.cancel_operation(
+                session_result.operation_id
+            )
+            self._pending_results.pop(session_result.operation_id, None)
+            self._adapter_step_states.pop(session_result.operation_id, None)
+            self._finalize_dynamic_stateful_failure(entry, exc)
+            raise
 
     def _discard_pending_step(
         self,
@@ -2405,16 +2515,12 @@ class GovernanceSession:
                 "Workflow policy changed after attempt correlation",
                 code="SESSION_ATTEMPT_ORIGIN_MISMATCH",
             )
-        inner_result = self._aigc._enforce_pre_call_compiled(
-            enriched,
-            effective_policy,
-        )
 
-        # Run validator hooks after invocation-level governance passes
-        # (Fix 3: hooks are wired internally — validator_hooks is NOT a parameter of
-        # the public AEGIS.open_session(); Fix 4: raise WorkflowHookDeniedError, not
-        # WorkflowApprovalRequiredError, so doctor gives the right remediation)
-        if self._validator_hooks:
+        def _run_session_hooks() -> None:
+            # Hooks run after ordinary stateless Phase A but before the final
+            # stateful admission and operation-handle issuance.
+            if not self._validator_hooks:
+                return
             from aegis._internal.validator_hook import (
                 ValidatorHookEnvelope,
                 _invoke_hook,
@@ -2434,14 +2540,8 @@ class GovernanceSession:
                     policy_file=effective_policy_file,
                     invocation_checksum=_checksum(enriched),
                 )
-                try:
-                    _result = _invoke_hook(_hook, _envelope)
-                    _outcome = normalize_hook_result(_result)
-                except Exception:
-                    self._aigc._operation_registry.cancel_operation(
-                        inner_result.operation_id,
-                    )
-                    raise
+                _result = _invoke_hook(_hook, _envelope)
+                _outcome = normalize_hook_result(_result)
                 self._validator_hook_evidence.append({
                     "hook_id": _result.hook_id,
                     "hook_version": _result.hook_version,
@@ -2456,9 +2556,6 @@ class GovernanceSession:
                     "provenance": _result.provenance,
                 })
                 if not _outcome.allows_continuation:
-                    self._aigc._operation_registry.cancel_operation(
-                        inner_result.operation_id,
-                    )
                     raise WorkflowHookDeniedError(
                         f"Validator hook {_result.hook_id!r} blocked step "
                         f"{resolved_step_id!r}: terminal="
@@ -2473,7 +2570,22 @@ class GovernanceSession:
                             "terminal": _outcome.terminal.value,
                         },
                     )
-                # Only the closed ALLOW/WARN terminal classes continue.
+
+        inner_result = self._aigc._enforce_pre_call_compiled(
+            enriched,
+            effective_policy,
+            state_scope=self._state_scope,
+            before_stateful=_run_session_hooks,
+        )
+
+        from aegis._internal.enforcement import _operation_handle
+
+        static_stateful_decisions = self._aigc._operation_registry.apply(
+            _operation_handle(inner_result),
+            lambda record: _plain_json(record.phase_a_metadata).get(
+                "stateful_decisions", []
+            ),
+        )
 
         self._pending_results[inner_result.operation_id] = {
             "step_id": resolved_step_id,
@@ -2483,6 +2595,7 @@ class GovernanceSession:
             "step_index": step_index,
             "attempt": attempt,
             "context": _frozen_mapping(ctx),
+            "static_stateful_decisions": static_stateful_decisions,
         }
 
         # Increment only after all checks pass — pre-call rejection must not
@@ -2601,6 +2714,19 @@ class GovernanceSession:
         # Pop first: no caller-controlled wrapper, metadata, or output field is
         # interpreted until this authenticated attempt owns the operation.
         record = self._consume_post_call_operation(session_result)
+
+        dynamic_stateful_decisions = entry.get("stateful_decisions") or []
+        if dynamic_stateful_decisions:
+            from aegis._internal.compiled_policy import freeze
+            phase_a_metadata = _plain_json(record.phase_a_metadata)
+            phase_a_metadata["stateful_decisions"] = [
+                *phase_a_metadata.get("stateful_decisions", ()),
+                *dynamic_stateful_decisions,
+            ]
+            record = replace(
+                record,
+                phase_a_metadata=freeze(phase_a_metadata),
+            )
 
         if (
             session_result.session_id != self._session_id

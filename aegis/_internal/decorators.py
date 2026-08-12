@@ -178,6 +178,22 @@ def governed(
                 async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
                     input_data, context = _extract_args(fn, args, kwargs)
 
+                    from aegis._internal.enforcement import (
+                        preflight_deprecated_unified_decorator,
+                    )
+                    pre_call_inv = {
+                        "policy_file": policy_file,
+                        "role": role,
+                        "model_provider": model_provider,
+                        "model_identifier": model_identifier,
+                        "input": input_data,
+                        "context": context,
+                    }
+                    await asyncio.to_thread(
+                        preflight_deprecated_unified_decorator,
+                        pre_call_inv,
+                    )
+
                     output = await fn(*args, **kwargs)
 
                     from aegis._internal.enforcement import enforce_invocation_async
@@ -237,6 +253,18 @@ def governed(
                 @functools.wraps(fn)
                 def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
                     input_data, context = _extract_args(fn, args, kwargs)
+
+                    from aegis._internal.enforcement import (
+                        preflight_deprecated_unified_decorator,
+                    )
+                    preflight_deprecated_unified_decorator({
+                        "policy_file": policy_file,
+                        "role": role,
+                        "model_provider": model_provider,
+                        "model_identifier": model_identifier,
+                        "input": input_data,
+                        "context": context,
+                    })
 
                     output = fn(*args, **kwargs)
 

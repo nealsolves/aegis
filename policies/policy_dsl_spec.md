@@ -362,6 +362,23 @@ Top-level properties defined in the canonical schema:
 - `guards` — conditional policy activation rules
 - `workflow` — participants, sequence/transitions, budgets, handoffs,
   escalation approvals, and protocol constraints
+- `stateful` — versioned, fail-closed cross-session tool-call constraints
+
+## Stateful policy constraints (current source)
+
+The optional `stateful` section has `contract_version: 1`, one stable
+`policy_state_id`, and at most 64 constraints. Version 1 supports only
+`kind: sliding_window_tool_calls`, `scope: tenant`, and
+`on_provider_failure: deny`. Every constraint names a tool already present in
+`tools.allowed_tools` and declares positive bounded `limit`, `window_ms`,
+`provider_timeout_ms`, and `retry_horizon_ms`; the retry horizon must cover at
+least one dispatch.
+
+Stateful declarations are not permitted inside guard effects. Composition may
+lower a limit or shorten a timeout/horizon, but cannot remove a constraint,
+raise a limit, lengthen a timeout, or change state IDs, constraint IDs, tool,
+scope, kind, window, or failure behavior. See ADR-0016 and
+`docs/reference/STATEFUL_POLICY_PROVIDERS.md`.
 
 ## Policy inheritance root
 

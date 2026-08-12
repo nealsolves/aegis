@@ -524,3 +524,14 @@ They can support host-owned audit and assurance programs, but do not certify a
 deployment or establish compliance.
 
 Any change that weakens these guarantees must not be accepted.
+
+## 22. Stateful policy authority is external, typed, and pre-action
+
+AEGIS never owns cross-session entity memory. A host binds a versioned provider,
+deployment namespace, and detached trusted scope to an instance/session. Model
+or invocation data cannot select that scope. Provider operations are exact,
+fingerprinted, idempotent requests; unknown, stale, malformed, unavailable, or
+indeterminate outcomes deny. Only a validated explicit admit can precede handle
+issuance. Admissions are conservative and never rolled back. Provider
+consistency, durability, clock, and availability fields are claims rather than
+independent proof. See ADR-0016.

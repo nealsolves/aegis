@@ -140,6 +140,55 @@
           "type": "integer",
           "minimum": 0,
           "description": "Unix epoch seconds when Phase B completed"
+        },
+        "stateful_decisions": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "evidence_version", "provider_contract_version", "provider_id",
+              "consistency_domain", "durability_domain", "clock_source",
+              "policy_state_id", "constraint_id", "policy_digest", "tool",
+              "scope_dimensions", "requested_units", "limit", "window_ms",
+              "outcome", "reason_code", "attempt_count",
+              "reconciliation_status", "control_state_changed",
+              "operation_fingerprint"
+            ],
+            "properties": {
+              "evidence_version": {"const": 1},
+              "provider_contract_version": {"const": 1},
+              "provider_id": {"type": "string", "minLength": 1, "maxLength": 128},
+              "consistency_domain": {"enum": ["instance", "process", "distributed"]},
+              "durability_domain": {"enum": ["none", "process_lifetime", "durable"]},
+              "clock_source": {"enum": ["monotonic", "coordinated"]},
+              "policy_state_id": {"type": "string", "minLength": 1, "maxLength": 128},
+              "constraint_id": {"type": "string", "minLength": 1, "maxLength": 128},
+              "policy_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+              "tool": {"type": "string", "minLength": 1, "maxLength": 128},
+              "scope_dimensions": {
+                "type": "array", "items": {"enum": ["tenant", "tool"]},
+                "minItems": 2, "maxItems": 2, "uniqueItems": true
+              },
+              "requested_units": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+              "limit": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+              "window_ms": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+              "outcome": {"enum": ["admitted", "denied"]},
+              "reason_code": {"type": "string", "minLength": 1, "maxLength": 128},
+              "attempt_count": {"type": "integer", "minimum": 1, "maximum": 3},
+              "reconciliation_status": {"enum": ["not_required", "reconciled", "failed"]},
+              "control_state_changed": {"type": "boolean"},
+              "used": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+              "remaining": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+              "effective_limit": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+              "retry_after_ms": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+              "state_version": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+              "provider_time_ms": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+              "provider_record_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+              "operation_fingerprint": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+            }
+          }
         }
       },
       "additionalProperties": true

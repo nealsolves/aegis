@@ -832,3 +832,14 @@ root, each policy target gets its own lexical parent authority; an implicit
 starter target is rooted at its canonical starter directory. Hostile concurrent
 mutation of filesystem components is outside this guarantee: descriptor-relative
 race resistance against a concurrent writer remains a non-goal.
+
+## Stateful tool-call limits (current source)
+
+Construct an instance with `state_provider` and `state_namespace`, create a
+trusted `StateScopeV1.tenant(...)` outside the invocation, and use split
+pre/post enforcement. Sessions can bind the same detached scope at
+`open_session`. The in-memory provider is suitable for local proof and tests,
+not distributed or durable enforcement. Every provider error denies, and a
+successful Phase-A admission is never refunded by later failure. Full setup,
+DSL, supported surfaces, migration, evidence, and operator ownership are in
+`docs/reference/STATEFUL_POLICY_PROVIDERS.md` and ADR-0016.
