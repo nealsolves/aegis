@@ -247,11 +247,14 @@ class TestStarterCleanEnvironmentExecution:
         files = render_fn()
         for name, content in files.items():
             (tmp_path / name).write_text(content, encoding="utf-8")
+        repo_root = Path(__file__).resolve().parents[1]
         completed = subprocess.run(
             [sys.executable, str(tmp_path / "workflow_example.py")],
             cwd=tmp_path,
+            env={"PYTHONPATH": str(repo_root)},
             capture_output=True,
             text=True,
+            timeout=120,
         )
         assert completed.returncode == 0, (
             f"{render_fn.__name__} example failed in a clean interpreter:\n"
