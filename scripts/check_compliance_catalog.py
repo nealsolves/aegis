@@ -74,6 +74,22 @@ def reviewed_module_findings(
     if not isinstance(reviewed_commit, str):
         return ()
     location = f"{module_path}.review.reviewed_commit_sha"
+    ancestry = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", reviewed_commit, "HEAD"],
+        cwd=root,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if ancestry.returncode:
+        return (
+            Finding(
+                "REVIEW_COMMIT_NOT_ANCESTOR",
+                location,
+                "reviewed commit must be an ancestor of the published snapshot",
+            ),
+        )
     try:
         reviewed_module = load_yaml_text(git_blob(root, reviewed_commit, module_path))
     except CatalogInputError:

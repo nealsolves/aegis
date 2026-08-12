@@ -1152,6 +1152,63 @@ def test_review_binding_allows_only_review_metadata_to_change(tmp_path: Path):
     assert [item.code for item in findings] == ["REVIEWED_MODULE_CONTENT_MISMATCH"]
 
 
+def test_reviewed_commit_must_be_an_ancestor_of_the_published_snapshot(
+    tmp_path: Path,
+):
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.invalid"],
+        cwd=tmp_path,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Test"], cwd=tmp_path, check=True
+    )
+    module_path = "compliance/frameworks/nist-ai-rmf-1.0.yaml"
+    path = tmp_path / module_path
+    subprocess.run(["git", "switch", "--orphan", "reviewed"], cwd=tmp_path, check=True)
+    path.parent.mkdir(parents=True)
+    reviewed_module = _module()
+    reviewed_module["review"] = {
+        "tier": "unreviewed",
+        "decision": "pending",
+        "contributor_github_ids": [],
+        "reviewer_github_ids": [],
+        "source_access_method": "public_authoritative_source",
+    }
+    path.write_text(yaml.safe_dump(reviewed_module, sort_keys=False), encoding="utf-8")
+    subprocess.run(["git", "add", module_path], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "commit", "--no-verify", "-qm", "reviewed snapshot"],
+        cwd=tmp_path,
+        check=True,
+    )
+    reviewed_commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    subprocess.run(["git", "switch", "--orphan", "published"], cwd=tmp_path, check=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(yaml.safe_dump(reviewed_module, sort_keys=False), encoding="utf-8")
+    subprocess.run(["git", "add", module_path], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "commit", "--no-verify", "-qm", "published snapshot"],
+        cwd=tmp_path,
+        check=True,
+    )
+    published_module = _module()
+    published_module["review"]["reviewed_commit_sha"] = reviewed_commit
+
+    findings = compliance_check.reviewed_module_findings(
+        tmp_path, module_path, published_module
+    )
+
+    assert [item.code for item in findings] == ["REVIEW_COMMIT_NOT_ANCESTOR"]
+
+
 def test_ignored_runtime_bytecode_is_baseline_drift(tmp_path: Path):
     (tmp_path / "aegis").mkdir()
     (tmp_path / "aegis" / "module.py").write_text("VALUE = 1\n", encoding="utf-8")
