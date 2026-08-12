@@ -121,6 +121,7 @@ def test_render_blueprint_deploys_the_stateless_backend_from_main():
     )
     assert service["startCommand"] == (
         "uvicorn main:app --app-dir demo-app-api --host 0.0.0.0 --port $PORT"
+        " --workers 1 --no-proxy-headers"
     )
     assert service["envVars"] == [
         {"key": "PYTHON_VERSION", "value": "3.12"},
