@@ -1,0 +1,2013 @@
+schema_version: "1.0"
+framework:
+  id: nist-ai-rmf-1.0
+  name: NIST Artificial Intelligence Risk Management Framework 1.0
+  version: "1.0"
+  source_date: "2023-01-26"
+  authoritative_sources:
+    - source_id: nist-ai-100-1
+      role: control_source
+      title: Artificial Intelligence Risk Management Framework AI RMF 1.0
+      version: "1.0"
+      publication_date: "2023-01-26"
+      publication_id: NIST AI 100-1
+      url: https://doi.org/10.6028/NIST.AI.100-1
+      accessed_on: "2026-08-12"
+    - source_id: nist-airc-core
+      role: official_guidance
+      title: NIST AI RMF 1.0 Core
+      version: Tables 1-4
+      publication_date: "2023-01-26"
+      publication_id: NIST AI RMF 1.0 Core, Tables 1-4
+      url: https://airc.nist.gov/airmf-resources/airmf/5-sec-core/
+      accessed_on: "2026-08-12"
+declared_scope:
+  summary: >-
+    Complete identifier inventory of the 72 NIST AI RMF 1.0 Core
+    subcategories. Mapping text describes only bounded AEGIS technical
+    evidence contributions and does not state that an outcome is achieved.
+  mapping_unit: NIST AI RMF 1.0 Core subcategory identifier
+  expected_mapping_count: 72
+  exclusions:
+    - NIST AI RMF categories, function narrative, profiles, and Playbook suggestions are not separate mapping rows.
+    - Source outcome text is not reproduced; consult the cited NIST sources.
+review:
+  tier: unreviewed
+  decision: pending
+  contributor_github_ids: []
+  reviewer_github_ids: []
+  source_access_method: public_authoritative_source
+controls:
+  - control_id: GOVERN-1.1
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, GOVERN 1.1 subcategory"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact or enforcement decision relevant to part of GOVERN-1.1; the wider organizational outcome remains outside AEGIS."
+      evidence:
+        - kind: policy_field
+          baseline: aegis_source
+          path: schemas/invocation_policy.schema.json
+          locator: "/properties/pre_conditions"
+          demonstrates: "The invocation policy contract records bounded preconditions."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_conditions.py
+          locator: "test_resolve_condition_from_context"
+          demonstrates: "The condition test exercises policy-bound contextual decisions."
+      unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with GOVERN-1.1 remain the adopter's responsibility."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether GOVERN-1.1 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: GOVERN-1.2
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, GOVERN 1.2 subcategory"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact or enforcement decision relevant to part of GOVERN-1.2; the wider organizational outcome remains outside AEGIS."
+      evidence:
+        - kind: policy_field
+          baseline: aegis_source
+          path: schemas/invocation_policy.schema.json
+          locator: "/properties/pre_conditions"
+          demonstrates: "The invocation policy contract records bounded preconditions."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_conditions.py
+          locator: "test_resolve_condition_from_context"
+          demonstrates: "The condition test exercises policy-bound contextual decisions."
+      unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with GOVERN-1.2 remain the adopter's responsibility."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether GOVERN-1.2 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: GOVERN-1.3
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, GOVERN 1.3 subcategory"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact or enforcement decision relevant to part of GOVERN-1.3; the wider organizational outcome remains outside AEGIS."
+      evidence:
+        - kind: policy_field
+          baseline: aegis_source
+          path: schemas/invocation_policy.schema.json
+          locator: "/properties/pre_conditions"
+          demonstrates: "The invocation policy contract records bounded preconditions."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_conditions.py
+          locator: "test_resolve_condition_from_context"
+          demonstrates: "The condition test exercises policy-bound contextual decisions."
+      unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with GOVERN-1.3 remain the adopter's responsibility."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether GOVERN-1.3 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: GOVERN-1.4
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, GOVERN 1.4 subcategory"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact or enforcement decision relevant to part of GOVERN-1.4; the wider organizational outcome remains outside AEGIS."
+      evidence:
+        - kind: policy_field
+          baseline: aegis_source
+          path: schemas/invocation_policy.schema.json
+          locator: "/properties/pre_conditions"
+          demonstrates: "The invocation policy contract records bounded preconditions."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_conditions.py
+          locator: "test_resolve_condition_from_context"
+          demonstrates: "The condition test exercises policy-bound contextual decisions."
+      unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with GOVERN-1.4 remain the adopter's responsibility."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether GOVERN-1.4 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: GOVERN-1.5
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, GOVERN 1.5 subcategory"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact or enforcement decision relevant to part of GOVERN-1.5; the wider organizational outcome remains outside AEGIS."
+      evidence:
+        - kind: artifact_field
+          baseline: aegis_source
+          path: schemas/audit_artifact.schema.json
+          locator: "/properties/checksum"
+          demonstrates: "The audit contract records a checksum before host persistence."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_audit_sinks.py
+          locator: "test_json_file_sink_appends_multiple"
+          demonstrates: "The sink test exercises host-file append behavior."
+      unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with GOVERN-1.5 remain the adopter's responsibility."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether GOVERN-1.5 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: GOVERN-1.6
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, GOVERN 1.6 subcategory"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact or enforcement decision relevant to part of GOVERN-1.6; the wider organizational outcome remains outside AEGIS."
+      evidence:
+        - kind: policy_field
+          baseline: aegis_source
+          path: schemas/invocation_policy.schema.json
+          locator: "/properties/pre_conditions"
+          demonstrates: "The invocation policy contract records bounded preconditions."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_conditions.py
+          locator: "test_resolve_condition_from_context"
+          demonstrates: "The condition test exercises policy-bound contextual decisions."
+      unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with GOVERN-1.6 remain the adopter's responsibility."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether GOVERN-1.6 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: GOVERN-1.7
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, GOVERN 1.7 subcategory"
+    mapping:
+      aegis_evidence_status: external_control
+      interpretation: "GOVERN-1.7 primarily concerns an organizational, lifecycle, or assessment activity that AEGIS does not operate."
+      evidence: []
+      external_owner: adopter
+      external_control: "The adopter establishes, resources, performs, and retains evidence for the activity associated with GOVERN-1.7."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether GOVERN-1.7 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: GOVERN-2.1
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, GOVERN 2.1 subcategory"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact or enforcement decision relevant to part of GOVERN-2.1; the wider organizational outcome remains outside AEGIS."
+      evidence:
+        - kind: artifact_field
+          baseline: aegis_source
+          path: schemas/audit_artifact.schema.json
+          locator: "/properties/checksum"
+          demonstrates: "The audit contract records a canonical content checksum."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_audit_artifact_contract.py
+          locator: "test_audit_contract"
+          demonstrates: "The audit contract test exercises schema-valid evidence emission."
+      unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with GOVERN-2.1 remain the adopter's responsibility."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether GOVERN-2.1 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: GOVERN-2.2
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, GOVERN 2.2 subcategory"
+    mapping:
+      aegis_evidence_status: external_control
+      interpretation: "GOVERN-2.2 primarily concerns an organizational, lifecycle, or assessment activity that AEGIS does not operate."
+      evidence: []
+      external_owner: adopter
+      external_control: "The adopter establishes, resources, performs, and retains evidence for the activity associated with GOVERN-2.2."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether GOVERN-2.2 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: GOVERN-2.3
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, GOVERN 2.3 subcategory"
+    mapping:
+      aegis_evidence_status: external_control
+      interpretation: "GOVERN-2.3 primarily concerns an organizational, lifecycle, or assessment activity that AEGIS does not operate."
+      evidence: []
+      external_owner: adopter
+      external_control: "The adopter establishes, resources, performs, and retains evidence for the activity associated with GOVERN-2.3."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether GOVERN-2.3 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: GOVERN-3.1
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, GOVERN 3.1 subcategory"
+    mapping:
+      aegis_evidence_status: not_addressed
+      interpretation: "No bounded AEGIS technical evidence contribution is identified for GOVERN-3.1 in this catalog baseline."
+      evidence: []
+      gap: "AEGIS does not implement or evidence the organizational outcome associated with GOVERN-3.1."
+      review_note: Reassess only when the AEGIS baseline or declared catalog scope changes.
+      host_controls:
+        - owner: adopter
+          control: "Determine whether GOVERN-3.1 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: GOVERN-3.2
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, GOVERN 3.2 subcategory"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact or enforcement decision relevant to part of GOVERN-3.2; the wider organizational outcome remains outside AEGIS."
+      evidence:
+        - kind: artifact_field
+          baseline: aegis_source
+          path: schemas/workflow_artifact.schema.json
+          locator: "/properties/approval_checkpoints"
+          demonstrates: "The workflow artifact records approval-checkpoint evidence."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_approval_checkpoints.py
+          locator: "test_pause_with_metadata_records_checkpoint"
+          demonstrates: "The checkpoint test exercises recorded human-approval metadata."
+      unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with GOVERN-3.2 remain the adopter's responsibility."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether GOVERN-3.2 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: GOVERN-4.1
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, GOVERN 4.1 subcategory"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact or enforcement decision relevant to part of GOVERN-4.1; the wider organizational outcome remains outside AEGIS."
+      evidence:
+        - kind: artifact_field
+          baseline: aegis_source
+          path: schemas/audit_artifact.schema.json
+          locator: "/properties/checksum"
+          demonstrates: "The audit contract records a canonical content checksum."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_audit_artifact_contract.py
+          locator: "test_audit_contract"
+          demonstrates: "The audit contract test exercises schema-valid evidence emission."
+      unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with GOVERN-4.1 remain the adopter's responsibility."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether GOVERN-4.1 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: GOVERN-4.2
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, GOVERN 4.2 subcategory"
+    mapping:
+      aegis_evidence_status: supported_evidence
+      interpretation: "AEGIS directly records technical governance evidence relevant to GOVERN-4.2; this evidence contribution does not establish that the NIST outcome is achieved."
+      evidence:
+        - kind: artifact_field
+          baseline: aegis_source
+          path: schemas/audit_artifact.schema.json
+          locator: "/properties/provenance"
+          demonstrates: "The audit contract records parent evidence provenance."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_audit_lineage.py
+          locator: "test_parent_child_edge_built_from_provenance"
+          demonstrates: "The lineage test exercises parent-child evidence relationships."
+        - kind: fixture
+          baseline: catalog_asset
+          path: examples/compliance/regulated_workflow.py
+          locator: "def run("
+          demonstrates: "The deterministic regulated workflow demonstrates schema-valid policy, invocation, and workflow evidence without representing production operation."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether GOVERN-4.2 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: GOVERN-4.3
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, GOVERN 4.3 subcategory"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact or enforcement decision relevant to part of GOVERN-4.3; the wider organizational outcome remains outside AEGIS."
+      evidence:
+        - kind: artifact_field
+          baseline: aegis_source
+          path: schemas/audit_artifact.schema.json
+          locator: "/properties/checksum"
+          demonstrates: "The audit contract records a checksum before host persistence."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_audit_sinks.py
+          locator: "test_json_file_sink_appends_multiple"
+          demonstrates: "The sink test exercises host-file append behavior."
+      unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with GOVERN-4.3 remain the adopter's responsibility."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether GOVERN-4.3 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: GOVERN-5.1
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, GOVERN 5.1 subcategory"
+    mapping:
+      aegis_evidence_status: external_control
+      interpretation: "GOVERN-5.1 primarily concerns an organizational, lifecycle, or assessment activity that AEGIS does not operate."
+      evidence: []
+      external_owner: adopter
+      external_control: "The adopter establishes, resources, performs, and retains evidence for the activity associated with GOVERN-5.1."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether GOVERN-5.1 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: GOVERN-5.2
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, GOVERN 5.2 subcategory"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact or enforcement decision relevant to part of GOVERN-5.2; the wider organizational outcome remains outside AEGIS."
+      evidence:
+        - kind: policy_field
+          baseline: aegis_source
+          path: schemas/policy_dsl.schema.json
+          locator: "/properties/stateful"
+          demonstrates: "The policy contract records bounded stateful enforcement configuration."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_stateful_provider.py
+          locator: "test_counter_is_monotonic_idempotent_and_rejects_overflow"
+          demonstrates: "The provider test exercises monotonic, idempotent state admission."
+      unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with GOVERN-5.2 remain the adopter's responsibility."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether GOVERN-5.2 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: GOVERN-6.1
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, GOVERN 6.1 subcategory"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact or enforcement decision relevant to part of GOVERN-6.1; the wider organizational outcome remains outside AEGIS."
+      evidence:
+        - kind: policy_field
+          baseline: aegis_source
+          path: schemas/policy_dsl.schema.json
+          locator: "/properties/stateful"
+          demonstrates: "The policy contract records bounded stateful enforcement configuration."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_stateful_provider.py
+          locator: "test_counter_is_monotonic_idempotent_and_rejects_overflow"
+          demonstrates: "The provider test exercises monotonic, idempotent state admission."
+      unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with GOVERN-6.1 remain the adopter's responsibility."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether GOVERN-6.1 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: GOVERN-6.2
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, GOVERN 6.2 subcategory"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact or enforcement decision relevant to part of GOVERN-6.2; the wider organizational outcome remains outside AEGIS."
+      evidence:
+        - kind: policy_field
+          baseline: aegis_source
+          path: schemas/policy_dsl.schema.json
+          locator: "/properties/stateful"
+          demonstrates: "The policy contract records bounded stateful enforcement configuration."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_stateful_provider.py
+          locator: "test_counter_is_monotonic_idempotent_and_rejects_overflow"
+          demonstrates: "The provider test exercises monotonic, idempotent state admission."
+      unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with GOVERN-6.2 remain the adopter's responsibility."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether GOVERN-6.2 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MAP-1.1
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MAP 1.1 subcategory"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact or enforcement decision relevant to part of MAP-1.1; the wider organizational outcome remains outside AEGIS."
+      evidence:
+        - kind: policy_field
+          baseline: aegis_source
+          path: schemas/invocation_policy.schema.json
+          locator: "/properties/pre_conditions"
+          demonstrates: "The invocation policy contract records bounded preconditions."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_conditions.py
+          locator: "test_resolve_condition_from_context"
+          demonstrates: "The condition test exercises policy-bound contextual decisions."
+      unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with MAP-1.1 remain the adopter's responsibility."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MAP-1.1 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MAP-1.2
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MAP 1.2 subcategory"
+    mapping:
+      aegis_evidence_status: external_control
+      interpretation: "MAP-1.2 primarily concerns an organizational, lifecycle, or assessment activity that AEGIS does not operate."
+      evidence: []
+      external_owner: adopter
+      external_control: "The adopter establishes, resources, performs, and retains evidence for the activity associated with MAP-1.2."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MAP-1.2 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MAP-1.3
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MAP 1.3 subcategory"
+    mapping:
+      aegis_evidence_status: external_control
+      interpretation: "MAP-1.3 primarily concerns an organizational, lifecycle, or assessment activity that AEGIS does not operate."
+      evidence: []
+      external_owner: adopter
+      external_control: "The adopter establishes, resources, performs, and retains evidence for the activity associated with MAP-1.3."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MAP-1.3 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MAP-1.4
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MAP 1.4 subcategory"
+    mapping:
+      aegis_evidence_status: external_control
+      interpretation: "MAP-1.4 primarily concerns an organizational, lifecycle, or assessment activity that AEGIS does not operate."
+      evidence: []
+      external_owner: adopter
+      external_control: "The adopter establishes, resources, performs, and retains evidence for the activity associated with MAP-1.4."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MAP-1.4 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MAP-1.5
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MAP 1.5 subcategory"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact or enforcement decision relevant to part of MAP-1.5; the wider organizational outcome remains outside AEGIS."
+      evidence:
+        - kind: policy_field
+          baseline: aegis_source
+          path: schemas/invocation_policy.schema.json
+          locator: "/properties/pre_conditions"
+          demonstrates: "The invocation policy contract records bounded preconditions."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_conditions.py
+          locator: "test_resolve_condition_from_context"
+          demonstrates: "The condition test exercises policy-bound contextual decisions."
+      unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with MAP-1.5 remain the adopter's responsibility."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MAP-1.5 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MAP-1.6
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MAP 1.6 subcategory"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact or enforcement decision relevant to part of MAP-1.6; the wider organizational outcome remains outside AEGIS."
+      evidence:
+        - kind: policy_field
+          baseline: aegis_source
+          path: schemas/invocation_policy.schema.json
+          locator: "/properties/pre_conditions"
+          demonstrates: "The invocation policy contract records bounded preconditions."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_conditions.py
+          locator: "test_resolve_condition_from_context"
+          demonstrates: "The condition test exercises policy-bound contextual decisions."
+      unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with MAP-1.6 remain the adopter's responsibility."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MAP-1.6 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MAP-2.1
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MAP 2.1 subcategory"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact or enforcement decision relevant to part of MAP-2.1; the wider organizational outcome remains outside AEGIS."
+      evidence:
+        - kind: policy_field
+          baseline: aegis_source
+          path: schemas/invocation_policy.schema.json
+          locator: "/properties/pre_conditions"
+          demonstrates: "The invocation policy contract records bounded preconditions."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_conditions.py
+          locator: "test_resolve_condition_from_context"
+          demonstrates: "The condition test exercises policy-bound contextual decisions."
+      unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with MAP-2.1 remain the adopter's responsibility."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MAP-2.1 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MAP-2.2
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MAP 2.2 subcategory"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact or enforcement decision relevant to part of MAP-2.2; the wider organizational outcome remains outside AEGIS."
+      evidence:
+        - kind: artifact_field
+          baseline: aegis_source
+          path: schemas/workflow_artifact.schema.json
+          locator: "/properties/approval_checkpoints"
+          demonstrates: "The workflow artifact records approval-checkpoint evidence."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_approval_checkpoints.py
+          locator: "test_pause_with_metadata_records_checkpoint"
+          demonstrates: "The checkpoint test exercises recorded human-approval metadata."
+      unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with MAP-2.2 remain the adopter's responsibility."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MAP-2.2 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MAP-2.3
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MAP 2.3 subcategory"
+    mapping:
+      aegis_evidence_status: external_control
+      interpretation: "MAP-2.3 primarily concerns an organizational, lifecycle, or assessment activity that AEGIS does not operate."
+      evidence: []
+      external_owner: adopter
+      external_control: "The adopter establishes, resources, performs, and retains evidence for the activity associated with MAP-2.3."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MAP-2.3 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MAP-3.1
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MAP 3.1 subcategory"
+    mapping:
+      aegis_evidence_status: external_control
+      interpretation: "MAP-3.1 primarily concerns an organizational, lifecycle, or assessment activity that AEGIS does not operate."
+      evidence: []
+      external_owner: adopter
+      external_control: "The adopter establishes, resources, performs, and retains evidence for the activity associated with MAP-3.1."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MAP-3.1 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MAP-3.2
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MAP 3.2 subcategory"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact or enforcement decision relevant to part of MAP-3.2; the wider organizational outcome remains outside AEGIS."
+      evidence:
+        - kind: policy_field
+          baseline: aegis_source
+          path: schemas/invocation_policy.schema.json
+          locator: "/properties/pre_conditions"
+          demonstrates: "The invocation policy contract records bounded preconditions."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_conditions.py
+          locator: "test_resolve_condition_from_context"
+          demonstrates: "The condition test exercises policy-bound contextual decisions."
+      unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with MAP-3.2 remain the adopter's responsibility."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MAP-3.2 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MAP-3.3
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MAP 3.3 subcategory"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact or enforcement decision relevant to part of MAP-3.3; the wider organizational outcome remains outside AEGIS."
+      evidence:
+        - kind: policy_field
+          baseline: aegis_source
+          path: schemas/invocation_policy.schema.json
+          locator: "/properties/pre_conditions"
+          demonstrates: "The invocation policy contract records bounded preconditions."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_conditions.py
+          locator: "test_resolve_condition_from_context"
+          demonstrates: "The condition test exercises policy-bound contextual decisions."
+      unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with MAP-3.3 remain the adopter's responsibility."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MAP-3.3 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MAP-3.4
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MAP 3.4 subcategory"
+    mapping:
+      aegis_evidence_status: external_control
+      interpretation: "MAP-3.4 primarily concerns an organizational, lifecycle, or assessment activity that AEGIS does not operate."
+      evidence: []
+      external_owner: adopter
+      external_control: "The adopter establishes, resources, performs, and retains evidence for the activity associated with MAP-3.4."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MAP-3.4 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MAP-3.5
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MAP 3.5 subcategory"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact or enforcement decision relevant to part of MAP-3.5; the wider organizational outcome remains outside AEGIS."
+      evidence:
+        - kind: artifact_field
+          baseline: aegis_source
+          path: schemas/workflow_artifact.schema.json
+          locator: "/properties/approval_checkpoints"
+          demonstrates: "The workflow artifact records approval-checkpoint evidence."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_approval_checkpoints.py
+          locator: "test_pause_with_metadata_records_checkpoint"
+          demonstrates: "The checkpoint test exercises recorded human-approval metadata."
+      unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with MAP-3.5 remain the adopter's responsibility."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MAP-3.5 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MAP-4.1
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MAP 4.1 subcategory"
+    mapping:
+      aegis_evidence_status: external_control
+      interpretation: "MAP-4.1 primarily concerns an organizational, lifecycle, or assessment activity that AEGIS does not operate."
+      evidence: []
+      external_owner: adopter
+      external_control: "The adopter establishes, resources, performs, and retains evidence for the activity associated with MAP-4.1."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MAP-4.1 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MAP-4.2
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MAP 4.2 subcategory"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact or enforcement decision relevant to part of MAP-4.2; the wider organizational outcome remains outside AEGIS."
+      evidence:
+        - kind: policy_field
+          baseline: aegis_source
+          path: schemas/invocation_policy.schema.json
+          locator: "/properties/pre_conditions"
+          demonstrates: "The invocation policy contract records bounded preconditions."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_conditions.py
+          locator: "test_resolve_condition_from_context"
+          demonstrates: "The condition test exercises policy-bound contextual decisions."
+      unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with MAP-4.2 remain the adopter's responsibility."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MAP-4.2 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MAP-5.1
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MAP 5.1 subcategory"
+    mapping:
+      aegis_evidence_status: external_control
+      interpretation: "MAP-5.1 primarily concerns an organizational, lifecycle, or assessment activity that AEGIS does not operate."
+      evidence: []
+      external_owner: adopter
+      external_control: "The adopter establishes, resources, performs, and retains evidence for the activity associated with MAP-5.1."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MAP-5.1 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MAP-5.2
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MAP 5.2 subcategory"
+    mapping:
+      aegis_evidence_status: external_control
+      interpretation: "MAP-5.2 primarily concerns an organizational, lifecycle, or assessment activity that AEGIS does not operate."
+      evidence: []
+      external_owner: adopter
+      external_control: "The adopter establishes, resources, performs, and retains evidence for the activity associated with MAP-5.2."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MAP-5.2 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MEASURE-1.1
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MEASURE 1.1 subcategory"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact or enforcement decision relevant to part of MEASURE-1.1; the wider organizational outcome remains outside AEGIS."
+      evidence:
+        - kind: artifact_field
+          baseline: aegis_source
+          path: schemas/audit_artifact.schema.json
+          locator: "/properties/risk_score"
+          demonstrates: "The audit contract carries a bounded risk-score field."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_risk_scoring.py
+          locator: "test_compute_risk_score_consumes_compiled_risk_policy"
+          demonstrates: "The risk-scoring test exercises policy-bound technical scoring."
+      unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with MEASURE-1.1 remain the adopter's responsibility."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MEASURE-1.1 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MEASURE-1.2
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MEASURE 1.2 subcategory"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact or enforcement decision relevant to part of MEASURE-1.2; the wider organizational outcome remains outside AEGIS."
+      evidence:
+        - kind: artifact_field
+          baseline: aegis_source
+          path: schemas/audit_artifact.schema.json
+          locator: "/properties/risk_score"
+          demonstrates: "The audit contract carries a bounded risk-score field."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_risk_scoring.py
+          locator: "test_compute_risk_score_consumes_compiled_risk_policy"
+          demonstrates: "The risk-scoring test exercises policy-bound technical scoring."
+      unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with MEASURE-1.2 remain the adopter's responsibility."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MEASURE-1.2 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MEASURE-1.3
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MEASURE 1.3 subcategory"
+    mapping:
+      aegis_evidence_status: external_control
+      interpretation: "MEASURE-1.3 primarily concerns an organizational, lifecycle, or assessment activity that AEGIS does not operate."
+      evidence: []
+      external_owner: adopter
+      external_control: "The adopter establishes, resources, performs, and retains evidence for the activity associated with MEASURE-1.3."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MEASURE-1.3 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MEASURE-2.1
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MEASURE 2.1 subcategory"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact or enforcement decision relevant to part of MEASURE-2.1; the wider organizational outcome remains outside AEGIS."
+      evidence:
+        - kind: artifact_field
+          baseline: aegis_source
+          path: schemas/audit_artifact.schema.json
+          locator: "/properties/checksum"
+          demonstrates: "The audit contract records a canonical content checksum."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_audit_artifact_contract.py
+          locator: "test_audit_contract"
+          demonstrates: "The audit contract test exercises schema-valid evidence emission."
+      unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with MEASURE-2.1 remain the adopter's responsibility."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MEASURE-2.1 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MEASURE-2.2
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MEASURE 2.2 subcategory"
+    mapping:
+      aegis_evidence_status: external_control
+      interpretation: "MEASURE-2.2 primarily concerns an organizational, lifecycle, or assessment activity that AEGIS does not operate."
+      evidence: []
+      external_owner: adopter
+      external_control: "The adopter establishes, resources, performs, and retains evidence for the activity associated with MEASURE-2.2."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MEASURE-2.2 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MEASURE-2.3
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MEASURE 2.3 subcategory"
+    mapping:
+      aegis_evidence_status: external_control
+      interpretation: "MEASURE-2.3 primarily concerns an organizational, lifecycle, or assessment activity that AEGIS does not operate."
+      evidence: []
+      external_owner: adopter
+      external_control: "The adopter establishes, resources, performs, and retains evidence for the activity associated with MEASURE-2.3."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MEASURE-2.3 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MEASURE-2.4
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MEASURE 2.4 subcategory"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact or enforcement decision relevant to part of MEASURE-2.4; the wider organizational outcome remains outside AEGIS."
+      evidence:
+        - kind: artifact_field
+          baseline: aegis_source
+          path: schemas/audit_artifact.schema.json
+          locator: "/properties/checksum"
+          demonstrates: "The audit contract records a checksum before host persistence."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_audit_sinks.py
+          locator: "test_json_file_sink_appends_multiple"
+          demonstrates: "The sink test exercises host-file append behavior."
+      unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with MEASURE-2.4 remain the adopter's responsibility."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MEASURE-2.4 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MEASURE-2.5
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MEASURE 2.5 subcategory"
+    mapping:
+      aegis_evidence_status: external_control
+      interpretation: "MEASURE-2.5 primarily concerns an organizational, lifecycle, or assessment activity that AEGIS does not operate."
+      evidence: []
+      external_owner: adopter
+      external_control: "The adopter establishes, resources, performs, and retains evidence for the activity associated with MEASURE-2.5."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MEASURE-2.5 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MEASURE-2.6
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MEASURE 2.6 subcategory"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact or enforcement decision relevant to part of MEASURE-2.6; the wider organizational outcome remains outside AEGIS."
+      evidence:
+        - kind: artifact_field
+          baseline: aegis_source
+          path: schemas/audit_artifact.schema.json
+          locator: "/properties/signature_metadata"
+          demonstrates: "The audit contract records signature metadata when signing is configured."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_evidence_checksum_v2.py
+          locator: "test_content_checksum_covers_chain_and_workflow_metadata"
+          demonstrates: "The checksum test exercises tamper-evident coverage of governance metadata."
+      unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with MEASURE-2.6 remain the adopter's responsibility."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MEASURE-2.6 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MEASURE-2.7
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MEASURE 2.7 subcategory"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact or enforcement decision relevant to part of MEASURE-2.7; the wider organizational outcome remains outside AEGIS."
+      evidence:
+        - kind: artifact_field
+          baseline: aegis_source
+          path: schemas/audit_artifact.schema.json
+          locator: "/properties/signature_metadata"
+          demonstrates: "The audit contract records signature metadata when signing is configured."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_evidence_checksum_v2.py
+          locator: "test_content_checksum_covers_chain_and_workflow_metadata"
+          demonstrates: "The checksum test exercises tamper-evident coverage of governance metadata."
+      unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with MEASURE-2.7 remain the adopter's responsibility."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MEASURE-2.7 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MEASURE-2.8
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MEASURE 2.8 subcategory"
+    mapping:
+      aegis_evidence_status: supported_evidence
+      interpretation: "AEGIS directly records technical governance evidence relevant to MEASURE-2.8; this evidence contribution does not establish that the NIST outcome is achieved."
+      evidence:
+        - kind: artifact_field
+          baseline: aegis_source
+          path: schemas/audit_artifact.schema.json
+          locator: "/properties/provenance"
+          demonstrates: "The audit contract records parent evidence provenance."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_audit_lineage.py
+          locator: "test_parent_child_edge_built_from_provenance"
+          demonstrates: "The lineage test exercises parent-child evidence relationships."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MEASURE-2.8 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MEASURE-2.9
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MEASURE 2.9 subcategory"
+    mapping:
+      aegis_evidence_status: external_control
+      interpretation: "MEASURE-2.9 primarily concerns an organizational, lifecycle, or assessment activity that AEGIS does not operate."
+      evidence: []
+      external_owner: adopter
+      external_control: "The adopter establishes, resources, performs, and retains evidence for the activity associated with MEASURE-2.9."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MEASURE-2.9 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MEASURE-2.10
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MEASURE 2.10 subcategory"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact or enforcement decision relevant to part of MEASURE-2.10; the wider organizational outcome remains outside AEGIS."
+      evidence:
+        - kind: artifact_field
+          baseline: aegis_source
+          path: schemas/audit_artifact.schema.json
+          locator: "/properties/signature_metadata"
+          demonstrates: "The audit contract records signature metadata when signing is configured."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_evidence_checksum_v2.py
+          locator: "test_content_checksum_covers_chain_and_workflow_metadata"
+          demonstrates: "The checksum test exercises tamper-evident coverage of governance metadata."
+      unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with MEASURE-2.10 remain the adopter's responsibility."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MEASURE-2.10 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MEASURE-2.11
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MEASURE 2.11 subcategory"
+    mapping:
+      aegis_evidence_status: external_control
+      interpretation: "MEASURE-2.11 primarily concerns an organizational, lifecycle, or assessment activity that AEGIS does not operate."
+      evidence: []
+      external_owner: adopter
+      external_control: "The adopter establishes, resources, performs, and retains evidence for the activity associated with MEASURE-2.11."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MEASURE-2.11 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MEASURE-2.12
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MEASURE 2.12 subcategory"
+    mapping:
+      aegis_evidence_status: not_addressed
+      interpretation: "No bounded AEGIS technical evidence contribution is identified for MEASURE-2.12 in this catalog baseline."
+      evidence: []
+      gap: "AEGIS does not implement or evidence the organizational outcome associated with MEASURE-2.12."
+      review_note: Reassess only when the AEGIS baseline or declared catalog scope changes.
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MEASURE-2.12 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MEASURE-2.13
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MEASURE 2.13 subcategory"
+    mapping:
+      aegis_evidence_status: external_control
+      interpretation: "MEASURE-2.13 primarily concerns an organizational, lifecycle, or assessment activity that AEGIS does not operate."
+      evidence: []
+      external_owner: adopter
+      external_control: "The adopter establishes, resources, performs, and retains evidence for the activity associated with MEASURE-2.13."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MEASURE-2.13 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MEASURE-3.1
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MEASURE 3.1 subcategory"
+    mapping:
+      aegis_evidence_status: supported_evidence
+      interpretation: "AEGIS directly records technical governance evidence relevant to MEASURE-3.1; this evidence contribution does not establish that the NIST outcome is achieved."
+      evidence:
+        - kind: artifact_field
+          baseline: aegis_source
+          path: schemas/audit_artifact.schema.json
+          locator: "/properties/provenance"
+          demonstrates: "The audit contract records parent evidence provenance."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_audit_lineage.py
+          locator: "test_parent_child_edge_built_from_provenance"
+          demonstrates: "The lineage test exercises parent-child evidence relationships."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MEASURE-3.1 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MEASURE-3.2
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MEASURE 3.2 subcategory"
+    mapping:
+      aegis_evidence_status: external_control
+      interpretation: "MEASURE-3.2 primarily concerns an organizational, lifecycle, or assessment activity that AEGIS does not operate."
+      evidence: []
+      external_owner: adopter
+      external_control: "The adopter establishes, resources, performs, and retains evidence for the activity associated with MEASURE-3.2."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MEASURE-3.2 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MEASURE-3.3
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MEASURE 3.3 subcategory"
+    mapping:
+      aegis_evidence_status: external_control
+      interpretation: "MEASURE-3.3 primarily concerns an organizational, lifecycle, or assessment activity that AEGIS does not operate."
+      evidence: []
+      external_owner: adopter
+      external_control: "The adopter establishes, resources, performs, and retains evidence for the activity associated with MEASURE-3.3."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MEASURE-3.3 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MEASURE-4.1
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MEASURE 4.1 subcategory"
+    mapping:
+      aegis_evidence_status: external_control
+      interpretation: "MEASURE-4.1 primarily concerns an organizational, lifecycle, or assessment activity that AEGIS does not operate."
+      evidence: []
+      external_owner: adopter
+      external_control: "The adopter establishes, resources, performs, and retains evidence for the activity associated with MEASURE-4.1."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MEASURE-4.1 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MEASURE-4.2
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MEASURE 4.2 subcategory"
+    mapping:
+      aegis_evidence_status: external_control
+      interpretation: "MEASURE-4.2 primarily concerns an organizational, lifecycle, or assessment activity that AEGIS does not operate."
+      evidence: []
+      external_owner: adopter
+      external_control: "The adopter establishes, resources, performs, and retains evidence for the activity associated with MEASURE-4.2."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MEASURE-4.2 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MEASURE-4.3
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MEASURE 4.3 subcategory"
+    mapping:
+      aegis_evidence_status: external_control
+      interpretation: "MEASURE-4.3 primarily concerns an organizational, lifecycle, or assessment activity that AEGIS does not operate."
+      evidence: []
+      external_owner: adopter
+      external_control: "The adopter establishes, resources, performs, and retains evidence for the activity associated with MEASURE-4.3."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MEASURE-4.3 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MANAGE-1.1
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MANAGE 1.1 subcategory"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact or enforcement decision relevant to part of MANAGE-1.1; the wider organizational outcome remains outside AEGIS."
+      evidence:
+        - kind: artifact_field
+          baseline: aegis_source
+          path: schemas/audit_artifact.schema.json
+          locator: "/properties/risk_score"
+          demonstrates: "The audit contract carries a bounded risk-score field."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_risk_scoring.py
+          locator: "test_compute_risk_score_consumes_compiled_risk_policy"
+          demonstrates: "The risk-scoring test exercises policy-bound technical scoring."
+      unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with MANAGE-1.1 remain the adopter's responsibility."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MANAGE-1.1 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MANAGE-1.2
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MANAGE 1.2 subcategory"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact or enforcement decision relevant to part of MANAGE-1.2; the wider organizational outcome remains outside AEGIS."
+      evidence:
+        - kind: artifact_field
+          baseline: aegis_source
+          path: schemas/audit_artifact.schema.json
+          locator: "/properties/risk_score"
+          demonstrates: "The audit contract carries a bounded risk-score field."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_risk_scoring.py
+          locator: "test_compute_risk_score_consumes_compiled_risk_policy"
+          demonstrates: "The risk-scoring test exercises policy-bound technical scoring."
+      unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with MANAGE-1.2 remain the adopter's responsibility."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MANAGE-1.2 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MANAGE-1.3
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MANAGE 1.3 subcategory"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact or enforcement decision relevant to part of MANAGE-1.3; the wider organizational outcome remains outside AEGIS."
+      evidence:
+        - kind: policy_field
+          baseline: aegis_source
+          path: schemas/invocation_policy.schema.json
+          locator: "/properties/pre_conditions"
+          demonstrates: "The invocation policy contract records bounded preconditions."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_conditions.py
+          locator: "test_resolve_condition_from_context"
+          demonstrates: "The condition test exercises policy-bound contextual decisions."
+      unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with MANAGE-1.3 remain the adopter's responsibility."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MANAGE-1.3 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MANAGE-1.4
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MANAGE 1.4 subcategory"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact or enforcement decision relevant to part of MANAGE-1.4; the wider organizational outcome remains outside AEGIS."
+      evidence:
+        - kind: artifact_field
+          baseline: aegis_source
+          path: schemas/audit_artifact.schema.json
+          locator: "/properties/risk_score"
+          demonstrates: "The audit contract carries a bounded risk-score field."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_risk_scoring.py
+          locator: "test_compute_risk_score_consumes_compiled_risk_policy"
+          demonstrates: "The risk-scoring test exercises policy-bound technical scoring."
+      unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with MANAGE-1.4 remain the adopter's responsibility."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MANAGE-1.4 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MANAGE-2.1
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MANAGE 2.1 subcategory"
+    mapping:
+      aegis_evidence_status: external_control
+      interpretation: "MANAGE-2.1 primarily concerns an organizational, lifecycle, or assessment activity that AEGIS does not operate."
+      evidence: []
+      external_owner: adopter
+      external_control: "The adopter establishes, resources, performs, and retains evidence for the activity associated with MANAGE-2.1."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MANAGE-2.1 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MANAGE-2.2
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MANAGE 2.2 subcategory"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact or enforcement decision relevant to part of MANAGE-2.2; the wider organizational outcome remains outside AEGIS."
+      evidence:
+        - kind: policy_field
+          baseline: aegis_source
+          path: schemas/policy_dsl.schema.json
+          locator: "/properties/stateful"
+          demonstrates: "The policy contract records bounded stateful enforcement configuration."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_stateful_provider.py
+          locator: "test_counter_is_monotonic_idempotent_and_rejects_overflow"
+          demonstrates: "The provider test exercises monotonic, idempotent state admission."
+      unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with MANAGE-2.2 remain the adopter's responsibility."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MANAGE-2.2 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MANAGE-2.3
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MANAGE 2.3 subcategory"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact or enforcement decision relevant to part of MANAGE-2.3; the wider organizational outcome remains outside AEGIS."
+      evidence:
+        - kind: policy_field
+          baseline: aegis_source
+          path: schemas/policy_dsl.schema.json
+          locator: "/properties/stateful"
+          demonstrates: "The policy contract records bounded stateful enforcement configuration."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_stateful_provider.py
+          locator: "test_counter_is_monotonic_idempotent_and_rejects_overflow"
+          demonstrates: "The provider test exercises monotonic, idempotent state admission."
+      unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with MANAGE-2.3 remain the adopter's responsibility."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MANAGE-2.3 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MANAGE-2.4
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MANAGE 2.4 subcategory"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact or enforcement decision relevant to part of MANAGE-2.4; the wider organizational outcome remains outside AEGIS."
+      evidence:
+        - kind: artifact_field
+          baseline: aegis_source
+          path: schemas/workflow_artifact.schema.json
+          locator: "/properties/approval_checkpoints"
+          demonstrates: "The workflow artifact records approval-checkpoint evidence."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_approval_checkpoints.py
+          locator: "test_pause_with_metadata_records_checkpoint"
+          demonstrates: "The checkpoint test exercises recorded human-approval metadata."
+      unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with MANAGE-2.4 remain the adopter's responsibility."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MANAGE-2.4 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MANAGE-3.1
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MANAGE 3.1 subcategory"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact or enforcement decision relevant to part of MANAGE-3.1; the wider organizational outcome remains outside AEGIS."
+      evidence:
+        - kind: policy_field
+          baseline: aegis_source
+          path: schemas/policy_dsl.schema.json
+          locator: "/properties/stateful"
+          demonstrates: "The policy contract records bounded stateful enforcement configuration."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_stateful_provider.py
+          locator: "test_counter_is_monotonic_idempotent_and_rejects_overflow"
+          demonstrates: "The provider test exercises monotonic, idempotent state admission."
+      unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with MANAGE-3.1 remain the adopter's responsibility."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MANAGE-3.1 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MANAGE-3.2
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MANAGE 3.2 subcategory"
+    mapping:
+      aegis_evidence_status: external_control
+      interpretation: "MANAGE-3.2 primarily concerns an organizational, lifecycle, or assessment activity that AEGIS does not operate."
+      evidence: []
+      external_owner: adopter
+      external_control: "The adopter establishes, resources, performs, and retains evidence for the activity associated with MANAGE-3.2."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MANAGE-3.2 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MANAGE-4.1
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MANAGE 4.1 subcategory"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact or enforcement decision relevant to part of MANAGE-4.1; the wider organizational outcome remains outside AEGIS."
+      evidence:
+        - kind: artifact_field
+          baseline: aegis_source
+          path: schemas/workflow_artifact.schema.json
+          locator: "/properties/approval_checkpoints"
+          demonstrates: "The workflow artifact records approval-checkpoint evidence."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_approval_checkpoints.py
+          locator: "test_pause_with_metadata_records_checkpoint"
+          demonstrates: "The checkpoint test exercises recorded human-approval metadata."
+      unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with MANAGE-4.1 remain the adopter's responsibility."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MANAGE-4.1 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MANAGE-4.2
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MANAGE 4.2 subcategory"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact or enforcement decision relevant to part of MANAGE-4.2; the wider organizational outcome remains outside AEGIS."
+      evidence:
+        - kind: artifact_field
+          baseline: aegis_source
+          path: schemas/workflow_artifact.schema.json
+          locator: "/properties/approval_checkpoints"
+          demonstrates: "The workflow artifact records approval-checkpoint evidence."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_approval_checkpoints.py
+          locator: "test_pause_with_metadata_records_checkpoint"
+          demonstrates: "The checkpoint test exercises recorded human-approval metadata."
+      unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with MANAGE-4.2 remain the adopter's responsibility."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MANAGE-4.2 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.
+  - control_id: MANAGE-4.3
+    source_reference:
+      source_id: nist-ai-100-1
+      locator: "Core Tables 1-4, MANAGE 4.3 subcategory"
+    mapping:
+      aegis_evidence_status: partial_evidence
+      interpretation: "AEGIS records a bounded technical artifact or enforcement decision relevant to part of MANAGE-4.3; the wider organizational outcome remains outside AEGIS."
+      evidence:
+        - kind: artifact_field
+          baseline: aegis_source
+          path: schemas/workflow_artifact.schema.json
+          locator: "/properties/approval_checkpoints"
+          demonstrates: "The workflow artifact records approval-checkpoint evidence."
+        - kind: test
+          baseline: aegis_source
+          path: tests/test_approval_checkpoints.py
+          locator: "test_pause_with_metadata_records_checkpoint"
+          demonstrates: "The checkpoint test exercises recorded human-approval metadata."
+      unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with MANAGE-4.3 remain the adopter's responsibility."
+      host_controls:
+        - owner: adopter
+          control: "Determine whether MANAGE-4.3 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."
+        - owner: host operator
+          control: Operate tenant isolation, IAM, key management, transport security, and protected evidence storage.
+      limitations:
+        - This row is a non-authoritative evidence interpretation, not a statement of NIST outcome satisfaction.
+        - AEGIS checksums and optional signatures provide tamper-evidence within documented limits. External trust-anchor deployment is a host control. AEGIS does not provide built-in WORM or append-only storage.
+        - AEGIS does not evaluate model quality, organizational effectiveness, or production operating effectiveness.
+      retention_assumptions:
+        - The adopter defines retention periods, access controls, deletion rules, and legal holds.
+        - The host preserves artifacts and any external trust-anchor receipts outside the governed process boundary.

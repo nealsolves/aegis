@@ -224,6 +224,18 @@ def validate_framework_module(
         if isinstance(module.get("controls"), list)
         else []
     )
+    framework_id = framework.get("id")
+    is_eu_citation_index = framework_id == "eu-ai-act-2024-1689-amended-2026"
+    if is_eu_citation_index and phase != "scope":
+        for field, code in (
+            ("applicability_statement", "EU_APPLICABILITY_STATEMENT_REQUIRED"),
+            ("effective_date_basis", "EU_EFFECTIVE_DATE_BASIS_REQUIRED"),
+        ):
+            value = scope.get(field)
+            if not isinstance(value, str) or not value.strip():
+                findings.append(
+                    _finding(code, f"declared_scope.{field}", f"EU module requires {field}")
+                )
     expected = scope.get("expected_mapping_count")
     if not isinstance(expected, int) or isinstance(expected, bool) or expected < 0:
         findings.append(
@@ -292,6 +304,37 @@ def validate_framework_module(
                     "source locator is required",
                 )
             )
+        if is_eu_citation_index and phase != "scope":
+            rationale = control.get("inclusion_rationale")
+            if not isinstance(rationale, str) or not rationale.strip():
+                findings.append(
+                    _finding(
+                        "EU_INCLUSION_RATIONALE_REQUIRED",
+                        f"{location}.inclusion_rationale",
+                        "EU citation rows require a neutral inclusion rationale",
+                    )
+                )
+            source_date = _parse_date(
+                control.get("applicable_source_date"),
+                f"{location}.applicable_source_date",
+                findings,
+            )
+            if source_date is None:
+                findings.append(
+                    _finding(
+                        "EU_SOURCE_DATE_REQUIRED",
+                        f"{location}.applicable_source_date",
+                        "EU citation rows require an applicable source date",
+                    )
+                )
+            elif source_date > as_of:
+                findings.append(
+                    _finding(
+                        "EU_SOURCE_DATE_IN_FUTURE",
+                        f"{location}.applicable_source_date",
+                        "applicable source date cannot be later than --as-of",
+                    )
+                )
         if phase == "scope":
             continue
         mapping = (
@@ -358,15 +401,54 @@ def validate_framework_module(
                     f"review was due {next_due.isoformat()}",
                 )
             )
-        roles = review.get("reviewer_roles")
-        required_roles = {"framework_scope", "evidence_mapping", "claims"}
-        roles_set = set(roles) if isinstance(roles, list) else set()
-        if not required_roles.issubset(roles_set):
+        tier = review.get("tier")
+        decision = review.get("decision")
+        if tier == "unreviewed" or tier not in {
+            "maintainer_verified",
+            "community_reviewed",
+            "qualified_reviewed",
+        }:
             findings.append(
                 _finding(
-                    "REVIEW_ROLES_REQUIRED",
-                    "review.reviewer_roles",
-                    "publication requires framework_scope, evidence_mapping, and claims",
+                    "COMPLETED_REVIEW_REQUIRED",
+                    "review.tier",
+                    "publication requires a completed review tier",
+                )
+            )
+        if decision != "approved":
+            findings.append(
+                _finding(
+                    "REVIEW_DECISION_REQUIRED",
+                    "review.decision",
+                    "publication requires an approved review decision",
+                )
+            )
+        contributors = review.get("contributor_github_ids")
+        reviewers = review.get("reviewer_github_ids")
+        contributor_set = set(contributors) if isinstance(contributors, list) else set()
+        reviewer_set = set(reviewers) if isinstance(reviewers, list) else set()
+        if not contributor_set:
+            findings.append(
+                _finding(
+                    "CONTRIBUTOR_IDENTITY_REQUIRED",
+                    "review.contributor_github_ids",
+                    "publication requires at least one contributor GitHub identity",
+                )
+            )
+        if not reviewer_set:
+            findings.append(
+                _finding(
+                    "REVIEWER_IDENTITY_REQUIRED",
+                    "review.reviewer_github_ids",
+                    "publication requires at least one reviewer GitHub identity",
+                )
+            )
+        if tier == "community_reviewed" and not (reviewer_set - contributor_set):
+            findings.append(
+                _finding(
+                    "COMMUNITY_REVIEWER_NOT_DISTINCT",
+                    "review.reviewer_github_ids",
+                    "community review requires a reviewer distinct from contributors",
                 )
             )
         if (
@@ -382,48 +464,47 @@ def validate_framework_module(
                     f"next review exceeds {review_interval_days}-day policy",
                 )
             )
-        for field in ("scope_reviewed_in", "mapping_reviewed_in", "claims_reviewed_in"):
-            value = review.get(field)
-            if not isinstance(value, str) or not PR_URL.fullmatch(value):
-                findings.append(
-                    _finding(
-                        "REVIEW_PR_REQUIRED",
-                        f"review.{field}",
-                        "publication requires a nealsolves/aegis pull request URL",
-                    )
+        pr_url = review.get("pr_url")
+        if not isinstance(pr_url, str) or not PR_URL.fullmatch(pr_url):
+            findings.append(
+                _finding(
+                    "REVIEW_PR_REQUIRED",
+                    "review.pr_url",
+                    "publication requires a nealsolves/aegis pull request URL",
                 )
-        framework_id = framework.get("id")
-        if framework_id == "iso-iec-42001-2023":
-            if (
-                review.get("source_access_method")
-                != "licensed_human_review_without_ai_processing"
-            ):
-                findings.append(
-                    _finding(
-                        "ISO_LICENSED_REVIEW_REQUIRED",
-                        "review.source_access_method",
-                        "ISO publication requires licensed human-only review",
-                    )
-                )
-            if "iso_licensed_source" not in roles_set:
-                findings.append(
-                    _finding(
-                        "ISO_REVIEW_ROLE_REQUIRED",
-                        "review.reviewer_roles",
-                        "ISO publication requires iso_licensed_source",
-                    )
-                )
-        if (
-            framework_id == "eu-ai-act-2024-1689-amended-2026"
-            and "eu_legal_scope" not in roles_set
+            )
+        reviewed_commit = review.get("reviewed_commit_sha")
+        if not isinstance(reviewed_commit, str) or not re.fullmatch(
+            r"[a-f0-9]{40}", reviewed_commit
         ):
             findings.append(
                 _finding(
-                    "EU_LEGAL_SCOPE_REVIEW_REQUIRED",
-                    "review.reviewer_roles",
-                    "EU publication requires eu_legal_scope",
+                    "REVIEW_COMMIT_REQUIRED",
+                    "review.reviewed_commit_sha",
+                    "publication requires the exact reviewed commit SHA",
                 )
             )
+        if tier == "qualified_reviewed":
+            basis = review.get("qualification_basis")
+            if not isinstance(basis, str) or not basis.strip():
+                findings.append(
+                    _finding(
+                        "QUALIFICATION_BASIS_REQUIRED",
+                        "review.qualification_basis",
+                        "qualified review requires a recorded qualification basis",
+                    )
+                )
+            if review.get("qualification_verification") not in {
+                "self_declared",
+                "independently_verified",
+            }:
+                findings.append(
+                    _finding(
+                        "QUALIFICATION_VERIFICATION_REQUIRED",
+                        "review.qualification_verification",
+                        "qualified review requires a verification status",
+                    )
+                )
     return tuple(sorted(set(findings)))[:MAX_FINDINGS]
 
 
@@ -768,7 +849,10 @@ def validate_schema(
 
 
 def validate_claims(data: CatalogData) -> tuple[Finding, ...]:
-    from scripts.check_evidence_claims import TextBlock, scan_claims
+    if __package__:
+        from scripts.check_evidence_claims import TextBlock, scan_claims
+    else:
+        from check_evidence_claims import TextBlock, scan_claims  # type: ignore
 
     prose_keys = {
         "disclaimer",

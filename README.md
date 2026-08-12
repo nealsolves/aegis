@@ -20,6 +20,7 @@ Governance in AEGIS is runtime enforcement, not documentation and not prompting.
 - Install: `pip install aegis-ai-governance==0.9.0b1`
 - Previous PyPI line: `aegis==0.3.3` (`2026-04-10`)
 - Release matrix: [docs/reference/RELEASE_MATRIX.md](docs/reference/RELEASE_MATRIX.md)
+- Public-source evidence mappings: [compliance catalog](docs/reference/compliance/index.md)
 - Released `0.9.0b1` scope: invocation governance plus workflow-aware provenance
   and lineage groundwork, audit schema `v1.4`, `AuditLineage`,
   `ProvenanceGate`, `RiskHistory`, and `@governed` defaults to split enforcement
@@ -188,6 +189,7 @@ python workflow_example.py
 8. [Operations Runbook](docs/reference/OPERATIONS_RUNBOOK.md)
 9. [External Adapter Docs](docs/reference/external/README.md)
 10. [Append-Only Evidence Operations Guide](docs/reference/APPEND_ONLY_EVIDENCE_OPERATIONS.md)
+11. [Public-Source Compliance Catalog](docs/reference/compliance/index.md)
 
 ## Release Narrative
 

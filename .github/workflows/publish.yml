@@ -42,6 +42,7 @@ jobs:
 
       - name: Run release validation
         run: |
+          python scripts/check_compliance_catalog.py --as-of "$(date -u +%F)"
           python -m pytest -q
           flake8 aegis
           python scripts/check_doc_parity.py

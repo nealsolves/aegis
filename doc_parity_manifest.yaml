@@ -134,6 +134,8 @@ documentation_inventory:
     # canonical catalog and maintained generated pages are current authority.
     - docs/superpowers/plans/2026-08-10-issue-43-compliance-mapping.md
     - docs/superpowers/specs/2026-08-10-issue-43-compliance-mapping-design.md
+    - docs/superpowers/plans/2026-08-12-issue-43-public-source-mappings.md
+    - docs/superpowers/specs/2026-08-12-issue-43-public-source-scope-amendment-design.md
     # Issue #57's approved design and implementation plan are engineering
     # history; maintained policy/runtime docs become authoritative in Task 8.
     - docs/superpowers/plans/2026-08-11-issue-57-policy-root-containment.md
