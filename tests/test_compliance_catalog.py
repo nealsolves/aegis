@@ -6,6 +6,9 @@ import subprocess
 import sys
 
 import pytest
+import yaml
+
+import scripts.check_compliance_catalog as compliance_check
 
 from scripts.compliance_catalog import (
     CatalogInputError,
@@ -552,8 +555,78 @@ def test_qualified_review_requires_recorded_qualification_support():
 
     assert {item.code for item in findings} >= {
         "QUALIFICATION_BASIS_REQUIRED",
+        "QUALIFICATION_EVIDENCE_REQUIRED",
         "QUALIFICATION_VERIFICATION_REQUIRED",
+        "QUALIFIED_REVIEW_SCOPE_REQUIRED",
     }
+
+
+def test_independently_verified_qualification_names_its_verifier():
+    module = _module()
+    module["review"] = {
+        **_tier_review("qualified_reviewed"),
+        "qualification_basis": "Licensed attorney in the relevant jurisdiction.",
+        "qualification_evidence_url": "https://example.invalid/credential",
+        "qualification_verification": "independently_verified",
+        "review_scope": "Identifier inventory and citation boundaries.",
+    }
+
+    findings = validate_framework_module(
+        module,
+        phase="publication",
+        as_of=date(2026, 8, 10),
+        publication=True,
+        review_interval_days=180,
+    )
+
+    assert "QUALIFICATION_VERIFIER_REQUIRED" in {item.code for item in findings}
+
+
+def test_publication_rejects_a_review_completed_after_as_of():
+    module = _module()
+    module["review"]["reviewed_on"] = "2026-08-11"
+    module["review"]["next_review_due"] = "2027-02-07"
+
+    findings = validate_framework_module(
+        module,
+        phase="publication",
+        as_of=date(2026, 8, 10),
+        publication=True,
+        review_interval_days=180,
+    )
+
+    assert "REVIEW_DATE_IN_FUTURE" in {item.code for item in findings}
+
+
+def test_publication_rejects_a_source_accessed_after_as_of():
+    module = _module()
+    module["framework"]["authoritative_sources"][0]["accessed_on"] = "2026-08-11"
+
+    findings = validate_framework_module(
+        module,
+        phase="publication",
+        as_of=date(2026, 8, 10),
+        publication=True,
+        review_interval_days=180,
+    )
+
+    assert "SOURCE_ACCESS_DATE_IN_FUTURE" in {item.code for item in findings}
+
+
+def test_completed_review_cannot_predate_its_latest_source_access():
+    module = _module()
+    module["framework"]["authoritative_sources"][0]["accessed_on"] = "2026-08-02"
+    module["review"]["reviewed_on"] = "2026-08-01"
+
+    findings = validate_framework_module(
+        module,
+        phase="publication",
+        as_of=date(2026, 8, 10),
+        publication=True,
+        review_interval_days=180,
+    )
+
+    assert "REVIEW_PRECEDES_SOURCE_ACCESS" in {item.code for item in findings}
 
 
 def test_unreviewed_module_is_not_publishable():
@@ -615,6 +688,35 @@ def test_renderer_derives_actual_review_tier_from_record():
 
     assert "Review tier: `maintainer_verified`" in rendered
     assert "professional review" not in rendered.lower()
+
+
+def test_renderer_displays_qualified_review_scope_and_evidence():
+    module = _module()
+    module["review"] = {
+        **_tier_review("qualified_reviewed"),
+        "qualification_basis": "Licensed attorney in the relevant jurisdiction.",
+        "qualification_evidence_url": "https://example.invalid/credential",
+        "qualification_verification": "independently_verified",
+        "qualification_verified_by_github_id": "credential-checker",
+        "review_scope": "Identifier inventory and citation boundaries.",
+    }
+    manifest = {
+        "catalog_version": "1.0.0",
+        "catalog_status": "current_source",
+        "disclaimer": "Non-authoritative evidence contribution.",
+        "aegis_baseline": {
+            "git_commit": "a9d0e4967070a11474ab11b23b047a5cde4b0892",
+            "published_version": "0.9.0b1",
+            "release_matrix": "docs/reference/RELEASE_MATRIX.md",
+        },
+        "update_triggers": ["aegis_baseline_change"],
+    }
+
+    rendered = render_framework(manifest, module)
+
+    assert "Review scope: Identifier inventory and citation boundaries." in rendered
+    assert "[qualification evidence](https://example.invalid/credential)" in rendered
+    assert "Qualification verified by GitHub identity: `credential-checker`" in rendered
 
 
 def test_closed_schema_forbids_an_overstated_public_review_label():
@@ -679,6 +781,16 @@ def test_nist_module_has_the_complete_72_identifier_inventory_and_fixture_link()
         for control in module["controls"]
         for evidence in control["mapping"]["evidence"]
     )
+
+
+def test_nist_govern_4_2_does_not_overstate_lineage_as_risk_impact_evidence():
+    root = Path(__file__).resolve().parents[1]
+    module = load_yaml(root / "compliance" / "frameworks" / "nist-ai-rmf-1.0.yaml")
+    row = next(control for control in module["controls"] if control["control_id"] == "GOVERN-4.2")
+
+    assert row["mapping"]["aegis_evidence_status"] == "external_control"
+    assert row["mapping"]["evidence"] == []
+    assert "risks and potential impacts" in row["mapping"]["external_control"]
 
 
 def test_eu_module_has_bounded_citation_scope_and_declines_applicability():
@@ -945,6 +1057,99 @@ def test_module_path_is_bound_to_expected_framework_id(tmp_path: Path):
     findings = _manifest_findings(data)
 
     assert "MODULE_FRAMEWORK_ID_MISMATCH" in {item.code for item in findings}
+
+
+def test_reviewed_commit_must_contain_the_current_reviewable_module(tmp_path: Path):
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.invalid"],
+        cwd=tmp_path,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Test"], cwd=tmp_path, check=True
+    )
+    (tmp_path / "README.md").write_text("historical commit\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "commit", "--no-verify", "-qm", "historical"],
+        cwd=tmp_path,
+        check=True,
+    )
+    historical_commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    module = _module()
+    module["review"]["reviewed_commit_sha"] = historical_commit
+
+    findings = compliance_check.reviewed_module_findings(
+        tmp_path,
+        "compliance/frameworks/nist-ai-rmf-1.0.yaml",
+        module,
+    )
+
+    assert [(item.code, item.location) for item in findings] == [
+        (
+            "REVIEWED_MODULE_CONTENT_MISMATCH",
+            "compliance/frameworks/nist-ai-rmf-1.0.yaml.review.reviewed_commit_sha",
+        )
+    ]
+
+
+def test_review_binding_allows_only_review_metadata_to_change(tmp_path: Path):
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.invalid"],
+        cwd=tmp_path,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Test"], cwd=tmp_path, check=True
+    )
+    module_path = "compliance/frameworks/nist-ai-rmf-1.0.yaml"
+    path = tmp_path / module_path
+    path.parent.mkdir(parents=True)
+    reviewed_module = _module()
+    reviewed_module["review"] = {
+        "tier": "unreviewed",
+        "decision": "pending",
+        "contributor_github_ids": [],
+        "reviewer_github_ids": [],
+        "source_access_method": "public_authoritative_source",
+    }
+    path.write_text(yaml.safe_dump(reviewed_module, sort_keys=False), encoding="utf-8")
+    subprocess.run(["git", "add", module_path], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "commit", "--no-verify", "-qm", "reviewable snapshot"],
+        cwd=tmp_path,
+        check=True,
+    )
+    reviewed_commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    published_module = _module()
+    published_module["review"]["reviewed_commit_sha"] = reviewed_commit
+
+    assert compliance_check.reviewed_module_findings(
+        tmp_path, module_path, published_module
+    ) == ()
+
+    published_module["controls"][0]["mapping"]["interpretation"] = (
+        "Mapping content changed after review."
+    )
+    findings = compliance_check.reviewed_module_findings(
+        tmp_path, module_path, published_module
+    )
+
+    assert [item.code for item in findings] == ["REVIEWED_MODULE_CONTENT_MISMATCH"]
 
 
 def test_ignored_runtime_bytecode_is_baseline_drift(tmp_path: Path):

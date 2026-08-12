@@ -125,12 +125,19 @@ def render_framework(manifest: Mapping[str, Any], module: Mapping[str, Any]) -> 
     lines.extend(["", "## Review record", ""])
     contributors = review.get("contributor_github_ids", [])
     reviewers = review.get("reviewer_github_ids", [])
+    qualification_evidence_url = review.get("qualification_evidence_url")
+    qualification_evidence = (
+        f"[qualification evidence]({_safe_url(qualification_evidence_url)})"
+        if isinstance(qualification_evidence_url, str)
+        else "not recorded"
+    )
     lines.extend(
         [
             "- Contributor GitHub identities: "
             + (", ".join(f"`{_escape(item)}`" for item in contributors) or "none recorded"),
             "- Reviewer GitHub identities: "
             + (", ".join(f"`{_escape(item)}`" for item in reviewers) or "none recorded"),
+            f"- Review scope: {_escape(review.get('review_scope', 'not recorded'))}",
             f"- Pull request: {_escape(review.get('pr_url', 'not recorded'))}",
             (
                 "- Reviewed commit: `"
@@ -140,9 +147,14 @@ def render_framework(manifest: Mapping[str, Any], module: Mapping[str, Any]) -> 
                 "- Qualification basis: "
                 f"{_escape(review.get('qualification_basis', 'not claimed'))}"
             ),
+            f"- Qualification evidence: {qualification_evidence}",
             (
                 "- Qualification verification: `"
                 f"{_escape(review.get('qualification_verification', 'not applicable'))}`"
+            ),
+            (
+                "- Qualification verified by GitHub identity: `"
+                f"{_escape(review.get('qualification_verified_by_github_id', 'not applicable'))}`"
             ),
             "",
             (

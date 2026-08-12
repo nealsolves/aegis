@@ -16,8 +16,10 @@ if __package__:
         CatalogInputError,
         Finding,
         baseline_drift,
+        git_blob,
         load_catalog,
         load_yaml,
+        load_yaml_text,
         validate_claims,
         validate_evidence_references,
         validate_framework_module,
@@ -30,8 +32,10 @@ else:
         CatalogInputError,
         Finding,
         baseline_drift,
+        git_blob,
         load_catalog,
         load_yaml,
+        load_yaml_text,
         validate_claims,
         validate_evidence_references,
         validate_framework_module,
@@ -50,6 +54,45 @@ EXPECTED_FRAMEWORK_IDS = {
         "eu-ai-act-2024-1689-amended-2026"
     ),
 }
+
+
+def reviewable_module_content(module: dict) -> dict:
+    """Return the module content whose exact snapshot receives review."""
+    return {key: value for key, value in module.items() if key != "review"}
+
+
+def reviewed_module_findings(
+    root: Path,
+    module_path: str,
+    module: dict,
+) -> tuple[Finding, ...]:
+    """Bind a completed review to the exact non-review module content."""
+    review = module.get("review")
+    if not isinstance(review, dict) or review.get("tier") == "unreviewed":
+        return ()
+    reviewed_commit = review.get("reviewed_commit_sha")
+    if not isinstance(reviewed_commit, str):
+        return ()
+    location = f"{module_path}.review.reviewed_commit_sha"
+    try:
+        reviewed_module = load_yaml_text(git_blob(root, reviewed_commit, module_path))
+    except CatalogInputError:
+        return (
+            Finding(
+                "REVIEWED_MODULE_CONTENT_MISMATCH",
+                location,
+                "reviewed commit does not contain the published module content",
+            ),
+        )
+    if reviewable_module_content(reviewed_module) != reviewable_module_content(module):
+        return (
+            Finding(
+                "REVIEWED_MODULE_CONTENT_MISMATCH",
+                location,
+                "reviewed commit does not contain the published module content",
+            ),
+        )
+    return ()
 
 
 def _parse_as_of(value: str) -> date:
@@ -186,6 +229,8 @@ def _manifest_findings(data: CatalogData) -> list[Finding]:
                     "reviewed commit does not exist in the local Git object database",
                 )
             )
+            continue
+        findings.extend(reviewed_module_findings(data.root, path, module))
     return findings
 
 

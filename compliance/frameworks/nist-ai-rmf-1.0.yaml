@@ -149,6 +149,11 @@ controls:
           path: tests/test_conditions.py
           locator: "test_resolve_condition_from_context"
           demonstrates: "The condition test exercises policy-bound contextual decisions."
+        - kind: fixture
+          baseline: catalog_asset
+          path: examples/compliance/regulated_workflow.py
+          locator: "def run("
+          demonstrates: "The deterministic regulated workflow demonstrates policy-bound invocation and workflow evidence with explicit governance rationale without representing production operation."
       unsupported_portion: "Governance judgment, operating effectiveness, and the complete organizational process associated with GOVERN-1.4 remain the adopter's responsibility."
       host_controls:
         - owner: adopter
@@ -410,24 +415,11 @@ controls:
       source_id: nist-ai-100-1
       locator: "Core Tables 1-4, GOVERN 4.2 subcategory"
     mapping:
-      aegis_evidence_status: supported_evidence
-      interpretation: "AEGIS directly records technical governance evidence relevant to GOVERN-4.2; this evidence contribution does not establish that the NIST outcome is achieved."
-      evidence:
-        - kind: artifact_field
-          baseline: aegis_source
-          path: schemas/audit_artifact.schema.json
-          locator: "/properties/provenance"
-          demonstrates: "The audit contract records parent evidence provenance."
-        - kind: test
-          baseline: aegis_source
-          path: tests/test_audit_lineage.py
-          locator: "test_parent_child_edge_built_from_provenance"
-          demonstrates: "The lineage test exercises parent-child evidence relationships."
-        - kind: fixture
-          baseline: catalog_asset
-          path: examples/compliance/regulated_workflow.py
-          locator: "def run("
-          demonstrates: "The deterministic regulated workflow demonstrates schema-valid policy, invocation, and workflow evidence without representing production operation."
+      aegis_evidence_status: external_control
+      interpretation: "GOVERN-4.2 concerns an organizational risk-and-impact documentation and communication activity for which this catalog identifies no direct AEGIS evidence contribution."
+      evidence: []
+      external_owner: adopter
+      external_control: "Organizational teams document the risks and potential impacts of the AI technology they design, develop, deploy, evaluate, and use, and communicate those impacts more broadly."
       host_controls:
         - owner: adopter
           control: "Determine whether GOVERN-4.2 is relevant, implement the organizational process, and evaluate sufficiency in the deployment context."

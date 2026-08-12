@@ -34,10 +34,13 @@ Exclusions:
 
 - Contributor GitHub identities: none recorded
 - Reviewer GitHub identities: none recorded
+- Review scope: not recorded
 - Pull request: not recorded
 - Reviewed commit: `not recorded`
 - Qualification basis: not claimed
+- Qualification evidence: not recorded
 - Qualification verification: `not applicable`
+- Qualification verified by GitHub identity: `not applicable`
 
 Local CI checks record consistency only; it does not authenticate identity, credentials, legal correctness, or professional competence.
 
@@ -148,6 +151,7 @@ Evidence references:
 
 - policy_field — [schemas/invocation_policy.schema.json](https://github.com/nealsolves/aegis/blob/c4f6add076f2c534ada089f90e5c52c38341783c/schemas/invocation_policy.schema.json) (aegis_source; locator: /properties/pre_conditions): The invocation policy contract records bounded preconditions.
 - test — [tests/test_conditions.py](https://github.com/nealsolves/aegis/blob/c4f6add076f2c534ada089f90e5c52c38341783c/tests/test_conditions.py) (aegis_source; locator: test_resolve_condition_from_context): The condition test exercises policy-bound contextual decisions.
+- fixture — [examples/compliance/regulated_workflow.py](../../../examples/compliance/regulated_workflow.py) (catalog_asset; locator: def run\(): The deterministic regulated workflow demonstrates policy-bound invocation and workflow evidence with explicit governance rationale without representing production operation.
 
 Unsupported portion: Governance judgment, operating effectiveness, and the complete organizational process associated with GOVERN-1.4 remain the adopter&\#x27;s responsibility.
 
@@ -454,15 +458,17 @@ Retention assumptions:
 
 Source locator: `Core Tables 1-4, GOVERN 4.2 subcategory`
 
-AEGIS evidence contribution: Supported evidence
+AEGIS evidence contribution: External control
 
-AEGIS directly records technical governance evidence relevant to GOVERN-4.2; this evidence contribution does not establish that the NIST outcome is achieved.
+GOVERN-4.2 concerns an organizational risk-and-impact documentation and communication activity for which this catalog identifies no direct AEGIS evidence contribution.
 
 Evidence references:
 
-- artifact_field — [schemas/audit_artifact.schema.json](https://github.com/nealsolves/aegis/blob/c4f6add076f2c534ada089f90e5c52c38341783c/schemas/audit_artifact.schema.json) (aegis_source; locator: /properties/provenance): The audit contract records parent evidence provenance.
-- test — [tests/test_audit_lineage.py](https://github.com/nealsolves/aegis/blob/c4f6add076f2c534ada089f90e5c52c38341783c/tests/test_audit_lineage.py) (aegis_source; locator: test_parent_child_edge_built_from_provenance): The lineage test exercises parent-child evidence relationships.
-- fixture — [examples/compliance/regulated_workflow.py](../../../examples/compliance/regulated_workflow.py) (catalog_asset; locator: def run\(): The deterministic regulated workflow demonstrates schema-valid policy, invocation, and workflow evidence without representing production operation.
+- None identified for this catalog row.
+
+External owner: adopter
+
+External control: Organizational teams document the risks and potential impacts of the AI technology they design, develop, deploy, evaluate, and use, and communicate those impacts more broadly.
 
 Host controls:
 

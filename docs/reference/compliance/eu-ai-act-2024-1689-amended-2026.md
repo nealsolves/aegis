@@ -44,10 +44,13 @@ The source set is current through Regulation \(EU\) 2026/1744, published 24 July
 
 - Contributor GitHub identities: none recorded
 - Reviewer GitHub identities: none recorded
+- Review scope: not recorded
 - Pull request: not recorded
 - Reviewed commit: `not recorded`
 - Qualification basis: not claimed
+- Qualification evidence: not recorded
 - Qualification verification: `not applicable`
+- Qualification verified by GitHub identity: `not applicable`
 
 Local CI checks record consistency only; it does not authenticate identity, credentials, legal correctness, or professional competence.
 

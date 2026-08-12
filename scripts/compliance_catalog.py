@@ -114,18 +114,14 @@ def _validate_tree(value: Any, *, depth: int = 0, count: list[int] | None = None
     raise CatalogInputError(f"unsafe YAML scalar type: {type(value).__name__}")
 
 
-def load_yaml(path: Path) -> dict[str, Any]:
-    """Load one bounded UTF-8 YAML mapping without aliases or duplicate keys."""
+def load_yaml_text(text: str) -> dict[str, Any]:
+    """Load one bounded YAML mapping from already-decoded UTF-8 text."""
     try:
-        raw = path.read_bytes()
-    except OSError as exc:
-        raise CatalogInputError(f"cannot read {path}: {exc}") from exc
-    if len(raw) > MAX_FILE_BYTES:
-        raise CatalogInputError("YAML file size limit exceeded")
-    try:
-        text = raw.decode("utf-8")
-    except UnicodeDecodeError as exc:
+        encoded = text.encode("utf-8")
+    except UnicodeEncodeError as exc:
         raise CatalogInputError("catalog YAML is not valid UTF-8") from exc
+    if len(encoded) > MAX_FILE_BYTES:
+        raise CatalogInputError("YAML file size limit exceeded")
     if CONTROL_CHARS.search(text):
         raise CatalogInputError("control characters are not allowed")
     _reject_obscuring_yaml(text)
@@ -141,6 +137,21 @@ def load_yaml(path: Path) -> dict[str, Any]:
         raise CatalogInputError("catalog YAML root must be a mapping")
     _validate_tree(value)
     return value
+
+
+def load_yaml(path: Path) -> dict[str, Any]:
+    """Load one bounded UTF-8 YAML mapping without aliases or duplicate keys."""
+    try:
+        raw = path.read_bytes()
+    except OSError as exc:
+        raise CatalogInputError(f"cannot read {path}: {exc}") from exc
+    if len(raw) > MAX_FILE_BYTES:
+        raise CatalogInputError("YAML file size limit exceeded")
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise CatalogInputError("catalog YAML is not valid UTF-8") from exc
+    return load_yaml_text(text)
 
 
 def _finding(code: str, location: str, message: str) -> Finding:
@@ -199,6 +210,26 @@ def validate_framework_module(
     source_ids = [
         source.get("source_id") for source in sources if isinstance(source, dict)
     ]
+    source_access_dates: list[date] = []
+    for index, source in enumerate(sources):
+        if not isinstance(source, dict):
+            continue
+        accessed_on = _parse_date(
+            source.get("accessed_on"),
+            f"framework.authoritative_sources[{index}].accessed_on",
+            findings,
+        )
+        if accessed_on is None:
+            continue
+        source_access_dates.append(accessed_on)
+        if accessed_on > as_of:
+            findings.append(
+                _finding(
+                    "SOURCE_ACCESS_DATE_IN_FUTURE",
+                    f"framework.authoritative_sources[{index}].accessed_on",
+                    "source access date cannot be later than --as-of",
+                )
+            )
     for duplicate in sorted(_duplicates(source_ids), key=str):
         findings.append(
             _finding(
@@ -401,6 +432,22 @@ def validate_framework_module(
                     f"review was due {next_due.isoformat()}",
                 )
             )
+        if reviewed_on and reviewed_on > as_of:
+            findings.append(
+                _finding(
+                    "REVIEW_DATE_IN_FUTURE",
+                    "review.reviewed_on",
+                    "completed review date cannot be later than --as-of",
+                )
+            )
+        if reviewed_on and source_access_dates and reviewed_on < max(source_access_dates):
+            findings.append(
+                _finding(
+                    "REVIEW_PRECEDES_SOURCE_ACCESS",
+                    "review.reviewed_on",
+                    "completed review cannot predate its latest source access",
+                )
+            )
         tier = review.get("tier")
         decision = review.get("decision")
         if tier == "unreviewed" or tier not in {
@@ -485,6 +532,15 @@ def validate_framework_module(
                 )
             )
         if tier == "qualified_reviewed":
+            review_scope = review.get("review_scope")
+            if not isinstance(review_scope, str) or not review_scope.strip():
+                findings.append(
+                    _finding(
+                        "QUALIFIED_REVIEW_SCOPE_REQUIRED",
+                        "review.review_scope",
+                        "qualified review requires a recorded review scope",
+                    )
+                )
             basis = review.get("qualification_basis")
             if not isinstance(basis, str) or not basis.strip():
                 findings.append(
@@ -494,7 +550,19 @@ def validate_framework_module(
                         "qualified review requires a recorded qualification basis",
                     )
                 )
-            if review.get("qualification_verification") not in {
+            evidence_url = review.get("qualification_evidence_url")
+            if not isinstance(evidence_url, str) or not re.fullmatch(
+                r"https://[^\s<>]+", evidence_url
+            ):
+                findings.append(
+                    _finding(
+                        "QUALIFICATION_EVIDENCE_REQUIRED",
+                        "review.qualification_evidence_url",
+                        "qualified review requires an HTTPS qualification evidence URL",
+                    )
+                )
+            verification = review.get("qualification_verification")
+            if verification not in {
                 "self_declared",
                 "independently_verified",
             }:
@@ -505,6 +573,19 @@ def validate_framework_module(
                         "qualified review requires a verification status",
                     )
                 )
+            if verification == "independently_verified":
+                verifier = review.get("qualification_verified_by_github_id")
+                if not isinstance(verifier, str) or not re.fullmatch(
+                    r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?",
+                    verifier,
+                ):
+                    findings.append(
+                        _finding(
+                            "QUALIFICATION_VERIFIER_REQUIRED",
+                            "review.qualification_verified_by_github_id",
+                            "independent verification requires an identified verifier",
+                        )
+                    )
     return tuple(sorted(set(findings)))[:MAX_FINDINGS]
 
 

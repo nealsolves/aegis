@@ -111,7 +111,10 @@
         "next_review_due": {"$ref": "#/$defs/date"},
         "source_access_method": {"enum": ["public_authoritative_source", "licensed_human_review_without_ai_processing"]},
         "qualification_basis": {"$ref": "#/$defs/bounded_text"},
-        "qualification_verification": {"enum": ["self_declared", "independently_verified"]}
+        "qualification_evidence_url": {"$ref": "#/$defs/https_url"},
+        "qualification_verification": {"enum": ["self_declared", "independently_verified"]},
+        "qualification_verified_by_github_id": {"type": "string", "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$"},
+        "review_scope": {"$ref": "#/$defs/bounded_text"}
       }
     },
     "control": {
