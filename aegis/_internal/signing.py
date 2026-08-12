@@ -37,16 +37,9 @@ FINALIZER_WORKFLOW_DOMAIN = "aegis.workflow.v2"
 
 def _logger():
     """Load logging only for legacy signer operations that actually emit."""
-    import logging
+    from aegis._internal import signing_logger
 
-    logger = logging.getLogger("aegis.signing")
-    logging._acquireLock()
-    try:
-        if not any(type(handler) is logging.NullHandler for handler in logger.handlers):
-            logger.addHandler(logging.NullHandler())
-    finally:
-        logging._releaseLock()
-    return logger
+    return signing_logger.logger
 
 
 def _finalizer_payload_type(domain: object) -> str:
