@@ -67,7 +67,9 @@ def run_minimal_workflow(policy_file: str | None = None) -> dict:
     """Run a 2-step governed workflow. Returns the workflow artifact."""
     if policy_file is None:
         policy_file = os.path.join(_SCRIPT_DIR, "policy.yaml")
-    governance = aegis.AEGIS()
+    # AEGIS requires an explicit evidence sink; audit artifacts land here.
+    audit_path = os.path.join(_SCRIPT_DIR, "audit.jsonl")
+    governance = aegis.AEGIS(sink=aegis.JsonFileAuditSink(audit_path))
 
     with governance.open_session(policy_file=policy_file) as session:
         # --- Step 1 ---
@@ -188,7 +190,9 @@ def run_standard_workflow(policy_file: str | None = None) -> dict:
     """Run a 3-step workflow with approval checkpoint. Returns workflow artifact."""
     if policy_file is None:
         policy_file = os.path.join(_SCRIPT_DIR, "policy.yaml")
-    governance = aegis.AEGIS()
+    # AEGIS requires an explicit evidence sink; audit artifacts land here.
+    audit_path = os.path.join(_SCRIPT_DIR, "audit.jsonl")
+    governance = aegis.AEGIS(sink=aegis.JsonFileAuditSink(audit_path))
 
     with governance.open_session(policy_file=policy_file) as session:
         # --- Step 1: Pre-approval work ---
@@ -363,7 +367,12 @@ def run_regulated_workflow(policy_file: str | None = None) -> dict:
         policy_file = os.path.join(_SCRIPT_DIR, "policy.yaml")
     # ProvenanceGate requires context.provenance.source_ids in every invocation.
     gate = ProvenanceGate(require_source_ids=True)
-    governance = aegis.AEGIS(custom_gates=[gate])
+    # AEGIS requires an explicit evidence sink; audit artifacts land here.
+    audit_path = os.path.join(_SCRIPT_DIR, "audit.jsonl")
+    governance = aegis.AEGIS(
+        sink=aegis.JsonFileAuditSink(audit_path),
+        custom_gates=[gate],
+    )
     session = None
 
     try:

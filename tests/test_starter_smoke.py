@@ -2,6 +2,7 @@
 
 import ast
 import importlib.util
+import subprocess
 import sys
 import warnings
 from pathlib import Path
@@ -224,3 +225,36 @@ class TestPresetPreconditions:
             f"Unexpected pre_conditions warning from {render_fn.__name__}: "
             + "; ".join(str(w.message) for w in precond_warnings)
         )
+
+
+class TestStarterCleanEnvironmentExecution:
+    """Generated examples must run in a clean interpreter.
+
+    The autouse conftest fixture injects a test sink into ``AEGIS.__init__``,
+    which can mask starters that fail evidence configuration in a real host
+    environment. Running the generated script in a subprocess exercises the
+    same golden path an adopter gets from ``aegis workflow init``.
+    """
+
+    @pytest.mark.parametrize("render_fn", [
+        render_minimal_starter,
+        render_standard_starter,
+        render_regulated_starter,
+    ])
+    def test_generated_example_runs_in_clean_interpreter(
+        self, tmp_path, render_fn
+    ):
+        files = render_fn()
+        for name, content in files.items():
+            (tmp_path / name).write_text(content, encoding="utf-8")
+        completed = subprocess.run(
+            [sys.executable, str(tmp_path / "workflow_example.py")],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+        )
+        assert completed.returncode == 0, (
+            f"{render_fn.__name__} example failed in a clean interpreter:\n"
+            f"{completed.stderr}"
+        )
+        assert "Status:  COMPLETED" in completed.stdout
