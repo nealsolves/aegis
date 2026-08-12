@@ -949,6 +949,9 @@ def validate_claims(data: CatalogData) -> tuple[Finding, ...]:
         "summary",
         "mapping_unit",
         "exclusions",
+        "applicability_statement",
+        "effective_date_basis",
+        "inclusion_rationale",
         "interpretation",
         "demonstrates",
         "host_controls",
@@ -959,6 +962,8 @@ def validate_claims(data: CatalogData) -> tuple[Finding, ...]:
         "external_owner",
         "gap",
         "review_note",
+        "qualification_basis",
+        "review_scope",
     }
     blocks: list[TextBlock] = []
 

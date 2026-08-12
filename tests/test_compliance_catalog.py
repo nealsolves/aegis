@@ -377,6 +377,29 @@ def test_claims_scan_covers_framework_names_labels_and_source_titles(tmp_path: P
     assert "CLAIMS_POLICY_FAILURE" in {item.code for item in findings}
 
 
+def test_claims_scan_covers_review_scope_and_scope_rationale(tmp_path: Path):
+    for section, key in (
+        ("review", "review_scope"),
+        ("declared_scope", "applicability_statement"),
+        ("declared_scope", "effective_date_basis"),
+    ):
+        module = _module()
+        module[section][key] = "AEGIS is certified"
+        data = CatalogData(root=tmp_path, manifest={}, modules=(module,))
+
+        findings = validate_claims(data)
+
+        assert "CLAIMS_POLICY_FAILURE" in {item.code for item in findings}, key
+
+    module = _module()
+    module["controls"][0]["inclusion_rationale"] = "AEGIS is certified"
+    data = CatalogData(root=tmp_path, manifest={}, modules=(module,))
+
+    findings = validate_claims(data)
+
+    assert "CLAIMS_POLICY_FAILURE" in {item.code for item in findings}
+
+
 def test_catalog_scripts_are_directly_invocable_from_repository_root():
     root = Path(__file__).resolve().parents[1]
     for script in (
