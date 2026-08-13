@@ -143,6 +143,7 @@ documentation_inventory:
     # The approved demo repair design and execution plan are engineering
     # history; the runtime, demo fixtures, and tested UI remain authoritative.
     - docs/superpowers/plans/2026-08-13-demo-repair-storytelling.md
+    - docs/superpowers/reports/2026-08-13-demo-repair-storytelling-verification.md
     - docs/superpowers/specs/2026-08-13-demo-repair-storytelling-design.md
     - .superpowers/sdd/2026-07-29-issue-45-aws-google-kms-adapters/task-9-report.md
     - .superpowers/sdd/2026-07-29-issue-45-aws-google-kms-adapters/final-fix-wave-report.md

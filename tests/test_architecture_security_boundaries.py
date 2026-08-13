@@ -65,6 +65,11 @@ _POLICY_NAMES = {
 }
 
 
+def _is_try_star(node: ast.AST) -> bool:
+    try_star = getattr(ast, "TryStar", None)
+    return try_star is not None and isinstance(node, try_star)
+
+
 def _functions(path: Path) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     return [
@@ -3399,12 +3404,11 @@ def _checkpoint_callback_order_violations_for_source(
                     ast.If,
                     ast.Match,
                     ast.Try,
-                    ast.TryStar,
                     ast.For,
                     ast.AsyncFor,
                     ast.While,
                 ),
-            ):
+            ) or _is_try_star(ancestor):
                 return True
         return False
 
@@ -4194,7 +4198,7 @@ def _checkpoint_callback_order_violations_for_source(
                 preflight_guaranteed = loop_preflight and else_preflight
                 callback_count += loop_count + else_count
                 continue
-            if isinstance(statement, (ast.Try, ast.TryStar)):
+            if isinstance(statement, ast.Try) or _is_try_star(statement):
                 entry_preflight = preflight_guaranteed
                 body_preflight, body_count = analyze_block(
                     statement.body,
@@ -4224,7 +4228,7 @@ def _checkpoint_callback_order_violations_for_source(
                 preflight_guaranteed = all(
                     path_preflight for path_preflight, _ in paths
                 )
-                if isinstance(statement, ast.TryStar):
+                if _is_try_star(statement):
                     # Multiple ``except*`` suites can execute for disjoint
                     # subgroups from the same ExceptionGroup.
                     callback_count += max(
@@ -5980,13 +5984,19 @@ def test_checkpoint_architecture_checker_accepts_safe_parameter_and_local_shadow
             "    validate(source)\n"
             "    helper()\n"
         ),
-        (
-            "from aegis.preflight import validate\n"
-            "def create(source, signer):\n"
-            "    try:\n"
-            "        validate(source)\n"
-            "    except* signer.sign(b'x', None):\n"
-            "        pass\n"
+        pytest.param(
+            (
+                "from aegis.preflight import validate\n"
+                "def create(source, signer):\n"
+                "    try:\n"
+                "        validate(source)\n"
+                "    except* signer.sign(b'x', None):\n"
+                "        pass\n"
+            ),
+            marks=pytest.mark.skipif(
+                sys.version_info < (3, 11),
+                reason="except* syntax requires Python 3.11 or newer",
+            ),
         ),
         (
             "from aegis.preflight import validate\n"
@@ -6205,16 +6215,41 @@ def test_checkpoint_callback_checker_accepts_canonical_aliased_preflight() -> No
     ) == []
 
 
+def test_checkpoint_callback_checker_supports_python_without_try_star(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delattr(ast, "TryStar", raising=False)
+    source = (
+        "from aegis.preflight import validate\n"
+        "def create(source, signer):\n"
+        "    validate(source)\n"
+        "    signer.sign(b'x', None)\n"
+    )
+
+    assert _checkpoint_callback_order_violations_for_source(
+        source,
+        function_name="create",
+        boundary_name="sign",
+        preflight_name="validate",
+    ) == []
+
+
 @pytest.mark.parametrize(
     "source",
     (
-        (
-            "from aegis.preflight import validate\n"
-            "def create(source, signer):\n"
-            "    validate(source)\n"
-            "    try:\n        raise ExceptionGroup('x', [])\n"
-            "    except* ValueError:\n        signer.sign(b'one', None)\n"
-            "    except* TypeError:\n        signer.sign(b'two', None)\n"
+        pytest.param(
+            (
+                "from aegis.preflight import validate\n"
+                "def create(source, signer):\n"
+                "    validate(source)\n"
+                "    try:\n        raise ExceptionGroup('x', [])\n"
+                "    except* ValueError:\n        signer.sign(b'one', None)\n"
+                "    except* TypeError:\n        signer.sign(b'two', None)\n"
+            ),
+            marks=pytest.mark.skipif(
+                sys.version_info < (3, 11),
+                reason="except* syntax requires Python 3.11 or newer",
+            ),
         ),
         (
             "from aegis.preflight import validate\n"
