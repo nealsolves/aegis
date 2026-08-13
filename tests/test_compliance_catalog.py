@@ -882,16 +882,31 @@ def test_repository_generated_pages_match_the_two_active_modules():
         )
 
 
-def test_publication_entrypoints_package_catalog_and_name_deferrals():
+def test_publication_entrypoint_and_ci_mapping_validation_are_separated():
     root = Path(__file__).resolve().parents[1]
-    command = 'python scripts/check_compliance_catalog.py --as-of "$(date -u +%F)"'
+    publication_command = (
+        'python scripts/check_compliance_catalog.py --as-of "$(date -u +%F)"'
+    )
+    mapping_commands = (
+        "python scripts/check_compliance_catalog.py --module "
+        "compliance/frameworks/nist-ai-rmf-1.0.yaml --phase mapping "
+        '--as-of "$(date -u +%F)"',
+        "python scripts/check_compliance_catalog.py --module "
+        "compliance/frameworks/eu-ai-act-2024-1689-amended-2026.yaml "
+        '--phase mapping --as-of "$(date -u +%F)"',
+    )
 
     for relative in (
         ".github/workflows/security-boundaries.yml",
-        ".github/workflows/publish.yml",
         ".github/workflows/deploy-demo-react.yml",
     ):
-        assert command in (root / relative).read_text(encoding="utf-8")
+        workflow = (root / relative).read_text(encoding="utf-8")
+        assert publication_command not in workflow
+        assert all(command in workflow for command in mapping_commands)
+
+    assert publication_command in (
+        root / ".github" / "workflows" / "publish.yml"
+    ).read_text(encoding="utf-8")
 
     manifest = (root / "MANIFEST.in").read_text(encoding="utf-8")
     assert "recursive-include compliance *.yaml" in manifest
@@ -902,7 +917,7 @@ def test_publication_entrypoints_package_catalog_and_name_deferrals():
     runbook = (root / "docs" / "reference" / "OPERATIONS_RUNBOOK.md").read_text(
         encoding="utf-8"
     )
-    assert command in runbook
+    assert publication_command in runbook
 
     index = (
         root / "docs" / "reference" / "compliance" / "index.md"

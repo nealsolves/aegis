@@ -51,5 +51,7 @@ jobs:
         run: npm ci
       - name: Reject evidence assurance overclaims
         run: python scripts/check_evidence_claims.py
-      - name: Validate public-source compliance catalog
-        run: python scripts/check_compliance_catalog.py --as-of "$(date -u +%F)"
+      - name: Validate public-source compliance mappings
+        run: |
+          python scripts/check_compliance_catalog.py --module compliance/frameworks/nist-ai-rmf-1.0.yaml --phase mapping --as-of "$(date -u +%F)"
+          python scripts/check_compliance_catalog.py --module compliance/frameworks/eu-ai-act-2024-1689-amended-2026.yaml --phase mapping --as-of "$(date -u +%F)"
