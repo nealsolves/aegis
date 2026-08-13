@@ -12,9 +12,11 @@ describe('Lab8GovernedKnowledgeBase', () => {
     expect(screen.getByText(/governed knowledge base/i)).toBeInTheDocument()
   })
 
-  it('renders the scenario selector', () => {
+  it('gives the scenario selector an accessible name', () => {
     render(<Lab8GovernedKnowledgeBase />)
-    expect(screen.getByRole('combobox')).toBeInTheDocument()
+    expect(screen.getByRole('combobox', {
+      name: 'Knowledge base scenario',
+    })).toBeInTheDocument()
   })
 
   it('renders the Run KB Query button', () => {

@@ -29,7 +29,24 @@ export default function LabRouteLayout({
           className="lab-route__experiment"
           style={{ '--lab-experiment-target-size': '2.75rem' } as CSSProperties}
         >
-          {children}
+          <section
+            className="lab-operating-rhythm"
+            aria-labelledby={`lab-${lab.id}-rhythm-title`}
+          >
+            <div>
+              <p>Four steps, one governed decision</p>
+              <h2 id={`lab-${lab.id}-rhythm-title`}>How to use this lab</h2>
+            </div>
+            <ol>
+              <li><span>1</span><strong>Change the inputs</strong></li>
+              <li><span>2</span><strong>Run AEGIS</strong></li>
+              <li><span>3</span><strong>Understand the decision</strong></li>
+              <li><span>4</span><strong>Inspect the evidence</strong></li>
+            </ol>
+          </section>
+          <section className="lab-route__instrument" aria-label="Interactive lab">
+            {children}
+          </section>
         </div>
         <LabRelatedNav lab={lab} />
       </div>

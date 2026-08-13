@@ -81,7 +81,7 @@ export default function Lab7Compliance() {
   return (
     <div className="p-4 max-w-5xl mx-auto">
       <p className="font-mono text-xs mb-4" style={{ color: 'var(--text-secondary)' }}>
-        // full audit trail — filter, inspect, and export governance records
+        Review the audit trail as an operator: filter decisions, inspect evidence, and export records.
       </p>
 
       {/* Sample data banner */}
@@ -124,8 +124,15 @@ export default function Lab7Compliance() {
           {/* Policy filter */}
           {policyOptions.length > 2 && (
             <div className="flex items-center gap-2 mb-3">
-              <span className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>policy:</span>
+              <label
+                className="text-sm font-medium"
+                htmlFor="compliance-policy-filter"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                Policy filter
+              </label>
               <select
+                id="compliance-policy-filter"
                 value={policyFilter}
                 onChange={e => setPolicyFilter(e.target.value)}
                 className="font-mono text-[12px] px-2 py-1 rounded outline-none"

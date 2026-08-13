@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from aegis import CallbackAuditSink
+from aegis import CallbackAuditSink, JsonFileAuditSink
 
 from demo_runtime import (
     DemoAegisModuleProxy,
@@ -84,3 +84,45 @@ def test_module_proxy_delegates_attributes_and_injects_demo_factory() -> None:
 
     assert proxy.marker == "unchanged"
     assert artifact["policy_file"] == "medical_ai_low_risk.yaml"
+
+
+def test_module_proxy_accepts_only_its_root_bound_starter_sink_intent(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "starter"
+    root.mkdir()
+    (root / "policy.yaml").write_text(
+        (SAMPLE_POLICIES / "medical_ai_low_risk.yaml").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    proxy = DemoAegisModuleProxy(SimpleNamespace(marker="unchanged"), root)
+
+    sink_intent = proxy.JsonFileAuditSink(root / "audit.jsonl")
+    artifact = proxy.AEGIS(sink=sink_intent).enforce(
+        _invocation("policy.yaml")
+    )
+
+    assert artifact["enforcement_result"] == "PASS"
+    assert (root / "audit.jsonl").is_file()
+
+
+def test_module_proxy_rejects_foreign_authority_and_unknown_constructor_options(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "starter"
+    root.mkdir()
+    proxy = DemoAegisModuleProxy(SimpleNamespace(), root)
+    foreign_sink = JsonFileAuditSink(tmp_path / "outside.jsonl")
+
+    with pytest.raises(TypeError, match="starter sink"):
+        proxy.AEGIS(sink=foreign_sink)
+    with pytest.raises(TypeError, match="demo runtime owns"):
+        proxy.AEGIS(policy_loader=object())
+    with pytest.raises(TypeError, match="demo runtime owns"):
+        proxy.AEGIS(signer=object())
+    with pytest.raises(TypeError, match="demo runtime owns"):
+        proxy.AEGIS(chain_linker=object())
+    with pytest.raises(TypeError, match="unsupported AEGIS option"):
+        proxy.AEGIS(unknown_option=True)
+    with pytest.raises(ValueError, match="outside the demo policy root"):
+        proxy.JsonFileAuditSink(tmp_path / "outside.jsonl")

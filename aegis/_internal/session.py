@@ -14,6 +14,7 @@ from collections.abc import Mapping as MappingABC
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from functools import wraps
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, NoReturn
 
 from aegis._internal.errors import (
@@ -449,6 +450,49 @@ def _a2a_protocol_constraints(
         "allowed_protocol_bindings": list(allowed),
         "require_task_state": require_task_state,
     }
+
+
+def _project_compiled_a2a_constraints(value: object) -> dict[str, Any]:
+    """Detach only the compiler-owned frozen A2A constraint representation."""
+    from aegis._internal.errors import WorkflowProtocolViolationError
+
+    def invalid() -> NoReturn:
+        raise WorkflowProtocolViolationError(
+            "Compiled A2A protocol constraints are invalid",
+            details={
+                "protocol": "a2a",
+                "reason_code": "WORKFLOW_PROTOCOL_A2A_CONSTRAINTS_INVALID",
+            },
+        )
+
+    if type(value) is dict and not value:
+        return {}
+    if type(value) is not MappingProxyType:
+        invalid()
+    allowed_keys = {
+        "protocol_version",
+        "allowed_protocol_bindings",
+        "require_task_state",
+    }
+    if not set(value).issubset(allowed_keys):
+        invalid()
+    projected: dict[str, Any] = {}
+    for key, item in value.items():
+        if key == "allowed_protocol_bindings":
+            if type(item) is not tuple or not all(
+                type(entry) is str for entry in item
+            ):
+                invalid()
+            projected[key] = list(item)
+        elif key == "protocol_version":
+            if type(item) is not str:
+                invalid()
+            projected[key] = item
+        elif key == "require_task_state":
+            if type(item) is not bool:
+                invalid()
+            projected[key] = item
+    return projected
 
 
 def _raise_a2a_protocol_error(
@@ -2369,7 +2413,7 @@ class GovernanceSession:
                 if _raw_a2a_constraints is None:
                     _raw_a2a_constraints = {}
                 _a2a_constraints = _a2a_protocol_constraints(
-                    _raw_a2a_constraints,
+                    _project_compiled_a2a_constraints(_raw_a2a_constraints),
                     session_id=self._session_id,
                     step_id=resolved_step_id,
                 )

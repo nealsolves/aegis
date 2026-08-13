@@ -4,8 +4,7 @@ roles:
   - accounts_payable
   - vendor_verifier
   - risk_reviewer
-  - payment_preparer
-  - finance_approver
+  - payment_authorizer
 pre_conditions:
   required:
     amount:
@@ -14,9 +13,9 @@ pre_conditions:
     fictional_case_id:
       type: string
       pattern: "^MV-[0-9]+$"
-    payment_preparation_record:
+    payment_request_id:
       type: string
-      pattern: "^NO-OP-PAYMENT-"
+      pattern: "^PAYMENT-MV-[0-9]+$"
     vendor_id:
       type: string
       pattern: "^M-[0-9]+$"
@@ -41,10 +40,10 @@ tools:
   allowed_tools:
     - name: fictional_vendor_lookup
       max_calls: 1
-    - name: prepare_no_op_payment_record
+    - name: authorize_payment
       max_calls: 1
 workflow:
-  max_steps: 5
+  max_steps: 4
   max_total_tool_calls: 2
   participants:
     - id: meridian-invoice-01
@@ -56,43 +55,31 @@ workflow:
     - id: meridian-risk-01
       roles:
         - risk_reviewer
-    - id: meridian-payment-01
+    - id: meridian-payment-authorizer-01
       roles:
-        - payment_preparer
-    - id: meridian-approver-01
-      roles:
-        - finance_approver
+        - payment_authorizer
   required_sequence:
     - invoice_intake
     - vendor_verification
     - risk_review
-    - payment_preparation
-    - approval
+    - payment_authorization
   allowed_transitions:
     invoice_intake:
       - vendor_verification
     vendor_verification:
       - risk_review
     risk_review:
-      - payment_preparation
-    payment_preparation:
-      - approval
-    approval: []
+      - payment_authorization
+    payment_authorization: []
   allowed_agent_roles:
     - accounts_payable
     - vendor_verifier
     - risk_reviewer
-    - payment_preparer
-    - finance_approver
+    - payment_authorizer
   handoffs:
     - from: meridian-invoice-01
       to: meridian-vendor-01
     - from: meridian-vendor-01
       to: meridian-risk-01
     - from: meridian-risk-01
-      to: meridian-payment-01
-    - from: meridian-payment-01
-      to: meridian-approver-01
-  escalation:
-    require_approval_for_roles:
-      - finance_approver
+      to: meridian-payment-authorizer-01

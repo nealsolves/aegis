@@ -38,6 +38,9 @@ _PUBLIC_MESSAGES = MappingProxyType(
         "AEGIS_ENFORCEMENT_FAILED": "The governed operation was rejected.",
         "PRECONDITION_FAILED": "A required governance precondition was not met.",
         "PROVENANCE_MISSING": "Required provenance evidence was not provided.",
+        "OUTPUT_SCHEMA_VALIDATION_ERROR": (
+            "The proposed answer conflicts with the governed output rule."
+        ),
         "ROLE_NOT_ALLOWED": "The requested role is not allowed by policy.",
         "PHYSICIAN_APPROVAL_REQUIRED": "Physician approval is required.",
         "WORKFLOW_SEQUENCE_VIOLATION": "The required workflow sequence was not followed.",

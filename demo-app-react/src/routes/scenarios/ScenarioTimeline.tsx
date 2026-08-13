@@ -7,6 +7,7 @@ import {
   Pause,
   X,
 } from 'lucide-react'
+import { useState } from 'react'
 import type {
   DemoGateResult,
   DemoOutcome,
@@ -242,6 +243,14 @@ export default function ScenarioTimeline({
   response,
   scenarioId,
 }: ScenarioTimelineProps) {
+  const [storyPaused, setStoryPaused] = useState(false)
+  const [storyReplay, setStoryReplay] = useState(0)
+  const ungovernedOutcome = response?.transcript.find(
+    entry => entry.speaker === 'Without AEGIS',
+  )?.text
+  const governedOutcome = response?.transcript.find(
+    entry => entry.speaker === 'With AEGIS',
+  )?.text
   const announcedReason = response
     ? response.error?.code
       ?? response.gates.find(gate => gate.reason_code)?.reason_code
@@ -270,7 +279,11 @@ export default function ScenarioTimeline({
           <div className="scenario-region__label">03</div>
           <div>
             <h2 id="scenario-evaluation-title">AEGIS evaluation</h2>
-            <p>Run your judgment to request an evaluation from the demo service.</p>
+            <p>
+              {scenarioId === 'meridian'
+                ? 'Run the agentic comparison to evaluate the payment attempt.'
+                : 'Run your judgment to request an evaluation from the demo service.'}
+            </p>
           </div>
         </section>
         <section
@@ -329,6 +342,36 @@ export default function ScenarioTimeline({
             Returned run · {humanize(response.variant)}
           </p>
 
+          <div className="scenario-story-controls" aria-label="Story playback controls">
+            <button type="button" onClick={() => setStoryPaused(value => !value)}>
+              {storyPaused ? 'Resume story' : 'Pause story'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setStoryPaused(false)
+                setStoryReplay(value => value + 1)
+              }}
+            >
+              Replay story
+            </button>
+          </div>
+
+          {scenarioId === 'meridian' && ungovernedOutcome && governedOutcome && (
+            <div className="scenario-agentic-comparison scenario-story-reveal">
+              <article>
+                <span>Without AEGIS</span>
+                <h3>{ungovernedOutcome}</h3>
+                <p>No policy-based governance evaluates the action before execution.</p>
+              </article>
+              <article>
+                <span>With AEGIS</span>
+                <h3>{governedOutcome}</h3>
+                <p>The payment policy is enforced before execution.</p>
+              </article>
+            </div>
+          )}
+
           <div className="scenario-decision">
             <span>Overall decision</span>
             <OutcomeState outcome={response.decision} />
@@ -344,7 +387,11 @@ export default function ScenarioTimeline({
             </div>
           )}
 
-          <div className="scenario-transcript">
+          <div
+            className="scenario-transcript scenario-story-reveal"
+            data-paused={storyPaused}
+            key={`transcript-${response.variant}-${storyReplay}`}
+          >
             <h3>Returned transcript</h3>
             <ol>
               {response.transcript.map((entry, index) => (
@@ -356,7 +403,11 @@ export default function ScenarioTimeline({
             </ol>
           </div>
 
-          <div className="scenario-gates">
+          <div
+            className="scenario-gates scenario-story-reveal"
+            data-paused={storyPaused}
+            key={`gates-${response.variant}-${storyReplay}`}
+          >
             <h3>Gate timeline</h3>
             <ol>
               {response.gates.map((gate, index) => (

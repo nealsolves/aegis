@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { DemoServiceNotice } from '@/components/service/DemoServiceNotice'
@@ -105,14 +105,6 @@ function scenarioResponse(
         },
     source: SOURCE,
   }
-}
-
-function deferred<T>() {
-  let resolve!: (value: T) => void
-  const promise = new Promise<T>((resolvePromise) => {
-    resolve = resolvePromise
-  })
-  return { promise, resolve }
 }
 
 function expectNoCredentialInputs(container: HTMLElement) {
@@ -230,36 +222,30 @@ describe('public demo service states', () => {
     },
   )
 
-  it('keeps the newer PASS when an older FAIL request resolves last', async () => {
+  it('runs the corrected Atlas answer only after the first attempt returns', async () => {
     const user = userEvent.setup()
-    const older = deferred<Response>()
-    const newer = deferred<Response>()
     const fetchMock = vi.fn()
-      .mockReturnValueOnce(older.promise)
-      .mockReturnValueOnce(newer.promise)
+      .mockResolvedValueOnce(jsonResponse(scenarioResponse('FAIL', 'first_attempt')))
+      .mockResolvedValueOnce(jsonResponse(scenarioResponse('PASS', 'corrected')))
     vi.stubGlobal('fetch', fetchMock)
 
     const view = renderScenarioPage()
     await user.click(screen.getByRole('radio', {
-      name: 'Send the prepared guidance without attaching a policy source',
+      name: 'Pause and let AEGIS check the answer',
     }))
     await user.click(screen.getByRole('button', { name: 'Run judgment' }))
 
-    await user.click(screen.getByRole('radio', {
-      name: 'Attach the supplied policy source and retry the review',
+    await user.click(await screen.findByRole('button', {
+      name: 'Run corrected answer',
     }))
-    await user.click(screen.getByRole('button', { name: 'Run judgment' }))
-
-    newer.resolve(jsonResponse(scenarioResponse('PASS', 'corrected')))
     expect(await screen.findByText(
       'The corrected response cites the supplied policy.',
     )).toBeInTheDocument()
-
-    older.resolve(jsonResponse(scenarioResponse('FAIL', 'first_attempt')))
-    await waitFor(() => {
-      expect(screen.queryByText('FAIL_REASON')).not.toBeInTheDocument()
-    })
     expect(screen.getAllByText('Pass')).toHaveLength(2)
+    expect(fetchMock.mock.calls.map((call) => call[1]?.body)).toEqual([
+      JSON.stringify({ variant: 'first_attempt' }),
+      JSON.stringify({ variant: 'corrected' }),
+    ])
     expectWakeUpCopy(view.container, false)
     expectNoCredentialInputs(view.container)
   })

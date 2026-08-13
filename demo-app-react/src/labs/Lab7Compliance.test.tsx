@@ -93,6 +93,8 @@ describe('Lab7Compliance', () => {
     expect(screen.getByRole('button', { name: 'FAIL' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /json/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /csv/i })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Policy filter' }))
+      .toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'FAIL' }))
     const table = screen.getByRole('table')

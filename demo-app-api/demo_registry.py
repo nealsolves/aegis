@@ -6,7 +6,7 @@ from demo_fixtures import ADAPTER_FIXTURES
 SCENARIO_VARIANTS = {
     "atlas": frozenset({"first_attempt", "corrected"}),
     "northstar": frozenset({"first_attempt", "authorized_retry", "corrected"}),
-    "meridian": frozenset({"first_attempt", "corrected"}),
+    "meridian": frozenset({"first_attempt"}),
 }
 
 ADAPTER_FIXTURE_IDS = {

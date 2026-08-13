@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import PolicyEditor from '@/components/shared/PolicyEditor'
 import CodeBlock from '@/components/shared/CodeBlock'
 import { useApi } from '@/hooks/useApi'
@@ -10,49 +10,33 @@ import {
 
 type Strategy = 'intersect' | 'union' | 'replace'
 
-interface LoadResponse { yaml_text: string | null; error: PublicDemoError | null }
 interface ComposeResponse {
   merged_yaml: string | null
   escalations: string[]
   diff: { kept_roles: string[]; removed_roles: string[]; added_roles: string[] }
+  admission: { status: 'ADMITTED' | 'REJECTED'; code: string | null; message: string }
   error: PublicDemoError | null
 }
 
+const PARENT_SAMPLE = `policy_version: "1.0"
+roles: [support_lead]
+post_conditions:
+  required: [source_cited, decision_logged]
+`
+
+const CHILD_SAMPLE = `policy_version: "1.0"
+roles: [support_lead]
+post_conditions:
+  required: [source_cited, human_reviewed]
+`
+
 export default function Lab4Composition() {
-  const [parentYaml,    setParentYaml]    = useState('')
-  const [childYaml,     setChildYaml]     = useState('')
-  const [policiesReady, setPoliciesReady] = useState(false)
-  const [loadError,     setLoadError]     = useState<string | null>(null)
+  const [parentYaml,    setParentYaml]    = useState(PARENT_SAMPLE)
+  const [childYaml,     setChildYaml]     = useState(CHILD_SAMPLE)
   const [strategy,      setStrategy]      = useState<Strategy>('intersect')
   const [result,        setResult]        = useState<ComposeResponse | null>(null)
 
-  const { call: callLoadParent } = useApi<LoadResponse>()
-  const { call: callLoadChild  } = useApi<LoadResponse>()
   const { call,           loading, error: apiError } = useApi<ComposeResponse>()
-
-  // Seed editors with the current sample policies on mount
-  useEffect(() => {
-    Promise.all([
-      callLoadParent('/api/policy/load', { policy_name: 'medical_ai.yaml' }),
-      callLoadChild('/api/policy/load', { policy_name: 'medical_ai_child.yaml' }),
-    ]).then(([parent, child]) => {
-      const parentYaml = parent?.yaml_text
-      const childYaml  = child?.yaml_text
-      if (parentYaml && childYaml) {
-        setParentYaml(parentYaml)
-        setChildYaml(childYaml)
-        setPoliciesReady(true)
-      } else {
-        setLoadError(
-          formatPublicDemoError(parent?.error)
-          ?? formatPublicDemoError(child?.error)
-          ?? (parent?.error || child?.error
-            ? INVALID_PUBLIC_DEMO_ERROR_MESSAGE
-            : 'Failed to load sample policies — check API connection')
-        )
-      }
-    })
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const merge = async () => {
     const res = await call('/api/compose', {
@@ -68,26 +52,13 @@ export default function Lab4Composition() {
   return (
     <div className="p-4 max-w-4xl mx-auto">
       <p className="font-mono text-xs mb-4" style={{ color: 'var(--text-secondary)' }}>
-        // compose parent + child policies with configurable merge strategy
+        Preview how two policies combine, then see whether the SDK loader admits the result.
       </p>
 
-      {!policiesReady ? (
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          {['medical_ai.yaml', 'medical_ai_child.yaml'].map(name => (
-            <div key={name} className="rounded h-40 flex items-center justify-center" style={{ border: '1px solid var(--border-ui)', background: 'var(--bg-surface)' }}>
-              {loadError
-                ? <span className="font-mono text-xs px-3 text-center" style={{ color: 'var(--ibm-magenta-40)' }}>// load failed: {loadError}</span>
-                : <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>// loading {name}…</span>
-              }
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          <PolicyEditor key="parent" initialYaml={parentYaml} label="medical_ai.yaml (parent)" onChange={setParentYaml} />
-          <PolicyEditor key="child"  initialYaml={childYaml}  label="medical_ai_child.yaml (child)" onChange={setChildYaml} />
-        </div>
-      )}
+      <div className="grid grid-cols-2 gap-4 mb-4">
+        <PolicyEditor key="parent" initialYaml={parentYaml} label="parent_policy.yaml" onChange={setParentYaml} />
+        <PolicyEditor key="child"  initialYaml={childYaml}  label="child_policy.yaml" onChange={setChildYaml} />
+      </div>
 
       <div className="flex items-center gap-2 mb-4">
         <span className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>↳ Strategy:</span>
@@ -107,9 +78,9 @@ export default function Lab4Composition() {
         ))}
         <button
           onClick={merge}
-          disabled={loading || !policiesReady}
+          disabled={loading}
           className="font-mono text-sm px-4 py-1.5 rounded ml-auto"
-          style={{ background: 'var(--ibm-blue-60)', color: '#fff', opacity: (loading || !policiesReady) ? 0.7 : 1 }}
+          style={{ background: 'var(--ibm-blue-60)', color: '#fff', opacity: loading ? 0.7 : 1 }}
         >
           {loading ? 'Merging…' : 'Merge →'}
         </button>
@@ -124,6 +95,20 @@ export default function Lab4Composition() {
       {result?.merged_yaml && (
         <>
           <CodeBlock code={result.merged_yaml} label="merged_policy.yaml" />
+
+          <div
+            className="mt-3 rounded p-3"
+            role="status"
+            aria-live="polite"
+            style={{
+              background: result.admission.status === 'ADMITTED' ? 'rgba(8,186,132,0.08)' : 'rgba(255,126,182,0.08)',
+              border: `1px solid ${result.admission.status === 'ADMITTED' ? 'rgba(8,186,132,0.3)' : 'rgba(255,126,182,0.3)'}`,
+              color: result.admission.status === 'ADMITTED' ? 'var(--ibm-teal-30)' : 'var(--ibm-magenta-40)',
+            }}
+          >
+            <div className="text-sm font-semibold">SDK admission: {result.admission.status}</div>
+            <div className="text-xs mt-1">{result.admission.message}</div>
+          </div>
 
           {/* Roles diff */}
           <div className="grid grid-cols-3 gap-2 mt-3">

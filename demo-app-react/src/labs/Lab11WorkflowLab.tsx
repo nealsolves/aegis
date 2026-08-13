@@ -199,7 +199,7 @@ export default function Lab11WorkflowLab() {
   return (
     <div className="p-4 max-w-5xl mx-auto">
       <p className="font-mono text-xs mb-4" style={{ color: 'var(--text-secondary)' }}>
-        // lab 11 — workflow governance v0.9.0 beta
+        Explore workflow governance: diagnose a failure, apply the fix, and inspect the resulting evidence.
       </p>
 
       {/* Tab bar */}

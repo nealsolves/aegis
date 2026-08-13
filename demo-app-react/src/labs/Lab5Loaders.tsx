@@ -120,7 +120,7 @@ export default function Lab5Loaders() {
   return (
     <div className="p-4 max-w-4xl mx-auto">
       <p className="font-mono text-xs mb-4" style={{ color: 'var(--text-secondary)' }}>
-        // policy loading strategies, date validation, and test framework
+        Load a policy from a controlled source, check its dates, and inspect the validated result.
       </p>
 
       {/* Tab selector */}
@@ -175,6 +175,7 @@ export default function Lab5Loaders() {
             <div className="space-y-2">
               <div className="flex gap-2">
                 <select
+                  aria-label="Policy file"
                   value={selectedPolicy}
                   onChange={e => { setSelectedPolicy(e.target.value); setLoadedPolicy(null) }}
                   className="flex-1 font-mono text-[13px] px-3 py-2 rounded outline-none"
@@ -199,6 +200,7 @@ export default function Lab5Loaders() {
             <div className="space-y-2">
               <div className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>↳ Paste or edit policy YAML — parsed directly, no file path needed</div>
               <textarea
+                aria-label="Policy YAML"
                 value={inMemoryYaml}
                 onChange={e => { setInMemoryYaml(e.target.value); setLoadedPolicy(null) }}
                 rows={8}
@@ -240,13 +242,20 @@ export default function Lab5Loaders() {
           <div className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>↳ Policy date range validation</div>
           <div className="grid grid-cols-3 gap-3">
             {[
-              { label: 'effective_date', value: effectiveDate, onChange: setEffectiveDate },
-              { label: 'expiration_date', value: expirationDate, onChange: setExpirationDate },
-              { label: 'reference_date (today)', value: referenceDate, onChange: setReferenceDate },
+              { id: 'effective-date', label: 'Effective date', value: effectiveDate, onChange: setEffectiveDate },
+              { id: 'expiration-date', label: 'Expiration date', value: expirationDate, onChange: setExpirationDate },
+              { id: 'reference-date', label: 'Reference date', value: referenceDate, onChange: setReferenceDate },
             ].map(field => (
               <div key={field.label}>
-                <div className="font-mono text-[11px] mb-1" style={{ color: 'var(--text-secondary)' }}>{field.label}</div>
+                <label
+                  className="text-sm font-medium mb-1 block"
+                  htmlFor={field.id}
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  {field.label}
+                </label>
                 <input
+                  id={field.id}
                   type="date"
                   value={field.value}
                   onChange={e => { field.onChange(e.target.value); setDateResult(null) }}
@@ -313,6 +322,7 @@ export default function Lab5Loaders() {
           <div className="font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>↳ Policy test suite — auto-generates 3 test cases</div>
           <div className="flex gap-2">
             <select
+              aria-label="Policy test file"
               value={testPolicy}
               onChange={e => { setTestPolicy(e.target.value); setTestResults(null) }}
               className="flex-1 font-mono text-[13px] px-3 py-2 rounded outline-none"

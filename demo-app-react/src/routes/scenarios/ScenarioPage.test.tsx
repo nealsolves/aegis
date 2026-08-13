@@ -43,7 +43,7 @@ const ATLAS_FIRST: ScenarioRunResponse = {
   fixture_version: '2026-07-25.1',
   transcript: [
     { speaker: 'Support lead', text: 'Review fictional case AT-104.' },
-    { speaker: 'Atlas', text: 'The response omitted a required source.' },
+    { speaker: 'Atlas', text: 'The answer conflicts with rule BRV-04.' },
   ],
   gates: [
     {
@@ -57,8 +57,15 @@ const ATLAS_FIRST: ScenarioRunResponse = {
       name: 'provenance',
       phase: 'post_call',
       evaluated: true,
+      outcome: 'PASS',
+      reason_code: null,
+    },
+    {
+      name: 'output_schema',
+      phase: 'post_call',
+      evaluated: true,
       outcome: 'FAIL',
-      reason_code: 'PROVENANCE_MISSING',
+      reason_code: 'OUTPUT_SCHEMA_VALIDATION_ERROR',
     },
   ],
   decision: 'FAIL',
@@ -68,8 +75,8 @@ const ATLAS_FIRST: ScenarioRunResponse = {
   },
   workflow_artifact: null,
   error: {
-    code: 'PROVENANCE_MISSING',
-    message: 'A required policy source was missing.',
+    code: 'OUTPUT_SCHEMA_VALIDATION_ERROR',
+    message: 'The answer conflicts with rule BRV-04.',
     request_id: 'a'.repeat(32),
   },
   source: SOURCE,
@@ -116,77 +123,22 @@ const ATLAS_CORRECTED: ScenarioRunResponse = {
   source: SOURCE,
 }
 
-const MERIDIAN_CORRECTED: ScenarioRunResponse = {
-  scenario_id: 'meridian',
-  variant: 'corrected',
-  fixture_version: '2026-07-25.1',
-  transcript: [
-    {
-      speaker: 'Accounts-payable lead',
-      text: 'Retry the fictional invoice in the required order.',
-    },
-    {
-      speaker: 'Meridian',
-      text: 'The governed steps and approval are recorded.',
-    },
-  ],
-  gates: [
-    {
-      name: 'required_sequence',
-      phase: 'workflow',
-      evaluated: true,
-      outcome: 'PASS',
-      reason_code: null,
-    },
-  ],
-  decision: 'PASS',
-  artifact: {
-    invocation_artifacts: [
-      { enforcement_result: 'PASS', output_checksum: '1'.repeat(64) },
-      { enforcement_result: 'PASS', output_checksum: '2'.repeat(64) },
-    ],
-    trace: {
-      steps: [
-        {
-          step_id: 'invoice_intake',
-          invocation_artifact_checksum: 'c'.repeat(64),
-          resolved: true,
-        },
-        {
-          step_id: 'risk_review',
-          invocation_artifact_checksum: 'd'.repeat(64),
-          resolved: false,
-        },
-      ],
-    },
-    export: { export_mode: 'audit' },
-  },
-  workflow_artifact: {
-    artifact_type: 'workflow',
-    status: 'COMPLETED',
-    steps: [
-      {
-        step_id: 'invoice_intake',
-        invocation_artifact_checksum: 'c'.repeat(64),
-      },
-      {
-        step_id: 'risk_review',
-        invocation_artifact_checksum: 'd'.repeat(64),
-      },
-    ],
-  },
-  error: null,
-  source: SOURCE,
-}
-
 const MERIDIAN_FIRST: ScenarioRunResponse = {
   scenario_id: 'meridian',
   variant: 'first_attempt',
   fixture_version: '2026-07-25.1',
   transcript: [
     {
-      speaker: 'Accounts-payable lead',
-      text: 'Prepare the fictional invoice payment record now.',
+      speaker: 'Meridian AI Assistant',
+      text: 'Authorize payment for invoice MV-248.',
+    },
+    {
+      speaker: 'Without AEGIS',
+      text: 'Payment authorized.',
+    },
+    {
+      speaker: 'With AEGIS',
+      text: 'Unauthorized payment blocked before execution.',
     },
   ],
   gates: [
@@ -194,11 +146,11 @@ const MERIDIAN_FIRST: ScenarioRunResponse = {
       name: 'required_sequence',
       phase: 'workflow',
       evaluated: true,
-      outcome: 'PAUSED',
+      outcome: 'FAIL',
       reason_code: 'WORKFLOW_SEQUENCE_VIOLATION',
     },
   ],
-  decision: 'PAUSED',
+  decision: 'FAIL',
   artifact: {
     enforcement_result: 'PASS',
     context: { step_id: 'invoice_intake' },
@@ -319,16 +271,6 @@ function jsonResponse(body: unknown) {
   })
 }
 
-function deferred<T>() {
-  let resolve!: (value: T) => void
-  let reject!: (reason?: unknown) => void
-  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
-    resolve = resolvePromise
-    reject = rejectPromise
-  })
-  return { promise, resolve, reject }
-}
-
 function renderScenario(scenarioId: string) {
   return render(
     <MemoryRouter initialEntries={[`/demo/scenarios/${scenarioId}`]}>
@@ -367,11 +309,11 @@ describe('ScenarioPage', () => {
     renderScenario('atlas')
 
     expect(
-      screen.getByRole('heading', { level: 1, name: 'Atlas travel support' }),
+      screen.getByRole('heading', { level: 1, name: 'A confident answer can still be wrong' }),
     ).toBeInTheDocument()
-    expect(screen.getByText(/You oversee support operations/i)).toBeInTheDocument()
+    expect(screen.getByText(/You lead customer support at Atlas Travel/i)).toBeInTheDocument()
     expect(
-      screen.getByText(/inaccurate guidance about a fictional compassionate travel credit/i),
+      screen.getByText(/storm policy covers a missed connection/i),
     ).toBeInTheDocument()
 
     for (const region of [
@@ -382,12 +324,30 @@ describe('ScenarioPage', () => {
     ]) {
       expect(screen.getByRole('heading', { name: region })).toBeInTheDocument()
     }
-    expect(
-      screen.getByRole('link', { name: 'Civil Resolution Tribunal decision' }),
-    ).toHaveAttribute(
-      'href',
-      'https://decisions.civilresolutionbc.ca/crt/crtd/en/item/525448/index.do',
+    expect(screen.getByRole('list', { name: 'Case story' })).toHaveTextContent(
+      'BRV-04 says this missed connection is not covered',
     )
+  })
+
+  it('intercepts the send choice and evaluates the wrong draft before delivery', async () => {
+    const user = userEvent.setup()
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(ATLAS_FIRST))
+    vi.stubGlobal('fetch', fetchMock)
+    renderScenario('atlas')
+
+    await user.click(screen.getByRole('radio', { name: 'Send the answer as written' }))
+    await user.click(screen.getByRole('button', { name: 'Run judgment' }))
+
+    expect(await screen.findAllByText('OUTPUT_SCHEMA_VALIDATION_ERROR'))
+      .toHaveLength(2)
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://demo.test/api/demo/scenarios/atlas/runs',
+      expect.objectContaining({
+        body: JSON.stringify({ variant: 'first_attempt' }),
+      }),
+    )
+    expect(screen.getByRole('button', { name: 'Run corrected answer' }))
+      .toBeInTheDocument()
   })
 
   it('disables Run until the deterministic demo service is ready', () => {
@@ -411,13 +371,13 @@ describe('ScenarioPage', () => {
 
     await user.click(
       screen.getByRole('radio', {
-        name: 'Send the prepared guidance without attaching a policy source',
+        name: 'Pause and let AEGIS check the answer',
       }),
     )
     await user.click(screen.getByRole('button', { name: 'Run judgment' }))
 
     await waitFor(() => {
-      expect(screen.getAllByText('PROVENANCE_MISSING')).toHaveLength(2)
+      expect(screen.getAllByText('OUTPUT_SCHEMA_VALIDATION_ERROR')).toHaveLength(2)
     })
     expect(fetchMock).toHaveBeenCalledWith(
       'http://demo.test/api/demo/scenarios/atlas/runs',
@@ -436,13 +396,17 @@ describe('ScenarioPage', () => {
     const gateNames = within(evaluation)
       .getAllByTestId('gate-name')
       .map((node) => node.textContent)
-    expect(gateNames).toEqual(['approval precondition', 'provenance'])
+    expect(gateNames).toEqual([
+      'approval precondition',
+      'provenance',
+      'output schema',
+    ])
     const overallDecision = within(evaluation)
       .getByText('Overall decision')
       .closest('.scenario-decision')
     expect(within(overallDecision as HTMLElement).getByText('Fail')).toBeInTheDocument()
     expect(
-      screen.getByText('The response omitted a required source.'),
+      screen.getByText('The answer conflicts with rule BRV-04.'),
     ).toBeInTheDocument()
   })
 
@@ -458,7 +422,7 @@ describe('ScenarioPage', () => {
 
       await user.click(
         screen.getByRole('radio', {
-          name: 'Send the prepared guidance without attaching a policy source',
+          name: 'Pause and let AEGIS check the answer',
         }),
       )
       await user.click(screen.getByRole('button', { name: 'Run judgment' }))
@@ -467,7 +431,7 @@ describe('ScenarioPage', () => {
         'The demo service returned an invalid scenario result.',
       )
       expect(screen.queryByText('Pass')).not.toBeInTheDocument()
-      expect(screen.queryByText('PROVENANCE_MISSING')).not.toBeInTheDocument()
+      expect(screen.queryByText('OUTPUT_SCHEMA_VALIDATION_ERROR')).not.toBeInTheDocument()
       expect(
         screen.queryByRole('heading', { name: 'Invocation artifact' }),
       ).not.toBeInTheDocument()
@@ -489,7 +453,7 @@ describe('ScenarioPage', () => {
 
     await user.click(
       screen.getByRole('radio', {
-        name: 'Send the prepared guidance without attaching a policy source',
+        name: 'Pause and let AEGIS check the answer',
       }),
     )
     await user.click(screen.getByRole('button', { name: 'Run judgment' }))
@@ -518,7 +482,9 @@ describe('ScenarioPage', () => {
 
   it('downloads exactly the current returned invocation artifact', async () => {
     const user = userEvent.setup()
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(ATLAS_CORRECTED)))
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(jsonResponse(ATLAS_FIRST))
+      .mockResolvedValueOnce(jsonResponse(ATLAS_CORRECTED)))
     const createObjectURL = vi.fn().mockReturnValue('blob:atlas-artifact')
     const revokeObjectURL = vi.fn()
     vi.spyOn(URL, 'createObjectURL').mockImplementation(createObjectURL)
@@ -528,12 +494,13 @@ describe('ScenarioPage', () => {
       .mockImplementation(() => undefined)
     renderScenario('atlas')
 
-    await user.click(
-      screen.getByRole('radio', {
-        name: 'Attach the supplied policy source and retry the review',
-      }),
-    )
+    await user.click(screen.getByRole('radio', {
+      name: 'Pause and let AEGIS check the answer',
+    }))
     await user.click(screen.getByRole('button', { name: 'Run judgment' }))
+    await user.click(await screen.findByRole('button', {
+      name: 'Run corrected answer',
+    }))
     await user.click(
       await screen.findByRole('button', { name: 'Download invocation artifact' }),
     )
@@ -547,46 +514,34 @@ describe('ScenarioPage', () => {
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:atlas-artifact')
   })
 
-  it('keeps a corrected replay when an older request resolves last', async () => {
+  it('offers the corrected replay only after the blocked first attempt', async () => {
     const user = userEvent.setup()
-    const first = deferred<Response>()
-    const corrected = deferred<Response>()
     const fetchMock = vi.fn()
-      .mockReturnValueOnce(first.promise)
-      .mockReturnValueOnce(corrected.promise)
+      .mockResolvedValueOnce(jsonResponse(ATLAS_FIRST))
+      .mockResolvedValueOnce(jsonResponse(ATLAS_CORRECTED))
     vi.stubGlobal('fetch', fetchMock)
     renderScenario('atlas')
 
-    await user.click(
-      screen.getByRole('radio', {
-        name: 'Send the prepared guidance without attaching a policy source',
-      }),
-    )
-    await user.click(screen.getByRole('button', { name: 'Run judgment' }))
-    const firstSignal = fetchMock.mock.calls[0][1].signal as AbortSignal
+    expect(screen.queryByRole('button', { name: 'Run corrected answer' }))
+      .not.toBeInTheDocument()
 
     await user.click(
       screen.getByRole('radio', {
-        name: 'Attach the supplied policy source and retry the review',
+        name: 'Pause and let AEGIS check the answer',
       }),
     )
     await user.click(screen.getByRole('button', { name: 'Run judgment' }))
-    expect(firstSignal.aborted).toBe(true)
-
-    corrected.resolve(jsonResponse(ATLAS_CORRECTED))
+    await user.click(await screen.findByRole('button', {
+      name: 'Run corrected answer',
+    }))
     expect(
       await screen.findByText('The response now cites the supplied policy source.'),
     ).toBeInTheDocument()
     expect(screen.getAllByText('Pass')).toHaveLength(3)
-
-    first.resolve(jsonResponse(ATLAS_FIRST))
-    await waitFor(() => {
-      expect(screen.queryByText('PROVENANCE_MISSING')).not.toBeInTheDocument()
-    })
-    expect(
-      screen.queryByText('The response omitted a required source.'),
-    ).not.toBeInTheDocument()
-    expect(screen.getAllByText('Pass')).toHaveLength(3)
+    expect(fetchMock.mock.calls.map((call) => call[1]?.body)).toEqual([
+      JSON.stringify({ variant: 'first_attempt' }),
+      JSON.stringify({ variant: 'corrected' }),
+    ])
   })
 
   it('aborts the active scenario request when the route unmounts', async () => {
@@ -596,7 +551,7 @@ describe('ScenarioPage', () => {
 
     await user.click(
       screen.getByRole('radio', {
-        name: 'Send the prepared guidance without attaching a policy source',
+        name: 'Pause and let AEGIS check the answer',
       }),
     )
     await user.click(screen.getByRole('button', { name: 'Run judgment' }))
@@ -626,6 +581,73 @@ describe('ScenarioPage', () => {
     )
   })
 
+  it('runs Meridian as an autonomous comparison without human judgment', async () => {
+    const user = userEvent.setup()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse(MERIDIAN_FIRST)),
+    )
+    renderScenario('meridian')
+
+    expect(screen.getByRole('heading', {
+      level: 1,
+      name: 'Can an AI assistant authorize this payment?',
+    })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Agentic flow' }))
+      .toBeInTheDocument()
+    expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument()
+    expect(screen.queryByText('Your judgment')).not.toBeInTheDocument()
+    expect(screen.queryByText(/you lead accounts payable/i))
+      .not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', {
+      name: 'Run agentic comparison',
+    }))
+
+    expect(await screen.findByRole('heading', {
+      name: 'Payment authorized.',
+    })).toBeInTheDocument()
+    expect(screen.getByRole('heading', {
+      name: 'Unauthorized payment blocked before execution.',
+    })).toBeInTheDocument()
+    expect(screen.getByText(/policy is enforced before execution/i))
+      .toBeInTheDocument()
+    expect(screen.queryByText(/mock payment/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/finance reviewer/i)).not.toBeInTheDocument()
+  })
+
+  it('renders Meridian comparison outcomes from the returned transcript', async () => {
+    const user = userEvent.setup()
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({
+      ...MERIDIAN_FIRST,
+      transcript: [
+        MERIDIAN_FIRST.transcript[0],
+        {
+          speaker: 'Without AEGIS',
+          text: 'Payment authorization reached the payment system.',
+        },
+        {
+          speaker: 'With AEGIS',
+          text: 'Runtime policy stopped payment authorization.',
+        },
+      ],
+    })))
+    renderScenario('meridian')
+
+    await user.click(screen.getByRole('button', {
+      name: 'Run agentic comparison',
+    }))
+
+    expect(await screen.findByRole('heading', {
+      name: 'Payment authorization reached the payment system.',
+    })).toBeInTheDocument()
+    expect(screen.getByRole('heading', {
+      name: 'Runtime policy stopped payment authorization.',
+    })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Payment authorized.' }))
+      .not.toBeInTheDocument()
+  })
+
   it('announces a concise decision and reason outside the detailed result tree', async () => {
     const user = userEvent.setup()
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(ATLAS_FIRST)))
@@ -633,7 +655,7 @@ describe('ScenarioPage', () => {
 
     await user.click(
       screen.getByRole('radio', {
-        name: 'Send the prepared guidance without attaching a policy source',
+        name: 'Pause and let AEGIS check the answer',
       }),
     )
     await user.click(screen.getByRole('button', { name: 'Run judgment' }))
@@ -643,49 +665,15 @@ describe('ScenarioPage', () => {
     expect(announcement).toHaveAttribute('aria-live', 'polite')
     expect(announcement).toHaveAttribute('aria-atomic', 'true')
     expect(announcement).toHaveTextContent(
-      'Scenario run complete. Decision: FAIL. Reason: PROVENANCE_MISSING.',
+      'Scenario run complete. Decision: FAIL. Reason: OUTPUT_SCHEMA_VALIDATION_ERROR.',
     )
     expect(announcement).not.toHaveTextContent(
-      'The response omitted a required source.',
+      'The answer conflicts with rule BRV-04.',
     )
 
     const evaluation = screen.getByRole('region', { name: 'AEGIS evaluation' })
     expect(evaluation).not.toHaveAttribute('aria-live')
     expect(evaluation).not.toHaveAttribute('aria-atomic')
-  })
-
-  it('draws only Meridian relationships confirmed by the returned trace', async () => {
-    const user = userEvent.setup()
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(jsonResponse(MERIDIAN_CORRECTED)),
-    )
-    renderScenario('meridian')
-
-    await user.click(
-      screen.getByRole('radio', {
-        name: 'Restart and follow the required review order',
-      }),
-    )
-    await user.click(screen.getByRole('button', { name: 'Run judgment' }))
-
-    expect(
-      await screen.findByRole('heading', { name: 'Invocation evidence bundle' }),
-    ).toBeInTheDocument()
-    expect(
-      screen.getByRole('heading', { name: 'Workflow artifact' }),
-    ).toBeInTheDocument()
-    const relationships = screen
-      .getByRole('heading', { name: 'Returned artifact relationships' })
-      .closest('.scenario-checksum-links')
-    expect(within(relationships as HTMLElement).getByText('invoice intake'))
-      .toBeInTheDocument()
-    expect(within(relationships as HTMLElement).getByText('c'.repeat(64)))
-      .toBeInTheDocument()
-    expect(within(relationships as HTMLElement).queryByText('risk review'))
-      .not.toBeInTheDocument()
-    expect(within(relationships as HTMLElement).queryByText('d'.repeat(64)))
-      .not.toBeInTheDocument()
   })
 
   it('connects a raw Meridian invocation to its matching workflow step', async () => {
@@ -696,12 +684,9 @@ describe('ScenarioPage', () => {
     )
     renderScenario('meridian')
 
-    await user.click(
-      screen.getByRole('radio', {
-        name: 'Prepare the payment record before vendor verification',
-      }),
-    )
-    await user.click(screen.getByRole('button', { name: 'Run judgment' }))
+    await user.click(screen.getByRole('button', {
+      name: 'Run agentic comparison',
+    }))
 
     expect(
       await screen.findByRole('heading', { name: 'Invocation artifact' }),
@@ -723,11 +708,6 @@ describe('ScenarioPage', () => {
       'northstar',
       'Northstar clinic scheduling',
       'Keep the scheduling role and allow access to clinical details',
-    ],
-    [
-      'meridian',
-      'Meridian invoice review',
-      'Prepare the payment record before vendor verification',
     ],
   ])('renders the %s case from shared scenario content', (
     scenarioId,
@@ -751,7 +731,7 @@ describe('ScenarioPage', () => {
         screen.getByRole('heading', { name: 'Scenario not found' }),
       ).toBeInTheDocument()
       expect(
-        screen.queryByRole('heading', { name: 'Atlas travel support' }),
+        screen.queryByRole('heading', { name: 'A confident answer can still be wrong' }),
       ).not.toBeInTheDocument()
     },
   )
@@ -763,12 +743,12 @@ describe('ScenarioPage', () => {
 
     await user.click(
       screen.getByRole('radio', {
-        name: 'Send the prepared guidance without attaching a policy source',
+        name: 'Pause and let AEGIS check the answer',
       }),
     )
     await user.click(screen.getByRole('button', { name: 'Run judgment' }))
     expect(
-      await screen.findByText('The response omitted a required source.'),
+      await screen.findByText('The answer conflicts with rule BRV-04.'),
     ).toBeInTheDocument()
 
     await user.click(
@@ -797,7 +777,7 @@ describe('ScenarioPage', () => {
     ).not.toBeInTheDocument()
     expect(
       screen.getByRole('radio', {
-        name: 'Send the prepared guidance without attaching a policy source',
+        name: 'Pause and let AEGIS check the answer',
       }),
     ).not.toBeChecked()
     expect(screen.getByRole('button', { name: 'Run judgment' })).toBeDisabled()
@@ -810,7 +790,7 @@ describe('ScenarioPage', () => {
 
     await user.click(
       screen.getByRole('radio', {
-        name: 'Send the prepared guidance without attaching a policy source',
+        name: 'Pause and let AEGIS check the answer',
       }),
     )
     await user.click(screen.getByRole('button', { name: 'Run judgment' }))

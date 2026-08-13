@@ -56,4 +56,11 @@ describe('Lab9GovernedVsUngoverned', () => {
     render(<Lab9GovernedVsUngoverned />)
     expect(screen.getByRole('button', { name: /compare/i })).toBeInTheDocument()
   })
+
+  it('gives the comparison scenario selector an accessible name', () => {
+    render(<Lab9GovernedVsUngoverned />)
+    expect(screen.getByRole('combobox', {
+      name: 'Comparison scenario',
+    })).toBeInTheDocument()
+  })
 })
