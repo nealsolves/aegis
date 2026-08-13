@@ -8,10 +8,10 @@ from fastapi.testclient import TestClient
 
 from aegis import (
     AEGIS,
-    AuditLineage,
+    CallbackAuditSink,
     HMACSigner,
-    PreconditionError,
     ProvenanceGate,
+    SchemaValidationError,
     verify_artifact,
 )
 from aegis.audit import checksum
@@ -23,7 +23,7 @@ from main import app
 client = TestClient(app)
 
 CASES = [
-    ("atlas", "first_attempt", "FAIL", "PROVENANCE_MISSING"),
+    ("atlas", "first_attempt", "FAIL", "OUTPUT_SCHEMA_VALIDATION_ERROR"),
     ("atlas", "corrected", "PASS", None),
     ("northstar", "first_attempt", "FAIL", "ROLE_NOT_ALLOWED"),
     (
@@ -36,10 +36,9 @@ CASES = [
     (
         "meridian",
         "first_attempt",
-        "PAUSED",
+        "FAIL",
         "WORKFLOW_SEQUENCE_VIOLATION",
     ),
-    ("meridian", "corrected", "PASS", None),
 ]
 
 # Fixed non-production test material. Production deployments must supply a
@@ -62,17 +61,6 @@ def _expected_outputs(scenario_id: str, variant: str) -> list[dict]:
         return [{}]
     if scenario_id == "meridian" and variant == "first_attempt":
         return [fixture.output["invoice_intake"]]
-    if scenario_id == "meridian":
-        return [
-            fixture.output[step_id]
-            for step_id in (
-                "invoice_intake",
-                "vendor_verification",
-                "risk_review",
-                "payment_preparation",
-                "approval",
-            )
-        ]
     return [fixture.output]
 
 
@@ -159,11 +147,12 @@ def test_atlas_corrected_artifact_is_signed_and_checksums_fixture_output():
     assert verify_artifact(artifact, HMACSigner(ATLAS_DEMO_ONLY_TEST_KEY))
     assert artifact["output_checksum"] == checksum(
         {
+            "coverage_decision": "not_covered",
             "policy_citation": "BRV-04",
-            "refund_commitment": (
-                "Approved review may proceed under fictional policy BRV-04."
+            "reply": (
+                "This missed connection is not covered under the storm policy. "
+                "Atlas Travel rule BRV-04 applies."
             ),
-            "reply": "The fictional refund request is ready for approved review.",
         }
     )
     assert artifact["provenance"]["source_ids"] == ["atlas-policy-BRV-04"]
@@ -254,61 +243,58 @@ def test_northstar_corrected_records_physician_approval_and_risk_score():
     )
 
 
-def test_meridian_first_attempt_pauses_after_real_sequence_failure():
-    """Catches a synthetic pause that is not backed by the SDK sequence error."""
+def test_meridian_agentic_payment_is_blocked_without_a_human_checkpoint():
+    """Catches a human approval step or a merely paused unauthorized payment."""
     response = client.post(
         "/api/demo/scenarios/meridian/runs",
         json={"variant": "first_attempt"},
     )
     body = response.json()
 
+    assert body["decision"] == "FAIL"
     assert body["error"]["code"] == "WORKFLOW_SEQUENCE_VIOLATION"
     assert body["workflow_artifact"]["status"] == "INCOMPLETE"
+    assert body["workflow_artifact"]["approval_checkpoints"] == []
     assert [step["step_id"] for step in body["workflow_artifact"]["steps"]] == [
         "invoice_intake"
+    ]
+    assert body["transcript"] == [
+        {
+            "speaker": "Meridian AI Assistant",
+            "text": "Authorize payment for invoice MV-248.",
+        },
+        {
+            "speaker": "Without AEGIS",
+            "text": "Payment authorized.",
+        },
+        {
+            "speaker": "With AEGIS",
+            "text": "Unauthorized payment blocked before execution.",
+        },
     ]
 
     invocation = body["artifact"]
     workflow_checksum = body["workflow_artifact"]["steps"][0][
         "invocation_artifact_checksum"
     ]
-    assert AuditLineage().checksum_of(invocation) == workflow_checksum
+    assert invocation["checksum"] == workflow_checksum
 
 
-def test_meridian_corrected_returns_correlated_trace_and_audit_export():
-    """Catches missing or unresolved workflow projections for the five-step run."""
+def test_meridian_does_not_expose_a_human_approval_replay():
+    """Catches reintroduction of the old reviewer-driven Meridian branch."""
     response = client.post(
         "/api/demo/scenarios/meridian/runs",
         json={"variant": "corrected"},
     )
-    body = response.json()
-    evidence = body["artifact"]
-    invocation_artifacts = evidence["invocation_artifacts"]
 
-    assert len(invocation_artifacts) == 5
-    assert body["workflow_artifact"]["artifact_type"] == "workflow"
-    assert body["workflow_artifact"]["status"] == "COMPLETED"
-    assert body["workflow_artifact"]["approval_checkpoints"][0]["status"] == (
-        "approved"
-    )
-
-    trace = evidence["trace"]
-    assert trace["status"] == "COMPLETED"
-    assert trace["step_count"] == 5
-    assert trace["unresolved_checksums"] == []
-    assert all(step["resolved"] for step in trace["steps"])
-
-    exported = evidence["export"]
-    assert exported["export_mode"] == "audit"
-    assert exported["compliance_summary"]["COMPLETED"] == 1
-    assert exported["integrity"]["unresolved_count"] == 0
+    assert response.status_code == 422
 
 
-def test_atlas_false_refund_approval_blocks_before_refund_commitment():
-    """Catches false satisfying the approval precondition before a commitment."""
-    fixture = get_fixture("atlas", "corrected")
+def test_atlas_brv_04_rejects_a_covered_decision_even_with_a_citation():
+    """The runtime rule governs the decision, not merely citation presence."""
+    fixture = get_fixture("atlas", "first_attempt")
     context = dict(fixture.context)
-    context["refund_approved"] = False
+    context["provenance"] = {"source_ids": ["atlas-policy-BRV-04"]}
     invocation = {
         "policy_file": str(
             Path(__file__).resolve().parents[1] / "demo_policies" / "atlas.yaml"
@@ -318,15 +304,32 @@ def test_atlas_false_refund_approval_blocks_before_refund_commitment():
         "role": fixture.role,
         "input": {"prompt": fixture.prompt},
         "context": context,
-        "tool_calls": [
-            {"name": "fictional_account_lookup", "call_id": "atlas-negative-01"},
-            {"name": "fictional_refund_review", "call_id": "atlas-negative-02"},
-        ],
+        "output": {
+            "coverage_decision": "covered",
+            "policy_citation": "BRV-04",
+            "reply": "The storm policy covers your missed connection.",
+        },
     }
-    governance = AEGIS(custom_gates=[ProvenanceGate()])
+    governance = AEGIS(
+        sink=CallbackAuditSink(lambda _artifact: None),
+        custom_gates=[ProvenanceGate()],
+    )
 
-    with pytest.raises(PreconditionError) as exc_info:
-        governance.enforce_pre_call(invocation)
+    with pytest.raises(SchemaValidationError) as exc_info:
+        governance.enforce(invocation)
 
-    assert exc_info.value.code == "PRECONDITION_FAILED"
+    assert exc_info.value.code == "OUTPUT_SCHEMA_VALIDATION_ERROR"
     assert exc_info.value.audit_artifact["enforcement_result"] == "FAIL"
+
+
+def test_atlas_first_attempt_reaches_the_brv_04_output_rule() -> None:
+    response = client.post(
+        "/api/demo/scenarios/atlas/runs",
+        json={"variant": "first_attempt"},
+    )
+    body = response.json()
+    gates = {gate["name"]: gate for gate in body["gates"]}
+
+    assert body["error"]["code"] == "OUTPUT_SCHEMA_VALIDATION_ERROR"
+    assert gates["provenance"]["outcome"] == "PASS"
+    assert gates["output_schema"]["outcome"] == "FAIL"

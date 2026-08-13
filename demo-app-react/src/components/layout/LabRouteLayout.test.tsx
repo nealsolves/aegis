@@ -60,4 +60,16 @@ describe('LabRouteLayout', () => {
       '--lab-experiment-target-size': '2.75rem',
     })
   })
+
+  it('gives every lab the same plain-language operating rhythm', () => {
+    renderLayout(4)
+    const guide = screen.getByRole('region', { name: 'How to use this lab' })
+    expect(within(guide).getAllByRole('listitem')).toHaveLength(4)
+    expect(guide).toHaveTextContent('Change the inputs')
+    expect(guide).toHaveTextContent('Run AEGIS')
+    expect(guide).toHaveTextContent('Understand the decision')
+    expect(guide).toHaveTextContent('Inspect the evidence')
+    expect(screen.getByRole('region', { name: 'Interactive lab' }))
+      .toBeInTheDocument()
+  })
 })

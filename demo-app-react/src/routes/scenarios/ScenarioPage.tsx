@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import type { CSSProperties } from 'react'
 import { ArrowLeft, ArrowRight, ExternalLink } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 import { useAigc } from '@/context/AigcContext'
@@ -64,10 +65,11 @@ function ScenarioHeader({ content }: { content: ScenarioContent }) {
         <p className="scenario-role">{content.visitorRole}</p>
       </div>
       <aside className="scenario-boundary" aria-label="AEGIS boundary">
-        <strong>AEGIS governs the workflow.</strong>
+        <strong>{content.boundary?.title ?? 'AEGIS checks the draft before delivery.'}</strong>
         <p>
-          The host owns execution, provider calls, tools, and retries. This
-          page requests deterministic server runs and displays their evidence.
+          {content.boundary?.text ?? (
+            'The assistant drafts the answer. AEGIS independently enforces the encoded runtime policy. If a draft is blocked, the host revises it; AEGIS does not write the replacement.'
+          )}
         </p>
       </aside>
     </header>
@@ -108,17 +110,24 @@ function ScenarioController({
   const selectedChoice = content && selection?.scenarioId === content.id
     ? selection.index
     : null
+  const isAgenticComparison = content?.interactionMode === 'agentic_comparison'
+  const selectedVariant = isAgenticComparison
+    ? content.variants[0] ?? null
+    : selectedChoice === null
+      ? null
+      : content?.variants[selectedChoice] ?? null
 
-  const runScenario = useCallback(async () => {
-    if (!content || selectedChoice === null || status !== 'ready') return
+  const runScenario = useCallback(async (overrideVariant?: string) => {
+    if (!content || (!isAgenticComparison && selectedChoice === null)) return
+    const requestedVariant = overrideVariant ?? selectedVariant
+    if (!requestedVariant || status !== 'ready') return
 
     requestControllerRef.current?.abort()
     const controller = new AbortController()
     requestControllerRef.current = controller
     const sequence = requestSequenceRef.current + 1
     requestSequenceRef.current = sequence
-    const variant = content.variants[selectedChoice]
-    if (!variant) return
+    const variant = requestedVariant
 
     setRunningScenarioId(content.id)
     setRequestError(null)
@@ -163,7 +172,14 @@ function ScenarioController({
         setRunningScenarioId(null)
       }
     }
-  }, [apiUrl, content, selectedChoice, status])
+  }, [
+    apiUrl,
+    content,
+    isAgenticComparison,
+    selectedChoice,
+    selectedVariant,
+    status,
+  ])
 
   if (!content) return <NotFoundPage />
 
@@ -177,8 +193,8 @@ function ScenarioController({
     ? requestError.message
     : null
   const runDisabled = (
-    status !== 'ready'
-    || selectedChoice === null
+    (!isAgenticComparison && selectedChoice === null)
+    || (selectedVariant !== null && status !== 'ready')
   )
 
   return (
@@ -194,6 +210,22 @@ function ScenarioController({
           <div>
             <h2 id="scenario-incident-title">Incident</h2>
             <p className="scenario-incident">{content.incident}</p>
+            <ol className="scenario-story" aria-label="Case story">
+              {content.setup.map((beat, index) => (
+                <li
+                  data-tone={beat.tone ?? 'neutral'}
+                  key={`${content.id}-${beat.label}`}
+                  style={{ '--story-order': index } as CSSProperties}
+                >
+                  <span>{String(index + 1).padStart(2, '0')}</span>
+                  <div>
+                    <p>{beat.label}</p>
+                    <h3>{beat.title}</h3>
+                    <p>{beat.text}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
             {content.sources && (
               <div className="scenario-sources">
                 <span>Case reference</span>
@@ -219,38 +251,43 @@ function ScenarioController({
         >
           <div className="scenario-region__label">02</div>
           <div>
-            <h2 id="scenario-judgment-title">Your judgment</h2>
+            <h2 id="scenario-judgment-title">
+              {isAgenticComparison ? 'Agentic flow' : 'Your judgment'}
+            </h2>
             <p className="scenario-judgment-lead">
-              Choose how the fictional workflow should proceed.
+              {isAgenticComparison
+                ? 'Run the same autonomous payment attempt with and without runtime policy enforcement.'
+                : 'Choose how the fictional workflow should proceed.'}
             </p>
 
-            <div
-              className="scenario-choices"
-              role="radiogroup"
-              aria-label="Judgment choices"
-            >
-              {content.choices.map((choice, index) => (
-                <label
-                  className="scenario-choice"
-                  data-selected={selectedChoice === index}
-                  key={choice.id}
-                >
-                  <input
-                    checked={selectedChoice === index}
-                    name={`${content.id}-judgment`}
-                    onChange={() => setSelection({
-                      scenarioId: content.id,
-                      index,
-                    })}
-                    type="radio"
-                  />
-                  <span className="scenario-choice__marker" aria-hidden="true">
-                    {String.fromCharCode(65 + index)}
-                  </span>
-                  <span>{choice.label}</span>
-                </label>
-              ))}
-            </div>
+            {!isAgenticComparison && (
+              <div
+                className="scenario-choices"
+                role="radiogroup"
+                aria-label="Judgment choices"
+              >
+                {content.choices.map((choice, index) => (
+                  <label
+                    className="scenario-choice"
+                    data-selected={selectedChoice === index}
+                    key={choice.id}
+                  >
+                    <input
+                      checked={selectedChoice === index}
+                      name={`${content.id}-judgment`}
+                      onChange={() => {
+                        setSelection({ scenarioId: content.id, index })
+                      }}
+                      type="radio"
+                    />
+                    <span className="scenario-choice__marker" aria-hidden="true">
+                      {String.fromCharCode(65 + index)}
+                    </span>
+                    <span>{choice.label}</span>
+                  </label>
+                ))}
+              </div>
+            )}
 
             <div className="scenario-run-row">
               <button
@@ -259,13 +296,15 @@ function ScenarioController({
                 disabled={runDisabled}
                 onClick={() => void runScenario()}
               >
-                Run judgment
+                {isAgenticComparison ? 'Run agentic comparison' : 'Run judgment'}
                 <ArrowRight aria-hidden="true" />
               </button>
               <p role="status" aria-live="polite">
                 {isRunning
                   ? 'Requesting the server evaluation.'
-                  : serviceMessage(status)}
+                  : isAgenticComparison && status === 'ready'
+                    ? 'Ready to run the autonomous payment attempt.'
+                    : serviceMessage(status)}
               </p>
             </div>
 
@@ -278,7 +317,29 @@ function ScenarioController({
           </div>
         </section>
 
-        <ScenarioTimeline response={currentResponse} scenarioId={content.id} />
+        <ScenarioTimeline
+          key={`${content.id}-${currentResponse?.variant ?? 'empty'}`}
+          response={currentResponse}
+          scenarioId={content.id}
+        />
+        {content.id === 'atlas' && currentResponse?.variant === 'first_attempt' && (
+          <section className="scenario-correction" aria-labelledby="atlas-correction-title">
+            <p>Correction replay</p>
+            <h2 id="atlas-correction-title">Revise the host-owned answer</h2>
+            <p>
+              Atlas AI changes the decision to not covered and cites BRV-04.
+              AEGIS then checks the revised draft again.
+            </p>
+            <button
+              type="button"
+              disabled={isRunning || status !== 'ready'}
+              onClick={() => void runScenario('corrected')}
+            >
+              Run corrected answer
+              <ArrowRight aria-hidden="true" />
+            </button>
+          </section>
+        )}
       </div>
     </main>
   )

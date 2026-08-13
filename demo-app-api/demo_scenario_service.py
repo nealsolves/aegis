@@ -12,8 +12,6 @@ from aegis import (
     WorkflowApprovalRequiredError,
     WorkflowSequenceViolationError,
 )
-from aegis.workflow_export import export_workflow
-from aegis.workflow_trace import reconstruct_trace
 
 from demo_contract import (
     DemoError,
@@ -58,17 +56,16 @@ MERIDIAN_STEPS = (
     ),
     MeridianStep("risk_review", "meridian-risk-01", "risk_reviewer"),
     MeridianStep(
-        "payment_preparation",
-        "meridian-payment-01",
-        "payment_preparer",
+        "payment_authorization",
+        "meridian-payment-authorizer-01",
+        "payment_authorizer",
         (
             {
-                "name": "prepare_no_op_payment_record",
-                "call_id": "mv-prepare-01",
+                "name": "authorize_payment",
+                "call_id": "mv-authorize-01",
             },
         ),
     ),
-    MeridianStep("approval", "meridian-approver-01", "finance_approver"),
 )
 
 
@@ -80,6 +77,9 @@ def _reason_code(exc: Exception) -> str:
             specific = gate_failures[0].get("code")
             if isinstance(specific, str):
                 return specific
+    code = getattr(exc, "code", None)
+    if isinstance(code, str):
+        return code
     artifact = getattr(exc, "audit_artifact", None) or {}
     failures = artifact.get("failures")
     if isinstance(failures, list) and failures:
@@ -88,9 +88,6 @@ def _reason_code(exc: Exception) -> str:
             return specific
     if isinstance(details, dict) and isinstance(details.get("reason_code"), str):
         return details["reason_code"]
-    code = getattr(exc, "code", None)
-    if isinstance(code, str):
-        return code
     return str(
         artifact.get("metadata", {}).get(
             "reason_code",
@@ -171,7 +168,10 @@ def _artifact_gate(
     phase: str,
     failed_reason: str | None = None,
 ) -> DemoGateResult:
-    evaluated = artifact_name in _evaluated_gate_ids(artifact)
+    evaluated = (
+        artifact_name in _evaluated_gate_ids(artifact)
+        or artifact.get("failure_gate") == artifact_name
+    )
     outcome = "FAIL" if evaluated and failed_reason else ("PASS" if evaluated else None)
     return _gate(
         name=name,
@@ -215,10 +215,6 @@ def _run_atlas(fixture: ScenarioFixture) -> ScenarioRunResponse:
     invocation = _invocation(
         fixture,
         "atlas",
-        tool_calls=(
-            {"name": "fictional_account_lookup", "call_id": "atlas-lookup-01"},
-            {"name": "fictional_refund_review", "call_id": "atlas-review-01"},
-        ),
     )
 
     try:
@@ -243,13 +239,20 @@ def _run_atlas(fixture: ScenarioFixture) -> ScenarioRunResponse:
                     name="provenance",
                     artifact_name="custom:provenance_gate",
                     phase="post_call",
-                    failed_reason=reason,
+                    failed_reason=(
+                        reason if reason == "PROVENANCE_MISSING" else None
+                    ),
                 ),
                 _artifact_gate(
                     artifact,
                     name="output_schema",
                     artifact_name="schema_validation",
                     phase="post_call",
+                    failed_reason=(
+                        reason
+                        if reason == "OUTPUT_SCHEMA_VALIDATION_ERROR"
+                        else None
+                    ),
                 ),
             ],
             decision="FAIL",
@@ -499,11 +502,6 @@ def _run_meridian(fixture: ScenarioFixture) -> ScenarioRunResponse:
                 )
             except WorkflowSequenceViolationError as exc:
                 caught = exc
-                session.pause(
-                    approval_id="meridian-sequence-review",
-                    approver_id="fictional-finance-reviewer",
-                    reason="The required vendor-verification sequence was skipped.",
-                )
 
         if caught is None:
             raise RuntimeError("Meridian sequence violation did not occur")
@@ -515,88 +513,17 @@ def _run_meridian(fixture: ScenarioFixture) -> ScenarioRunResponse:
                     name="required_sequence",
                     phase="workflow",
                     evaluated=True,
-                    outcome="PAUSED",
+                    outcome="FAIL",
                     reason_code=reason,
                 )
             ],
-            decision="PAUSED",
+            decision="FAIL",
             artifact=invocation_artifacts[0],
             workflow_artifact=session.workflow_artifact,
             error=_demo_error(reason),
         )
 
-    with governance.open_session(
-        session_id="meridian-corrected",
-        policy_file=_policy_path("meridian"),
-        metadata={"fixture_version": FIXTURE_VERSION},
-    ) as session:
-        for step in MERIDIAN_STEPS[:4]:
-            invocation_artifacts.append(
-                _complete_meridian_step(session, fixture, step)
-            )
-
-        approval_error: WorkflowApprovalRequiredError | None = None
-        try:
-            session.enforce_step_pre_call(
-                _meridian_invocation(fixture, MERIDIAN_STEPS[4]),
-                step_id=MERIDIAN_STEPS[4].step_id,
-                participant_id=MERIDIAN_STEPS[4].participant_id,
-            )
-        except WorkflowApprovalRequiredError as exc:
-            approval_error = exc
-
-        if approval_error is None:
-            raise RuntimeError("Meridian approval checkpoint did not occur")
-        session.resume(
-            approval_id=approval_error.details["checkpoint_id"],
-            approver_id="fictional-finance-reviewer",
-            approval_note="Fictional invoice workflow approved.",
-        )
-        invocation_artifacts.append(
-            _complete_meridian_step(session, fixture, MERIDIAN_STEPS[4])
-        )
-        session.complete()
-
-    workflow_artifact = session.workflow_artifact
-    if workflow_artifact is None:
-        raise RuntimeError("Meridian workflow artifact was not finalized")
-    trace = reconstruct_trace(workflow_artifact, invocation_artifacts)
-    exported = export_workflow(
-        [workflow_artifact],
-        invocation_artifacts,
-        "audit",
-    )
-    evidence = {
-        "invocation_artifacts": invocation_artifacts,
-        "trace": trace,
-        "export": exported,
-    }
-    return _response(
-        fixture,
-        gates=[
-            _gate(
-                name="required_sequence",
-                phase="workflow",
-                evaluated=True,
-                outcome="PASS",
-            ),
-            _gate(
-                name="approval_checkpoint",
-                phase="workflow",
-                evaluated=True,
-                outcome="PASS",
-            ),
-            _gate(
-                name="workflow_lifecycle",
-                phase="workflow",
-                evaluated=True,
-                outcome="PASS",
-            ),
-        ],
-        decision="PASS",
-        artifact=evidence,
-        workflow_artifact=workflow_artifact,
-    )
+    raise ValueError(f"Unknown Meridian variant: {fixture.variant}")
 
 
 def run_scenario(scenario_id: str, variant: str) -> ScenarioRunResponse:

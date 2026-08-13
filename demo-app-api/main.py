@@ -1,9 +1,9 @@
 import copy
 import json
 import secrets
-import uuid
 from datetime import date
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Literal
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -15,7 +15,8 @@ from starlette.responses import JSONResponse
 from bounded_yaml import ensure_bounded_json_response, load_bounded_yaml
 from scenarios import SCENARIOS
 from aegis import (
-    AIGCError, HMACSigner, build_content_checksum_v2,
+    AIGCError, AuditChain, CallbackAuditSink, FilePolicyLoader, HMACSigner,
+    load_policy,
     verify_artifact, verify_chain_detailed,
     validate_policy_dates,
     PolicyValidationError,
@@ -41,7 +42,7 @@ from demo_errors import (
     request_id_from_scope,
     safe_demo_message,
 )
-from demo_runtime import demo_aegis
+from demo_runtime import demo_aegis, demo_aegis_with_sink
 from demo_routes import router as demo_router
 
 ALLOWED_ORIGINS = (
@@ -338,46 +339,45 @@ def verify_signature(req: VerifySignatureRequest):
     return {"valid": valid}
 
 
-class ChainAppendRequest(BaseModel):
-    scenario_key: str
-    chain_id: str | None = None
-    previous_checksum: str | None = None
-    chain_index: int = 0
-
-
-@api.post("/api/chain/append")
-def chain_append(req: ChainAppendRequest):
-    if req.scenario_key not in SCENARIOS:
-        raise _public_request_failure()
-    scenario = SCENARIOS[req.scenario_key]
-    policy_ref = scenario["policy"]
-    chain_id = req.chain_id or str(uuid.uuid4())
-
-    aegis = demo_aegis(SAMPLE_POLICIES_DIR)
-    try:
-        artifact = aegis.enforce(_build_full_invocation(scenario, policy_ref))
-    except AIGCError as exc:
-        artifact = getattr(exc, "audit_artifact", None)
-        if not artifact:
+@api.post("/api/chain/build")
+def chain_build():
+    """Build a bounded demonstration chain with server-owned coordinates."""
+    chain = AuditChain()
+    artifacts: list[dict] = []
+    governance = demo_aegis_with_sink(
+        SAMPLE_POLICIES_DIR,
+        CallbackAuditSink(artifacts.append),
+        chain_linker=chain,
+    )
+    for scenario_key in ("chain_entry_1", "chain_entry_2", "chain_entry_3"):
+        scenario = SCENARIOS[scenario_key]
+        before_artifacts = len(artifacts)
+        before_chain = chain.length
+        try:
+            governance.enforce(
+                _build_full_invocation(scenario, scenario["policy"])
+            )
+        except AIGCError:
+            pass
+        # Every bounded scenario must commit exactly one coordinate and emit
+        # exactly one finalized artifact, including governed FAIL outcomes.
+        if (
+            len(artifacts) != before_artifacts + 1
+            or chain.length != before_chain + 1
+            or len(artifacts) != chain.length
+        ):
             raise DemoPublicError(
                 "AEGIS_ENFORCEMENT_FAILED",
                 safe_demo_message("AEGIS_ENFORCEMENT_FAILED"),
                 422,
             ) from None
-
-    # Inject chain fields — mirrors AuditChain.append()
-    unsigned = {
-        key: value
-        for key, value in artifact.items()
-        if key not in {"checksum", "signature", "signature_metadata"}
-    }
-    unsigned["chain_id"] = chain_id
-    unsigned["chain_index"] = req.chain_index
-    unsigned["previous_audit_checksum"] = req.previous_checksum
-    artifact = build_content_checksum_v2(unsigned)
-    artifact["signature"] = None
-
-    return {"artifact": artifact, "chain_id": chain_id}
+    if len(artifacts) != 3 or [item.get("chain_index") for item in artifacts] != [0, 1, 2]:
+        raise DemoPublicError(
+            "AEGIS_ENFORCEMENT_FAILED",
+            safe_demo_message("AEGIS_ENFORCEMENT_FAILED"),
+            422,
+        )
+    return {"artifacts": artifacts, "chain_id": chain.chain_id}
 
 
 class ChainVerifyRequest(BaseModel):
@@ -426,7 +426,13 @@ def compose_policies(req: ComposeRequest):
     strategy = _STRATEGY_MAP[req.strategy]
 
     try:
-        merged = merge_policies(base, child, composition_strategy=strategy)
+        child_for_preview = copy.deepcopy(child)
+        child_for_preview.pop("composition_strategy", None)
+        merged = merge_policies(
+            base,
+            child_for_preview,
+            composition_strategy=strategy,
+        )
         merged.pop("extends", None)
         merged.pop("composition_strategy", None)
     except Exception as exc:
@@ -469,10 +475,49 @@ def compose_policies(req: ComposeRequest):
         "added_roles": sorted(new_roles),
     }
 
+    parent_for_admission = copy.deepcopy(base)
+    parent_for_admission.pop("extends", None)
+    parent_for_admission.pop("composition_strategy", None)
+    child_for_admission = copy.deepcopy(child)
+    child_for_admission["extends"] = "parent.yaml"
+    child_for_admission["composition_strategy"] = strategy
+
+    admission: dict[str, str | None]
+    try:
+        with TemporaryDirectory(prefix="aegis-compose-") as temp_dir:
+            root = Path(temp_dir)
+            (root / "parent.yaml").write_text(
+                yaml_lib.safe_dump(parent_for_admission, default_flow_style=False),
+                encoding="utf-8",
+            )
+            (root / "child.yaml").write_text(
+                yaml_lib.safe_dump(child_for_admission, default_flow_style=False),
+                encoding="utf-8",
+            )
+            load_policy("child.yaml", loader=FilePolicyLoader(root))
+        admission = {
+            "status": "ADMITTED",
+            "code": None,
+            "message": "The SDK loader admitted this child policy.",
+        }
+    except PolicyValidationError as exc:
+        code = getattr(exc, "code", "POLICY_VALIDATION_ERROR")
+        admission = {
+            "status": "REJECTED",
+            "code": code,
+            "message": (
+                "The SDK loader rejected this policy because it widens parent "
+                "authority."
+                if code == "POLICY_WIDENING"
+                else "The SDK loader rejected this policy as invalid."
+            ),
+        }
+
     response = {
         "merged_yaml": yaml_lib.safe_dump(merged, default_flow_style=False),
         "escalations": escalations,
         "diff": diff,
+        "admission": admission,
         "error": None,
     }
     ensure_bounded_json_response(response)

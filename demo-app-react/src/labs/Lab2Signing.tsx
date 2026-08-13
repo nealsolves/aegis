@@ -43,7 +43,7 @@ export default function Lab2Signing() {
   return (
     <div className="p-4 max-w-4xl mx-auto">
       <p className="font-mono text-xs mb-4" style={{ color: 'var(--text-secondary)' }}>
-        // HMAC-SHA256 artifact signing and tamper detection
+        Sign one governance record, verify it, then change the record to reveal tampering.
       </p>
 
       <div className="grid grid-cols-2 gap-4 mb-4">

@@ -43,11 +43,18 @@ export default function Lab10SplitEnforcementExplorer() {
   return (
     <div className="p-4 max-w-5xl mx-auto">
       <p className="font-mono text-xs mb-4" style={{ color: 'var(--text-secondary)' }}>
-        // lab 10 — split enforcement explorer: phase a · phase b · token cost
+        Follow split enforcement from Phase A at the pre-call boundary to Phase B at the post-call output check.
       </p>
 
       <div className="flex items-center gap-3 mb-4">
+        <label
+          className="text-sm font-medium"
+          htmlFor="split-enforcement-scenario"
+        >
+          Split enforcement scenario
+        </label>
         <select
+          id="split-enforcement-scenario"
           className="border rounded px-3 py-1.5 text-sm bg-base text-text-1"
           value={scenarioKey}
           onChange={e => setScenarioKey(e.target.value)}

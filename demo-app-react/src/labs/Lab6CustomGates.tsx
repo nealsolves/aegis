@@ -133,7 +133,7 @@ export default function Lab6CustomGates() {
   return (
     <div className="p-4 max-w-4xl mx-auto">
       <p className="font-mono text-xs mb-4" style={{ color: 'var(--text-secondary)' }}>
-        // custom enforcement gate plugins — four insertion points in the pipeline
+        Choose a focused custom gate and watch where it changes the enforcement pipeline.
       </p>
 
       {/* Gate selector */}

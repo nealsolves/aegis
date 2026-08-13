@@ -94,7 +94,7 @@ export default function Lab1RiskScoring() {
   return (
     <div className="p-4 max-w-4xl mx-auto">
       <p className="font-mono text-xs mb-4" style={{ color: 'var(--text-secondary)' }}>
-        // evaluate invocation risk across signal dimensions
+        Change the scenario signals, run the governed request, and see what drives the risk decision.
       </p>
 
       <div className="grid grid-cols-2 gap-4 mb-4">

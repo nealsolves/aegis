@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+import main
 from main import app
 
 client = TestClient(app)
@@ -136,63 +137,49 @@ def test_sign_verify_bad_hex_key():
     assert r.status_code == 422
 
 
-def test_chain_append_first_entry():
-    r = client.post("/api/chain/append", json={
-        "scenario_key": "chain_entry_1",
-        "chain_id": None,
-        "previous_checksum": None,
-        "chain_index": 0,
-    })
+def test_chain_build_owns_every_lineage_coordinate():
+    r = client.post("/api/chain/build", json={})
     assert r.status_code == 200
     data = r.json()
-    artifact = data["artifact"]
-    assert artifact["chain_index"] == 0
-    assert artifact["previous_audit_checksum"] is None
-    assert "checksum" in artifact
-    assert "chain_id" in artifact
+    artifacts = data["artifacts"]
+    assert len(artifacts) == 3
+    assert [artifact["chain_index"] for artifact in artifacts] == [0, 1, 2]
+    assert {artifact["chain_id"] for artifact in artifacts} == {data["chain_id"]}
+    assert artifacts[0]["previous_audit_checksum"] is None
+    assert artifacts[1]["previous_audit_checksum"] == artifacts[0]["checksum"]
+    assert artifacts[2]["previous_audit_checksum"] == artifacts[1]["checksum"]
 
 
-def test_chain_append_links_correctly():
-    # First entry
-    r1 = client.post("/api/chain/append", json={
+def test_chain_build_rejects_a_missing_sink_emission(monkeypatch):
+    class GovernanceWithoutAuditEmission:
+        def enforce(self, _invocation):
+            return None
+
+    monkeypatch.setattr(
+        main,
+        "demo_aegis_with_sink",
+        lambda *_args, **_kwargs: GovernanceWithoutAuditEmission(),
+    )
+
+    response = client.post("/api/chain/build", json={})
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "AEGIS_ENFORCEMENT_FAILED"
+
+
+def test_client_can_no_longer_append_spoofed_lineage():
+    r = client.post("/api/chain/append", json={
         "scenario_key": "chain_entry_1",
-        "chain_id": "test-chain-001",
-        "previous_checksum": None,
-        "chain_index": 0,
+        "chain_id": "attacker-selected",
+        "previous_checksum": "0" * 64,
+        "chain_index": 99,
     })
-    first = r1.json()["artifact"]
-
-    # Second entry linked to first
-    r2 = client.post("/api/chain/append", json={
-        "scenario_key": "chain_entry_2",
-        "chain_id": "test-chain-001",
-        "previous_checksum": first["checksum"],
-        "chain_index": 1,
-    })
-    second = r2.json()["artifact"]
-    assert second["previous_audit_checksum"] == first["checksum"]
-    assert second["chain_index"] == 1
+    assert r.status_code == 404
 
 
 def test_chain_verify_intact():
-    # Build a two-entry chain
-    r1 = client.post("/api/chain/append", json={
-        "scenario_key": "chain_entry_1",
-        "chain_id": "verify-chain-001",
-        "previous_checksum": None,
-        "chain_index": 0,
-    })
-    a1 = r1.json()["artifact"]
-
-    r2 = client.post("/api/chain/append", json={
-        "scenario_key": "chain_entry_2",
-        "chain_id": "verify-chain-001",
-        "previous_checksum": a1["checksum"],
-        "chain_index": 1,
-    })
-    a2 = r2.json()["artifact"]
-
-    r3 = client.post("/api/chain/verify", json={"artifacts": [a1, a2]})
+    artifacts = client.post("/api/chain/build", json={}).json()["artifacts"]
+    r3 = client.post("/api/chain/verify", json={"artifacts": artifacts})
     report = r3.json()
     assert report["valid"] is True
     assert report["content_integrity"] == "valid"
@@ -204,23 +191,10 @@ def test_chain_verify_intact():
 
 
 def test_chain_tamper_breaks_verify():
-    r1 = client.post("/api/chain/append", json={
-        "scenario_key": "chain_entry_1",
-        "chain_id": "tamper-chain-001",
-        "previous_checksum": None,
-        "chain_index": 0,
-    })
-    a1 = r1.json()["artifact"]
-    r2 = client.post("/api/chain/append", json={
-        "scenario_key": "chain_entry_2",
-        "chain_id": "tamper-chain-001",
-        "previous_checksum": a1["checksum"],
-        "chain_index": 1,
-    })
-    a2 = r2.json()["artifact"]
+    artifacts = client.post("/api/chain/build", json={}).json()["artifacts"]
 
     # Tamper index 0
-    r_tamper = client.post("/api/chain/tamper", json={"artifacts": [a1, a2], "index": 0})
+    r_tamper = client.post("/api/chain/tamper", json={"artifacts": artifacts, "index": 0})
     tampered = r_tamper.json()["artifacts"]
 
     r_verify = client.post("/api/chain/verify", json={"artifacts": tampered})
@@ -239,6 +213,7 @@ def test_compose_intersect():
     assert r.status_code == 200
     data = r.json()
     assert data["error"] is None
+    assert data["admission"]["status"] == "ADMITTED"
     assert "doctor" in data["merged_yaml"]
     # intersect of [doctor,nurse] with [doctor] = [doctor]
     assert "nurse" not in data["merged_yaml"]
@@ -254,6 +229,30 @@ def test_compose_detects_escalation():
     })
     data = r.json()
     assert any("nurse" in v for v in data["escalations"])
+    assert data["admission"]["status"] == "REJECTED"
+    assert data["admission"]["code"] == "POLICY_WIDENING"
+
+
+def test_compose_request_strategy_overrides_child_document_strategy():
+    parent = (
+        'policy_version: "1.0"\nroles: [doctor]\n'
+        'post_conditions:\n  required: [source_cited, human_reviewed]\n'
+    )
+    child = (
+        'policy_version: "1.0"\nroles: [doctor]\n'
+        'post_conditions:\n  required: [source_cited, audit_exported]\n'
+        'composition_strategy: union\n'
+    )
+    r = client.post("/api/compose", json={
+        "parent_yaml": parent,
+        "child_yaml": child,
+        "strategy": "intersect",
+    })
+    data = r.json()
+    assert data["admission"]["status"] == "REJECTED"
+    assert "source_cited" in data["merged_yaml"]
+    assert "human_reviewed" not in data["merged_yaml"]
+    assert "audit_exported" not in data["merged_yaml"]
 
 
 def test_policy_load():

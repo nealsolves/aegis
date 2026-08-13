@@ -90,10 +90,12 @@ def _policy_with_a2a_constraints(a2a_constraints):
 
 def _make_session(participants=None, protocol_constraints=None):
     import aegis as _aegis
+    from aegis._internal.compiled_policy import freeze
 
     session = _aegis.AEGIS().open_session(policy_file=None)
     if protocol_constraints is not None:
-        session._protocol_constraints = protocol_constraints
+        # Match the immutable representation supplied by the real policy compiler.
+        session._protocol_constraints = freeze(protocol_constraints)
     if participants is not None:
         session._participants = participants
         session._participants_by_id = {p["id"]: p for p in participants}
@@ -630,6 +632,52 @@ def test_prepare_step_success_with_explicit_http_json_constraints():
             dict(_GOOD_OUTPUT),
             task_envelope=copy.deepcopy(_TASK_COMPLETED),
         )
+
+
+def test_compiled_a2a_constraints_are_projected_to_a_strict_plain_object():
+    from types import MappingProxyType
+
+    from aegis._internal.session import _project_compiled_a2a_constraints
+
+    compiled = MappingProxyType(
+        {
+            "protocol_version": "1.0",
+            "allowed_protocol_bindings": ("JSONRPC",),
+            "require_task_state": True,
+        }
+    )
+
+    assert _project_compiled_a2a_constraints(compiled) == {
+        "protocol_version": "1.0",
+        "allowed_protocol_bindings": ["JSONRPC"],
+        "require_task_state": True,
+    }
+
+
+def test_a2a_projection_rejects_arbitrary_mapping_implementations():
+    from collections.abc import Mapping
+
+    import pytest
+
+    from aegis._internal.errors import WorkflowProtocolViolationError
+    from aegis._internal.session import _project_compiled_a2a_constraints
+
+    class ForeignMapping(Mapping):
+        def __getitem__(self, key):
+            return {"protocol_version": "1.0"}[key]
+
+        def __iter__(self):
+            return iter(("protocol_version",))
+
+        def __len__(self):
+            return 1
+
+    with pytest.raises(WorkflowProtocolViolationError) as exc_info:
+        _project_compiled_a2a_constraints(ForeignMapping())
+
+    assert exc_info.value.details["reason_code"] == (
+        "WORKFLOW_PROTOCOL_A2A_CONSTRAINTS_INVALID"
+    )
 
 
 @pytest.mark.parametrize("allowed", [[["JSONRPC"]], [{"binding": "JSONRPC"}]])

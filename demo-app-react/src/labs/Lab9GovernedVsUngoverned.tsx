@@ -42,11 +42,18 @@ export default function Lab9GovernedVsUngoverned() {
   return (
     <div className="p-4 max-w-5xl mx-auto">
       <p className="font-mono text-xs mb-4" style={{ color: 'var(--text-secondary)' }}>
-        // lab 9 — governed vs. ungoverned: same query, different evidence
+        Governed vs. ungoverned: compare the same request and the evidence each path returns.
       </p>
 
       <div className="flex items-center gap-3 mb-4">
+        <label
+          className="text-sm font-medium"
+          htmlFor="comparison-scenario"
+        >
+          Comparison scenario
+        </label>
         <select
+          id="comparison-scenario"
           className="border rounded px-3 py-1.5 text-sm bg-base text-text-1"
           value={scenarioKey}
           onChange={e => setScenarioKey(e.target.value)}

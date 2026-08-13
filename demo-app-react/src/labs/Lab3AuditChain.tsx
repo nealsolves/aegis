@@ -4,33 +4,35 @@ import MetricCard from '@/components/shared/MetricCard'
 import { useApi } from '@/hooks/useApi'
 import type { Artifact } from '@/types/artifact'
 
-interface AppendResponse { artifact: Artifact; chain_id: string }
-interface VerifyResponse { valid: boolean; errors: string[] }
+interface BuildResponse { artifacts: Artifact[]; chain_id: string }
+interface VerifyError { code: string; message: string; index: number | null }
+interface VerifyResponse {
+  valid: boolean
+  content_integrity: string
+  chain_continuity: string
+  signature_status: string
+  anchor_status: string
+  completeness: string
+  errors: VerifyError[]
+}
 interface TamperResponse { artifacts: Artifact[] }
-
-const CHAIN_SCENARIOS = ['chain_entry_1', 'chain_entry_2', 'chain_entry_3']
 
 export default function Lab3AuditChain() {
   const [entries, setEntries]     = useState<Artifact[]>([])
   const [chainId, setChainId]     = useState<string | null>(null)
   const [tampered, setTampered]   = useState(false)
-  const [verified, setVerified]   = useState<{ valid: boolean; errors: string[] } | null>(null)
+  const [verified, setVerified]   = useState<VerifyResponse | null>(null)
 
-  const { call: callAppend,  loading: loadingAppend  } = useApi<AppendResponse>()
-  const { call: callVerify,  loading: loadingVerify  } = useApi<VerifyResponse>()
-  const { call: callTamper,  loading: loadingTamper  } = useApi<TamperResponse>()
+  const { call: callBuild, loading: loadingBuild, error: buildError } = useApi<BuildResponse>()
+  const { call: callVerify, loading: loadingVerify, error: verifyError } = useApi<VerifyResponse>()
+  const { call: callTamper, loading: loadingTamper, error: tamperError } = useApi<TamperResponse>()
 
-  const addEntry = async (scenarioKey: string) => {
-    const lastEntry = entries[entries.length - 1] ?? null
-    const res = await callAppend('/api/chain/append', {
-      scenario_key: scenarioKey,
-      chain_id: chainId,
-      previous_checksum: lastEntry?.checksum ?? null,
-      chain_index: entries.length,
-    })
+  const buildChain = async () => {
+    const res = await callBuild('/api/chain/build', {})
     if (res) {
-      if (!chainId) setChainId(res.chain_id)
-      setEntries(prev => [...prev, res.artifact])
+      setChainId(res.chain_id)
+      setEntries(res.artifacts)
+      setTampered(false)
       setVerified(null)
     }
   }
@@ -62,22 +64,19 @@ export default function Lab3AuditChain() {
   return (
     <div className="p-4 max-w-4xl mx-auto">
       <p className="font-mono text-xs mb-4" style={{ color: 'var(--text-secondary)' }}>
-        // hash-linked audit chain — each entry commits to previous
+        Build a server-owned audit chain, then test whether its history is still intact.
       </p>
 
       {/* Controls */}
       <div className="flex gap-2 mb-4 flex-wrap">
-        {CHAIN_SCENARIOS.map(key => (
-          <button
-            key={key}
-            onClick={() => addEntry(key)}
-            disabled={loadingAppend}
-            className="font-mono text-xs px-3 py-1.5 rounded"
-            style={{ background: 'var(--ibm-blue-60)', color: '#fff', opacity: loadingAppend ? 0.7 : 1 }}
-          >
-            {loadingAppend ? '…' : `+ ${key.replace('chain_entry_', 'Entry ')}`}
-          </button>
-        ))}
+        <button
+          onClick={buildChain}
+          disabled={loadingBuild}
+          className="font-mono text-xs px-3 py-1.5 rounded"
+          style={{ background: 'var(--ibm-blue-60)', color: '#fff', opacity: loadingBuild ? 0.7 : 1 }}
+        >
+          {loadingBuild ? 'Building…' : 'Build governed chain'}
+        </button>
         <button
           onClick={verify}
           disabled={!entries.length || loadingVerify}
@@ -105,6 +104,11 @@ export default function Lab3AuditChain() {
       )}
 
       {/* Verification result */}
+      {(buildError || verifyError || tamperError) && (
+        <div role="alert" className="font-mono text-xs px-3 py-2 rounded mb-4" style={{ border: '1px solid #da1e28', color: '#da1e28' }}>
+          {buildError ?? verifyError ?? tamperError}
+        </div>
+      )}
       {verified !== null && (
         <div className="font-mono text-xs px-3 py-2 rounded mb-4"
           style={{
@@ -115,13 +119,36 @@ export default function Lab3AuditChain() {
         >
           {verified.valid
             ? '// chain integrity verified — all links intact'
-            : `// chain BROKEN — ${verified.errors.length} error(s): ${verified.errors[0]}`}
+            : `// chain BROKEN — ${verified.errors.length} error(s): ${verified.errors[0]?.message ?? 'integrity check failed'}`}
         </div>
       )}
 
+      {verified && (
+        <dl className="grid grid-cols-3 gap-2 mb-4 text-sm">
+          {[
+            ['Content integrity', verified.content_integrity],
+            ['Chain continuity', verified.chain_continuity],
+            ['Signature', verified.signature_status],
+            ['Anchor', verified.anchor_status],
+            ['Completeness', verified.completeness],
+          ].map(([label, value]) => (
+            <div key={label} className="rounded p-2" style={{ border: '1px solid var(--border-ui)' }}>
+              <dt style={{ color: 'var(--text-secondary)' }}>{label}</dt>
+              <dd className="font-mono mt-1">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+
+      <p className="text-sm mb-4" style={{ color: 'var(--text-secondary)' }}>
+        This in-memory demo proves content integrity and link continuity only.
+        It does not prove a complete history, durable append-only storage,
+        rollback protection, authenticity, or an external trust anchor.
+      </p>
+
       {entries.length === 0 && (
         <div className="font-mono text-xs px-3 py-2 rounded" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-ui)', color: 'var(--text-secondary)' }}>
-          // add entries to build the chain
+          // ask AEGIS to enforce three events and assign every chain coordinate
         </div>
       )}
 

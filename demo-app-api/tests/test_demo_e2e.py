@@ -16,8 +16,7 @@ SCENARIO_CASES = [
     ("northstar", "first_attempt", "FAIL"),
     ("northstar", "authorized_retry", "PAUSED"),
     ("northstar", "corrected", "PASS"),
-    ("meridian", "first_attempt", "PAUSED"),
-    ("meridian", "corrected", "PASS"),
+    ("meridian", "first_attempt", "FAIL"),
 ]
 
 ADAPTER_CASES = [
